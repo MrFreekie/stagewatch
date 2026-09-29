@@ -83,6 +83,11 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | Pi GPIO, USB and Modbus relays, ESPHome outputs | Relays, sounders, stack lights, displays | native | ✅ | ★★★ | ➡ |
 | Patlite / Werma network stack lights, Art-Net / sACN fixtures | Visual alarms | Socket / HTTP, Art-Net | ✅ | ★★ | ➡ |
 | ntfy / Pushover / Telegram | Alerts for roaming crew | HTTPS | ✅ | ★★ | ➡ |
+| [Ontime](https://github.com/cpvalente/ontime) (open-source rundown / show timer) | Running order, current/next item, timers; each cue can auto-drop a timeline marker | HTTP / WebSocket / OSC API (check the current docs) | ❓ | ★★★ | ⬌ |
+
+## Feature backlog (non-integration)
+- **Setlist / day schedule sheet**: a built-in running order for the day (doors, support, changeover, headliner, curfew) and a per-show setlist. Items can be entered by hand or imported (CSV/paste). Schedule times auto-create timeline markers, and a dashboard card shows "now / next / time to curfew". It could run standalone or sync with Ontime (above) when that's in use.
+- **Custom logo upload**: the admin uploads a logo (production, venue or company) shown in dashboard headers and kiosk/wall views. Size- and type-limited (PNG/SVG/JPEG), stored in the data folder (never the repo), SVG sanitised or served with a safe content type, and removable to revert to the default.
 
 ## Documented as not integrable (for now)
 - **SSE / Solotech ProSight** inclinometers: no data output is documented.
