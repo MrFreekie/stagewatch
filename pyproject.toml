@@ -3,6 +3,8 @@ name = "stagewatch"
 version = "0.1.0"
 description = "Home Assistant-style show-site monitoring hub for live concert audio"
 readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 authors = [
     { name = "MrFreekie", email = "fohengineer@gmail.com" }
 ]

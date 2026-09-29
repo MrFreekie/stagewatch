@@ -23,6 +23,10 @@ them into a dated release section and tags the commit.
 
 ### Added
 - `--print-data-dir` option.
+- GPL-3.0 licence.
+- `scripts/site_config.py`: keep an installation's `config.yaml` in a separate
+  **private** git repository (refuses public remotes; never includes `secret.key`,
+  the database or logs).
 
 ## [0.1.0] - 2026-09-29
 
@@ -51,5 +55,5 @@ them into a dated release section and tags the commit.
 - Version tracking: build info (version, git commit, schema versions) in the API,
   admin UI and logs; config and database schema versions with migration hooks.
 
-[Unreleased]: https://github.com/OWNER/stagewatch/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/stagewatch/releases/tag/v0.1.0
+[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/MrFreekie/stagewatch/releases/tag/v0.1.0

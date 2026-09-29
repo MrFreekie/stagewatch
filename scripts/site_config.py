@@ -1,0 +1,136 @@
+"""Keep an installation's configuration in its own PRIVATE git repository.
+
+The Stagewatch code repo is a blank system. Your site (devices, areas,
+calibration, thresholds, dashboards, OSC targets) lives in config.yaml inside
+the data folder. This tool turns the data folder into a small git repo that
+tracks only config.yaml and pushes it to a private remote, giving you history
+and an off-machine backup.
+
+config.yaml contains the admin PIN hash and ESPHome API encryption keys, so
+the remote MUST be private: `init` and `push` refuse a public GitHub repo.
+secret.key, the history database and logs are never tracked.
+
+Usage:
+    uv run python scripts/site_config.py init  [--data-dir DIR] --remote URL
+    uv run python scripts/site_config.py push  [--data-dir DIR] [-m "message"]
+    uv run python scripts/site_config.py pull  [--data-dir DIR]
+    uv run python scripts/site_config.py status [--data-dir DIR]
+
+--data-dir defaults to the same folder Stagewatch uses ($STAGEWATCH_DATA or the
+per-user default). For the Windows boot service use C:\\ProgramData\\Stagewatch;
+for the Pi service /var/lib/stagewatch.
+Stop Stagewatch before `pull`, then start it again to load the pulled config.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from stagewatch.__main__ import default_data_dir  # noqa: E402
+
+GITIGNORE = """# Only the site configuration is tracked. Never commit keys, history or logs.
+*
+!.gitignore
+!config.yaml
+!README.md
+"""
+
+README = """# Stagewatch site configuration (PRIVATE)
+
+This repository holds one Stagewatch installation's `config.yaml`: devices,
+areas, calibration offsets, thresholds, dashboards and OSC targets.
+
+It contains the admin PIN hash and ESPHome API encryption keys, so **keep this
+repository private**. Managed with `scripts/site_config.py` from the Stagewatch
+code repository.
+"""
+
+GITHUB_RE = re.compile(r"github\.com[:/]+([^/]+)/([^/.]+?)(?:\.git)?/?$")
+
+
+def git(data_dir: Path, *args: str, check: bool = True) -> str:
+    res = subprocess.run(["git", *args], cwd=data_dir, capture_output=True, text=True)
+    if check and res.returncode != 0:
+        sys.exit(f"git {' '.join(args)} failed:\n{res.stderr.strip()}")
+    return res.stdout.strip()
+
+
+def ensure_private(remote: str) -> None:
+    m = GITHUB_RE.search(remote)
+    if not m:
+        print(f"warning: can't verify that {remote} is private (not GitHub). Make sure it is.")
+        return
+    owner, repo = m.groups()
+    res = subprocess.run(["gh", "api", f"repos/{owner}/{repo}"], capture_output=True, text=True)
+    if res.returncode != 0:
+        sys.exit(f"Can't read {owner}/{repo} with the GitHub CLI (gh). Create it as private first:\n"
+                 f"  gh repo create {owner}/{repo} --private")
+    if not json.loads(res.stdout).get("private", False):
+        sys.exit(f"REFUSING: {owner}/{repo} is PUBLIC. config.yaml contains secrets. "
+                 "Make the repository private first.")
+
+
+def cmd_init(data_dir: Path, remote: str) -> None:
+    ensure_private(remote)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    if not (data_dir / ".git").exists():
+        git(data_dir, "init", "-q", "-b", "main")
+    (data_dir / ".gitignore").write_text(GITIGNORE, encoding="utf-8")
+    if not (data_dir / "README.md").exists():
+        (data_dir / "README.md").write_text(README, encoding="utf-8")
+    remotes = git(data_dir, "remote").split()
+    git(data_dir, "remote", "set-url" if "origin" in remotes else "add", "origin", remote)
+    git(data_dir, "add", "-A")
+    if git(data_dir, "status", "--porcelain"):
+        git(data_dir, "commit", "-q", "-m", "Initialise site configuration repo")
+    git(data_dir, "push", "-u", "origin", "main")
+    print(f"Site config repo ready in {data_dir} -> {remote}")
+
+
+def cmd_push(data_dir: Path, message: str | None) -> None:
+    if not (data_dir / ".git").exists():
+        sys.exit("Not initialised. Run `init --remote URL` first.")
+    ensure_private(git(data_dir, "remote", "get-url", "origin"))
+    git(data_dir, "add", "-A")
+    if not git(data_dir, "status", "--porcelain"):
+        print("No config changes to push.")
+        return
+    git(data_dir, "commit", "-q", "-m", message or "Update site configuration")
+    git(data_dir, "push")
+    print("Pushed:", git(data_dir, "log", "--oneline", "-n", "1"))
+
+
+def cmd_pull(data_dir: Path) -> None:
+    git(data_dir, "pull", "--ff-only")
+    print("Pulled. Restart Stagewatch to load the updated config.")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("command", choices=["init", "push", "pull", "status"])
+    ap.add_argument("--data-dir", type=Path, default=None)
+    ap.add_argument("--remote")
+    ap.add_argument("-m", "--message")
+    args = ap.parse_args()
+    data_dir = (args.data_dir or default_data_dir()).resolve()
+    if args.command == "init":
+        if not args.remote:
+            sys.exit("init needs --remote URL (a PRIVATE repository)")
+        cmd_init(data_dir, args.remote)
+    elif args.command == "push":
+        cmd_push(data_dir, args.message)
+    elif args.command == "pull":
+        cmd_pull(data_dir)
+    else:
+        print(data_dir)
+        print(git(data_dir, "status", "--short", "--branch", check=False) or "not a git repo")
+
+
+if __name__ == "__main__":
+    main()

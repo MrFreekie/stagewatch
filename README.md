@@ -55,7 +55,7 @@ changed since then.
 Requires [uv](https://docs.astral.sh/uv/). It fetches Python 3.12 itself.
 
 ```bash
-git clone https://github.com/OWNER/stagewatch.git
+git clone https://github.com/MrFreekie/stagewatch.git
 cd stagewatch
 uv sync
 uv run stagewatch --emulate
@@ -87,6 +87,15 @@ This means you can `git pull`, switch branches, or delete and re-clone the code,
 your installation stays exactly as it was. Old config and databases are migrated
 automatically when a newer version starts. **Back up the data folder** to keep your
 setup. It contains secrets, so keep backups private.
+
+**Keep your site config in a private git repo (optional).** This tracks only
+`config.yaml`, never `secret.key`, the database or logs, and it refuses public remotes:
+
+```bash
+gh repo create YOUR_NAME/stagewatch-site --private
+uv run python scripts/site_config.py init --remote https://github.com/YOUR_NAME/stagewatch-site.git
+uv run python scripts/site_config.py push -m "Added delay tower nodes"
+```
 
 ## Sensor nodes (ESPHome)
 
@@ -210,3 +219,9 @@ tag `vX.Y.Z`. It never pushes.
 5. **Pro-audio ecosystem:** Companion, DiGiCo / Yamaha / Allen & Heath, Shure / Sennheiser RF, Smaart SPL, d&b / L-Acoustics amps
 
 See [INTEGRATIONS_WISHLIST.md](INTEGRATIONS_WISHLIST.md).
+
+## Licence
+
+Stagewatch is free software under the [GNU General Public License v3.0](LICENSE).
+You may use, modify and redistribute it. If you distribute a modified version, you
+must release its source under the same licence.
