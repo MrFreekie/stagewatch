@@ -1,0 +1,10 @@
+#!/bin/sh
+# Blocks commits containing secrets, runtime data or local planning docs.
+# Enabled per clone with:  git config core.hooksPath .githooks
+if command -v uv >/dev/null 2>&1; then
+  exec uv run --no-sync python scripts/check_secrets.py
+elif command -v python3 >/dev/null 2>&1; then
+  exec python3 scripts/check_secrets.py
+else
+  exec python scripts/check_secrets.py
+fi

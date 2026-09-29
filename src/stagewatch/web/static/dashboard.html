@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Stagewatch</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="banner-emulate" id="emulate" hidden>EMULATE MODE: simulated sensors, not real data</div>
+<header class="top">
+  <span class="conn" id="conn" title="Live connection"></span>
+  <span class="title" id="title">Stagewatch</span>
+  <span class="sub" id="show"></span>
+  <span class="spacer"></span>
+  <button class="small only-interactive" id="sound" hidden>Enable alarm sound</button>
+  <span class="clock" id="clock"></span>
+</header>
+<main>
+  <div class="alarm-bar" id="alarms">
+    <ul id="alarm-list"></ul>
+    <button class="primary only-interactive" id="ack" hidden>Acknowledge</button>
+  </div>
+
+  <section class="tiles" id="tiles"></section>
+
+  <div class="card">
+    <h2>
+      <span>History</span><span class="grow"></span>
+      <span class="seg" id="series-seg"></span>
+      <span class="seg" id="span-seg"></span>
+    </h2>
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card" id="markers-card">
+      <h2>Markers</h2>
+      <form class="row only-interactive" id="marker-form" hidden>
+        <input id="marker-label" maxlength="120" placeholder="e.g. Aligned, Doors, Headliner" style="flex:1;min-width:160px">
+        <button class="primary" type="submit">Add marker</button>
+      </form>
+      <div class="markers"><ul id="marker-list"></ul></div>
+      <div class="delta" id="delta" hidden></div>
+    </div>
+    <div class="card">
+      <h2>Sensors</h2>
+      <div class="table-scroll"><table id="sensors"></table></div>
+      <p class="notice" id="site-note"></p>
+    </div>
+  </div>
+</main>
+<script src="/static/common.js"></script>
+<script src="/static/chart.js"></script>
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

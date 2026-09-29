@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stagewatch</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <span class="title">Stagewatch</span>
+  <span class="sub" id="site"></span>
+  <span class="spacer"></span>
+  <a href="/admin">Admin</a>
+</header>
+<main>
+  <div class="card">
+    <h2>Dashboards</h2>
+    <div class="tiles" id="list"></div>
+    <p class="notice">Bookmark a dashboard URL, or open it in kiosk mode on a display.</p>
+  </div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+(async () => {
+  const info = await SW.api("GET", "/api/info");
+  document.getElementById("site").textContent = `${info.site} · v${info.version}`;
+  const list = document.getElementById("list");
+  for (const d of info.dashboards) {
+    list.append(SW.h("a", { class: "tile", href: `/d/${encodeURIComponent(d.slug)}`, style: "text-decoration:none;color:inherit" },
+      SW.h("div", { class: "label" }, d.layout),
+      SW.h("div", { class: "value", style: "font-size:24px" }, d.title || d.slug),
+      SW.h("div", { class: "foot" }, `/d/${d.slug}`)));
+  }
+  if (info.admin_setup_required) location.href = "/admin";
+})();
+</script>
+</body>
+</html>

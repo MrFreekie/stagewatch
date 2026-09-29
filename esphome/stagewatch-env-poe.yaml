@@ -1,0 +1,54 @@
+# Stagewatch environment node over PoE Ethernet: Olimex ESP32-POE / ESP32-POE-ISO
+# + BME280 on the UEXT connector. One cable, no Wi-Fi, no batteries. Best for
+# fixed FOH / delay-tower positions. Use the -ISO board on show power.
+#
+# Wiring (UEXT): BME280 SDA->GPIO13, SCL->GPIO16, VCC->3V3, GND->GND.
+# Ethernet settings are the Olimex defaults; check the ESPHome "ethernet"
+# docs for your ESPHome version if the clock option name has changed.
+
+substitutions:
+  node_name: stagewatch-poe-1
+  friendly_name: "Stagewatch PoE 1"
+
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-poe
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk_mode: GPIO17_OUT
+  phy_addr: 0
+  power_pin: GPIO12
+
+i2c:
+  sda: GPIO13
+  scl: GPIO16
+
+sensor:
+  - platform: bme280_i2c
+    address: 0x76
+    update_interval: 5s
+    temperature:
+      name: "Temperature"
+      oversampling: 16x
+    humidity:
+      name: "Humidity"
+    pressure:
+      name: "Pressure"
