@@ -79,13 +79,23 @@ def ensure_private(remote: str) -> None:
 def cmd_init(data_dir: Path, remote: str) -> None:
     ensure_private(remote)
     data_dir.mkdir(parents=True, exist_ok=True)
-    if not (data_dir / ".git").exists():
+    fresh = not (data_dir / ".git").exists()
+    if fresh:
         git(data_dir, "init", "-q", "-b", "main")
+    remotes = git(data_dir, "remote").split()
+    git(data_dir, "remote", "set-url" if "origin" in remotes else "add", "origin", remote)
+    # Attaching a new machine/folder to an existing site repo: adopt its history.
+    if fresh and git(data_dir, "ls-remote", "--heads", "origin", "main", check=False):
+        git(data_dir, "fetch", "-q", "origin", "main")
+        remote_files = git(data_dir, "ls-tree", "--name-only", "origin/main").split()
+        if "config.yaml" in remote_files and (data_dir / "config.yaml").exists():
+            sys.exit("Both this folder and the remote have a config.yaml. Move one aside "
+                     "and decide which to keep before running init again.")
+        git(data_dir, "checkout", "-q", "-f", "-B", "main", "origin/main")
+        git(data_dir, "branch", "-q", "--set-upstream-to", "origin/main")
     (data_dir / ".gitignore").write_text(GITIGNORE, encoding="utf-8")
     if not (data_dir / "README.md").exists():
         (data_dir / "README.md").write_text(README, encoding="utf-8")
-    remotes = git(data_dir, "remote").split()
-    git(data_dir, "remote", "set-url" if "origin" in remotes else "add", "origin", remote)
     git(data_dir, "add", "-A")
     if git(data_dir, "status", "--porcelain"):
         git(data_dir, "commit", "-q", "-m", "Initialise site configuration repo")

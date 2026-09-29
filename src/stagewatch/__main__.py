@@ -40,7 +40,10 @@ def default_data_dir(emulate: bool = False) -> Path:
     if env:
         base = Path(env)
     elif sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Stagewatch"
+        # Not %LOCALAPPDATA%: Windows silently redirects AppData for apps run
+        # from packaged (MSIX) hosts, so data could land somewhere the user
+        # can't find. A plain folder in the profile is visible and stable.
+        base = Path.home() / "StagewatchData"
     else:
         base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "stagewatch"
     return base / "emulate" if emulate else base

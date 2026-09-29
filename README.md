@@ -75,7 +75,7 @@ history. Each installation keeps its own data in a folder **outside the code**:
 
 | Platform | Default data folder |
 |---|---|
-| Windows | `%LOCALAPPDATA%\Stagewatch` (the boot service uses `C:\ProgramData\Stagewatch`) |
+| Windows | `%USERPROFILE%\StagewatchData` (the boot service uses `C:\ProgramData\Stagewatch`) |
 | Linux / Pi | `~/.local/share/stagewatch` (the boot service uses `/var/lib/stagewatch`) |
 | Emulate mode | an `emulate` subfolder of the above, so simulated data never mixes with real shows |
 
