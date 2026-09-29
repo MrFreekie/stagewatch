@@ -15,6 +15,15 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Changed
+- The default data folder is now per-user and outside the source checkout
+  (`%LOCALAPPDATA%\Stagewatch` on Windows, `~/.local/share/stagewatch` on Linux), so code
+  updates and re-clones never touch an installation's data. Emulate mode uses a
+  separate `emulate` subfolder.
+
+### Added
+- `--print-data-dir` option.
+
 ## [0.1.0] - 2026-09-29
 
 ### Added

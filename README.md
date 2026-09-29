@@ -68,8 +68,25 @@ Open <http://localhost:8080>. The first visit asks you to set an admin PIN.
 stagewatch [--port 8080] [--data-dir DIR] [--emulate] [--no-mdns] [-v] [--version]
 ```
 
-Runtime data lives in `./data`, or in `--data-dir` / `$STAGEWATCH_DATA`. That covers
-`config.yaml`, the SQLite history, `secret.key` and logs. All of it is gitignored.
+### Code vs. your installation
+
+The repository is a **blank system**. It contains no configuration, devices, PINs or
+history. Each installation keeps its own data in a folder **outside the code**:
+
+| Platform | Default data folder |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Stagewatch` (the boot service uses `C:\ProgramData\Stagewatch`) |
+| Linux / Pi | `~/.local/share/stagewatch` (the boot service uses `/var/lib/stagewatch`) |
+| Emulate mode | an `emulate` subfolder of the above, so simulated data never mixes with real shows |
+
+Override it with `--data-dir DIR` or `$STAGEWATCH_DATA`. Print the folder in use with
+`stagewatch --print-data-dir`. The folder holds `config.yaml` (devices, thresholds,
+dashboards, PIN hash, ESPHome keys), the SQLite history, `secret.key` and logs.
+
+This means you can `git pull`, switch branches, or delete and re-clone the code, and
+your installation stays exactly as it was. Old config and databases are migrated
+automatically when a newer version starts. **Back up the data folder** to keep your
+setup. It contains secrets, so keep backups private.
 
 ## Sensor nodes (ESPHome)
 

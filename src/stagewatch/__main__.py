@@ -27,9 +27,23 @@ from .web.server import create_app
 log = logging.getLogger("stagewatch")
 
 
-def default_data_dir() -> Path:
+def default_data_dir(emulate: bool = False) -> Path:
+    """Where config, history, secret key and logs live.
+
+    Deliberately outside the source checkout, so updating or re-cloning the
+    code (or `git clean`) never touches a running installation's data, and a
+    public clone always starts blank. Emulate mode gets its own directory so
+    simulated data never mixes with a real show's history.
+    Override with --data-dir or $STAGEWATCH_DATA.
+    """
     env = os.environ.get("STAGEWATCH_DATA")
-    return Path(env) if env else Path.cwd() / "data"
+    if env:
+        base = Path(env)
+    elif sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Stagewatch"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "stagewatch"
+    return base / "emulate" if emulate else base
 
 
 def setup_logging(data_dir: Path, verbose: bool) -> None:
@@ -101,15 +115,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="stagewatch", description=__doc__)
     parser.add_argument("--host", default="0.0.0.0", help="bind address (default all)")
     parser.add_argument("--port", type=int, default=8080)
-    parser.add_argument("--data-dir", type=Path, default=default_data_dir(),
-                        help="config, database, logs (default ./data or $STAGEWATCH_DATA)")
+    parser.add_argument("--data-dir", type=Path, default=None,
+                        help="config, database, logs (default: per-user app data folder, "
+                             "or $STAGEWATCH_DATA; emulate mode uses an 'emulate' subfolder)")
+    parser.add_argument("--print-data-dir", action="store_true",
+                        help="print the data directory that would be used, then exit")
     parser.add_argument("--emulate", action="store_true",
                         help="use emulated sensor nodes instead of real hardware")
     parser.add_argument("--no-mdns", action="store_true", help="disable mDNS/zeroconf")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--version", action="version", version=version_string())
     args = parser.parse_args()
-    args.data_dir = args.data_dir.resolve()
+    args.data_dir = (args.data_dir or default_data_dir(args.emulate)).resolve()
+    if args.print_data_dir:
+        print(args.data_dir)
+        return
     setup_logging(args.data_dir, args.verbose)
     try:
         asyncio.run(run(args))
