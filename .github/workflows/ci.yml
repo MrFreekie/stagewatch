@@ -1,0 +1,30 @@
+name: CI
+
+# Windows only for now (the maintainer can only test on Windows). Add ubuntu-latest, and a Pi
+# test, when Linux/Pi deployment testing starts. Never use pull_request_target here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      # actions pinned by full commit SHA (version in the comment)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run python scripts/check_secrets.py --all

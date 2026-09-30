@@ -15,6 +15,13 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Security
+- The Windows install is now managed-only. The previous installer ran a SYSTEM task from a
+  user-writable checkout, so any process running as that user could escalate to SYSTEM.
+  The new install lives in an Administrators-owned, ACL-locked `C:\Stagewatch` with its own
+  toolchain, and keeps data in a protected `C:\ProgramData\Stagewatch`. The Pi gets an
+  equivalent `install.sh --managed` (dedicated no-login user, hardened unit; untested on hardware).
+
 ### Changed
 - The default data folder is now per-user and outside the source checkout
   (`%USERPROFILE%\StagewatchData` on Windows, `~/.local/share/stagewatch` on Linux), so code
@@ -22,6 +29,16 @@ them into a dated release section and tags the commit.
   separate `emulate` subfolder.
 
 ### Added
+- `stagewatch.launcher`: stdlib-only supervisor that restarts a crashed server with backoff, runs it
+  in a kill-on-close Job Object on Windows, and (exit code 75) applies a pending update or
+  rollback, health-checks it via a handshake file and rolls back automatically on failure.
+  Update state lives in the admin-only `.git/stagewatch/` folder, never the data folder.
+- Managed installs: `deploy/windows/install-service.ps1` (rewritten; `-Channel`, `-Ref`,
+  `-InstallDir`) and `deploy/pi/install.sh --managed`, with a `.git/stagewatch-managed.json` marker.
+- Data backup/restore for updates (`stagewatch.backup`): consistent SQLite snapshot, sha256
+  manifest kept in the admin-only state folder, retention of 10, displaced data kept on restore.
+- GitHub Actions: `ci.yml` (tests and secret scan on Windows) and `nightly.yml` (fast-forwards
+  the `nightly` branch to a tested main commit).
 - `--print-data-dir` option.
 - GPL-3.0 licence.
 - `scripts/site_config.py`: keep an installation's `config.yaml` in a separate

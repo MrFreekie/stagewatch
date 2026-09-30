@@ -1,0 +1,77 @@
+name: Nightly
+
+# Fast-forwards the `nightly` branch to a main commit whose tests passed on Windows.
+# Only this workflow may move `nightly` (protect the branch with a ruleset, GitHub Actions as
+# the bypass actor). Never push nightly by hand. No --force anywhere: a non-fast-forward fails.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: windows-latest   # Windows only (see ci.yml); bash steps use Git Bash
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - id: sha
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: resolve
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run python scripts/check_secrets.py --all
+
+  promote:
+    needs: [resolve, test]
+    runs-on: windows-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true   # needed for the push below; GITHUB_TOKEN only
+      - name: Fast-forward nightly to the tested SHA
+        shell: bash
+        env:
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          # the tested SHA must still be reachable from main (exit 0 yes; 1 or >=2 stop here)
+          git merge-base --is-ancestor "$SHA" refs/remotes/origin/main
+          if git fetch --no-tags origin '+refs/heads/nightly:refs/remotes/origin/nightly' 2>/dev/null; then
+            current="$(git rev-parse refs/remotes/origin/nightly)"
+            if [ "$current" = "$SHA" ]; then
+              echo "nightly already at $SHA"; exit 0
+            fi
+            # nightly may only move forward
+            git merge-base --is-ancestor "$current" "$SHA"
+          fi
+          git push origin "$SHA:refs/heads/nightly"

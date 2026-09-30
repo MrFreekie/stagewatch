@@ -119,14 +119,25 @@ sound travels through. Check it against a reference thermometer and set the offs
 
 ## Run at boot
 
-**Windows** (FOH laptop or mini-PC). Run this in an elevated PowerShell:
+**Windows** (FOH laptop or mini-PC). Needs Git for Windows and `uv`. Run this in an
+elevated PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy\windows\install-service.ps1
 ```
 
-This registers a startup task running as SYSTEM, with automatic restart, and opens
-the port on the Private/Domain firewall profiles. Remove it with `uninstall-service.ps1`.
+This is a *managed install*: it clones the latest release into `C:\Stagewatch` (locked
+down so only Administrators/SYSTEM can write to it), keeps its own Python toolchain
+there, stores data in `C:\ProgramData\Stagewatch` (SYSTEM and Administrators only) and
+registers a startup task running as SYSTEM. The task runs the **launcher**
+(`stagewatch.launcher`), a small supervisor that restarts the server after a crash
+(Task Scheduler alone does not restart a process that has exited) and stops it cleanly
+with the task. The launcher is also what will apply updates and roll back a failed one.
+The installer also opens the port on the Private/Domain firewall profiles. Options:
+`-InstallDir`, `-DataDir`, `-Port`, `-Channel stable|nightly`, `-Ref <tag-or-sha>`.
+Remove it with `uninstall-service.ps1` (data is kept). It has not yet been verified on
+real hardware. Development checkouts on your Desktop are not affected: run those with
+`uv run stagewatch` as usual.
 
 **Raspberry Pi** (Pi OS Bookworm, 64-bit):
 
@@ -134,7 +145,7 @@ the port on the Private/Domain firewall profiles. Remove it with `uninstall-serv
 bash deploy/pi/install.sh --kiosk
 ```
 
-This installs a systemd service with restart. `--kiosk` opens the `wall` dashboard
+This installs a systemd service with restart. `--managed` (untested on hardware) instead\ninstalls the hardened launcher-based service under a dedicated `stagewatch` user. `--kiosk` opens the `wall` dashboard
 full screen on the HDMI display after login.
 
 ## OSC output

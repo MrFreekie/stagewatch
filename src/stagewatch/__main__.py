@@ -17,11 +17,11 @@ import uvicorn
 from zeroconf import ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
-from . import __version__
+from . import __version__, updater_common
 from .core.hub import Hub
 from .integrations.esphome import EsphomeIntegration
 from .integrations.osc_out import OscOutIntegration
-from .version import version_string
+from .version import build_info, version_string
 from .web.server import create_app
 
 log = logging.getLogger("stagewatch")
@@ -73,7 +73,7 @@ def local_ipv4() -> list[str]:
     return out
 
 
-async def run(args: argparse.Namespace) -> None:
+async def run(args: argparse.Namespace) -> int:
     data_dir: Path = args.data_dir
     zc = None if args.no_mdns else AsyncZeroconf()
     hub = Hub(data_dir, emulate=args.emulate)
@@ -105,13 +105,33 @@ async def run(args: argparse.Namespace) -> None:
     server = uvicorn.Server(config)
     log.info("Stagewatch %s starting on http://%s:%d (data: %s)%s", version_string(),
              args.host, args.port, data_dir, " [EMULATE]" if args.emulate else "")
+    handshake_task = asyncio.create_task(_write_handshake_when_started(server))
     try:
         await server.serve()
     finally:
+        handshake_task.cancel()
         if zc is not None:
             if service is not None:
                 await zc.async_unregister_service(service)
             await zc.async_close()
+    return int(getattr(hub, "exit_code", 0) or 0)  # 75 = launcher should apply a pending update
+
+
+async def _write_handshake_when_started(server: uvicorn.Server) -> None:
+    """Health signal for the launcher: only active when it set STAGEWATCH_SUPERVISED=1 (plus a
+    state dir and nonce).  Normal/dev runs never touch this."""
+    if os.environ.get(updater_common.ENV_SUPERVISED) != "1":
+        return
+    while not server.started:
+        if server.should_exit:
+            return
+        await asyncio.sleep(0.2)
+    try:
+        repo = Path(__file__).resolve().parents[2]
+        commit = updater_common.read_head_file(repo) or build_info().get("commit") or ""
+        updater_common.write_handshake_from_env(__version__, commit)
+    except Exception:
+        log.exception("could not write launcher handshake")
 
 
 def main() -> None:
@@ -135,9 +155,11 @@ def main() -> None:
         return
     setup_logging(args.data_dir, args.verbose)
     try:
-        asyncio.run(run(args))
+        code = asyncio.run(run(args))
     except KeyboardInterrupt:
-        pass
+        code = 0
+    if code:
+        sys.exit(code)
 
 
 if __name__ == "__main__":

@@ -46,3 +46,6 @@ TODO.local.md
 .idea/
 Thumbs.db
 .DS_Store
+
+# Managed install toolchain (uv, Python, cache)
+.uv/
