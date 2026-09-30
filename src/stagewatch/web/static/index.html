@@ -20,6 +20,7 @@
     <p class="notice">Bookmark a dashboard URL, or open it in kiosk mode on a display.</p>
   </div>
 </main>
+<footer class="site-footer">Stagewatch is free, open-source and 100% vibe coded. If it helps your shows: <a href="https://buymeacoffee.com/fohengineer" target="_blank" rel="noopener noreferrer">buy me a coffee ☕</a></footer>
 <script src="/static/common.js"></script>
 <script>
 (async () => {
@@ -32,7 +33,7 @@
       SW.h("div", { class: "value", style: "font-size:24px" }, d.title || d.slug),
       SW.h("div", { class: "foot" }, `/d/${d.slug}`)));
   }
-  if (info.admin_setup_required) location.href = "/admin";
+  if (info.admin_setup_required || info.recovery_required) location.href = "/admin";
 })();
 </script>
 </body>

@@ -35,6 +35,7 @@ import time
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .. import updater_common as uc
 from .. import backup as backup_mod
@@ -61,7 +62,7 @@ MESSAGES = {
     "dirty_tree": "This install has local changes; refusing to update.",
     "origin_mismatch": "The update source does not match the installed origin.",
     "not_detached": "This install is not on a detached release checkout.",
-    "not_ancestor": "The target is not part of the main branch history.",
+    "not_ancestor": "The update target is not part of the main branch history; refusing to update.",
     "unknown_commit": "The target commit is not available locally; check again.",
     "dependency_sources": "The target adds dependency sources; update manually.",
     "python_changed": "The target changes the Python requirement; update manually.",
@@ -151,6 +152,11 @@ def changelog_excerpt(text: str | None, current_version: str | None, max_chars: 
 
 
 _PYPI = "https://pypi.org/simple"
+_REGISTRY_FILE_HOSTS = {"files.pythonhosted.org", "pypi.org"}
+
+
+def _norm(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", str(name)).lower()
 
 
 def dependency_source_findings(pyproject_text: str | None, lock_text: str | None) -> set[str]:
@@ -176,17 +182,30 @@ def dependency_source_findings(pyproject_text: str | None, lock_text: str | None
     for key in ("index-url", "extra-index-url", "find-links"):
         if uv.get(key):
             found.add(f"pyproject:{key}")
+    project = _norm((py.get("project") or {}).get("name") or "")
     for pkg in lock.get("package") or []:
         if not isinstance(pkg, dict):
             continue
         src = pkg.get("source") or {}
         name = pkg.get("name", "?")
-        for kind in ("git", "url", "path", "directory"):
+        for kind in ("git", "url", "path", "directory", "editable", "virtual"):
             if kind in src:
+                # uv records the project itself as editable/virtual "."; nothing else may be
+                if kind in ("editable", "virtual") and src[kind] == "." and _norm(name) == project:
+                    continue
                 found.add(f"lock:{kind}:{name}")
         reg = src.get("registry")
         if reg is not None and str(reg).rstrip("/") != _PYPI:
             found.add(f"lock:registry:{name}")
+        elif reg is not None:
+            urls = [w.get("url") for w in pkg.get("wheels") or [] if isinstance(w, dict)]
+            sdist = pkg.get("sdist")
+            if isinstance(sdist, dict):
+                urls.append(sdist.get("url"))
+            for u in urls:
+                if u is not None and (urlsplit(str(u)).hostname or "").lower() not in _REGISTRY_FILE_HOSTS:
+                    found.add(f"lock:url_host:{name}")
+                    break
     return found
 
 
@@ -220,6 +239,23 @@ def _preflight(ctx: uc.GitContext, marker: uc.Marker) -> str:
     return uc.head_sha(ctx)
 
 
+def _moved_tag(ctx: uc.GitContext) -> str | None:
+    """Name of a strict vX.Y.Z tag whose local object differs from the remote's (or None)."""
+    try:
+        _, out = uc.run_git(ctx, "ls-remote", "--tags", "origin", "refs/tags/v*")
+        for line in out.splitlines():
+            sha, _, ref = line.partition("\t")
+            name = ref.strip().removeprefix("refs/tags/")
+            if ref.endswith("^{}") or not uc.TAG_RE.match(name):
+                continue
+            _, local = uc.run_git(ctx, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}", ok=(0, 1))
+            if local.strip() and local.strip() != sha.strip():
+                return name
+    except UpdaterError:
+        pass
+    return None
+
+
 def run_check(ctx: uc.GitContext, marker: uc.Marker, channel: str) -> dict:
     """Fetch, resolve the channel's target and apply the integrity rules.  Raises UpdaterError.
 
@@ -237,12 +273,23 @@ def run_check(ctx: uc.GitContext, marker: uc.Marker, channel: str) -> dict:
             uc.run_git(ctx, "ls-remote", "--heads", "origin", "main")
         except UpdaterError:
             raise UpdaterError("unreachable", e.detail) from e
-        raise UpdaterError("fetch_rejected", e.detail) from e
+        tag = _moved_tag(ctx)
+        log.error("Update fetch rejected%s: a release tag may have been re-created upstream. "
+                  "See README > Updating for recovery. git said: %s", f" (tag {tag})" if tag else "", e.detail)
+        err = UpdaterError("fetch_rejected", e.detail)
+        err.tag = tag
+        raise err from e
     current_version = _describe_version(ctx, head)
     result = {"channel": channel, "from_sha": head, "from_version": current_version, "available": False,
               "target_sha": None, "target_version": None, "changelog": "", "commits": [],
               "schema_changed": False}
     target = uc.resolve_channel_target(ctx, channel)
+    if target is None and channel == "nightly":
+        # A nightly branch that exists but is not part of main's history is not "up to date":
+        # someone moved it off main (CI never does).  Say so instead of hiding it.
+        nightly = uc.resolve_ref(ctx, "refs/remotes/origin/nightly")
+        if nightly is not None and uc.resolve_ref(ctx, "refs/remotes/origin/main") is not None:
+            raise UpdaterError("not_ancestor", "origin/nightly is not an ancestor of origin/main")
     if target is None or target == head:
         return result
     try:
@@ -487,7 +534,11 @@ class Updater:
                 result = {**base, "ok": True, "category": None, "message": None, **res}
             except UpdaterError as e:
                 log.warning("Update check failed: %s (%s)", e.category, e.detail)
-                result = {**base, "ok": False, "category": e.category, "message": message_for(e.category),
+                message = message_for(e.category)
+                tag = getattr(e, "tag", None)
+                if e.category == "fetch_rejected" and tag:  # strict vX.Y.Z only: safe to show
+                    message += f" Changed tag: {tag}. An administrator must review it (see README, Updating)."
+                result = {**base, "ok": False, "category": e.category, "message": message,
                           "available": False}
             except Exception:  # never crash the hub
                 log.exception("Update check crashed")
@@ -633,3 +684,9 @@ class Updater:
             rec.log_alarm("software", f"update_{result}", 1 if result == "failed" else 0, reason)
             if result == "failed":
                 self.hub.add_marker("Software update failed; check the launcher log", "updater")
+            else:
+                # Close the "Updating software X -> Y" marker: versions + category only.
+                what = "rollback" if action == "rollback" else "update"
+                span = f" ({fv} → {tv})" if fv != "unknown" or tv != "unknown" else ""
+                self.hub.add_marker(f"Software {what} {result}{span}: {reason or 'no reason recorded'}; "
+                                    f"still running the previous version", "updater")

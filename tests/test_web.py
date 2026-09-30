@@ -101,3 +101,45 @@ def test_history_endpoint(client):
     r = client.get("/api/history", params={"entities": "sim_foh.temperature,bogus"})
     assert r.status_code == 200
     assert list(r.json()) == ["sim_foh.temperature"]
+
+
+def test_recovery_required_blocks_network_onboarding(tmp_path):
+    (tmp_path / "config.yaml").write_text("site: [unclosed\n", encoding="utf-8")  # no PIN salvageable
+    hub = Hub(tmp_path, emulate=True)
+    with TestClient(create_app(hub)) as c:
+        info = c.get("/api/info").json()
+        assert info["recovery_required"] is True and info["admin_setup_required"] is False
+        r = c.post("/api/admin/setup", json={"pin": "1234"})
+        assert r.status_code == 409 and "recovery" in r.json()["detail"].lower()
+        assert c.get("/api/admin/state").status_code == 401
+        assert hub.config.admin.pin_hash == ""
+
+
+def test_recovery_keeps_pin_when_config_is_partly_invalid(tmp_path):
+    import yaml
+
+    from stagewatch.web.auth import hash_pin
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(
+        {"admin": {"pin_hash": hash_pin("1234")}, "site": {"altitude_m": "high"}}), encoding="utf-8")
+    with TestClient(create_app(Hub(tmp_path, emulate=True))) as c:
+        info = c.get("/api/info").json()
+        assert info["admin_setup_required"] is False and info["recovery_required"] is False
+        assert c.post("/api/admin/setup", json={"pin": "9999"}).status_code == 409
+        assert c.post("/api/admin/login", json={"pin": "1234"}).status_code == 200
+
+
+def test_reset_admin_pin_command_reopens_onboarding(tmp_path):
+    from stagewatch.core.config import reset_admin_pin
+    (tmp_path / "config.yaml").write_text("site: [unclosed\n", encoding="utf-8")
+    Hub(tmp_path, emulate=True).recorder.close()
+    reset_admin_pin(tmp_path)
+    hub = Hub(tmp_path, emulate=True)
+    with TestClient(create_app(hub)) as c:
+        assert c.get("/api/info").json()["admin_setup_required"] is True
+        assert c.post("/api/admin/setup", json={"pin": "1234"}).status_code == 200
+
+
+def test_no_http_route_resets_the_pin(client):
+    _setup_admin(client)
+    paths = {getattr(r, "path", "") for r in client.app.routes}
+    assert not any("reset" in p for p in paths)

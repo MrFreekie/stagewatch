@@ -10,11 +10,38 @@ fancier.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Callable, Mapping
 
 from fastapi import HTTPException
 
 DEFAULT_BODY_LIMIT = 64 * 1024
+DRAIN_MAX_BYTES = 1024 * 1024  # read (and discard) at most this much of a refused body ...
+DRAIN_TIMEOUT_S = 2.0          # ... for at most this long, so the client sees the 413, not a reset
+
+
+async def _drain(receive, max_bytes: int = DRAIN_MAX_BYTES, timeout: float = DRAIN_TIMEOUT_S,
+                 first_more: bool = True) -> None:
+    """Discard up to ``max_bytes`` of the remaining request body.  Beyond that (or on timeout or
+    disconnect) give up: the caller closes the connection.  Never raises."""
+    if not first_more:
+        return
+    got = 0
+
+    async def loop():
+        nonlocal got
+        while got <= max_bytes:
+            msg = await receive()
+            if msg["type"] != "http.request":
+                return
+            got += len(msg.get("body", b""))
+            if not msg.get("more_body", False):
+                return
+
+    try:
+        await asyncio.wait_for(loop(), timeout)
+    except (asyncio.TimeoutError, Exception):
+        pass
 
 
 class BodySizeLimitMiddleware:
@@ -58,6 +85,7 @@ class BodySizeLimitMiddleware:
                     await self._reject(send, 400, "Invalid Content-Length")
                     return
         if declared is not None and declared > limit:
+            await _drain(receive)
             await self._reject(send, 413, "Request body too large")
             return
 
@@ -69,6 +97,7 @@ class BodySizeLimitMiddleware:
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
                 if received > limit:
+                    await _drain(receive, first_more=message.get("more_body", False))
                     # HTTPException so FastAPI's body parsing re-raises it as a proper 413
                     raise HTTPException(413, "Request body too large")
             return message

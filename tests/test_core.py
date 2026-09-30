@@ -162,3 +162,106 @@ def test_device_offline_raises_advisory_alarm(hub):
     assert any(a["id"] == "device:a" and a["level"] == 1 for a in hub.alarms.to_list())
     hub.set_device_status("a", Status.OK)
     assert not any(a["id"] == "device:a" for a in hub.alarms.to_list())
+
+
+# ------------------------------------------------- invalid config must not reopen onboarding
+import pytest  # noqa: E402
+import yaml  # noqa: E402
+
+from stagewatch.core.config import ALLOW_ONBOARDING_FLAG, reset_admin_pin, valid_pin_hash  # noqa: E402
+from stagewatch.web.auth import hash_pin, verify_pin  # noqa: E402
+
+
+def _write(path, data):
+    path.write_text(yaml.safe_dump(data) if not isinstance(data, str) else data, encoding="utf-8")
+
+
+def test_valid_pin_hash_format():
+    assert valid_pin_hash(hash_pin("1234"))
+    for bad in ("", None, 5, "plain", "pbkdf2_sha256$x$a$b", "pbkdf2_sha256$1000$!!$!!", "md5$1$YWJj$YWJj"):
+        assert not valid_pin_hash(bad)
+
+
+def test_invalid_config_keeps_pin_and_valid_sections(tmp_path):
+    pin = hash_pin("1234")
+    _write(tmp_path / "config.yaml", {
+        "admin": {"pin_hash": pin},
+        "site": {"name": "Arena", "altitude_m": 120},
+        "esphome_devices": [{"id": "a", "host": "h1"}, {"id": "b", "host": "h2", "port": 99999}],
+        "osc_out": {"rate_hz": "fast"},  # invalid section: reset
+        "thresholds": "nonsense",
+    })
+    store = ConfigStore(tmp_path / "config.yaml")
+    cfg = store.load()
+    assert verify_pin("1234", cfg.admin.pin_hash)
+    assert cfg.site.name == "Arena" and cfg.site.altitude_m == 120
+    assert [d.id for d in cfg.esphome_devices] == ["a"]  # only the bad entry is dropped
+    assert cfg.osc_out.rate_hz == 1.0 and cfg.thresholds == []
+    assert not store.recovery_required
+    assert (tmp_path / "config.invalid.yaml").exists()
+    # the salvaged config was written back: the next boot is clean and still has the PIN
+    again = ConfigStore(tmp_path / "config.yaml")
+    assert verify_pin("1234", again.load().admin.pin_hash) and not again.recovery_required
+
+
+def test_unparseable_config_still_recovers_pin_by_scan(tmp_path):
+    pin = hash_pin("4321")
+    (tmp_path / "config.yaml").write_text(f"admin:\n  pin_hash: {pin}\nsite: {{name: [unclosed\n",
+                                          encoding="utf-8")
+    store = ConfigStore(tmp_path / "config.yaml")
+    assert verify_pin("4321", store.load().admin.pin_hash)
+    assert not store.recovery_required
+
+
+@pytest.mark.parametrize("content", ["site: [unclosed\n", "admin: {pin_hash: nope}\nsite: {altitude_m: x}\n",
+                                     "", "- a\n- b\n"])
+def test_unsalvageable_pin_requires_recovery(tmp_path, content):
+    (tmp_path / "config.yaml").write_text(content, encoding="utf-8")
+    store = ConfigStore(tmp_path / "config.yaml")
+    assert store.load().admin.pin_hash == ""
+    assert store.recovery_required  # network onboarding stays closed
+    again = ConfigStore(tmp_path / "config.yaml")
+    again.load()
+    assert again.recovery_required  # ... also after a restart
+
+
+def test_fresh_install_is_not_recovery(tmp_path):
+    store = ConfigStore(tmp_path / "config.yaml")
+    store.load()
+    assert not store.recovery_required
+
+
+def test_invalid_files_are_never_overwritten(tmp_path):
+    p = tmp_path / "config.yaml"
+    p.write_text("site: [one\n", encoding="utf-8")
+    ConfigStore(p).load()
+    first = (tmp_path / "config.invalid.yaml").read_text(encoding="utf-8")
+    p.write_text("site: [two\n", encoding="utf-8")
+    ConfigStore(p).load()
+    assert (tmp_path / "config.invalid.yaml").read_text(encoding="utf-8") == first
+    later = list(tmp_path.glob("config.invalid-*.yaml"))
+    assert len(later) == 1 and "two" in later[0].read_text(encoding="utf-8")
+
+
+def test_reset_admin_pin_reopens_onboarding_locally(tmp_path):
+    p = tmp_path / "config.yaml"
+    p.write_text("site: [unclosed\n", encoding="utf-8")
+    assert ConfigStore(p).load() is not None
+    msg = reset_admin_pin(tmp_path)
+    assert "Restart" in msg and (tmp_path / ALLOW_ONBOARDING_FLAG).exists()
+    store = ConfigStore(p)
+    store.load()
+    assert not store.recovery_required and store.config.admin.pin_hash == ""
+    store.config.admin.pin_hash = hash_pin("9999")
+    store.save()  # onboarding done: the override is spent
+    assert not (tmp_path / ALLOW_ONBOARDING_FLAG).exists()
+
+
+def test_reset_admin_pin_clears_an_existing_hash(tmp_path):
+    p = tmp_path / "config.yaml"
+    _write(p, {"admin": {"pin_hash": hash_pin("1234")}, "site": {"name": "Keep"}})
+    assert "cleared" in reset_admin_pin(tmp_path)
+    cfg = ConfigStore(p).load()
+    assert cfg.admin.pin_hash == "" and cfg.site.name == "Keep"
+    with pytest.raises(FileNotFoundError):
+        reset_admin_pin(tmp_path / "missing")

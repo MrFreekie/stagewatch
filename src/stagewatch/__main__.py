@@ -135,7 +135,27 @@ async def _write_handshake_when_started(server: uvicorn.Server) -> None:
         log.exception("could not write launcher handshake")
 
 
+def reset_admin_pin_cli(argv: list[str]) -> None:
+    """`stagewatch reset-admin-pin --data-dir DIR`: local-only recovery (filesystem access)."""
+    from .core.config import reset_admin_pin
+    parser = argparse.ArgumentParser(prog="stagewatch reset-admin-pin",
+                                     description="Clear the admin PIN so /admin lets you set a new one. "
+                                                 "Needs access to the data folder; not available over HTTP.")
+    parser.add_argument("--data-dir", type=Path, default=None)
+    parser.add_argument("--emulate", action="store_true", help="use the emulate data folder")
+    args = parser.parse_args(argv)
+    data_dir = (args.data_dir or default_data_dir(args.emulate)).resolve()
+    try:
+        print(reset_admin_pin(data_dir))
+    except (OSError, FileNotFoundError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "reset-admin-pin":
+        reset_admin_pin_cli(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(prog="stagewatch", description=__doc__)
     parser.add_argument("--host", default="0.0.0.0", help="bind address (default all)")
     parser.add_argument("--port", type=int, default=8080)

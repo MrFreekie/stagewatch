@@ -318,3 +318,76 @@ def test_verify_install_permissions_uses_checker(env):
     assert out == ["bad"]
     assert str(m.git_path) in seen and str(m.uv_path) in seen and str(m.repo_path) in seen
     assert uc.verify_install_permissions(m, lambda p: []) == []
+
+
+def test_verify_permissions_checks_subdirs_and_owner(env):
+    m = env.marker()
+    r = m.repo_path
+    for sub in ("src/stagewatch", ".venv/Scripts", ".venv/bin", ".uv/bin", ".git/stagewatch"):
+        (r / sub).mkdir(parents=True, exist_ok=True)
+    seen = []
+    owners = []
+    uc.verify_install_permissions(m, lambda p: seen.append(p) or [], lambda p: owners.append(p) or [])
+    for sub in ("src/stagewatch", ".uv/bin", ".git/stagewatch"):
+        assert str(r / sub) in seen
+    assert str(m.python_path.parent) in seen
+    assert set(owners) == {str(r), str(r / ".git"), str(r / ".venv"), str(r / ".uv"), str(r / "src")}
+    # an offender in a subdirectory or a wrong owner fails the whole check
+    out = uc.verify_install_permissions(m, lambda p: ["w"] if p.endswith(".uv" + os.sep + "bin") else [],
+                                        lambda p: [])
+    assert out == ["w"]
+    out = uc.verify_install_permissions(m, lambda p: [], lambda p: ["owner"] if p == str(r / "src") else [])
+    assert out == ["owner"]
+
+
+def test_owner_check_fails_closed(monkeypatch, tmp_path):
+    monkeypatch.setattr(uc.sys, "platform", "win32")
+    for sid, bad in (("S-1-5-18", False), ("S-1-5-32-544", False), ("S-1-5-21-1-2-3-1001", True),
+                     ("S-1-1-0", True)):
+        monkeypatch.setattr(uc, "_owner_sid", lambda p, sid=sid: sid)
+        assert bool(uc.path_owner_offenders(tmp_path)) is bad
+
+    def boom(p):
+        raise OSError("nope")
+    monkeypatch.setattr(uc, "_owner_sid", boom)
+    assert "cannot read owner" in uc.path_owner_offenders(tmp_path)[0]
+    assert uc.path_owner_offenders(tmp_path / "missing") == []  # the write check reports missing paths
+
+
+def test_production_default_runs_the_owner_check(env, monkeypatch):
+    m = env.marker()
+    called = []
+    monkeypatch.setattr(uc, "path_write_offenders", lambda p: [])
+    monkeypatch.setattr(uc, "path_owner_offenders", lambda p: called.append(p) or [])
+    assert uc.verify_install_permissions(m) == [] and called
+
+
+def test_replace_with_retry_survives_brief_windows_lock(tmp_path, monkeypatch):
+    import os as _os
+    import sys as _sys
+    from stagewatch import updater_common as uc
+
+    src = tmp_path / "a.tmp"
+    dst = tmp_path / "history.json"
+    src.write_text("new", encoding="utf-8")
+    dst.write_text("old", encoding="utf-8")
+    real_replace = _os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(a, b):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError(13, "file in use")
+        return real_replace(a, b)
+
+    monkeypatch.setattr(uc.os, "replace", flaky_replace)
+    monkeypatch.setattr(uc.sys, "platform", "win32")
+    uc.replace_with_retry(src, dst, delay=0)
+    assert dst.read_text(encoding="utf-8") == "new" and calls["n"] == 3
+
+    # gives up (re-raises) after the retry budget
+    src.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(uc.os, "replace", lambda a, b: (_ for _ in ()).throw(PermissionError(13, "in use")))
+    import pytest as _pytest
+    with _pytest.raises(PermissionError):
+        uc.replace_with_retry(src, dst, retries=3, delay=0)

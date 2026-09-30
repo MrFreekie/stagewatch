@@ -44,6 +44,15 @@
     pin.focus();
   }
 
+  function renderRecovery() {
+    app.replaceChildren(card("Recovery required",
+      h("p", { role: "alert" }, "The saved settings could not be read and the admin PIN could not be recovered. For safety, setting a new PIN over the network is disabled."),
+      h("p", {}, "To recover, do one of these on the Stagewatch computer:"),
+      h("ul", {},
+        h("li", {}, "Restore config.yaml from a backup in the data folder (the unreadable file was kept next to it as config.invalid*.yaml), then restart Stagewatch."),
+        h("li", {}, "Or run ", h("code", {}, "stagewatch reset-admin-pin --data-dir <data folder>"), " and restart Stagewatch; this page then lets you set a new PIN. It only works with access to the computer's files."))));
+  }
+
   // ----------------------------------------------------------- sections
   function siteCard() {
     const s = admin.config.site;
@@ -508,6 +517,7 @@
     const logout = document.getElementById("logout");
     logout.hidden = !info.is_admin;
     logout.onclick = async () => { await api("POST", "/api/admin/logout"); location.reload(); };
+    if (info.recovery_required) return renderRecovery();
     if (info.admin_setup_required) return renderAuth(true);
     if (!info.is_admin) return renderAuth(false);
     await refresh();

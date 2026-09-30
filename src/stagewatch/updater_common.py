@@ -56,6 +56,29 @@ class GitError(UpdaterError):
 # Atomic JSON files
 # ---------------------------------------------------------------------------
 
+REPLACE_RETRIES = 40
+REPLACE_RETRY_S = 0.05
+
+
+def replace_with_retry(src, dst, *, retries: int = REPLACE_RETRIES, delay: float = REPLACE_RETRY_S) -> None:
+    """``os.replace`` that tolerates a reader briefly holding ``dst`` open.
+
+    On Windows, replacing a file that another process has open (without
+    FILE_SHARE_DELETE, which Python's open() never sets) fails with
+    PermissionError. The server polls history.json every few seconds while the
+    launcher writes it, so a collision is rare but real; retry for up to ~2 s
+    instead of letting it abort an update or rollback.
+    """
+    for attempt in range(retries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if sys.platform != "win32" or attempt == retries - 1:
+                raise
+            time.sleep(delay)
+
+
 def atomic_write_bytes(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
@@ -64,7 +87,7 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        replace_with_retry(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)
@@ -613,18 +636,92 @@ def path_write_offenders(path) -> list[str]:
     return out
 
 
+_TRUSTED_OWNER_SIDS = {"S-1-5-18", "S-1-5-32-544"}  # SYSTEM, Administrators
+
+
+def _owner_sid(path: str) -> str:
+    """Owner SID string of ``path`` (Windows only; module-level so tests can mock it).
+    Raises OSError if it cannot be read."""
+    import ctypes
+    from ctypes import wintypes
+    adv = ctypes.WinDLL("advapi32", use_last_error=True)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    ptr = ctypes.POINTER(ctypes.c_void_p)
+    adv.GetNamedSecurityInfoW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD,
+                                          ptr, ptr, ptr, ptr, ptr]
+    adv.GetNamedSecurityInfoW.restype = wintypes.DWORD
+    adv.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.LPWSTR)]
+    adv.ConvertSidToStringSidW.restype = wintypes.BOOL
+    k32.LocalFree.argtypes = [ctypes.c_void_p]
+    k32.LocalFree.restype = ctypes.c_void_p
+    owner, sd = ctypes.c_void_p(), ctypes.c_void_p()
+    rc = adv.GetNamedSecurityInfoW(path, 1, 1, ctypes.byref(owner), None, None, None, ctypes.byref(sd))  # SE_FILE_OBJECT, OWNER
+    if rc != 0:
+        raise OSError(f"GetNamedSecurityInfo failed ({rc})")
+    try:
+        text = wintypes.LPWSTR()
+        if not adv.ConvertSidToStringSidW(owner, ctypes.byref(text)):
+            raise OSError("ConvertSidToStringSid failed")
+        try:
+            return str(text.value)
+        finally:
+            k32.LocalFree(ctypes.cast(text, ctypes.c_void_p))
+    finally:
+        k32.LocalFree(sd)
+
+
+def path_owner_offenders(path) -> list[str]:
+    """Reasons ``path`` is not owned by SYSTEM/Administrators (Windows).  Fails closed: an owner
+    that cannot be read, or is any other principal (e.g. a user who could re-grant themselves
+    access), is reported.  POSIX ownership is already covered by :func:`path_write_offenders`."""
+    p = str(path)
+    if sys.platform != "win32" or not os.path.exists(p):
+        return []
+    try:
+        sid = _owner_sid(p)
+    except (OSError, ValueError) as e:
+        return [f"{p}: cannot read owner ({e})"]
+    return [] if sid.upper() in _TRUSTED_OWNER_SIDS else [f"{p}: owned by {sid}, expected Administrators or SYSTEM"]
+
+
 def install_paths_to_verify(m: Marker) -> list[Path]:
     r = m.repo_path
     return [m.git_path, m.uv_path, r, r / ".git", r / "src", r / ".venv", m.python_path, m.path]
 
 
-def verify_install_permissions(m: Marker, checker: Callable[[str], list[str]] | None = None) -> list[str]:
-    """Pre-apply check (amendment C): git, uv, repo root, .git, src, .venv, marker must not be
-    writable by non-admins.  Returns offender strings; the launcher refuses if non-empty."""
+def install_subpaths_to_verify(m: Marker) -> list[Path]:
+    """Key subdirectories to write-check as well (not a recursive walk).  Only those that exist:
+    the toolchain layout differs between the Windows and Pi installs."""
+    r = m.repo_path
+    cands = [r / "src" / "stagewatch", m.python_path.parent, r / ".uv", r / ".uv" / "bin",
+             m.uv_path.parent, r / ".git" / STATE_DIRNAME]
+    return [c for c in cands if c.is_dir()]
+
+
+def install_owner_paths(m: Marker) -> list[Path]:
+    r = m.repo_path
+    return [c for c in (r, r / ".git", r / ".venv", r / ".uv", r / "src") if c.exists()]
+
+
+def verify_install_permissions(m: Marker, checker: Callable[[str], list[str]] | None = None,
+                               owner_checker: Callable[[str], list[str]] | None = None) -> list[str]:
+    """Pre-apply check (amendment C): git, uv, repo root, .git, src, .venv, marker (and the key
+    subdirectories) must not be writable by non-admins, and the repo root, .git, .venv, .uv and
+    src must be owned by Administrators/SYSTEM.  Returns offender strings; the launcher refuses
+    if non-empty.  A custom ``checker`` without an ``owner_checker`` skips the owner check
+    (tests); production passes neither and gets both."""
+    if owner_checker is None and checker is None:
+        owner_checker = path_owner_offenders
     checker = checker or path_write_offenders
     out: list[str] = []
-    for p in install_paths_to_verify(m):
-        out += checker(str(p))
+    seen: set[str] = set()
+    for p in [*install_paths_to_verify(m), *install_subpaths_to_verify(m)]:
+        if str(p) not in seen:
+            seen.add(str(p))
+            out += checker(str(p))
+    if owner_checker is not None:
+        for p in install_owner_paths(m):
+            out += owner_checker(str(p))
     return out
 
 

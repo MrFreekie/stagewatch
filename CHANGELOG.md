@@ -27,6 +27,30 @@ them into a dated release section and tags the commit.
   and targets that add dependency sources. The channel choice lives in `config.yaml`; the
   installer-written managed marker is never modified by the server.
 - All request bodies are capped (64 KiB by default; `413` beyond that, per-route override hook).
+- An invalid `config.yaml` can no longer reset the admin PIN. Previously the file was moved aside
+  and the app started on defaults, so `/api/admin/setup` was open to anyone on the LAN. Now the PIN
+  hash and every other section that still validates are salvaged (bad list entries are dropped
+  individually), earlier `config.invalid*.yaml` files are never overwritten, and if the PIN cannot
+  be recovered `/api/admin/setup` answers 409 "recovery required" and the admin page explains how to
+  recover. New local-only command `stagewatch reset-admin-pin --data-dir <dir>` reopens onboarding
+  (not reachable over HTTP).
+- Update pre-apply permission check also verifies the owner (Administrators/SYSTEM) of the repo
+  root, `.git`, `.venv`, `.uv` and `src`, and write access on `src/stagewatch`, the venv scripts
+  dir, the uv dir and `.git/stagewatch`.
+- Dependency-source check also flags `editable`/`virtual` lock sources (except the project itself)
+  and wheel/sdist URLs outside pypi.org / files.pythonhosted.org.
+- Build info (`/api/info`) runs git with the hardened flags/environment and a 3 s timeout.
+
+### Fixed
+- Update check: a `nightly` branch that is not part of `main`'s history is reported as
+  "not part of the main branch history" instead of "up to date".
+- Request-body cap: drains a bounded amount (1 MiB / 2 s) of a refused body before the 413, so
+  clients no longer see a connection reset.
+- A refused or rejected update now leaves a timeline marker instead of a dangling "Updating
+  software" marker (versions and reason category only).
+- A successful manual rollback that restored a data backup now records `restored_backup: true`.
+- The dirty flag in build info refreshes every 60 s instead of being frozen at startup.
+- Re-created release tag: the check names the changed tag; recovery is documented in the README.
 
 ### Changed
 - Admin Software card polish: Installed / Updates / History sections, an "Update available"

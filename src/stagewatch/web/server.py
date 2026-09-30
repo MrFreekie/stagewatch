@@ -234,7 +234,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                       "managed": updater.managed, "supervised": updater.supervised},
             "site": hub.config.site.name,
             "emulate": hub.emulate,
-            "admin_setup_required": not hub.config.admin.pin_hash,
+            "admin_setup_required": not hub.config.admin.pin_hash and not hub.store.recovery_required,
+            "recovery_required": hub.store.recovery_required,
             "is_admin": is_admin(request),
             "dashboards": [d.model_dump() for d in hub.config.dashboards],
         }
@@ -284,6 +285,12 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def setup(body: PinBody, response: Response):
         if hub.config.admin.pin_hash:
             raise HTTPException(409, "Admin PIN already set")
+        if hub.store.recovery_required:
+            # The saved config was unreadable and its PIN could not be recovered: never let
+            # whoever reaches the port claim admin.  Needs filesystem access (CLI / backup).
+            raise HTTPException(409, "Recovery required: the saved settings could not be read. Restore "
+                                     "config.yaml from a backup, or run 'stagewatch reset-admin-pin' "
+                                     "on this computer.")
         hub.config.admin.pin_hash = hash_pin(body.pin)
         hub.save_config()
         set_session(response)

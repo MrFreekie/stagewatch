@@ -387,7 +387,8 @@ class Launcher:
             return self._revert(p, e.category)
         child = self._start()
         if self._healthy(child, p["to_sha"], require_handshake=p["action"] == "update"):
-            self._record(p, "ok")
+            # a manual rollback that restored a data backup must say so (displaced = what it moved aside)
+            self._record(p, "ok", restored_backup=displaced is not None)
             return child
         log.error("Health check failed after %s", p["action"])
         child.stop(0)

@@ -17,6 +17,17 @@ RF and SPL.
 > the monitoring, riggers, electricians or duty holders required by an event's
 > safety, wind-management or power plans.
 
+> **100 % vibe coded.** I'm a FOH / systems engineer, not a programmer. Every line of
+> this project was written by an AI coding assistant ([Claude Code](https://claude.com/claude-code))
+> working from my ideas, requirements and show-site experience. That's not a knock on the
+> AI. It has built the test suite, security reviews and release checks too. But it does mean
+> **no human software developer has reviewed this code.** Read it before you trust it,
+> test it on your own kit before a show, and expect rough edges. Issues and pull requests
+> from people who *do* write code are very welcome. The software is provided as-is, with no
+> warranty (see [LICENSE](LICENSE), GPL-3.0).
+
+☕ If Stagewatch helps your shows, you can [buy me a coffee](https://buymeacoffee.com/fohengineer).
+
 ---
 
 ## Why
@@ -182,6 +193,20 @@ only available on a managed install; update those with `git pull`.
   GitHub origin. It **cannot** protect you from a compromised GitHub account. Turn on 2FA and set up
   repository rulesets: no force-push or deletion on `main`; only GitHub Actions may update
   `nightly`; no update or deletion of `v*` tags.
+- **A release tag was re-created ("update source rejected the fetch").** If a `vX.Y.Z` tag is
+  deleted and re-created upstream (even on the same commit) the tag object changes, and Check
+  refuses with "Changed tag: vX.Y.Z". That refusal is deliberate: a moved tag is what tampering
+  looks like, so Stagewatch never accepts it by itself. After confirming with the maintainer that
+  the change was intended, an administrator deletes the local copy in the managed clone and checks
+  again: `git -C C:\Stagewatch tag -d vX.Y.Z` (Pi: `/opt/stagewatch`, or wherever the install lives).
+- **Locked out of Admin ("Recovery required").** If `config.yaml` cannot be read (a typo, a partial
+  write, a rollback onto a stricter version), Stagewatch keeps the bad file as
+  `config.invalid*.yaml`, salvages every section that is still valid, including the admin PIN, and
+  starts. Only if the PIN cannot be salvaged does Admin show "Recovery required" and refuse to set
+  a new PIN over the network (otherwise anyone on the LAN could claim admin). Restore `config.yaml`
+  from a backup, or on the Stagewatch computer run
+  `stagewatch reset-admin-pin --data-dir <data folder>`, restart, and set a new PIN. This command
+  needs file access to the data folder and is not available over HTTP.
 - **Trying it offline.** `uv run python scripts/updater_sandbox.py` builds a local fake remote and
   a managed clone and runs the real launcher and server against them (no network).
 
@@ -202,15 +227,12 @@ Configure destinations in **Admin → OSC output**. NaN means "not measured".
 - Cross-origin requests are refused. Repeated wrong PINs are rate-limited.
 - ESPHome encryption keys are never returned by the API.
 - Run Stagewatch on a private control network, not the public internet.
-- **Secrets never go into git.** `.gitignore` excludes `data/`, `config.yaml`,
-  `secret.key`, `.env` and `esphome/secrets.yaml`. A pre-commit hook blocks
-  keys, hashes and runtime files:
-
-  ```bash
-  git config core.hooksPath .githooks
-  ```
 
 ## Development
+
+**Before your first commit:** run `git config core.hooksPath .githooks`. The hook
+blocks secrets (keys, PIN hashes, `secrets.yaml`, config and data files) from being
+committed.
 
 ```bash
 uv sync                       # install, including dev tools
@@ -283,3 +305,8 @@ See [INTEGRATIONS_WISHLIST.md](INTEGRATIONS_WISHLIST.md).
 Stagewatch is free software under the [GNU General Public License v3.0](LICENSE).
 You may use, modify and redistribute it. If you distribute a modified version, you
 must release its source under the same licence.
+
+## Support
+
+Stagewatch is free. If it saves you time on a show day, you can support it at
+[buymeacoffee.com/fohengineer](https://buymeacoffee.com/fohengineer). ☕

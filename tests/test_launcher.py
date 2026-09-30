@@ -314,6 +314,10 @@ def test_manual_rollback_requires_history_and_restores(h):
                      backup_id="pre", schema_changed=True)
     rb = h.wait_history(3)[2]
     assert rb["result"] == "ok" and rb["action"] == "rollback"
+    assert rb["restored_backup"] is True  # data was restored, so say so
+    assert not upd.get("restored_backup")
+    assert rb["restored_backup"] is True  # data was restored, so say so
+    assert not upd.get("restored_backup")
     assert h.head() == h.env.shas["c1"]
     con = sqlite3.connect(h.env.data / bk.DB_NAME)
     assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 5

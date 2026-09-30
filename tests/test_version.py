@@ -47,3 +47,31 @@ def test_bump_logic():
     assert "## [Unreleased]\n\n## [1.2.4] - 2026-02-02\n\n### Fixed\n- thing" in out
     assert "[Unreleased]: https://github.com/o/r/compare/v1.2.4...HEAD" in out
     assert "[1.2.4]: https://github.com/o/r/compare/v1.2.3...v1.2.4" in out
+
+
+def test_build_info_git_is_hardened_and_dirty_refreshes(monkeypatch):
+    from stagewatch import version as v
+    seen = []
+
+    def fake_run_git(ctx, *args, **kw):
+        seen.append((ctx, args, kw))
+        return 0, "abc1234\n" if args[0] == "rev-parse" else ("M x\n" if args[0] == "status" else "")
+
+    monkeypatch.setattr(v, "run_git", fake_run_git)
+    v._static_info.cache_clear()
+    monkeypatch.setattr(v, "_dirty_cache", None)
+    clock = [1000.0]
+    monkeypatch.setattr(v.time, "monotonic", lambda: clock[0])
+    assert v.build_info()["dirty"] is True
+    ctx, _args, kw = seen[0]
+    assert kw["timeout"] <= 5
+    flags = " ".join(ctx.config_flags())
+    assert "core.hooksPath" in flags and "core.fsmonitor=false" in flags and "safe.directory" in flags
+    assert ctx.env()["GIT_CONFIG_NOSYSTEM"] == "1" and ctx.env()["GIT_TERMINAL_PROMPT"] == "0"
+    calls = len(seen)
+    v.build_info()
+    assert len(seen) == calls  # cached inside the TTL
+    monkeypatch.setattr(v, "run_git", lambda ctx, *a, **k: (0, "abc1234\n" if a[0] == "rev-parse" else ""))
+    clock[0] += v.DIRTY_TTL_S + 1
+    assert v.build_info()["dirty"] is False  # re-read after the TTL; static facts are not
+    v._static_info.cache_clear()

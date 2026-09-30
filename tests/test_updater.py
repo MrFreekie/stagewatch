@@ -627,3 +627,116 @@ def test_global_cap_applies_to_the_real_app(api):
     assert api.put("/api/admin/thresholds", json=[{"id": "t", "entity": "site.temperature", "label": "x" * 70000}]
                    ).status_code == 413
     assert api.post("/api/admin/software/check").status_code == 200  # ordinary requests unaffected
+
+
+# ---------------------------------------------------------------------------
+# QA fixes: L1 not_ancestor, L3 markers, L4 lock sources, L2 drain, re-created tag naming
+# ---------------------------------------------------------------------------
+
+def _push_nightly_off_main(rig):
+    git(rig.env.work, "checkout", "-q", "-b", "evil", rig.env.shas["c1"])
+    commit(rig.env.work, "6.6.6", message="not on main")
+    git(rig.env.work, "push", "-q", "-f", "origin", "evil:refs/heads/nightly")
+
+
+def test_check_nightly_off_main_is_not_ancestor_not_up_to_date(rig):
+    _push_nightly_off_main(rig)
+    with pytest.raises(uc.UpdaterError) as ei:
+        run_check(rig, "nightly")
+    assert ei.value.category == "not_ancestor"
+
+
+async def test_check_result_for_nightly_off_main_is_an_error_result(rig):
+    _push_nightly_off_main(rig)
+    await rig.updater.set_channel("nightly")
+    res = await rig.updater.check()
+    assert res["ok"] is False and res["category"] == "not_ancestor" and res["available"] is False
+    assert "main branch history" in res["message"]
+
+
+def test_announce_refused_and_rejected_close_the_marker(rig):
+    sd = rig.env.marker().state_dir
+    uc.append_history(sd, {"action": "update", "result": "refused", "reason": "unsafe_permissions",
+                           "from_version": "0.1.0", "to_version": "0.2.0",
+                           "detail": "C:\\secret\\path"})
+    uc.append_history(sd, {"action": "rollback", "result": "rejected", "reason": "pending_invalid"})
+    rig.updater.announce_last_result()
+    labels = [m.label for m in rig.hub.recorder.markers()]
+    assert any("update refused (0.1.0 → 0.2.0): unsafe_permissions" in x for x in labels)
+    assert any("rollback rejected" in x and "pending_invalid" in x for x in labels)
+    assert not any("secret" in x or "\\" in x for x in labels)
+
+
+def test_dependency_findings_editable_virtual_and_hosts():
+    py = '[project]\nname="x"\n'
+    ok = ('version = 1\n[[package]]\nname="x"\nsource = { editable = "." }\n'
+          '[[package]]\nname="a"\nsource = { registry = "https://pypi.org/simple" }\n'
+          'sdist = { url = "https://files.pythonhosted.org/packages/a.tar.gz", hash = "sha256:00" }\n'
+          'wheels = [{ url = "https://files.pythonhosted.org/packages/a.whl", hash = "sha256:00" }]\n')
+    assert up.dependency_source_findings(py, ok) == set()  # the project itself is fine
+    assert up.dependency_source_findings(py, ok.replace("editable", "virtual")) == set()
+    assert up.dependency_source_findings(py, ok + '[[package]]\nname="e"\nsource = { editable = "../e" }\n') \
+        == {"lock:editable:e"}
+    assert up.dependency_source_findings(py, ok + '[[package]]\nname="v"\nsource = { virtual = "v" }\n') \
+        == {"lock:virtual:v"}
+    assert up.dependency_source_findings(py, ok.replace('editable = "."', 'editable = "../x"')) \
+        == {"lock:editable:x"}
+    evil = ok.replace("files.pythonhosted.org/packages/a.whl", "evil.invalid/a.whl")
+    assert up.dependency_source_findings(py, evil) == {"lock:url_host:a"}
+    evil = ok.replace("files.pythonhosted.org/packages/a.tar.gz", "evil.invalid/a.tar.gz")
+    assert up.dependency_source_findings(py, evil) == {"lock:url_host:a"}
+
+
+def test_dependency_findings_pass_on_the_real_repo_lock():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    assert up.dependency_source_findings((root / "pyproject.toml").read_text(encoding="utf-8"),
+                                         (root / "uv.lock").read_text(encoding="utf-8")) == set()
+
+
+def test_body_cap_drains_a_bounded_amount_before_413():
+    from stagewatch.web import limits
+
+    async def scenario(chunks, chunk_size, declared):
+        events = []
+        queue = [{"type": "http.request", "body": b"x" * chunk_size, "more_body": i < chunks - 1}
+                 for i in range(chunks)]
+
+        async def receive():
+            if queue:
+                events.append("recv")
+                return queue.pop(0)
+            await asyncio.sleep(10)
+
+        async def send(msg):
+            events.append(msg["type"])
+
+        async def app(scope, receive, send):
+            raise AssertionError("must not reach the app")
+
+        mw = BodySizeLimitMiddleware(app, default_limit=100)
+        scope = {"type": "http", "path": "/x", "headers": [(b"content-length", str(declared).encode())]}
+        await mw(scope, receive, send)
+        return events, len(queue)
+
+    events, left = asyncio.run(scenario(5, 1000, 5000))
+    assert left == 0  # the whole (small) body was consumed ...
+    assert events.index("http.response.start") > max(i for i, e in enumerate(events) if e == "recv")  # ... first
+    big_chunks = limits.DRAIN_MAX_BYTES // 65536 + 20
+    events, left = asyncio.run(scenario(big_chunks, 65536, big_chunks * 65536))
+    assert left > 0  # beyond the bound it stops reading (and closes) instead of draining forever
+    assert "http.response.start" in events
+
+
+async def test_moved_tag_is_named_in_check_result_and_log(rig, caplog):
+    git(rig.env.work, "tag", "-f", "-a", "v0.2.0", "-m", "moved", rig.env.shas["c3"])
+    git(rig.env.work, "push", "-q", "-f", "origin", "refs/tags/v0.2.0")
+    res = await rig.updater.check()
+    assert res["category"] == "fetch_rejected" and "v0.2.0" in res["message"]
+    assert str(rig.env.clone) not in res["message"] and str(rig.env.bare) not in res["message"]
+    assert "v0.2.0" in caplog.text
+    # recovery documented in the README: delete the local tag, then it works again
+    git(rig.env.clone, "tag", "-d", "v0.2.0")
+    rig.updater._last_check_at = None
+    res = await rig.updater.check()
+    assert res["ok"] is True
