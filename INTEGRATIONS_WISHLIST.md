@@ -101,8 +101,9 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
 | **Seeed XIAO ESP32C5** | **Dual-band 2.4 / 5 GHz Wi-Fi 6**, BLE | **Planned** | For crowded 2.4 GHz festival sites; needs ESPHome 2026.7+. |
 | Seeed XIAO W5500 Ethernet Adapter (ESP32-S3 + PoE) | Ethernet + 802.3af PoE | Candidate (strong) | One-cable fixed node, or a wired Bluetooth relay. |
 | Seeed XIAO ESP32S3 / ESP32C6 | Wi-Fi, BLE | Candidate | S3 suits the Bluetooth relay, displays and outputs. |
-| Adafruit Feather ESP32-S3 (4 MB flash / 2 MB PSRAM) | Wi-Fi, BLE | Candidate (strong) | STEMMA QT plug-in sensors, LiPo charging + battery gauge. |
-| Adafruit Feather ESP32-S3 TFT / Reverse TFT | Wi-Fi, BLE | Candidate | Built-in screen: node shows its own readings, IP and status. |
+| **Adafruit Feather ESP32-S3** (4 MB flash / 2 MB PSRAM, and 8 MB flash / no PSRAM) | Wi-Fi, BLE | **Planned** (owned; config in progress) | STEMMA QT plug-in sensors, LiPo charging + battery gauge. |
+| **Adafruit Feather ESP32-S3 TFT** (4 MB / 2 MB PSRAM) | Wi-Fi, BLE | **Planned** (owned; config in progress) | Built-in 240×135 screen: the node shows its own readings, IP and status. The Reverse TFT should also work (candidate). |
+| Waveshare ESP32-S3 1.47" LCD (172×320, USB-A plug) | Wi-Fi, BLE | Candidate (display) | A small USB-powered **display node**: plug it into any USB port for a mini Wall Clock or site readout. Needs the planned output-display feature (Stagewatch pushing values to a node). No STEMMA QT connector. |
 | Adafruit Feather ESP32 V2 | Wi-Fi, BLE | Candidate | STEMMA QT; classic ESP32 (good Bluetooth relay). |
 | Adafruit Feather ESP32-C6 | Wi-Fi 6, BLE | Candidate | STEMMA QT, battery. |
 | Adafruit Feather ESP32-S2 | Wi-Fi only (**no BLE**) | Candidate (env only) | Fine as an env node; can't be a Bluetooth relay. |
