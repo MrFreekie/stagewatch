@@ -1,0 +1,344 @@
+﻿# Stagewatch environment node: Adafruit ESP32-S3 TFT Feather (Adafruit 5483,
+# 4MB Flash, 2MB PSRAM, built-in 240x135 ST7789 colour TFT) + BME280 over
+# STEMMA QT / Qwiic. Wi-Fi. The screen shows node name, temperature (large),
+# RH, pressure, Wi-Fi signal and IP, or "NO SENSOR" if readings stop.
+#
+# Flash with ESPHome (https://esphome.io):  esphome run stagewatch-feather-s3-tft.yaml
+# Copy secrets.example.yaml to secrets.yaml first and fill it in; secrets.yaml
+# is gitignored and must never be committed. First flash over USB: hold BOOT,
+# tap RESET, release BOOT (ROM bootloader). Note this replaces Adafruit's UF2
+# bootloader; restore it with Adafruit's web installer if you ever need UF2.
+# The fonts are fetched from Google Fonts at compile time (needs internet).
+#
+# Wiring (no soldering): plug a STEMMA QT / Qwiic cable from the Feather's
+# STEMMA QT port into the BME280 (Adafruit 2652) or SHT45 (Adafruit 5665).
+# Underlying pins (Adafruit pinout + Arduino variant adafruit_feather_esp32s3_tft):
+#   STEMMA QT SDA = GPIO42, SCL = GPIO41, 3V3 / GND on the connector
+#   TFT_I2C_POWER = GPIO21: switches 3V3 to the STEMMA QT port AND the TFT.
+#     Must be HIGH or neither works; this config drives it HIGH at boot.
+#   TFT: CS GPIO7, DC GPIO39, RST GPIO40, SCK GPIO36, MOSI GPIO35,
+#        backlight GPIO45 (TFT_BACKLITE, active high)
+#   NeoPixel: data GPIO33, power-enable GPIO34 (driven HIGH below)
+#   Boot button GPIO0 (active low): toggles the backlight (below).
+#   D0 = GPIO0 (pulled up, low when pressed), D1 = GPIO1 and D2 = GPIO2
+#   (pulled down, HIGH when pressed).
+# (Some Adafruit web text lists SDA/SCL as GPIO3/4; that is the non-TFT
+# Feather. The TFT Feather's Arduino/CircuitPython variant uses 42/41.)
+#
+# Sensor address: Adafruit BME280 (2652) is 0x77 by default (0x76 with the
+# ADR jumper cut). SHT45 (5665) is 0x44. The i2c scan prints what it finds.
+#
+# Mounting: the Feather, its regulator, the backlight and the LiPo all make
+# heat, so put the sensor on a STEMMA QT cable of 10 cm or longer and mount it
+# in free air, away from the Feather, LiPo, amps, lamps, dimmers and direct
+# sun (use a radiation shield outdoors). Expect the on-board readings to be
+# wrong if the sensor sits on the board. Calibrate against a reference
+# thermometer in the Stagewatch admin (per-sensor offset). Weatherproof the
+# board and give the USB / battery leads strain relief.
+#
+# LiPo safety: only use a protected LiPo with the correct JST-PH polarity for
+# this board (check +/- markings, packs from other makers are often reversed).
+# Do not leave a charging pack in a hot flight case or under lamps. For show
+# use prefer USB from a stable 5 V supply; the battery is a short ride-through
+# only and the gauge is informational.
+#
+# Battery gauge chip depends on board revision (silkscreen on the back):
+# MAX17048 (0x36, newer) or LC709203F (0x0B, older). Enable the matching block.
+#
+# Display driver: mipi_spi ST7789V model, same settings as ESPHome's
+# ADAFRUIT-S2-TFT-FEATHER preset (identical CS/DC/RST pins and 135x240 panel
+# offsets 40/52), written out explicitly so PSRAM is not required.
+# https://esphome.io/components/display/mipi_spi/
+# If the picture is upside down, change rotation to 270°. If colours look
+# inverted, flip invert_colors. Screen layout is untested on hardware.
+
+substitutions:
+  node_name: stagewatch-feather-tft-1  # unique per node: becomes <name>.local
+  friendly_name: "Stagewatch Feather TFT 1"
+  screen_title: "Stagewatch Feather TFT 1"  # shown at the top of the screen
+
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: -100
+    then:
+      - light.turn_on:
+          id: status_led
+          brightness: 15%
+          red: 100%
+          green: 55%
+          blue: 0%
+
+esp32:
+  board: adafruit_feather_esp32s3_tft
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+# PSRAM (2MB quad) is fitted but not needed for a 240x135 screen. To enable:
+# psram:
+#   mode: quad
+#   speed: 80MHz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG        # native USB; drop if you see no logs
+
+# Native API: Stagewatch connects to this. Encryption is strongly recommended;
+# paste the same key into Stagewatch when adopting the node.
+api:
+  encryption:
+    key: !secret api_encryption_key
+  on_client_connected:
+    - light.turn_on:
+        id: status_led
+        brightness: 8%
+        red: 0%
+        green: 100%
+        blue: 0%
+  on_client_disconnected:
+    - light.turn_on:
+        id: status_led
+        brightness: 15%
+        red: 100%
+        green: 55%
+        blue: 0%
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Uncomment for a fixed address on the show control network:
+  # manual_ip:
+  #   static_ip: 192.168.1.50
+  #   gateway: 192.168.1.1
+  #   subnet: 255.255.255.0
+  on_disconnect:
+    - light.turn_on:
+        id: status_led
+        brightness: 15%
+        red: 100%
+        green: 55%
+        blue: 0%
+
+# Power enables, applied at switch setup (before sensors and display).
+switch:
+  - platform: gpio
+    id: i2c_power
+    pin: GPIO21                         # TFT_I2C_POWER: STEMMA QT port + TFT 3V3
+    restore_mode: ALWAYS_ON
+    internal: true
+  - platform: gpio
+    id: neopixel_power
+    pin: GPIO34                         # NEOPIXEL_POWER
+    restore_mode: ALWAYS_ON
+    internal: true
+
+i2c:
+  sda: GPIO42
+  scl: GPIO41
+  frequency: 100kHz                     # gentle on a long STEMMA QT cable
+  scan: true
+
+spi:
+  clk_pin: GPIO36
+  mosi_pin: GPIO35
+
+# Backlight (GPIO45). Turn off or dim it for dark venues: press the boot button
+# (GPIO0) to toggle, or use the "Display Backlight" light from Home Assistant.
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO45
+
+light:
+  - platform: monochromatic
+    id: backlight
+    name: "Display Backlight"
+    output: backlight_pwm
+    restore_mode: RESTORE_DEFAULT_ON
+    default_transition_length: 0s
+  # Status LED: amber = no Wi-Fi / no API client, green (dim) = API connected.
+  - platform: esp32_rmt_led_strip
+    id: status_led
+    internal: true
+    pin: GPIO33
+    num_leds: 1
+    chipset: ws2812
+    channel_colors: GRB
+    restore_mode: ALWAYS_OFF
+
+globals:
+  - id: last_reading_ms                 # millis() of the last good temperature
+    type: uint32_t
+    initial_value: '0'
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 16
+    glyphs: "!\"%()+,-./0123456789:<>? ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+  - file: "gfonts://Roboto"
+    id: font_medium
+    size: 24
+    glyphs: "!\"%()+,-./0123456789:<>? ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+  - file: "gfonts://Roboto"
+    id: font_big
+    size: 56
+    glyphs: "0123456789.-"
+  - file: "gfonts://Roboto"
+    id: font_unit
+    size: 24
+    glyphs: "°C"
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: ip_addr
+      name: "IP address"
+      internal: true                    # shown on screen only
+
+sensor:
+  # --- Primary: BME280 (Adafruit 2652) ---------------------------------------
+  - platform: bme280_i2c
+    address: 0x77                       # 0x76 if the ADR jumper is cut
+    update_interval: 5s
+    temperature:
+      name: "Temperature"
+      id: temp_c
+      oversampling: 4x                  # lower than 16x: less self-heating
+      on_value:
+        then:
+          - lambda: 'id(last_reading_ms) = millis();'
+    humidity:
+      name: "Humidity"
+      id: rh
+    pressure:
+      name: "Pressure"                  # reported in hPa; Stagewatch converts
+      id: press_hpa
+
+  # --- Alternative: SHT45 (Adafruit 5665; +/-0.1 degC, +/-1 %RH, no pressure) -
+  # To use it: delete the BME280 block above, uncomment this one, and remove
+  # the pressure line from the display lambda (search "press_hpa").
+  # - platform: sht4x
+  #   address: 0x44
+  #   update_interval: 5s
+  #   precision: High
+  #   heater_max_duty: 0.0              # keep the heater off: it skews temperature
+  #   temperature:
+  #     name: "Temperature"
+  #     id: temp_c
+  #     on_value:
+  #       then:
+  #         - lambda: 'id(last_reading_ms) = millis();'
+  #   humidity:
+  #     name: "Humidity"
+  #     id: rh
+
+  # --- Battery gauge (informational; enable ONE, matching your board) --------
+  # MAX17048 (newer boards, 0x36). No dedicated ESPHome max17048 platform; the
+  # max17043 platform uses the same registers and scaling and accepts the
+  # MAX17048 power-up config value, but docs list only the MAX17043. Check the
+  # values look sane (about 3.0-4.2 V).
+  - platform: max17043
+    update_interval: 60s
+    battery_voltage:
+      name: "Battery voltage"
+    battery_level:
+      name: "Battery"
+
+  # LC709203F (older boards, 0x0B): official platform. Set size to your pack.
+  # - platform: lc709203f
+  #   update_interval: 60s
+  #   size: 500                         # pack capacity in mAh (100-3000)
+  #   voltage: 3.7
+  #   battery_voltage:
+  #     name: "Battery voltage"
+  #   battery_level:
+  #     name: "Battery"
+
+  - platform: wifi_signal
+    name: "WiFi signal"
+    id: wifi_dbm
+    update_interval: 30s
+
+binary_sensor:
+  # Boot button (GPIO0, active low) toggles the display backlight.
+  - platform: gpio
+    id: boot_button
+    internal: true
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 30ms
+    on_press:
+      - light.toggle: backlight
+
+  # Optional "Mark" input on D1 (GPIO1, pulled down on this board, HIGH when
+  # pressed). Stagewatch does not consume contact inputs as markers yet, so it
+  # is left disabled. D2 (GPIO2) works the same way.
+  # - platform: gpio
+  #   name: "Mark"
+  #   pin:
+  #     number: GPIO1
+  #     mode: INPUT
+  #   filters:
+  #     - delayed_on: 30ms
+
+display:
+  - platform: mipi_spi
+    id: tft
+    model: ST7789V
+    cs_pin: GPIO7
+    dc_pin: GPIO39
+    reset_pin: GPIO40
+    data_rate: 40MHz
+    dimensions:                         # native portrait panel; rotation below
+      height: 240
+      width: 135
+      offset_height: 52
+      offset_width: 40
+    rotation: 90°                        # landscape 240x135; 270° if upside down
+    invert_colors: true
+    update_interval: 5s
+    lambda: |-
+      const Color BG(0, 0, 0);
+      const Color WHITE(255, 255, 255);
+      const Color GREY(150, 150, 150);
+      const Color CYAN(90, 210, 255);
+      const Color RED(255, 70, 70);
+      it.fill(BG);
+
+      // Header: node name
+      it.printf(120, 2, id(font_small), GREY, TextAlign::TOP_CENTER, "%s", "${screen_title}");
+
+      bool fresh = !std::isnan(id(temp_c).state) &&
+                   id(last_reading_ms) != 0 &&
+                   (millis() - id(last_reading_ms)) < 30000;
+
+      if (!fresh) {
+        it.print(120, 62, id(font_medium), RED, TextAlign::CENTER, "NO SENSOR");
+        it.print(120, 90, id(font_small), GREY, TextAlign::CENTER, "check STEMMA QT cable");
+      } else {
+        // Large temperature with a smaller unit
+        it.printf(105, 24, id(font_big), WHITE, TextAlign::TOP_CENTER, "%.1f", id(temp_c).state);
+        it.print(190, 34, id(font_unit), WHITE, TextAlign::TOP_LEFT, "°C");
+        // RH and pressure
+        if (!std::isnan(id(rh).state))
+          it.printf(6, 88, id(font_medium), CYAN, TextAlign::TOP_LEFT, "%.0f%%", id(rh).state);
+        if (!std::isnan(id(press_hpa).state))
+          it.printf(234, 88, id(font_medium), CYAN, TextAlign::TOP_RIGHT, "%.1f hPa", id(press_hpa).state);
+      }
+
+      // Footer: Wi-Fi signal and IP
+      if (id(wifi_dbm).has_state())
+        it.printf(6, 116, id(font_small), GREY, TextAlign::TOP_LEFT, "%.0f dBm", id(wifi_dbm).state);
+      else
+        it.print(6, 116, id(font_small), GREY, TextAlign::TOP_LEFT, "no Wi-Fi");
+      it.printf(234, 116, id(font_small), GREY, TextAlign::TOP_RIGHT, "%s", id(ip_addr).state.c_str());
+

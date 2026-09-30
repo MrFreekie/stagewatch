@@ -1,0 +1,214 @@
+# Stagewatch environment node: Adafruit ESP32-S3 Feather (STEMMA QT / Qwiic)
+# + BME280 (temperature, humidity, pressure) over I2C. Wi-Fi.
+#
+# One file covers both plain (non-TFT) Feathers; pick the matching pair of
+# substitutions below:
+#   Adafruit 5323  "ESP32-S3 Feather with STEMMA QT, 8MB Flash, No PSRAM"
+#       board: adafruit_feather_esp32s3_nopsram   flash_size: 8MB
+#   Adafruit 5477  "ESP32-S3 Feather, 4MB Flash, 2MB PSRAM"
+#       board: adafruit_feather_esp32s3           flash_size: 4MB
+# (Not for the TFT Feather: use stagewatch-feather-s3-tft.yaml.)
+# PSRAM is not needed for this node, so it is not enabled. Wrong flash_size
+# (larger than fitted) makes the board fail to boot.
+#
+# Flash with ESPHome (https://esphome.io):  esphome run stagewatch-feather-s3.yaml
+# Copy secrets.example.yaml to secrets.yaml first and fill it in; secrets.yaml
+# is gitignored and must never be committed. First flash over USB: hold BOOT,
+# tap RESET, release BOOT (ROM bootloader). Note this replaces Adafruit's UF2
+# bootloader; restore it with Adafruit's web installer if you ever need UF2.
+#
+# Wiring (no soldering): plug the STEMMA QT / Qwiic cable from the Feather's
+# STEMMA QT port into the BME280 breakout (Adafruit 2652) or SHT45 (Adafruit
+# 5665). Underlying pins, for reference (Adafruit pinout + Arduino variant):
+#   Feather SDA = GPIO3   -> sensor SDA (blue wire)
+#   Feather SCL = GPIO4   -> sensor SCL (yellow wire)
+#   3V3 / GND             -> sensor VIN / GND (red / black wire)
+#   The STEMMA QT port's 3V3 is switched by GPIO7 (I2C_POWER). It must be
+#   driven HIGH or the sensor is unpowered; this config does that at boot.
+#   On-board NeoPixel: data GPIO33, power-enable GPIO21 (driven HIGH below).
+#   Boot button: GPIO0.
+#
+# Sensor address: Adafruit BME280 (2652) is 0x77 by default (0x76 with the
+# ADR jumper cut). SHT45 (5665) is 0x44. The i2c scan below prints what it
+# finds in the log: check it once.
+#
+# Mounting: the Feather, its regulator and the LiPo all make heat, so put the
+# sensor on a STEMMA QT cable of 10 cm or longer (50-100 mm is too short) and
+# mount it in free air away from the Feather, LiPo, amps, lamps, dimmers and
+# direct sun. Use a radiation shield or louvred housing outdoors. Calibrate
+# against a reference thermometer in the Stagewatch admin (per-sensor offset).
+# Weatherproof the Feather and give the USB / battery leads strain relief.
+#
+# LiPo safety: only use a protected LiPo with the correct JST-PH polarity for
+# this board (check the +/- markings, packs from other makers are often wired
+# reversed). Do not leave an unattended charging pack in a hot flight case or
+# under lamps. For show power prefer USB from a stable 5 V supply and treat the
+# battery as a short ride-through only. The battery gauge is informational.
+#
+# Battery gauge chip depends on board revision (check the silkscreen on the
+# back / product page): MAX17048 (newer, 0x36) or LC709203F (older, 0x0B).
+# Enable the matching block in the sensor section below.
+
+substitutions:
+  node_name: stagewatch-feather-1      # unique per node: becomes <name>.local
+  friendly_name: "Stagewatch Feather 1"
+  board: adafruit_feather_esp32s3_nopsram   # or adafruit_feather_esp32s3
+  flash_size: 8MB                           # 8MB for nopsram, 4MB for PSRAM board
+
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: -100
+    then:
+      # Amber = booting / no API client yet.
+      - light.turn_on:
+          id: status_led
+          brightness: 15%
+          red: 100%
+          green: 55%
+          blue: 0%
+
+esp32:
+  board: ${board}
+  flash_size: ${flash_size}
+  framework:
+    type: esp-idf
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG        # native USB; drop if you see no logs
+
+# Native API: Stagewatch connects to this. Encryption is strongly recommended;
+# paste the same key into Stagewatch when adopting the node.
+api:
+  encryption:
+    key: !secret api_encryption_key
+  on_client_connected:
+    - light.turn_on:
+        id: status_led
+        brightness: 8%
+        red: 0%
+        green: 100%
+        blue: 0%
+  on_client_disconnected:
+    - light.turn_on:
+        id: status_led
+        brightness: 15%
+        red: 100%
+        green: 55%
+        blue: 0%
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Uncomment for a fixed address on the show control network:
+  # manual_ip:
+  #   static_ip: 192.168.1.50
+  #   gateway: 192.168.1.1
+  #   subnet: 255.255.255.0
+  on_disconnect:
+    - light.turn_on:
+        id: status_led
+        brightness: 15%
+        red: 100%
+        green: 55%
+        blue: 0%
+
+# Power enables. ALWAYS_ON is applied while the switch is set up, before the
+# sensors (default setup priority is later), so the sensor is powered when it
+# is first probed. Internal = not exposed to Stagewatch.
+switch:
+  - platform: gpio
+    id: i2c_power
+    pin: GPIO7                          # I2C_POWER: STEMMA QT port 3V3 enable
+    restore_mode: ALWAYS_ON
+    internal: true
+  - platform: gpio
+    id: neopixel_power
+    pin: GPIO21                         # NEOPIXEL_POWER
+    restore_mode: ALWAYS_ON
+    internal: true
+
+i2c:
+  sda: GPIO3
+  scl: GPIO4
+  frequency: 100kHz                     # gentle on a long STEMMA QT cable
+  scan: true
+
+# Status LED: amber = no Wi-Fi / no API client, green (dim) = API connected.
+light:
+  - platform: esp32_rmt_led_strip
+    id: status_led
+    internal: true
+    pin: GPIO33
+    num_leds: 1
+    chipset: ws2812
+    channel_colors: GRB
+    restore_mode: ALWAYS_OFF
+
+sensor:
+  # --- Primary: BME280 (Adafruit 2652) ---------------------------------------
+  - platform: bme280_i2c
+    address: 0x77                       # 0x76 if the ADR jumper is cut
+    update_interval: 5s
+    temperature:
+      name: "Temperature"
+      oversampling: 4x                  # lower than 16x: less self-heating
+    humidity:
+      name: "Humidity"
+    pressure:
+      name: "Pressure"                  # reported in hPa; Stagewatch converts
+
+  # --- Alternative: SHT45 (Adafruit 5665; +/-0.1 degC, +/-1 %RH, no pressure) -
+  # To use it, delete the BME280 block above and uncomment this one.
+  # - platform: sht4x
+  #   address: 0x44
+  #   update_interval: 5s
+  #   precision: High
+  #   heater_max_duty: 0.0              # keep the heater off: it skews temperature
+  #   temperature:
+  #     name: "Temperature"
+  #   humidity:
+  #     name: "Humidity"
+
+  # --- Battery gauge (informational; enable ONE, matching your board) --------
+  # MAX17048 (newer boards, 0x36). ESPHome has no dedicated max17048 platform;
+  # the max17043 platform reads the same registers with the same scaling and
+  # accepts the MAX17048 power-up config value, but the docs only list the
+  # MAX17043, so confirm the values look sane (about 3.0-4.2 V) on your board.
+  - platform: max17043
+    update_interval: 60s
+    battery_voltage:
+      name: "Battery voltage"
+    battery_level:
+      name: "Battery"
+
+  # LC709203F (older boards, 0x0B): official platform. Set size to your pack.
+  # - platform: lc709203f
+  #   update_interval: 60s
+  #   size: 500                         # pack capacity in mAh (100-3000)
+  #   voltage: 3.7
+  #   battery_voltage:
+  #     name: "Battery voltage"
+  #   battery_level:
+  #     name: "Battery"
+
+  - platform: wifi_signal
+    name: "WiFi signal"
+    update_interval: 30s
+
+# Optional "Mark" button on the boot button (GPIO0, active low). Stagewatch does
+# not consume contact inputs as markers yet, so this is left disabled.
+# binary_sensor:
+#   - platform: gpio
+#     name: "Mark"
+#     pin:
+#       number: GPIO0
+#       mode: INPUT_PULLUP
+#       inverted: true
+#     filters:
+#       - delayed_on: 30ms
