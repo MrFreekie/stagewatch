@@ -28,6 +28,10 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | **ESP32 Bluetooth relay** (ESPHome `bluetooth_proxy`) | Picks up BLE sensor adverts (RuuviTag, pvvx, XIAO nRF52840/MG24 beacons) anywhere on site and forwards them over Wi-Fi/Ethernet. Fixes BLE's 10–30 m range and flaky Windows Bluetooth. | ESPHome native API BLE advertisement stream (reuses the `esphome` integration) | ✅ | ★★★ | ⬅ | **dev list** |
 | Seeed XIAO MG24 Sense (EFR32MG24) | USB-connected tilt (rough, ±0.5–1°; not array-angle grade) + env node via add-on BME280/SHT45; BLE beacon later. The on-board mic is **not** SPL-grade. | Arduino sketch → `ENV,`/`TILT,` lines over USB serial (phase 3 `serial_line`); BLE via the relay above | ✅ | ★ | ⬅ | |
 | METAR / met-office API | Forecast wind and pressure baseline | HTTPS | ✅ | ★ | ⬅ | |
+| **Lightning detector node** (ESPHome + AS3935 breakout) | Strike distance (km) and strike count/trend, for the event's lightning / "30-30" procedure. Advisory only; the AS3935 estimates distance to the storm front and can false-trigger near switching power supplies | ESPHome `as3935_i2c` / `as3935_spi` (reuses the `esphome` integration) | ✅ | ★★★ | ⬅ | **planned** |
+| Online lightning data (e.g. Blitzortung) | Strikes near the site when the hub has internet; cross-check for the local detector | HTTPS / WebSocket | ❓ (terms of use must be checked; Blitzortung restricts use of its data) | ★★ | ⬅ | |
+| Amp rack monitor node (ESPHome) | Rack temperature, fan running (tach or airflow), rack door contact, UPS dry contact | ESPHome native API | ✅ | ★★ | ⬅ | planned |
+| **Battery sensor nodes** (ESPHome deep sleep) | Env / wind readings from places with no mains power; wakes, reports, sleeps. Battery level and "last seen" shown per node | ESPHome native API | ✅ | ★★ | ⬅ | planned |
 
 ## Power
 | Integration | Brings | Protocol | Docs | Pri | Dir |
@@ -79,7 +83,10 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 |---|---|---|---|---|---|
 | Bitfocus Companion | Stream Deck values, Mark/Ack buttons, bridge to hundreds of modules | HTTP / OSC, custom variables | ✅ | ★★★ | ⬌ |
 | Luminex GigaCore, Netgear AV M4250 | Link, PoE budget, port errors | SNMP / REST | ✅ / ❓ | ★★ | ⬅ |
-| Dante / AES67 | Device presence, PTP leader | mDNS / PTP | partly | ★★ | ⬅ |
+| **Syslog receiver** (show switches, routers, Wi-Fi APs, other gear) | Switch and network events on the show timeline: port up/down, PoE overload, loop / spanning-tree changes, errors. Filter by device and severity; chosen messages become alarms or markers. Only accepts messages from devices the admin lists; size- and rate-limited; stored with the show's history | Syslog RFC 3164 / RFC 5424 over UDP (and TCP). Uses a port above 1024 (e.g. 5514) by default, because port 514 needs extra permissions on Linux | ✅ | ★★★ | ⬅ |
+| SNMP traps (switches, UPS) | Same idea as syslog, for gear that only sends traps | SNMP v2c / v3 traps | ✅ | ★★ | ⬅ |
+| **Stagewatch computer health** (built in) | CPU temperature and load, free disk, memory, network link state, clock sync offset: so the monitor is monitored too | Local OS | ✅ | ★★★ | ⬅ |
+| Dante / AES67 | Device presence, PTP clock leader and **leader changes** (clock health) | mDNS / PTP | partly | ★★ | ⬅ |
 | QLab, grandMA3, TouchOSC, Chataigne | Markers in, alarms out | OSC | ✅ | ★★ | ⬌ |
 | LTC / MTC timecode | Timecode on markers | Audio / MIDI | ✅ | ★★ | ⬅ |
 | Pi GPIO, USB and Modbus relays, ESPHome outputs | Relays, sounders, stack lights, displays | native | ✅ | ★★★ | ➡ |
@@ -124,6 +131,31 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
   Import/upload of a backup from another hub comes later, because it needs careful validation. It builds on the updater's backup system (`backup.py`).
 - **Calibration assistant**: in admin, pick a reference sensor (e.g. TMP119) and the sensors under test, place them together, and let it collect for about 10–15 min. It shows the mean difference and how stable it was, then offers **Apply offset** with one click (reusing the per-sensor offset). Temperature from the reference; for humidity, guide the user through a saturated-salt check (≈75 %RH NaCl, ≈33 %RH MgCl₂). Shows 'not settled' if readings are still drifting.
 - **Custom logo upload**: the admin uploads a logo (production, venue or company) shown in dashboard headers and kiosk/wall views. Size- and type-limited (PNG/SVG/JPEG), stored in the data folder (never the repo), SVG sanitised or served with a safe content type, and removable to revert to the default.
+
+### Advice for FOH (uses data Stagewatch already has)
+- **Alignment drift warning**: "Temperature is up 6 °C since the *Aligned* marker: the delay towers at 60 m have drifted about 1.1 ms." Shows a suggested delay per path (distances entered by the admin) and alerts when the drift passes a threshold you set. Advisory: Stagewatch never changes delays itself.
+- **High-frequency air loss** (ISO 9613-1 air absorption): extra loss at 8 and 16 kHz over each throw distance, now compared with soundcheck. Explains why a mix goes dull as the evening turns damp.
+- **Temperature inversion**: two sensors at different heights (deck and PA height) show whether the air gets warmer or cooler with height, which bends sound down towards or up away from the crowd and neighbours.
+- **Wind relative to the PA**: wind direction shown against the PA's aim and the delay towers, and towards noise-sensitive neighbours (bearings set by the admin).
+- **Curfew SPL budget**: predicts from the current level and trend whether the LAeq15 will go over the limit before the 15 minutes are up ("At this level you'll exceed the 15-min limit in about 4 min"), not only after.
+
+### Site and crew welfare
+- **Heat stress for crew**: an estimated WBGT heat-stress index for stage and FOH on hot days, with advisory levels. Estimated from temperature, humidity and (optionally) a black-globe or sun sensor; not a certified WBGT meter.
+- **Condensation risk**: warns when gear or cases (measured with a surface or case sensor) are colder than the air's dew point. Useful for early load-ins.
+- **Forecast overlay** (later): the forecast wind and rain drawn on the timeline ahead of "now".
+
+### Reports and history
+- **End-of-day show report**: an HTML page (printable to PDF) with the day's temperature / humidity / wind ranges, alarms and acknowledgements, markers, SPL against the limit, and device faults. Built from the recorded history, so it can be made at any time, including after a crash or power cut; a partial day is marked as such, and gaps where the hub was down are shown rather than hidden.
+- **Tour history / venue profiles**: "Last time at this venue: 14 °C, 71 % RH, delays set to X." Venue conditions and notes kept across a tour.
+
+### Dashboards
+- **Floor-plan view**: upload a site plan and place sensors on it, coloured by their current value.
+- **Themes / skins**: more display styles, including a red-on-black night mode for dark FOH positions.
+- **Other languages** (eventually).
+
+### Much later
+- Import speaker positions and distances from Soundvision / ArrayCalc for the drift and air-loss figures.
+- Rain sensor / gauge. Crew noise dose. Curfew countdown card with overrun warning. E-ink displays for delay towers and rigging points.
 
 ## Documented as not integrable (for now)
 - **SSE / Solotech ProSight** inclinometers: no data output is documented.

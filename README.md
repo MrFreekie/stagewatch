@@ -352,6 +352,10 @@ Later:
 - **Protocols and commercial kit:** serial/LoRa gateways, Modbus, NMEA wind (Gill), Broadweigh T24 wind and load shackles, Straightpoint, MQTT
 - **Power:** Shelly, distro meters, residual current (Bender), generator controllers (DSE/ComAp), UPS, contact inputs from power and comms
 - **Pro-audio ecosystem:** Companion, DiGiCo / Yamaha / Allen & Heath, Shure / Sennheiser RF, Smaart SPL, d&b / L-Acoustics amps
+- **Advice for FOH:** alignment drift since the *Aligned* marker with suggested delays, high-frequency air loss, temperature inversion, wind relative to the PA, curfew SPL budget prediction
+- **Site and kit:** lightning detection, crew heat stress, condensation risk, amp rack monitoring, battery and LoRa sensor nodes, health of the Stagewatch computer itself
+- **Network:** syslog receiver for show switches and other gear (port errors, PoE, loops on the timeline), Dante / PTP clock health
+- **Reports and views:** end-of-day show report (works after a crash or power cut), tour history and venue profiles, floor-plan view, themes including a night mode
 
 See [INTEGRATIONS_WISHLIST.md](INTEGRATIONS_WISHLIST.md).
 
