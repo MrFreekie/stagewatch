@@ -85,6 +85,7 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | ntfy / Pushover / Telegram | Alerts for roaming crew | HTTPS | ✅ | ★★ | ➡ |
 | [Ontime](https://github.com/cpvalente/ontime) (open-source rundown / show timer) | **Wall Clock source** (time of day, in planning); later: running order, current/next item, timers, and cue markers | WebSocket `runtime-data` (~1 Hz, `clock` = ms since local midnight) and HTTP `GET /api/poll`, **verified on v4.14.0** | ✅ | ★★★ | ⬅ |
 | Local NTP server | **Wall Clock source** and clock-health check (offset, stratum) for the show network | SNTP (UDP 123) | ✅ | ★★ | ⬅ |
+| Internet time (public NTP: pool.ntp.org, time.cloudflare.com, NIST) | **Wall Clock source** when the hub has internet; reference for checking the other clocks | SNTP (UDP 123); NTS optional later | ✅ | ★★ | ⬅ |
 | USB serial GPS receiver | **Wall Clock source** (UTC from GPS; independent of the network) with fix status | NMEA 0183 `$GPRMC` / `$GPZDA` over serial (PPS later) | ✅ | ★★ | ⬅ |
 
 ## Feature backlog (non-integration)
@@ -95,4 +96,5 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 - **SSE / Solotech ProSight** inclinometers: no data output is documented.
 - **LAPTEQ / Nexo GEO Sight** displays: standalone.
 - **Eilon Ron StageMaster** load cells: proprietary software only.
+- **Time.is**: its terms of use forbid use from scripts and apps (a separate API is available by contacting them). Use public NTP for internet time instead.
 - **Hoist-integrated load cells** (Kinesys Apex, Movecat, ChainMaster): these belong to the automation operator's system.
