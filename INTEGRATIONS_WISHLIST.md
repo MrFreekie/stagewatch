@@ -108,11 +108,13 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
 | Adafruit Feather ESP32-C6 | Wi-Fi 6, BLE | Candidate | STEMMA QT, battery. |
 | Adafruit Feather ESP32-S2 | Wi-Fi only (**no BLE**) | Candidate (env only) | Fine as an env node; can't be a Bluetooth relay. |
 | Adafruit Feather + Ethernet FeatherWing (W5500) | Ethernet (no PoE) | Candidate | Wired node; power separately or via a PoE splitter. |
+| **Adafruit TMP119** (PID 6482, ±0.03 °C) reference probe | via host board: Wi-Fi (ESPHome) or USB serial | **Planned** (calibration reference) | Temperature-only reference for calibrating other nodes. ESPHome: use the `tmp117` platform (the TMP119 is register-compatible; ESPHome's tmp117 driver doesn't check the device ID; **untested**). USB-serial version later (Arduino + Adafruit_TMP117 library → `ENV,` lines) as a portable probe plugged into the Stagewatch PC. |
 | Seeed XIAO MG24 (Sense), nRF52840; Adafruit Feather nRF52840 | BLE only | Later | BLE beacons via the Bluetooth relay, or USB serial. |
 | Seeed XIAO RP2040/RP2350/SAMD21; Adafruit Feather RP2040/M4 | none | Later | USB serial nodes, once the `serial_line` input exists. |
 
 ## Feature backlog (non-integration)
 - **Setlist / day schedule sheet**: a built-in running order for the day (doors, support, changeover, headliner, curfew) and a per-show setlist. Items can be entered by hand or imported (CSV/paste). Schedule times auto-create timeline markers, and a dashboard card shows "now / next / time to curfew". It could run standalone or sync with Ontime (above) when that's in use.
+- **Calibration assistant**: in admin, pick a reference sensor (e.g. TMP119) and the sensors under test, place them together, and let it collect for about 10–15 min. It shows the mean difference and how stable it was, then offers **Apply offset** with one click (reusing the per-sensor offset). Temperature from the reference; for humidity, guide the user through a saturated-salt check (≈75 %RH NaCl, ≈33 %RH MgCl₂). Shows 'not settled' if readings are still drifting.
 - **Custom logo upload**: the admin uploads a logo (production, venue or company) shown in dashboard headers and kiosk/wall views. Size- and type-limited (PNG/SVG/JPEG), stored in the data folder (never the repo), SVG sanitised or served with a safe content type, and removable to revert to the default.
 
 ## Documented as not integrable (for now)
