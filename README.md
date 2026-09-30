@@ -260,11 +260,21 @@ tag `vX.Y.Z`. It never pushes.
 
 ## Roadmap
 
+Released and in progress:
 1. **v0.1:** ESPHome environment, averaging, markers, alarms, dashboards, OSC, autostart
-2. **ESPHome expansion:** wind (mean and gust, with warnings), inclinometers, relay/buzzer/stack-light outputs, Pi GPIO, dashboard and automation editors
-3. **Protocols and commercial kit:** serial/LoRa gateways, Modbus, NMEA wind (Gill), Broadweigh T24 wind and load shackles, Straightpoint, MQTT
-4. **Power:** Shelly, distro meters, residual current (Bender), generator controllers (DSE/ComAp), UPS, contact inputs from power and comms
-5. **Pro-audio ecosystem:** Companion, DiGiCo / Yamaha / Allen & Heath, Shure / Sennheiser RF, Smaart SPL, d&b / L-Acoustics amps
+2. **v0.2 (in progress):** in-app updater (Stable / Nightly channels, automatic backup and rollback), managed install, crash-restarting launcher
+
+Planned:
+3. **v0.3:** events and show days, one site time zone, per-dashboard card picker, day schedule / setlist card, Wall Clock card (Ontime), hardware identity with calibration records that follow each sensor
+4. **v0.4:** SPL limit display, key onsite contacts
+5. **v0.5:** per-event logo
+6. **Manual backup and restore:** "Back up now" with a note, a list of automatic and manual backups, download a backup, restore a chosen backup (admin PIN; applied safely by the launcher with the current data kept aside), scheduled daily backups with retention. Builds on the updater's backup system.
+
+Later:
+- **ESPHome expansion:** wind (mean and gust, with warnings), inclinometers, relay/buzzer/stack-light outputs, Pi GPIO, dashboard and automation editors, Bluetooth relay
+- **Protocols and commercial kit:** serial/LoRa gateways, Modbus, NMEA wind (Gill), Broadweigh T24 wind and load shackles, Straightpoint, MQTT
+- **Power:** Shelly, distro meters, residual current (Bender), generator controllers (DSE/ComAp), UPS, contact inputs from power and comms
+- **Pro-audio ecosystem:** Companion, DiGiCo / Yamaha / Allen & Heath, Shure / Sennheiser RF, Smaart SPL, d&b / L-Acoustics amps
 
 See [INTEGRATIONS_WISHLIST.md](INTEGRATIONS_WISHLIST.md).
 

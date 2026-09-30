@@ -114,6 +114,12 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
 
 ## Feature backlog (non-integration)
 - **Setlist / day schedule sheet**: a built-in running order for the day (doors, support, changeover, headliner, curfew) and a per-show setlist. Items can be entered by hand or imported (CSV/paste). Schedule times auto-create timeline markers, and a dashboard card shows "now / next / time to curfew". It could run standalone or sync with Ontime (above) when that's in use.
+- **Manual backup and restore**: an admin "Backups" card with:
+  - **Back up now** with a note, and a list of automatic (pre-update) and manual backups, showing sizes;
+  - **download** a backup as a zip; it contains the PIN hash and ESPHome keys, so it's admin-only with a warning;
+  - **restore** a chosen backup: needs the admin PIN, is applied by the launcher with the server stopped, keeps the current data aside, and checks the sha256 manifest first;
+  - **scheduled daily backups** with retention.
+  Import/upload of a backup from another hub comes later, because it needs careful validation. It builds on the updater's backup system (`backup.py`).
 - **Calibration assistant**: in admin, pick a reference sensor (e.g. TMP119) and the sensors under test, place them together, and let it collect for about 10–15 min. It shows the mean difference and how stable it was, then offers **Apply offset** with one click (reusing the per-sensor offset). Temperature from the reference; for humidity, guide the user through a saturated-salt check (≈75 %RH NaCl, ≈33 %RH MgCl₂). Shows 'not settled' if readings are still drifting.
 - **Custom logo upload**: the admin uploads a logo (production, venue or company) shown in dashboard headers and kiosk/wall views. Size- and type-limited (PNG/SVG/JPEG), stored in the data folder (never the repo), SVG sanitised or served with a safe content type, and removable to revert to the default.
 
