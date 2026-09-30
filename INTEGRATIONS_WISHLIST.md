@@ -83,7 +83,9 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | Pi GPIO, USB and Modbus relays, ESPHome outputs | Relays, sounders, stack lights, displays | native | ✅ | ★★★ | ➡ |
 | Patlite / Werma network stack lights, Art-Net / sACN fixtures | Visual alarms | Socket / HTTP, Art-Net | ✅ | ★★ | ➡ |
 | ntfy / Pushover / Telegram | Alerts for roaming crew | HTTPS | ✅ | ★★ | ➡ |
-| [Ontime](https://github.com/cpvalente/ontime) (open-source rundown / show timer) | Running order, current/next item, timers; each cue can auto-drop a timeline marker | HTTP / WebSocket / OSC API (check the current docs) | ❓ | ★★★ | ⬌ |
+| [Ontime](https://github.com/cpvalente/ontime) (open-source rundown / show timer) | **Wall Clock source** (time of day, in planning); later: running order, current/next item, timers, and cue markers | WebSocket `runtime-data` (~1 Hz, `clock` = ms since local midnight) and HTTP `GET /api/poll`, **verified on v4.14.0** | ✅ | ★★★ | ⬅ |
+| Local NTP server | **Wall Clock source** and clock-health check (offset, stratum) for the show network | SNTP (UDP 123) | ✅ | ★★ | ⬅ |
+| USB serial GPS receiver | **Wall Clock source** (UTC from GPS; independent of the network) with fix status | NMEA 0183 `$GPRMC` / `$GPZDA` over serial (PPS later) | ✅ | ★★ | ⬅ |
 
 ## Feature backlog (non-integration)
 - **Setlist / day schedule sheet**: a built-in running order for the day (doors, support, changeover, headliner, curfew) and a per-show setlist. Items can be entered by hand or imported (CSV/paste). Schedule times auto-create timeline markers, and a dashboard card shows "now / next / time to curfew". It could run standalone or sync with Ontime (above) when that's in use.
