@@ -90,6 +90,26 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | Internet time (public NTP: pool.ntp.org, time.cloudflare.com, NIST) | **Wall Clock source** when the hub has internet; reference for checking the other clocks | SNTP (UDP 123); NTS optional later | ✅ | ★★ | ⬅ |
 | USB serial GPS receiver | **Wall Clock source** (UTC from GPS; independent of the network) with fix status | NMEA 0183 `$GPRMC` / `$GPZDA` over serial (PPS later) | ✅ | ★★ | ⬅ |
 
+## Node hardware (DIY boards)
+Boards expected to work as Stagewatch sensor or output nodes. **Supported** = tested with Stagewatch; **Planned** = intended for support, with an example config to be written; **Candidate** = should work (runs ESPHome) but not planned yet. Sensors plug in over I2C (Qwiic/STEMMA QT where available): BME280, SHT45, SCL3300, etc.
+
+| Board | Radio / network | Status | Notes |
+|---|---|---|---|
+| ESP32 DevKit + BME280 / SHT45 | Wi-Fi, BLE | Example configs in `esphome/` | Reference node for v0.1 (not yet tested on hardware). |
+| Olimex ESP32-POE(-ISO) | Ethernet + PoE | Example config in `esphome/` | Isolated PoE version recommended on show power. |
+| **Seeed XIAO ESP32C3** | Wi-Fi 2.4 GHz, BLE | **Planned** | Cheapest tiny env node; very mature ESPHome support. |
+| **Seeed XIAO ESP32C5** | **Dual-band 2.4 / 5 GHz Wi-Fi 6**, BLE | **Planned** | For crowded 2.4 GHz festival sites; needs ESPHome 2026.7+. |
+| Seeed XIAO W5500 Ethernet Adapter (ESP32-S3 + PoE) | Ethernet + 802.3af PoE | Candidate (strong) | One-cable fixed node, or a wired Bluetooth relay. |
+| Seeed XIAO ESP32S3 / ESP32C6 | Wi-Fi, BLE | Candidate | S3 suits the Bluetooth relay, displays and outputs. |
+| Adafruit Feather ESP32-S3 (4 MB flash / 2 MB PSRAM) | Wi-Fi, BLE | Candidate (strong) | STEMMA QT plug-in sensors, LiPo charging + battery gauge. |
+| Adafruit Feather ESP32-S3 TFT / Reverse TFT | Wi-Fi, BLE | Candidate | Built-in screen: node shows its own readings, IP and status. |
+| Adafruit Feather ESP32 V2 | Wi-Fi, BLE | Candidate | STEMMA QT; classic ESP32 (good Bluetooth relay). |
+| Adafruit Feather ESP32-C6 | Wi-Fi 6, BLE | Candidate | STEMMA QT, battery. |
+| Adafruit Feather ESP32-S2 | Wi-Fi only (**no BLE**) | Candidate (env only) | Fine as an env node; can't be a Bluetooth relay. |
+| Adafruit Feather + Ethernet FeatherWing (W5500) | Ethernet (no PoE) | Candidate | Wired node; power separately or via a PoE splitter. |
+| Seeed XIAO MG24 (Sense), nRF52840; Adafruit Feather nRF52840 | BLE only | Later | BLE beacons via the Bluetooth relay, or USB serial. |
+| Seeed XIAO RP2040/RP2350/SAMD21; Adafruit Feather RP2040/M4 | none | Later | USB serial nodes, once the `serial_line` input exists. |
+
 ## Feature backlog (non-integration)
 - **Setlist / day schedule sheet**: a built-in running order for the day (doors, support, changeover, headliner, curfew) and a per-show setlist. Items can be entered by hand or imported (CSV/paste). Schedule times auto-create timeline markers, and a dashboard card shows "now / next / time to curfew". It could run standalone or sync with Ontime (above) when that's in use.
 - **Custom logo upload**: the admin uploads a logo (production, venue or company) shown in dashboard headers and kiosk/wall views. Size- and type-limited (PNG/SVG/JPEG), stored in the data folder (never the repo), SVG sanitised or served with a safe content type, and removable to revert to the default.
