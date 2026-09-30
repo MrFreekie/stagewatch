@@ -97,6 +97,9 @@ them into a dated release section and tags the commit.
   separate `emulate` subfolder.
 
 ### Added
+- Beginner-friendly user guides in `docs/`: start here, install on Windows, install on a Raspberry Pi,
+  build your first sensor node, using Stagewatch on show day, updating and backups (including a
+  forgotten PIN), troubleshooting and a glossary; the README now points to them first.
 - **In-app updater** (Admin -> Software): Stable and Nightly channels, check/update/roll back with a
   PIN confirmation, changelog and full commit id shown before updating, automatic data backup when the
   config/database format changes, update history, backup and displaced-data sizes, and an

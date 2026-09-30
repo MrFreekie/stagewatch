@@ -33,6 +33,26 @@ RF and SPL.
 
 ---
 
+## Getting started (no coding needed)
+
+Never used GitHub, Python or a command line? These guides are written for live-sound
+crew, with every step explained and what you should see after it. Start here:
+
+- **[Start here](docs/README.md)**: what Stagewatch is, what you need, and the guides in order.
+- **[Install on Windows](docs/install-windows.md)**: a FOH laptop or mini-PC that starts Stagewatch at boot.
+- **[Install on a Raspberry Pi](docs/install-raspberry-pi.md)**: a small always-on box, with an optional wall-screen kiosk.
+- **[Build your first sensor node](docs/first-sensor-node.md)**: an ESP32-S3 Feather and a plug-in sensor, no soldering.
+- **[Using Stagewatch on show day](docs/using-stagewatch.md)**: dashboards, markers, alarms.
+- More: [updating and backups](docs/updating-and-backups.md) (including a forgotten PIN),
+  [troubleshooting](docs/troubleshooting.md) and a [glossary](docs/glossary.md).
+
+The Windows boot install and the Raspberry Pi mode have **not yet been tested on real
+hardware**. Try them at home before you rely on them at a show.
+
+The rest of this page is reference material for installers and developers.
+
+---
+
 ## Why
 
 The speed of sound changes by about 0.6 m/s per °C. Over a 30 m sub-to-FOH or
@@ -64,25 +84,7 @@ changed since then.
 - **Autostart at boot** on Windows or Raspberry Pi, with an optional Pi kiosk display.
 - **Emulate mode**: build and demo a show with no hardware.
 
-## Quick start
-
-Requires [uv](https://docs.astral.sh/uv/). It fetches Python 3.12 itself.
-
-```bash
-git clone https://github.com/MrFreekie/stagewatch.git
-cd stagewatch
-uv sync
-uv run stagewatch --emulate
-```
-
-Open <http://localhost:8080>. The first visit asks you to set an admin PIN.
-`--emulate` runs three simulated sensor nodes. Drop it once real nodes are on the network.
-
-```
-stagewatch [--port 8080] [--data-dir DIR] [--emulate] [--no-mdns] [-v] [--version]
-```
-
-### Code vs. your installation
+## Code vs. your installation
 
 The repository is a **blank system**. It contains no configuration, devices, PINs or
 history. Each installation keeps its own data in a folder **outside the code**:
@@ -113,6 +115,7 @@ uv run python scripts/site_config.py push -m "Added delay tower nodes"
 
 ## Sensor nodes (ESPHome)
 
+Step by step for beginners: [Build your first sensor node](docs/first-sensor-node.md).
 Example configs are in [`esphome/`](esphome/):
 
 | File | Hardware |
@@ -134,6 +137,11 @@ sound travels through. Check it against a reference thermometer and set the offs
 **Admin → Sensors**.
 
 ## Run at boot
+
+Step by step for beginners: [Windows](docs/install-windows.md) and
+[Raspberry Pi](docs/install-raspberry-pi.md). Until a release newer than v0.1.0 is
+published, pass `-Ref main` (Windows) or `--ref main` (Pi), because the installer's default
+is the newest release tag and v0.1.0 predates the managed install.
 
 **Windows** (FOH laptop or mini-PC). Needs Git for Windows and `uv`. Run this in an
 elevated PowerShell:
@@ -176,6 +184,8 @@ one, or pass `--port`. The boot service's data folder is not readable by ordinar
 purpose: open an elevated PowerShell (Windows) or use `sudo` (Pi) to read logs or copy backups.
 
 ## Updating
+
+Plain-words version for crew: [Updating and backups](docs/updating-and-backups.md).
 
 **Admin → Software** can update Stagewatch from GitHub without a terminal. It only works on a
 **managed install** (the Windows/Pi installers above), where the server runs under the launcher.
@@ -246,7 +256,32 @@ Configure destinations in **Admin → OSC output**. NaN means "not measured".
 - ESPHome encryption keys are never returned by the API.
 - Run Stagewatch on a private control network, not the public internet.
 
-## Development
+## For developers
+
+Everything from here to the roadmap is for people who work on the code. To *use*
+Stagewatch, see [Getting started](#getting-started-no-coding-needed) above.
+
+### Quick start (run from source)
+
+Requires [uv](https://docs.astral.sh/uv/). It fetches Python 3.12 itself. This is for trying
+it out or developing. For a show computer use the [installers](#run-at-boot) instead.
+
+```bash
+git clone https://github.com/MrFreekie/stagewatch.git
+cd stagewatch
+uv sync
+uv run stagewatch --emulate
+```
+
+Open <http://localhost:8080>. The first visit asks you to set an admin PIN.
+`--emulate` runs three simulated sensor nodes. Drop it once real nodes are on the network.
+
+```
+stagewatch [--host HOST] [--port 8080] [--data-dir DIR] [--print-data-dir] [--emulate] [--no-mdns] [-v] [--version]
+stagewatch reset-admin-pin [--data-dir DIR] [--emulate] [--force]
+```
+
+### Development
 
 **Before your first commit:** run `git config core.hooksPath .githooks`. The hook
 blocks secrets (keys, PIN hashes, `secrets.yaml`, config and data files) from being
@@ -276,7 +311,7 @@ tests/
 New integrations subclass `stagewatch.core.plugin.Integration`. Each one ships a
 `Manifest` (vendor, protocol, tier) and supports emulate mode.
 
-## Versioning and releases
+### Versioning and releases
 
 Stagewatch follows [Semantic Versioning](https://semver.org), and changes are recorded
 in [CHANGELOG.md](CHANGELOG.md):
