@@ -29,6 +29,13 @@ them into a dated release section and tags the commit.
 - All request bodies are capped (64 KiB by default; `413` beyond that, per-route override hook).
 
 ### Changed
+- Admin Software card polish: Installed / Updates / History sections, an "Update available"
+  panel (versions, full commit, scrollable plain-text changes), a labelled confirm dialog
+  (PIN focus only on non-touch devices so the keyboard doesn't hide the changelog), history as
+  a list with an always-visible "Roll back" button on phones, a full-screen "restarting"
+  overlay with elapsed time that blocks stray taps and reloads the page, the card refreshing
+  itself when a new build is confirmed, 44 px targets, and better text contrast on the
+  accent-coloured buttons and the header badge.
 - The default data folder is now per-user and outside the source checkout
   (`%USERPROFILE%\StagewatchData` on Windows, `~/.local/share/stagewatch` on Linux), so code
   updates and re-clones never touch an installation's data. Emulate mode uses a

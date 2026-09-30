@@ -286,9 +286,14 @@
   const bytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : `${Math.max(1, Math.round((n || 0) / 1024))} KiB`);
   const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? (iso || "") : d.toLocaleString(); };
 
+  // Changelog excerpt + commit subjects as one plain-text block (blank-line runs collapsed).
+  const changesText = (last) => [last.changelog, last.commits && last.commits.length ? "Commits:\n" + last.commits.map((c) => `- ${c}`).join("\n") : ""]
+    .filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+
   async function loadSoftware() {
     try { sw = await api("GET", "/api/admin/software"); } catch (_) { sw = null; }
     swBadge().hidden = !(sw && sw.update_available);   // header only, never on user dashboards
+    if (sw && sw.restarting) watchRestart(sw.commit);   // page opened/reloaded mid-restart
   }
   function rerenderSoftware() {
     swBadge().hidden = !(sw && sw.update_available);
@@ -303,22 +308,35 @@
     } finally { await loadSoftware(); rerenderSoftware(); }
   }
 
+  // Full-screen overlay (blocks stray taps while the server restarts); reloads the page once
+  // the server is back.  Also covers a page loaded while the server already reports "restarting".
+  let watching = false;
   function watchRestart(startCommit) {
-    const banner = h("div", { class: "restart-banner" }, "Stagewatch is restarting for an update…");
-    document.body.prepend(banner);
+    if (watching) return;
+    watching = true;
+    const secsEl = h("span", { "aria-hidden": "true" });
+    const msg = h("p", { class: "restart-msg" }, "Stagewatch is restarting for an update…", secsEl);
+    const sub = h("p", { class: "muted" }, "This takes about a minute. This page reloads by itself.");
+    const overlay = h("div", { class: "restart-overlay", role: "alertdialog", "aria-modal": "true", "aria-label": "Restarting for an update" },
+      h("div", { class: "restart-box", tabindex: "-1", "aria-live": "polite" }, h("div", { class: "spinner", "aria-hidden": "true" }), msg, sub));
+    document.body.append(overlay);
+    overlay.firstChild.focus();   // keep keyboard focus off the page underneath
     const t0 = Date.now();
     let wasDown = false;
     const tick = async () => {
+      const secs = Math.round((Date.now() - t0) / 1000);
       try {
         const res = await fetch("/api/info", { cache: "no-store", credentials: "same-origin" });
         if (!res.ok) throw new Error("down");
         const info = await res.json();
-        if (wasDown || (info.build && info.build.commit !== startCommit)) { location.reload(); return; }
+        // Reload when it went down and came back, the build changed, or it has been up for a long
+        // while (a fast restart or a failed update that rolled back to the same build).
+        if (wasDown || (info.build && info.build.commit !== startCommit) || secs > 90) { location.reload(); return; }
       } catch (_) { wasDown = true; }
-      if (Date.now() - t0 > 10 * 60 * 1000) {
-        banner.textContent = "Stagewatch has not come back. Check the launcher log on the host machine.";
-        return;
-      }
+      if (secs > 10 * 60) {
+        msg.replaceChildren("Stagewatch has not come back.");
+        sub.textContent = "Check the launcher log on the host machine. This page will reload when the server returns.";
+      } else secsEl.textContent = ` ${secs} s`;
       setTimeout(tick, 2000);
     };
     setTimeout(tick, 1500);
@@ -326,37 +344,40 @@
 
   // Confirm dialog with PIN step-up.  submit(pin) performs the API call.
   function confirmDialog({ title, lines, pre, warning, confirmLabel, submit }) {
-    const pin = h("input", { type: "password", inputmode: "numeric", autocomplete: "current-password", placeholder: "Admin PIN", maxlength: 64 });
-    const err = h("p", { class: "error" });
-    const dlg = h("dialog", { class: "sw-dialog" });
+    const pin = h("input", { type: "password", inputmode: "numeric", autocomplete: "current-password", placeholder: "Admin PIN", "aria-label": "Admin PIN", maxlength: 64 });
+    const err = h("p", { class: "error", role: "alert" });
+    const heading = h("h3", { id: "sw-dlg-title", tabindex: "-1" }, title);
+    const dlg = h("dialog", { class: "sw-dialog", "aria-labelledby": "sw-dlg-title" });
     const close = () => { dlg.close(); dlg.remove(); };
     const go = h("button", { class: "primary", type: "submit" }, confirmLabel);
     dlg.append(h("form", { onsubmit: async (ev) => {
       ev.preventDefault();
+      if (go.disabled) return;
       err.textContent = "";
       go.disabled = true;
       try { await submit(pin.value); close(); }
       catch (e) { err.textContent = e.message; go.disabled = false; pin.value = ""; pin.focus(); }
     } },
-    h("h3", { style: "margin-top:0" }, title),
-    ...lines.map((l) => h("p", { style: "margin:4px 0" }, l)),
-    pre ? h("div", { class: "pre-wrap" }, pre) : null,
+    heading,
+    h("dl", { class: "sw-facts" }, lines.flatMap(([k, v, mono]) => [h("dt", {}, k), h("dd", { class: mono ? "mono" : "" }, v)])),
+    pre ? h("div", { class: "pre-wrap", tabindex: "0", role: "region", "aria-label": "Changes in this update" }, pre) : null,
     warning ? h("p", { class: "warn-text" }, warning) : null,
     h("p", { class: "muted", style: "font-size:13px" }, "Stagewatch will restart for about a minute; dashboards reconnect by themselves. Re-enter the admin PIN to continue."),
-    h("div", { class: "row" }, pin, h("button", { type: "button", onclick: close }, "Cancel"), go),
+    h("div", { class: "row sw-dlg-actions" }, pin, h("button", { type: "button", onclick: close }, "Cancel"), go),
     err));
-    dlg.addEventListener("cancel", () => dlg.remove());
+    dlg.addEventListener("cancel", () => dlg.remove());   // Escape
     document.body.append(dlg);
     dlg.showModal();
-    pin.focus();
+    // On touch devices the on-screen keyboard would hide the changelog: read first, then tap the PIN.
+    (matchMedia("(pointer: fine)").matches ? pin : heading).focus();
   }
 
   function startUpdate(last) {
-    const from = sw.describe, to = last.target_version || "unknown version";
+    const from = last.from_version || sw.version, to = last.target_version || "unknown version";
     confirmDialog({
       title: "Update Stagewatch",
-      lines: [`Channel: ${last.channel === "nightly" ? "Nightly" : "Stable"}`, `Version: ${from} → ${to}`, `Commit: ${last.target_sha}`],
-      pre: [last.changelog, last.commits && last.commits.length ? "Commits:\n" + last.commits.map((c) => `- ${c}`).join("\n") : ""].filter(Boolean).join("\n\n") || "(no changelog)",
+      lines: [["Channel", last.channel === "nightly" ? "Nightly" : "Stable"], ["Version", `${from} → ${to}`], ["Commit", last.target_sha, true]],
+      pre: changesText(last) || "(no changelog)",
       warning: last.schema_changed ? "This update changes the data format. A backup is made first and restored automatically if the update fails." : "",
       confirmLabel: "Update now",
       submit: async (pin) => {
@@ -369,7 +390,7 @@
   function startRollback(entry) {
     confirmDialog({
       title: "Roll back Stagewatch",
-      lines: [`Version: ${entry.to_version || "current"} → ${entry.from_version || "previous"}`],
+      lines: [["Version", `${entry.to_version || "current"} → ${entry.from_version || "previous"}`]],
       warning: entry.schema_changed ? "The data from before that update is restored. Anything recorded since is set aside in a displaced-… backup folder (kept, not deleted)." : "",
       confirmLabel: "Roll back",
       submit: async (pin) => {
@@ -390,48 +411,55 @@
     if (!sw.mutable) {
       return el(info, h("p", { class: "muted" }, sw.message || "In-app updates are only available on a managed install."));
     }
-    const chan = h("select", {}, [["stable", "Stable"], ["nightly", "Nightly"]].map(([v, l]) => h("option", { value: v }, l)));
+    const sub = (text) => h("h3", { class: "sw-sub" }, text);
+    const chanName = (c) => (c === "nightly" ? "Nightly" : "Stable");
+    const checkedAt = (last) => when(new Date(last.ts * 1000).toISOString());
+    const chan = h("select", { id: "sw-channel" }, [["stable", "Stable"], ["nightly", "Nightly"]].map(([v, l]) => h("option", { value: v }, l)));
     chan.value = sw.channel;
     chan.onchange = () => swAction(() => api("PUT", "/api/admin/software/channel", { channel: chan.value }), "Channel changed");
-    const checkBtn = h("button", { class: "primary", disabled: sw.job.running || sw.restarting, onclick: async (ev) => {
+    const busy = sw.job.running || sw.restarting;
+    const checkBtn = h("button", { disabled: busy, onclick: async (ev) => {
       ev.target.disabled = true;
+      ev.target.textContent = "Checking…";
       const r = await swAction(() => api("POST", "/api/admin/software/check"));
       if (r && !r.ok) toast(r.message, true);
-    } }, "Check for updates");
+    } }, busy && sw.job.running ? "Working…" : "Check for updates");
 
     const last = sw.last_check;
     let result;
     if (!last) result = h("p", { class: "muted" }, "Not checked yet.");
-    else if (!last.ok) result = h("p", { class: "error" }, `${last.message} (checked ${when(new Date(last.ts * 1000).toISOString())})`);
-    else if (!last.available) result = h("p", { class: "muted" }, `Up to date on the ${last.channel === "nightly" ? "Nightly" : "Stable"} channel (checked ${when(new Date(last.ts * 1000).toISOString())}).`);
-    else result = h("div", {},
-      h("p", {}, h("strong", {}, `Update available: ${last.target_version || "unknown version"}`), ` (currently ${last.from_version || sw.version})`),
-      h("div", { class: "mono" }, last.target_sha),
-      last.schema_changed ? h("p", { class: "warn-text" }, "This update changes the data format; a backup is made first.") : null,
-      last.changelog ? h("div", { class: "pre-wrap" }, last.changelog) : null,
-      last.commits && last.commits.length ? h("div", { class: "pre-wrap" }, last.commits.map((c) => `- ${c}`).join("\n")) : null,
-      h("button", { class: "primary", onclick: () => startUpdate(last) }, "Update now…"));
+    else if (!last.ok) result = h("p", { class: "error", role: "alert" }, "Check failed: ", last.message, h("span", { class: "muted" }, ` (${checkedAt(last)})`));
+    else if (!last.available) result = h("p", {}, h("span", { class: "sw-ok" }, "✓ Up to date"), h("span", { class: "muted" }, ` on the ${chanName(last.channel)} channel (checked ${checkedAt(last)})`));
+    else result = h("div", { class: "sw-available" },
+      h("h3", {}, "Update available"),
+      h("div", { class: "sw-versions" }, `${last.from_version || sw.version} → `, h("strong", {}, last.target_version || "unknown version")),
+      h("div", { class: "muted", style: "font-size:12px" }, "Commit"), h("div", { class: "mono" }, last.target_sha),
+      last.schema_changed ? h("p", { class: "warn-text" }, "⚠ This update changes the data format; a backup is made first.") : null,
+      changesText(last) ? [h("div", { class: "muted", style: "font-size:12px;margin-top:8px" }, "What's changed"),
+        h("div", { class: "pre-wrap", tabindex: "0", role: "region", "aria-label": "What's changed" }, changesText(last))] : null,
+      h("button", { class: "primary sw-go", disabled: sw.restarting, onclick: () => startUpdate(last) }, "Update now…"));
 
-    const hist = sw.history.length ? h("div", { class: "table-scroll" }, h("table", {},
-      h("thead", {}, h("tr", {}, ["When", "What", "Result", "Versions", ""].map((x) => h("th", {}, x)))),
-      h("tbody", {}, sw.history.slice(0, 10).map((e) => h("tr", {},
-        h("td", { class: "muted" }, when(e.ts)), h("td", {}, e.action || ""),
-        h("td", {}, e.result + (e.reason ? ` (${e.reason})` : "")),
-        h("td", {}, `${e.from_version || "?"} → ${e.to_version || "?"}`),
-        h("td", {}, e.can_rollback ? h("button", { class: "small", onclick: () => startRollback(e) }, "Roll back…") : null)))))) : h("p", { class: "muted" }, "No updates yet.");
-
-    const sizes = (rows, label) => rows.length ? h("div", {}, h("h3", { class: "muted", style: "font-size:13px;margin:12px 0 4px" }, label),
+    // A list, not a table: on a phone a wide table hides the Roll back button off-screen.
+    const hist = sw.history.length ? h("ul", { class: "sw-hist" }, sw.history.slice(0, 10).map((e) => h("li", {},
+      h("div", { class: "sw-hist-main" },
+        h("div", {}, h("strong", {}, `${e.from_version || "?"} → ${e.to_version || "?"}`), `  ${e.action || ""}: `,
+          h("span", { class: e.result === "ok" ? "sw-ok" : "warn-text" }, (e.result === "ok" ? "✓ " : "⚠ ") + e.result), e.reason ? ` (${e.reason})` : ""),
+        h("div", { class: "muted", style: "font-size:12px" }, when(e.ts))),
+      e.can_rollback ? h("button", { class: "small danger", disabled: sw.restarting, onclick: () => startRollback(e) }, "Roll back…") : null)))
+      : h("p", { class: "muted" }, "No updates yet.");
+    const sizes = (rows, label) => rows.length ? h("div", {}, sub(label),
       h("table", {}, h("tbody", {}, rows.map((r) => h("tr", {}, h("td", { class: "mono" }, r.id || r.name), h("td", { class: "num" }, bytes(r.size)))))))
       : null;
 
-    return el(info,
-      h("div", { class: "row", style: "margin:10px 0" }, h("label", { class: "field" }, "Channel", chan), checkBtn),
+    return el(sub("Installed"), info,
+      sub("Updates"),
+      h("div", { class: "row sw-controls" }, h("label", { class: "field", for: "sw-channel" }, "Channel", chan), checkBtn),
       sw.channel === "nightly" ? h("p", { class: "warn-text" }, "Nightly is bleeding edge, tested automatically only. Don't run it on show days.") : null,
+      sw.restarting ? h("p", { class: "warn-text", role: "status" }, "Restarting for an update…") : null,
       result,
-      h("h3", { class: "muted", style: "font-size:13px;margin:12px 0 4px" }, "Update history"), hist,
+      sub("Update history"), hist,
       sizes(sw.backups, "Data backups"), sizes(sw.displaced, "Displaced data (set aside by a restore)"));
   }
-
   function render() {
     entityIdsRendered = snap.entities.map((e) => e.id).join(",");
     app.replaceChildren(
@@ -460,8 +488,16 @@
         const td = document.querySelector(`[data-live="${CSS.escape(e.id)}"]`);
         if (td) td.textContent = fmt(e.kind, e.value);
       }
+      // Software status changes on its own (history entry once a new build is confirmed healthy,
+      // background check finds an update): re-render that card only when it actually changed.
+      if (++pollN % 3 === 0 && !document.querySelector("dialog[open]") && !watching) {
+        const before = JSON.stringify(sw);
+        await loadSoftware();
+        if (JSON.stringify(sw) !== before) rerenderSoftware();
+      }
     } catch (err) { if (err.status === 401) start(); }
   }
+  let pollN = 0;
 
   async function start() {
     const info = await api("GET", "/api/info");
