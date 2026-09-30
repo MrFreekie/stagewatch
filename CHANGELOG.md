@@ -16,6 +16,7 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Security
+- Upgraded `cryptography` to 50.0.1 (fixes GHSA advisories for PKCS#7 decryption timing, certificate path building and wildcard name constraints). The lock file now covers Windows and Linux only, the supported platforms.
 - Config validation/YAML errors no longer log input values (`hide_input_in_errors` on all config
   models; the load/salvage path logs section names, error types and line/column only, no tracebacks),
   so a bad `noise_psk` or `password` can't leak into `stagewatch.log`.

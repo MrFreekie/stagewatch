@@ -35,3 +35,9 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.uv]
+# Stagewatch targets Windows and Linux (incl. Raspberry Pi). Locking only these platforms
+# lets security fixes land even when a dependency caps a package on other platforms
+# (aioesphomeapi caps cryptography < 49 on Intel macOS only).
+environments = ["sys_platform == 'win32'", "sys_platform == 'linux'"]
