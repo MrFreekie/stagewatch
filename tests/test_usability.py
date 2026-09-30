@@ -89,7 +89,7 @@ def test_diagnostics_contains_no_secret_values(client):
     _admin(client)
     hub, data = client.hub, client.data
     hub.config.esphome_devices.append(EsphomeDeviceConfig(
-        id="n1", host="n1.local", noise_psk=FAKE_KEY, password=FAKE_PW))
+        id="n1", host="n1.local", noise_psk=FAKE_KEY))
     hub.config.site.name = f"Show {FAKE_PSK2}"        # a secret-looking VALUE under an innocent key
     pin_hash = hub.config.admin.pin_hash
     assert pin_hash.startswith("pbkdf2")
@@ -122,7 +122,7 @@ def test_diagnostics_contains_no_secret_values(client):
     assert cfg["admin"] == {"pin_set": True}
     n1 = cfg["esphome_devices"][0]
     assert n1["host"] == "n1.local" and n1["noise_psk"] == diagnostics.REDACTED
-    assert n1["password"] == diagnostics.REDACTED
+    assert "password" not in n1
     info = json.loads(files["info.json"])
     assert info["version"] and "platform" in info and "uptime_s" in info
     assert any(d["id"] == "site" for d in json.loads(files["devices.json"]))

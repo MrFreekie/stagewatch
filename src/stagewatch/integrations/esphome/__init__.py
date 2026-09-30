@@ -60,7 +60,7 @@ class _NodeConnection:
         self.zc = zc
         self._keys: dict[int, tuple[str, Kind, str]] = {}
         self.client = APIClient(
-            cfg.host, cfg.port, cfg.password or None,
+            cfg.host, cfg.port, None,
             client_info=f"Stagewatch {__version__}",
             zeroconf_instance=zc,
             noise_psk=cfg.noise_psk or None,
@@ -119,7 +119,7 @@ class _NodeConnection:
         if isinstance(err, (InvalidEncryptionKeyAPIError, RequiresEncryptionAPIError)):
             self.hub.set_device_status(self.cfg.id, Status.FAULT, "encryption key missing or wrong")
         elif isinstance(err, InvalidAuthAPIError):
-            self.hub.set_device_status(self.cfg.id, Status.FAULT, "API password wrong")
+            self.hub.set_device_status(self.cfg.id, Status.FAULT, "node needs an API password (unsupported; use an encryption key)")
         else:
             self.hub.set_device_status(self.cfg.id, Status.MISSING, str(err)[:120])
 

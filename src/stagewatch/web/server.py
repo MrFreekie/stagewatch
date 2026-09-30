@@ -72,7 +72,6 @@ class AdoptBody(BaseModel):
     name: str = ""
     area: str = ""
     noise_psk: str = ""
-    password: str = ""
 
 
 class DevicePatch(BaseModel):
@@ -343,7 +342,6 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         cfg.pop("admin", None)
         for dev in cfg.get("esphome_devices", []):
             dev["noise_psk"] = "set" if dev.get("noise_psk") else ""
-            dev["password"] = "set" if dev.get("password") else ""
         esp = hub.integrations.get("esphome")
         return {
             "config": cfg,
@@ -366,7 +364,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(409, f"Device id '{device_id}' is already in use")
         cfg = EsphomeDeviceConfig(id=device_id, host=body.host.strip(), port=body.port,
                                   name=body.name.strip(), area=body.area.strip(),
-                                  noise_psk=body.noise_psk.strip(), password=body.password)
+                                  noise_psk=body.noise_psk.strip())
         try:
             await esphome().adopt(cfg)
         except ValueError as exc:

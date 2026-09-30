@@ -40,9 +40,19 @@ def test_admin_state_never_leaks_secrets(client):
     _setup_admin(client)
     client.hub.config.esphome_devices.append(
         __import__("stagewatch.core.config", fromlist=["x"]).EsphomeDeviceConfig(
-            id="n1", host="n1.local", noise_psk="SECRETKEY", password="pw"))
+            id="n1", host="n1.local", noise_psk="SECRETKEY"))
     body = client.get("/api/admin/state").text
-    assert "SECRETKEY" not in body and "pbkdf2" not in body and '"pw"' not in body
+    assert "SECRETKEY" not in body and "pbkdf2" not in body
+
+
+def test_adopt_ignores_legacy_password_field(client):
+    _setup_admin(client)
+    esp = client.hub.integrations.get("esphome")
+    if esp is None:
+        return
+    from stagewatch.web.server import AdoptBody
+    assert "password" not in AdoptBody.model_fields
+    assert AdoptBody.model_validate({"host": "n1.local", "password": "x"}).host == "n1.local"
 
 
 def test_user_dashboard_permissions(client):

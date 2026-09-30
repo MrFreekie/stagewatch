@@ -34,6 +34,18 @@ def test_save_fsyncs_file_and_directory(tmp_path, monkeypatch):
     assert len(synced) >= 2
 
 
+def test_old_config_with_esphome_password_loads_and_drops_it(tmp_path):
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.safe_dump({"schema_version": 1, "esphome_devices": [
+        {"id": "n1", "host": "n1.local", "noise_psk": "KEEPME", "password": "OLDPW-XYZ"}]}), encoding="utf-8")
+    store = ConfigStore(p)
+    cfg = store.load()
+    assert cfg.esphome_devices[0].host == "n1.local" and cfg.esphome_devices[0].noise_psk == "KEEPME"
+    store.save()
+    text = p.read_text(encoding="utf-8")
+    assert "OLDPW-XYZ" not in text and "password" not in text and "KEEPME" in text
+
+
 def test_fsync_dir_is_best_effort(tmp_path):
     uc.fsync_dir(tmp_path)
     uc.fsync_dir(tmp_path / "missing")  # must not raise
@@ -132,7 +144,7 @@ def test_bad_secret_values_never_reach_the_log(tmp_path, caplog):
     secret_psk, secret_pw = "SUPERSECRETPSK123", "SUPERSECRETPASSWORD456"
     p = tmp_path / "config.yaml"
     p.write_text(yaml.safe_dump({
-        "esphome_devices": [{"id": "a", "host": "h", "noise_psk": [secret_psk], "password": {"x": secret_pw},
+        "esphome_devices": [{"id": "a", "host": "h", "noise_psk": [secret_psk],
                              "port": secret_pw}],
     }), encoding="utf-8")
     with caplog.at_level(logging.DEBUG):

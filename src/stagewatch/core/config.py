@@ -40,7 +40,7 @@ def migrate(raw: dict) -> dict:
 
 
 class _Model(BaseModel):
-    # hide_input_in_errors: a bad noise_psk/password must never be echoed in an error message.
+    # hide_input_in_errors: a bad noise_psk must never be echoed in an error message.
     model_config = ConfigDict(extra="ignore", hide_input_in_errors=True)
 
 
@@ -64,7 +64,6 @@ class EsphomeDeviceConfig(_Model):
     name: str = ""
     area: str = ""
     noise_psk: str = ""
-    password: str = ""
 
     @field_validator("id")
     @classmethod

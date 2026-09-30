@@ -15,6 +15,9 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Removed
+- ESPHome API password support (removed upstream in ESPHome 2026.1; use the API encryption key). Old `config.yaml` files with a `password` on an ESPHome node still load; the value is dropped on the next save.
+
 ### Security
 - Upgraded `cryptography` to 50.0.1 (fixes GHSA advisories for PKCS#7 decryption timing, certificate path building and wildcard name constraints). The lock file now covers Windows and Linux only, the supported platforms.
 - Config validation/YAML errors no longer log input values (`hide_input_in_errors` on all config
