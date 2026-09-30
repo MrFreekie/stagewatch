@@ -51,6 +51,17 @@ them into a dated release section and tags the commit.
 - A successful manual rollback that restored a data backup now records `restored_backup: true`.
 - The dirty flag in build info refreshes every 60 s instead of being frozen at startup.
 - Re-created release tag: the check names the changed tag; recovery is documented in the README.
+- Windows installer: the target folder is created and ACL-locked before cloning (previously a fresh
+  `C:\Stagewatch` was user-writable until the clone finished); ownership is set to Administrators
+  again after `uv sync` so the updater's owner check cannot fail on newly created files; the mDNS
+  firewall rule now names the real interpreter (the venv `python.exe` is only a redirector, so the
+  rule never matched); a failed clone (for example a private repository) leaves nothing behind and
+  says why; re-running waits for the old server to release its files.
+- Pi installer: `--managed` no longer exits silently on an unknown ref or when no release tag exists
+  (`set -e` fired before the message); runs from `/` so `sudo -u stagewatch` works when your home is
+  private; takes over a data folder left by the non-managed mode; missing option values are reported.
+- Pi kiosk: disables screen blanking on X11, suppresses Chromium's "restore pages" bubble after a
+  power cut, and reports a missing browser instead of failing cryptically.
 
 ### Changed
 - Admin Software card polish: Installed / Updates / History sections, an "Update available"

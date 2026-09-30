@@ -94,7 +94,10 @@ function Invoke-Git([string[]]$GitArgs, [switch]$AllowFail) {
 }
 
 # ---- 0. stop any previous task so files are not locked ------------------------------------
-Stop-ScheduledTask -TaskName "Stagewatch" -ErrorAction SilentlyContinue
+if (Get-ScheduledTask -TaskName "Stagewatch" -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName "Stagewatch" -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3   # the launcher's Job Object takes the server down; let it release files
+}
 
 # ---- 1. pre-existing InstallDir must be Administrators-owned ------------------------------
 $fresh = -not (Test-Path -LiteralPath $InstallDir)
@@ -116,8 +119,20 @@ New-Item -ItemType File -Path $script:EmptyGitConfig | Out-Null
 
 # ---- 2. clone / fetch, then check out the release detached ----------------------------
     if ($fresh) {
+        # Create and lock the (empty) target BEFORE cloning: C:\ grants Modify to Authenticated
+        # Users, so a clone into a fresh C:\Stagewatch would be user-writable until step 3.
+        New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+        Invoke-Native "icacls.exe" @($InstallDir, "/setowner", "*$ADMINS", "/C", "/Q")
+        Invoke-Native "icacls.exe" @($InstallDir, "/inheritance:r", "/grant:r",
+            "*${SYSTEM}:(OI)(CI)F", "*${ADMINS}:(OI)(CI)F", "*${USERS}:(OI)(CI)RX")
         Write-Host "Cloning $SourceUrl into $InstallDir ..."
-        Invoke-Git @("clone", "--quiet", $SourceUrl, $InstallDir) | Out-Null
+        try {
+            Invoke-Git @("clone", "--quiet", $SourceUrl, $InstallDir) | Out-Null
+        } catch {
+            # leave nothing behind (a re-run must not see a half-made install)
+            Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
+            throw "$($_.Exception.Message). Is $SourceUrl public and reachable from this machine? (In-app updates and this installer have no credential support; a private repository cannot be cloned.)"
+        }
     } else {
         Write-Host "Existing managed clone found; fetching ..."
         $origin = (Invoke-Git @("-C", $InstallDir, "config", "--get", "remote.origin.url") | Select-Object -First 1)
@@ -182,6 +197,11 @@ try {
 $python = Join-Path $InstallDir ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $python)) { throw "Virtual environment missing: $python" }
 
+# Everything created since step 3 (.uv, .venv, downloaded Python) must be owned by Administrators
+# too: the launcher refuses to apply updates if the repo root, .git, .venv, .uv or src is owned
+# by anyone else. (An elevated token normally owns new files as Administrators; this makes it certain.)
+Invoke-Native "icacls.exe" @($InstallDir, "/setowner", "*$ADMINS", "/T", "/C", "/Q")
+
 # ---- 5. protected data folder --------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 Invoke-Native "icacls.exe" @($DataDir, "/inheritance:r", "/grant:r", "*${SYSTEM}:(OI)(CI)F", "*${ADMINS}:(OI)(CI)F")
@@ -235,8 +255,12 @@ Register-ScheduledTask -TaskName "Stagewatch" -Action $action -Trigger $trigger 
 Get-NetFirewallRule -DisplayName "Stagewatch*" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -DisplayName "Stagewatch web (TCP $Port)" -Direction Inbound -Protocol TCP `
     -LocalPort $Port -Action Allow -Profile Private,Domain | Out-Null
+# The venv's python.exe is only a redirector: the process that owns the socket is the real
+# interpreter in .uv\python, and Windows Firewall matches on that image, so scope the rule to it.
+$realPython = (& $python -P -c "import sys; print(sys._base_executable)" | Select-Object -First 1)
+if ($LASTEXITCODE -ne 0 -or -not $realPython -or -not (Test-Path -LiteralPath $realPython)) { $realPython = $python }
 New-NetFirewallRule -DisplayName "Stagewatch mDNS (UDP 5353)" -Direction Inbound -Protocol UDP `
-    -LocalPort 5353 -Program $python -Action Allow -Profile Private,Domain | Out-Null
+    -LocalPort 5353 -Program $realPython -Action Allow -Profile Private,Domain | Out-Null
 
 Start-ScheduledTask -TaskName "Stagewatch"
 Write-Host ""

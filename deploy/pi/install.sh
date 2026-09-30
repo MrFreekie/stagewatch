@@ -28,11 +28,11 @@ SOURCE_URL="https://github.com/MrFreekie/stagewatch.git"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --managed) MANAGED=1 ;;
-    --channel) CHANNEL="$2"; shift ;;
-    --ref) REF="$2"; shift ;;
-    --source-url) SOURCE_URL="$2"; shift ;;
+    --channel) CHANNEL="${2:?--channel needs a value}"; shift ;;
+    --ref) REF="${2:?--ref needs a value}"; shift ;;
+    --source-url) SOURCE_URL="${2:?--source-url needs a value}"; shift ;;
     --kiosk) KIOSK=1 ;;
-    --port) PORT="$2"; shift ;;
+    --port) PORT="${2:?--port needs a value}"; shift ;;
     --emulate) EMULATE="--emulate" ;;
     *) echo "unknown option $1"; exit 1 ;;
   esac
@@ -58,6 +58,9 @@ install_managed() {
   [[ "$CHANNEL" == "stable" || "$CHANNEL" == "nightly" ]] || { echo "--channel must be stable or nightly"; exit 1; }
   [[ "$SOURCE_URL" == https://* ]] || { echo "--source-url must be https://"; exit 1; }
   UV_SRC="$(command -v uv)"
+  # The service user usually cannot enter your (0700) home, and git/uv fail in an unreadable
+  # working directory when run through `sudo -u stagewatch`. Everything below uses absolute paths.
+  cd /
 
   # dedicated system user: no login shell, no sudo, no password
   if ! id "$SVC_USER" >/dev/null 2>&1; then
@@ -73,6 +76,9 @@ install_managed() {
   fi
   sudo systemctl stop stagewatch.service 2>/dev/null || true
   sudo install -d -o "$SVC_USER" -g "$SVC_USER" -m 0700 "$DATA_DIR"
+  # Data left by the non-managed mode is owned by the desktop user; hand it to the service user
+  # or the database/config would be unwritable (crash loop).
+  sudo chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
   sudo install -d -o "$SVC_USER" -g "$SVC_USER" -m 0755 "$CODE"
 
   # everything below runs as the service user
@@ -90,15 +96,16 @@ install_managed() {
   fi
   local SHA
   if [[ -n "$REF" ]]; then
-    SHA="$("${RUN[@]}" "${G[@]}" -C "$CODE" rev-parse --verify --quiet "$REF^{commit}")"
+    SHA="$("${RUN[@]}" "${G[@]}" -C "$CODE" rev-parse --verify --quiet "$REF^{commit}" || true)"
   elif [[ "$CHANNEL" == "nightly" ]]; then
-    SHA="$("${RUN[@]}" "${G[@]}" -C "$CODE" rev-parse --verify --quiet "refs/remotes/origin/nightly^{commit}")"
+    SHA="$("${RUN[@]}" "${G[@]}" -C "$CODE" rev-parse --verify --quiet "refs/remotes/origin/nightly^{commit}" || true)"
   else
     local TAG
-    TAG="$("${RUN[@]}" "${G[@]}" -C "$CODE" tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+    # `|| true`: under set -e/pipefail a failing lookup would exit silently before the message below
+    TAG="$("${RUN[@]}" "${G[@]}" -C "$CODE" tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)"
     [[ -n "$TAG" ]] || { echo "no release tag found; pass --ref <tag-or-sha>"; exit 1; }
     echo "Latest release tag: $TAG"
-    SHA="$("${RUN[@]}" "${G[@]}" -C "$CODE" rev-parse --verify --quiet "refs/tags/$TAG^{commit}")"
+    SHA="$("${RUN[@]}" "${G[@]}" -C "$CODE" rev-parse --verify --quiet "refs/tags/$TAG^{commit}" || true)"
   fi
   [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "could not resolve ref"; exit 1; }
   # must be reachable from origin/main (exit 0 = yes; anything else refuses)

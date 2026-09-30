@@ -158,8 +158,19 @@ real hardware. Development checkouts on your Desktop are not affected: run those
 bash deploy/pi/install.sh --kiosk
 ```
 
-This installs a systemd service with restart. `--managed` (untested on hardware) instead\ninstalls the hardened launcher-based service under a dedicated `stagewatch` user. `--kiosk` opens the `wall` dashboard
-full screen on the HDMI display after login.
+This installs a systemd service with restart that runs from your checkout as your user (no
+in-app updates). `--managed` (untested on hardware) instead installs the hardened launcher-based
+service under a dedicated `stagewatch` user in `/opt/stagewatch`, with data in
+`/var/lib/stagewatch` (readable only with `sudo`). `--kiosk` opens the `wall` dashboard
+full screen on the HDMI display after login (labwc or X11 desktops; set *Screen Blanking* to Off
+in `raspi-config` on Wayland). A Pi has no battery-backed clock: without internet (NTP) it starts
+with the last saved time, so add an RTC HAT or join a network with time service before the show,
+or the history timestamps will be wrong.
+
+Notes for both platforms: a development copy started with `uv run stagewatch` uses port 8080
+and its own data folder (see above), not the boot service's, so stop the service before running
+one, or pass `--port`. The boot service's data folder is not readable by ordinary users on
+purpose: open an elevated PowerShell (Windows) or use `sudo` (Pi) to read logs or copy backups.
 
 ## Updating
 
