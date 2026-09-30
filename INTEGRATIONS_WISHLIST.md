@@ -114,6 +114,8 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
 
 ## Feature backlog (non-integration)
 - **Setlist / day schedule sheet**: a built-in running order for the day (doors, support, changeover, headliner, curfew) and a per-show setlist. Items can be entered by hand or imported (CSV/paste). Schedule times auto-create timeline markers, and a dashboard card shows "now / next / time to curfew". It could run standalone or sync with Ontime (above) when that's in use.
+- **One-click installer** (roadmap): download one file, double-click, approve the Windows admin prompt, and Stagewatch installs itself. It installs Git and uv via winget, runs the managed install and opens the first-run page. A signed/packaged installer comes later; the Raspberry Pi gets an equivalent. Spec: in planning.
+- **Browser-based node flashing** (roadmap): plug a board into USB, open a page in Chrome or Edge, pick your board, click Install and enter the Wi-Fi. Prebuilt firmware per supported board comes from CI (ESP Web Tools + Improv Wi-Fi), and a per-node security key is set when the node is adopted. No compiling and no YAML. Spec: in planning.
 - **Manual backup and restore**: an admin "Backups" card with:
   - **Back up now** with a note, and a list of automatic (pre-update) and manual backups, showing sizes;
   - **download** a backup as a zip; it contains the PIN hash and ESPHome keys, so it's admin-only with a warning;
