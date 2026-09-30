@@ -77,8 +77,9 @@ The page works on the PC, but not on the tablet or phone.
 
 1. **Same network?** The tablet must be on the **same Wi-Fi** as the Stagewatch computer.
    Not a guest network. Not mobile data. Turn off any VPN on the tablet.
-2. **Type it exactly.** `http://` then the PC's address, then `:8080`. For example
-   `http://192.168.1.50:8080`. Not `https`.
+2. **Type it exactly, or scan it.** Open the admin page on the PC: the **Connect a tablet**
+   card shows the exact address and a QR code for every dashboard. Or type `http://` then
+   the PC's address, then `:8080`, for example `http://192.168.1.50:8080`. Not `https`.
 3. **Is the address still right?** Routers can change it after a restart. Look it up again
    (Windows: `ipconfig` and find **IPv4 Address**; Pi: `hostname -I`). Ask the router's
    owner for a fixed address for that computer.
@@ -115,12 +116,12 @@ Get-NetFirewallRule -DisplayName "Stagewatch*" | Select-Object DisplayName, Enab
 
 | What you see | Try this |
 |---|---|
-| **Red dot** at the top ("disconnected") | The tablet lost contact. It retries by itself. Check the Wi-Fi, then reload the page. If the PC restarted, wait a minute. |
+| Red bar **Disconnected from Stagewatch - reconnecting...**, numbers grey | The tablet lost contact (it appears after about 3 seconds). It retries by itself and the bar goes away when it is back. Check the Wi-Fi, then reload the page. If the PC restarted, wait a minute. |
 | The page shows tiles, but every number is **—** | No sensor is reporting. Check your nodes (below). |
 | Numbers are **grey** | Readings are older than the stale time (60 s by default). The node has lost power or Wi-Fi. |
 | No **Add marker** box | That dashboard is not allowed to add markers. Use the FOH dashboard, or ask the admin to tick **Add markers** for it. |
 | No **Acknowledge** button | Only shows while an alarm is sounding, and only on dashboards allowed to acknowledge. |
-| No alarm sound | Sound needs a tap. When an alarm is sounding, tap **Enable alarm sound** at the top. Also check the tablet volume and silent switch. |
+| No alarm sound | Sound needs a tap. Tap **Alarm sound** in the top bar until it says **On** (you hear a short test beep). If it says **Off**, it is muted on that tablet. Also check the tablet volume and silent switch. |
 | The dashboard address just bounces back to the home page | There is no dashboard with that name. Use the tiles on the home page. |
 | An **EMULATE MODE** banner at the top | This is a demo with fake sensors, not the real install. |
 | Times are wrong | The times come from the Stagewatch computer. On a Raspberry Pi with no internet, its clock may be out ([Pi guide](install-raspberry-pi.md#the-pi-has-no-clock-battery)). |
@@ -164,7 +165,7 @@ See also the table at the end of the [sensor node guide](first-sensor-node.md#if
 | "Update source not reachable (repository is private or offline)" | The PC has no internet, or cannot reach GitHub. |
 | Page stuck on "Stagewatch is restarting for an update" | Wait 2 minutes, reload, then see [Updating and backups](updating-and-backups.md#what-to-do-if-an-update-goes-wrong). |
 | "Too many attempts; wait a minute" | Too many wrong PINs. Wait a minute. |
-| Forgot the admin PIN | [Reset it](updating-and-backups.md#forgotten-pin-or-recovery-required). |
+| Forgot the admin PIN | [Reset it](updating-and-backups.md#forgotten-pin-or-recovery-required) with the ready-made reset script (one command). |
 | **Recovery required** on the admin page | [Same fix](updating-and-backups.md#forgotten-pin-or-recovery-required). |
 
 ---
@@ -227,6 +228,13 @@ uv run stagewatch --emulate --print-data-dir
 ```
 
 ### Sending a log to someone
+
+The easiest way: sign in to the admin page and press **Download diagnostics**. It saves one zip
+file with the version, recent logs, the device list and your settings. **It contains no
+passwords or keys** (PINs, encryption keys and passwords are removed before it is made). Send
+this file when asking for help.
+
+If you send raw log files instead:
 
 Logs can include your node names and network addresses. Look through them first. They should
 **not** contain PINs or keys. Remove anything you would not want strangers to see.

@@ -36,8 +36,10 @@ On Android: tap the browser's **menu** (three dots), then **Add to Home screen**
 
 - **Top bar:** the site name, the show name, the time, and a small **dot**.
   - **Green dot** = live. The screen is up to date.
-  - **Red dot** = the tablet has lost contact. See
-    [The tablet says it's disconnected](#the-tablet-says-its-disconnected).
+  - **Red dot** = the tablet has lost contact. After a few seconds a red bar
+    **Disconnected from Stagewatch - reconnecting...** covers the top and the numbers
+    turn grey, so nobody trusts old readings. It goes away by itself when the connection
+    returns. See [The tablet says it's disconnected](#the-tablet-says-its-disconnected).
 - **Alarm bar:** only appears when something is wrong (see [Alarms](#what-the-alarm-colours-mean)).
 - **Tiles:** the five numbers below.
 - **History:** a graph. Buttons pick **Temp**, **RH**, **Pressure** or **c** (speed of
@@ -151,11 +153,14 @@ An alarm shows up for two reasons:
 
 ### The sound button
 
-Browsers block sound until you tap something. If sound is off, a button
-**Enable alarm sound** appears at the top **when an alarm is sounding**. Tap it, and
-the beeping starts.
+The top bar always has a button that says **Alarm sound: On** or **Alarm sound: Off**.
+Browsers block sound until you tap something, so **tap it once at soundcheck**. It turns
+to **On** and plays a short test beep. Tap it again to mute this tablet. Stagewatch
+remembers your choice on that tablet. If it says **Off - tap to turn on** (in orange), the
+tablet has not been given permission yet: tap it.
 
-On a wall display in full-screen kiosk mode, sound usually works without tapping.
+On a wall display in full-screen kiosk mode, sound usually works without tapping, and the
+button hides itself once sound works.
 Do not rely on beeping being heard on a tablet. Turn the volume up, and keep watching
 the colours.
 

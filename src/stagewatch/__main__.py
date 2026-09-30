@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import ipaddress
 import logging
 import logging.handlers
 import os
@@ -12,7 +11,6 @@ import socket
 import sys
 from pathlib import Path
 
-import ifaddr
 import uvicorn
 from zeroconf import ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
@@ -21,10 +19,13 @@ from . import __version__, updater_common
 from .core.hub import Hub
 from .integrations.esphome import EsphomeIntegration
 from .integrations.osc_out import OscOutIntegration
+from .netinfo import local_ipv4  # noqa: F401  (also used by tests)
 from .version import build_info, version_string
 from .web.server import create_app
 
 log = logging.getLogger("stagewatch")
+
+EMULATE_SUBDIR = "emulate"
 
 
 def default_data_dir(emulate: bool = False) -> Path:
@@ -46,7 +47,20 @@ def default_data_dir(emulate: bool = False) -> Path:
         base = Path.home() / "StagewatchData"
     else:
         base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "stagewatch"
-    return base / "emulate" if emulate else base
+    return base / EMULATE_SUBDIR if emulate else base
+
+
+def resolve_data_dir(explicit: Path | None, emulate: bool = False) -> Path:
+    """The one place the data folder is decided.
+
+    Emulate mode ALWAYS uses ``<data folder>/emulate``, whether the data folder came from
+    --data-dir (a managed install passes its real one) or from the default, so simulated
+    devices and history can never mix into a real show's data.
+    """
+    if explicit is None:
+        return default_data_dir(emulate).resolve()
+    base = Path(explicit)
+    return (base / EMULATE_SUBDIR if emulate else base).resolve()
 
 
 def setup_logging(data_dir: Path, verbose: bool) -> None:
@@ -62,17 +76,6 @@ def setup_logging(data_dir: Path, verbose: bool) -> None:
     root.handlers[:] = [file_handler, console]
 
 
-def local_ipv4() -> list[str]:
-    out = []
-    for adapter in ifaddr.get_adapters():
-        for ip in adapter.ips:
-            if isinstance(ip.ip, str):
-                addr = ipaddress.ip_address(ip.ip)
-                if not (addr.is_loopback or addr.is_link_local):
-                    out.append(ip.ip)
-    return out
-
-
 async def run(args: argparse.Namespace) -> int:
     data_dir: Path = args.data_dir
     zc = None if args.no_mdns else AsyncZeroconf()
@@ -80,6 +83,7 @@ async def run(args: argparse.Namespace) -> int:
     hub.add_integration(EsphomeIntegration(hub, emulate=args.emulate, zeroconf=zc))
     hub.add_integration(OscOutIntegration(hub))
     app = create_app(hub)
+    app.state.port = args.port  # for the "Connect a tablet" addresses
 
     service = None
     if zc is not None:
@@ -148,7 +152,7 @@ def reset_admin_pin_cli(argv: list[str]) -> None:
     parser.add_argument("--force", action="store_true",
                         help="run even if a Stagewatch server seems to be running on this data folder")
     args = parser.parse_args(argv)
-    data_dir = (args.data_dir or default_data_dir(args.emulate)).resolve()
+    data_dir = resolve_data_dir(args.data_dir, args.emulate)
     if not args.force and updater_common.server_running(data_dir):
         print("error: Stagewatch appears to be running on this data folder. Stop the Stagewatch "
               "service first (a running server would overwrite the reset), or use --force.",
@@ -172,7 +176,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--data-dir", type=Path, default=None,
                         help="config, database, logs (default: per-user app data folder, "
-                             "or $STAGEWATCH_DATA; emulate mode uses an 'emulate' subfolder)")
+                             "or $STAGEWATCH_DATA; emulate mode always uses an 'emulate' subfolder of it)")
     parser.add_argument("--print-data-dir", action="store_true",
                         help="print the data directory that would be used, then exit")
     parser.add_argument("--emulate", action="store_true",
@@ -181,7 +185,7 @@ def main() -> None:
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--version", action="version", version=version_string())
     args = parser.parse_args()
-    args.data_dir = (args.data_dir or default_data_dir(args.emulate)).resolve()
+    args.data_dir = resolve_data_dir(args.data_dir, args.emulate)
     if args.print_data_dir:
         print(args.data_dir)
         return

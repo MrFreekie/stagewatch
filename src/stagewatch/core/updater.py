@@ -410,7 +410,11 @@ class Updater:
         except UpdaterError as e:
             log.warning("Managed marker is invalid: %s", e)
             return cls(hub, None, False, "marker_invalid", **kw)
-        if not uc._same_path(marker.data_dir, hub.data_dir):
+        # Emulate mode runs in <data_dir>/emulate (see __main__.resolve_data_dir); that is still
+        # this install, so updates stay available.  Backups/restores always use the real data_dir.
+        if not (uc._same_path(marker.data_dir, hub.data_dir)
+                or (getattr(hub, "emulate", False)
+                    and uc._same_path(marker.data_dir / "emulate", hub.data_dir))):
             log.warning("Managed marker data_dir differs from the running data dir; updates disabled")
             return cls(hub, None, False, "data_dir_mismatch", **kw)
         supervised = env.get(uc.ENV_SUPERVISED) == "1" and bool(env.get(uc.ENV_STATE_DIR)) \
@@ -418,6 +422,13 @@ class Updater:
         return cls(hub, marker, supervised, None if supervised else "not_supervised", **kw)
 
     # ---- properties ----
+    @property
+    def data_dir(self) -> Path:
+        """Folder that backups/restores act on: the marker's real data folder (the launcher
+        restores there), never the ``emulate`` subfolder a simulated run uses.  Backups copy
+        an explicit list of files, so ``emulate/`` is never included."""
+        return Path(self.marker.data_dir) if self.marker else Path(self.hub.data_dir)
+
     @property
     def managed(self) -> bool:
         return self.marker is not None
@@ -464,7 +475,7 @@ class Updater:
         return out
 
     def _disk_view(self) -> tuple[list[dict], list[dict]]:
-        data_dir = Path(self.hub.data_dir)
+        data_dir = self.data_dir
         backups = []
         if self.marker:
             for m in backup_mod.list_backups(self.marker.state_dir):
@@ -586,11 +597,11 @@ class Updater:
                     or not uc.is_valid_sha(target_sha) or target_sha != last["target_sha"]:
                 raise UpdaterError("target_mismatch")
             try:
-                facts = await asyncio.to_thread(prepare_update, self._ctx(), self.marker, last, Path(self.hub.data_dir))
+                facts = await asyncio.to_thread(prepare_update, self._ctx(), self.marker, last, self.data_dir)
                 backup_id = None
                 if facts["schema_changed"]:
                     self.hub.recorder.flush()  # everything recorded so far is in the DB we back up
-                    backup_id = await asyncio.to_thread(make_backup, Path(self.hub.data_dir), self.marker,
+                    backup_id = await asyncio.to_thread(make_backup, self.data_dir, self.marker,
                                                         facts["from_sha"], facts["to_sha"])
                 await asyncio.to_thread(uc.write_pending, self.marker.state_dir, {
                     "format": 1, "action": "update", "from_sha": facts["from_sha"], "to_sha": facts["to_sha"],
@@ -616,7 +627,7 @@ class Updater:
             if entry is None:
                 raise UpdaterError("history_not_found")
             try:
-                facts = await asyncio.to_thread(prepare_rollback, self._ctx(), self.marker, entry, Path(self.hub.data_dir))
+                facts = await asyncio.to_thread(prepare_rollback, self._ctx(), self.marker, entry, self.data_dir)
                 if facts["schema_changed"]:
                     self.hub.recorder.flush()
                 await asyncio.to_thread(uc.write_pending, self.marker.state_dir, {

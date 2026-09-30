@@ -93,6 +93,10 @@ You do not have to do anything.
 Plain updates that do not change the data format do not need a backup, so you may see
 none for a while.
 
+Backups only ever cover your **real** data. If you run Stagewatch in demo mode (`-Emulate`,
+fake sensors), its data lives in a separate `emulate` folder inside the data folder. That
+folder is never backed up or restored, and it never mixes with your real history.
+
 ## Roll back
 
 If the new version misbehaves, you can go back.
@@ -185,54 +189,41 @@ working during all of this.
 
 1. On the Stagewatch PC, open PowerShell **as Administrator**
    ([how](install-windows.md#step-2-open-powershell-as-administrator)).
-2. **Stop Stagewatch.** Paste this and press Enter, then wait 10 seconds:
+2. Paste this and press Enter. It stops Stagewatch, resets the PIN and starts Stagewatch
+   again, all in one go:
 
 ```powershell
-Stop-ScheduledTask -TaskName "Stagewatch"
+powershell -ExecutionPolicy Bypass -File C:\Stagewatch\deploy\windows\reset-admin-pin.ps1
 ```
 
-3. **Reset the PIN.** Paste this and press Enter:
+   **What you should see:** "Done. The admin PIN has been cleared." followed by
+   "Next: open Stagewatch in your browser ... and set a new PIN now."
 
-```powershell
-$env:PYTHONPATH = "C:\Stagewatch\src"; & "C:\Stagewatch\.venv\Scripts\python.exe" -P -m stagewatch reset-admin-pin --data-dir "C:\ProgramData\Stagewatch"
-```
-
-   **What you should see:**
-
-```text
-Admin PIN cleared. Restart Stagewatch, then open /admin to set a new PIN.
-Note: until you set the new PIN in /admin, anyone on the network can set it. Restart Stagewatch and do it promptly.
-```
-
-4. **Start Stagewatch again:**
-
-```powershell
-Start-ScheduledTask -TaskName "Stagewatch"
-```
-
-5. Wait about 30 seconds. **Straight away**, open `http://localhost:8080/admin` and set
+3. Wait about 30 seconds. **Straight away**, open `http://localhost:8080/admin` and set
    a new PIN. Until you do, **anyone on the network can set it**.
 
-If step 3 says **"Stagewatch appears to be running on this data folder"**, it did not stop
-yet. Wait a bit and try again. Do not add `--force` unless you are sure it is stopped.
+If you installed to a different folder, add `-InstallDir "D:\Your\Folder"` to the command.
+The script reads the data folder from the install, so you do not need to know where it is.
+
+If the script says the file does not exist, your copy is older than this feature. Update
+Stagewatch first if you can, or use the manual command in the
+[README](../README.md) (`stagewatch reset-admin-pin --data-dir <data folder>`).
 
 ### Reset the PIN on a Raspberry Pi
 
 1. On the Pi, open a **Terminal**.
-2. Paste this and press Enter. It stops Stagewatch, resets the PIN, and starts it
+2. Paste this and press Enter. It stops Stagewatch, resets the PIN and starts Stagewatch
    again:
 
 ```bash
-sudo systemctl stop stagewatch; cd / && sudo -u stagewatch env PYTHONPATH=/opt/stagewatch/src /opt/stagewatch/.venv/bin/python -P -m stagewatch reset-admin-pin --data-dir /var/lib/stagewatch; sudo systemctl start stagewatch
+bash /opt/stagewatch/deploy/pi/reset-admin-pin.sh
 ```
 
-**What you should see:** the two lines `Admin PIN cleared. Restart Stagewatch...` and
-`Note: until you set the new PIN...`.
+**What you should see:** "Done. The admin PIN has been cleared." and the next step.
 
 3. Wait 30 seconds. **Straight away**, open `http://localhost:8080/admin` and set a new PIN.
 
 > The Pi steps have not been tested on real hardware.
-
 ### Or restore a backup instead
 
 If you do not want to reset, the alternative is to copy a good `config.yaml` back into the

@@ -80,7 +80,41 @@
     const canAck = state.isAdmin || (state.dash && state.dash.allow_ack);
     $("ack").hidden = !(canAck && state.sounding);
     sounder.set(state.sounding);
-    $("sound").hidden = !state.sounding || sounder.enabled;
+    renderSound();
+  }
+
+  // ---- Alarm sound On/Off (always visible). The choice is remembered per device (browser). ----
+  // "On" needs a tap the first time (browser rule), so tapping the button arms audio; any first
+  // tap anywhere on the page also arms it when the saved choice is On.
+  const SOUND_KEY = `sw.sound.${slug}`;
+  const soundWanted = () => localGet(SOUND_KEY, "on") !== "off";
+  function renderSound() {
+    const wanted = soundWanted();
+    sounder.muted = !wanted;
+    const armed = sounder.enabled;
+    const on = wanted && armed;
+    const btn = $("sound-toggle");
+    const needsTap = wanted && !armed;
+    $("sound-label").textContent = on ? "Alarm sound: On" : (needsTap ? "Alarm sound: Off \u2014 tap to turn on" : "Alarm sound: Off");
+    btn.classList.toggle("on", on);
+    btn.classList.toggle("needs-tap", needsTap);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.title = on ? "Alarms will beep on this device. Tap to mute." : "Tap to turn the alarm beep on for this device.";
+    // The wall (kiosk) layout hides the button only when audio already works there.
+    const layout = (state.dash && state.dash.layout) || "tablet";
+    btn.hidden = layout === "wall" && on;
+  }
+  $("sound-toggle").addEventListener("click", () => {
+    if (soundWanted() && sounder.enabled) { localSet(SOUND_KEY, "off"); renderSound(); return; }
+    localSet(SOUND_KEY, "on");
+    sounder.enable();   // this tap is the user gesture the browser needs
+    renderSound();
+    // A short test beep so you can hear that it is on.
+    Promise.resolve(sounder.ctx && sounder.ctx.resume()).then(() => { renderSound(); sounder.beep(); }).catch(() => {});
+  });
+  sounder.onchange = renderSound;
+  for (const evt of ["pointerdown", "keydown"]) {
+    document.addEventListener(evt, () => { if (soundWanted() && !sounder.enabled) { sounder.enable(); renderSound(); } });
   }
 
   function sensorDevices() {
@@ -212,7 +246,6 @@
   $("ack").addEventListener("click", async () => {
     try { await SW.api("POST", "/api/alarms/ack", { dashboard: slug }); } catch (err) { toast(err.message); }
   });
-  $("sound").addEventListener("click", () => { sounder.enable(); renderAlarms(); });
 
   // ---------------------------------------------------------- live feed
   function applySnapshot(msg) {
@@ -236,6 +269,24 @@
     $("marker-form").hidden = !(state.isAdmin || (state.dash && state.dash.allow_marker));
     renderTiles(); renderAlarms(); renderSensors(); renderMarkers(); renderSegs();
     loadHistory();
+    loadWallAddress(layout);
+  }
+
+  // Wall (kiosk) footer: where tablets can reach this dashboard. Only the address and path; the
+  // server sends a single LAN address (nothing else) for this endpoint.
+  let wallAddressFor = null;
+  async function loadWallAddress(layout) {
+    const box = $("wall-address");
+    if (layout !== "wall") { box.hidden = true; return; }
+    if (wallAddressFor === slug && !box.hidden) return;
+    try {
+      const r = await SW.api("GET", `/api/dashboard/${encodeURIComponent(slug)}/address`);
+      if (!r.url) { box.hidden = true; return; }
+      wallAddressFor = slug;
+      const qr = SW.qrSvg(r.url, 96);
+      box.replaceChildren(qr || "", h("span", {}, "Open on a tablet: ", h("strong", {}, r.url)));
+      box.hidden = false;
+    } catch (_) { box.hidden = true; }
   }
 
   function onMessage(msg) {
@@ -276,6 +327,7 @@
   let wasDown = false;
   SW.connect(`?dashboard=${encodeURIComponent(slug)}`, onMessage, (up) => {
     $("conn").classList.toggle("on", up);
+    SW.connection.report(up);
     if (!up) { wasDown = true; return; }
     if (!wasDown) return;
     SW.api("GET", "/api/info").then((i) => {
@@ -287,7 +339,8 @@
     $("emulate").hidden = !i.emulate;
     loadedBuild = buildKey(i);
   }).catch(() => {});
-  sounder.enable(); // works in kiosk mode (autoplay allowed); otherwise the button appears
+  if (soundWanted()) sounder.enable(); // works in kiosk mode (autoplay allowed); otherwise tap the sound button
+  renderSound();
   setInterval(() => { $("clock").textContent = SW.timeSec(serverNow()); }, 1000);
   setInterval(loadHistory, 60000); // re-bucket history so long views stay tidy
   setInterval(() => { state.now = serverNow(); renderSensors(); }, 5000);

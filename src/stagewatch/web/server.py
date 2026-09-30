@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import platform
+import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,7 +20,7 @@ from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -28,6 +30,7 @@ from ..core.config import (
 )
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Marker, slugify
+from .. import diagnostics, netinfo
 from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
 from ..version import build_info
@@ -153,8 +156,11 @@ class LiveFeed:
 
 # -------------------------------------------------------------------- app
 def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None,
-               body_limit: int = DEFAULT_BODY_LIMIT, body_limit_overrides: dict[str, int] | None = None) -> FastAPI:
+               body_limit: int = DEFAULT_BODY_LIMIT, body_limit_overrides: dict[str, int] | None = None,
+               lan_addresses=None) -> FastAPI:
     updater = updater or Updater.detect(hub)
+    lan_addresses = lan_addresses or netinfo.local_ipv4  # callable -> list[str]; injectable for tests
+    started_at = time.time()
     signer = SessionSigner(hub.data_dir / "secret.key")
     feed = LiveFeed(hub)
     failed_logins: list[float] = []
@@ -463,6 +469,88 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise UpdaterError("not_managed")
         await check_pin(body.pin)
         return await updater.rollback(body.history_id)
+
+    # -------------------------------------------------- connect a tablet
+    def server_port(request: Request) -> int:
+        return int(getattr(app.state, "port", None) or request.url.port or 8080)
+
+    @app.get("/api/admin/connect", dependencies=[Depends(require_admin)])
+    async def connect_info(request: Request):
+        """Addresses tablets should use.  Admin-only: it lists every LAN address of the host."""
+        port = server_port(request)
+        addrs = await asyncio.to_thread(lan_addresses)
+        name = hub.config.mdns_name or "stagewatch"
+        return {
+            "port": port, "addresses": addrs, "mdns_name": f"{name}.local",
+            "home": netinfo.connect_urls(addrs, port, "", name),
+            "dashboards": [{"slug": d.slug, "title": d.title or d.slug, "layout": d.layout,
+                            **netinfo.connect_urls(addrs, port, d.slug, name)} for d in hub.config.dashboards],
+        }
+
+    @app.get("/api/dashboard/{slug}/address")
+    async def dashboard_address(slug: str, request: Request):
+        """For the wall display footer only: one LAN address + the dashboard path (no list of
+        interfaces, nothing else).  Other layouts get nothing."""
+        d = hub.config.dashboard(slug)
+        if d is None or d.layout != "wall":
+            return {"url": ""}
+        addrs = await asyncio.to_thread(lan_addresses)
+        return {"url": netinfo.connect_urls(addrs[:1], server_port(request), d.slug)["ip"][0] if addrs else ""}
+
+    # ------------------------------------------------------- diagnostics
+    def _diag_sources() -> list[Path]:
+        dirs = [Path(hub.data_dir) / "logs"]
+        if updater.marker is not None:
+            dirs.append(Path(updater.marker.data_dir) / "logs")
+        return dirs
+
+    def _build_diagnostics(status: dict | None) -> bytes:
+        raw_cfg = hub.config.model_dump(mode="json")
+        known = diagnostics.known_secrets(raw_cfg)
+        cfg = diagnostics.redact_config(raw_cfg, known)
+        cfg["admin"] = {"pin_set": bool(raw_cfg.get("admin", {}).get("pin_hash"))}  # never the hash
+        info = {
+            "generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "version": __version__, "build": build_info(),
+            "platform": platform.platform(), "python": sys.version.split()[0],
+            "uptime_s": round(time.time() - started_at), "emulate": hub.emulate,
+            "managed": updater.managed, "supervised": updater.supervised,
+            "site": hub.config.site.name,
+        }
+        devices = [d.to_dict() for d in hub.devices.values()]
+        files = {
+            "README.txt": diagnostics.README,
+            "info.json": diagnostics.dumps(diagnostics.redact_config(info, known)),
+            "devices.json": diagnostics.dumps(diagnostics.redact_config(devices, known)),
+            "config.json": diagnostics.dumps(cfg),
+            "updater.json": diagnostics.dumps(diagnostics.redact_config(status or {}, known)),
+            "alarm_log.json": diagnostics.dumps(diagnostics.redact_config(hub.recorder.alarm_log(), known)),
+        }
+        logs: dict[str, list[str]] = {}
+        for name in ("stagewatch.log", "launcher.log", "server-console.log"):
+            for d in _diag_sources():
+                lines = diagnostics.tail_lines(d / name)
+                if lines is not None:
+                    logs[name] = lines
+                    break
+        return diagnostics.assemble_zip(files, logs, known)
+
+    @app.get("/api/admin/diagnostics", dependencies=admin_deps)
+    async def download_diagnostics():
+        try:
+            status = await updater.status()
+        except Exception:  # a broken updater must not stop the support bundle
+            log.exception("diagnostics: updater status unavailable")
+            status = {"error": "updater status unavailable"}
+        data = await asyncio.to_thread(_build_diagnostics, status)
+        name = time.strftime("stagewatch-diagnostics-%Y%m%d-%H%M%S.zip", time.gmtime())
+
+        def chunks():
+            for i in range(0, len(data), 64 * 1024):
+                yield data[i:i + 64 * 1024]
+        return StreamingResponse(chunks(), media_type="application/zip", headers={
+            "Content-Disposition": f'attachment; filename="{name}"', "Content-Length": str(len(data)),
+            "Cache-Control": "no-store"})
 
     # -------------------------------------------------------- websocket
     @app.websocket("/ws")

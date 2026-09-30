@@ -15,7 +15,7 @@
   <span class="title" id="title">Stagewatch</span>
   <span class="sub" id="show"></span>
   <span class="spacer"></span>
-  <button class="small only-interactive" id="sound" hidden>Enable alarm sound</button>
+  <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="false"><span class="sound-icon" aria-hidden="true"></span><span id="sound-label">Alarm sound: Off</span></button>
   <span class="clock" id="clock"></span>
 </header>
 <main>
@@ -53,6 +53,8 @@
     </div>
   </div>
 </main>
+<footer class="wall-address" id="wall-address" hidden></footer>
+<script src="/static/vendor/qrcode.js"></script>
 <script src="/static/common.js"></script>
 <script src="/static/chart.js"></script>
 <script src="/static/dashboard.js"></script>

@@ -316,6 +316,8 @@ class Launcher:
         m = self.marker
         cmd = [str(m.python_path), "-m", "stagewatch", "--data-dir", str(m.data_dir), "--port", str(m.port)]
         if m.emulate:
+            # The server puts emulate data in <data_dir>/emulate (never in the real folder itself);
+            # the marker's data_dir stays the real one, which is what backups/restores act on.
             cmd.append("--emulate")
         return cmd
 

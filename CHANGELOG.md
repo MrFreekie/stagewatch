@@ -51,6 +51,11 @@ them into a dated release section and tags the commit.
 - Build info (`/api/info`) runs git with the hardened flags/environment and a 3 s timeout.
 
 ### Fixed
+- `-Emulate` on a managed install no longer mixes simulated data into the real data folder. Emulate
+  mode now ALWAYS uses `<data folder>/emulate` (resolved in one place, `resolve_data_dir`), including
+  when the launcher passes the marker's `--data-dir`. The marker's `data_dir` stays the real folder;
+  in-app updates stay available in emulate mode, and backups/restores act on the real folder only (the
+  `emulate` subfolder is never backed up or restored). `reset-admin-pin --emulate` targets it too.
 - Power-cut safety: config saves, PIN reset and the updater's atomic writes flush and `fsync` the
   temp file before the rename (and the directory on POSIX). `config.yaml.bak` keeps the previous good
   config (same secrets, same folder protection, never part of the site-config repo), and an empty or
@@ -84,6 +89,10 @@ them into a dated release section and tags the commit.
   power cut, and reports a missing browser instead of failing cryptically.
 
 ### Changed
+- The admin "software restarting" screen and the ESPHome key hint now say where the launcher log is
+  (Windows `C:\ProgramData\Stagewatch\logs\launcher.log`, Pi `/var/lib/stagewatch/logs/launcher.log`) and
+  suggest Download diagnostics; `esphome/secrets.example.yaml` shows the PowerShell and
+  `openssl rand -base64 32` key commands.
 - Admin Software card polish: Installed / Updates / History sections, an "Update available"
   panel (versions, full commit, scrollable plain-text changes), a labelled confirm dialog
   (PIN focus only on non-touch devices so the keyboard doesn't hide the changelog), history as
@@ -97,6 +106,24 @@ them into a dated release section and tags the commit.
   separate `emulate` subfolder.
 
 ### Added
+- **Reset-PIN helper scripts** for managed installs: `deploy/windows/reset-admin-pin.ps1` (checks it
+  is elevated, stops the "Stagewatch" task, resets, starts it again, prints the next step) and
+  `deploy/pi/reset-admin-pin.sh` (untested on hardware). The admin "Recovery required" text and the
+  docs point at them instead of the long one-liner.
+- **Alarm sound button** on every dashboard: a permanent, labelled "Alarm sound: On/Off" button
+  that arms audio at soundcheck (plays a test beep), remembered per device. The wall layout hides it
+  only once sound already works (kiosk); otherwise it is shown.
+- **"Disconnected from Stagewatch - reconnecting..."** banner (dashboards and admin) after 3 s
+  without a live connection, with elapsed seconds; on-screen values look stale until it reconnects.
+- **Connect a tablet** card in Admin: the `http://<LAN IPv4>:<port>/d/<slug>` address (plus the
+  `<name>.local` one) and a QR code for each dashboard (`GET /api/admin/connect`, admin only). The wall
+  dashboard footer shows one address and a QR code (`GET /api/dashboard/<slug>/address`, wall layout
+  only). QR codes are drawn locally with the vendored MIT `qrcode-generator` 1.4.4 (no CDN).
+- **Download diagnostics** (Admin -> Help, `GET /api/admin/diagnostics`, admin + same-origin): a zip
+  (max 10 MB) with version/build, platform, uptime, the last 2000 lines of `stagewatch.log`,
+  `launcher.log` and `server-console.log`, updater status/history, device list, recent alarms and the
+  config with every secret redacted (by key name and by value pattern; PIN hash, `noise_psk`,
+  passwords and `secret.key` are never included).
 - Beginner-friendly user guides in `docs/`: start here, install on Windows, install on a Raspberry Pi,
   build your first sensor node, using Stagewatch on show day, updating and backups (including a
   forgotten PIN), troubleshooting and a glossary; the README now points to them first.

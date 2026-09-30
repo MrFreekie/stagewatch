@@ -228,8 +228,10 @@ only available on a managed install; update those with `git pull`.
   `config.invalid*.yaml`, salvages every section that is still valid, including the admin PIN, and
   starts. Only if the PIN cannot be salvaged does Admin show "Recovery required" and refuse to set
   a new PIN over the network (otherwise anyone on the LAN could claim admin). Restore `config.yaml`
-  from a backup, or on the Stagewatch computer run
-  `stagewatch reset-admin-pin --data-dir <data folder>`, restart, and set a new PIN. This command
+  from a backup, or on the Stagewatch computer run the ready-made script
+  (`deploy\windows\reset-admin-pin.ps1` as Administrator, or `bash /opt/stagewatch/deploy/pi/reset-admin-pin.sh`
+  on a Pi; they stop Stagewatch, run `stagewatch reset-admin-pin --data-dir <data folder>` and start it
+  again), then set a new PIN. The underlying command
   needs file access to the data folder and is not available over HTTP. Stop the Stagewatch service
   first (the command refuses to run while it detects a running server; `--force` overrides). After
   a reset, **anyone on the network can set the new PIN until you do**, so restart and set it promptly.
@@ -358,6 +360,12 @@ See [INTEGRATIONS_WISHLIST.md](INTEGRATIONS_WISHLIST.md).
 Stagewatch is free software under the [GNU General Public License v3.0](LICENSE).
 You may use, modify and redistribute it. If you distribute a modified version, you
 must release its source under the same licence.
+
+Vendored third-party component: `src/stagewatch/web/static/vendor/qrcode.js` is
+[qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4 by Kazuhiko Arase,
+MIT licence (compatible with GPL-3.0; licence text in `vendor/qrcode.LICENSE.txt`, header kept in the
+file). It draws the "Connect a tablet" QR codes locally, so nothing is loaded from the internet.
+"QR Code" is a registered trademark of DENSO WAVE INCORPORATED.
 
 ## Support
 

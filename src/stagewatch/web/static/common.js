@@ -115,17 +115,23 @@ SW.connect = function (query, onMessage, onStatus) {
 };
 
 // Alarm sounder. Browsers only allow audio after a user gesture, so the
-// dashboard shows an "Enable sound" button until the user taps it.
+// dashboard has a permanent "Alarm sound: On/Off" button; tapping it arms audio.
+// `muted` is the user's choice (button set to Off): the alarm stays visible but silent.
 SW.Sounder = class {
-  constructor() { this.ctx = null; this.timer = null; }
+  constructor() { this.ctx = null; this.timer = null; this.muted = false; this.onchange = () => {}; }
   enable() {
-    if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    if (this.ctx.state === "suspended") this.ctx.resume();
+    try {
+      if (!this.ctx) {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.ctx.onstatechange = () => this.onchange();
+      }
+      if (this.ctx.state === "suspended") this.ctx.resume();
+    } catch (_) { return false; }
     return this.ctx.state !== "closed";
   }
   get enabled() { return !!this.ctx && this.ctx.state === "running"; }
   beep() {
-    if (!this.enabled) return;
+    if (!this.enabled || this.muted) return;
     const t = this.ctx.currentTime;
     for (const [start, freq] of [[0, 880], [0.25, 660]]) {
       const osc = this.ctx.createOscillator();
@@ -143,4 +149,84 @@ SW.Sounder = class {
     if (sounding && !this.timer) { this.beep(); this.timer = setInterval(() => this.beep(), 2000); }
     if (!sounding && this.timer) { clearInterval(this.timer); this.timer = null; }
   }
+};
+
+// ---- Connection banner -------------------------------------------------
+// SW.connection.report(up) is called with the live connection state. A drop shorter than
+// 3 s is ignored (no flashing); after that a full-width banner shows the elapsed seconds and
+// body gets the "disconnected" class so on-screen values look stale. Hidden again on reconnect.
+SW.CONNECTION_GRACE_S = 3;
+SW.connection = (() => {
+  let downSince = null;
+  let timer = null;
+  let banner = null;
+  const ensure = () => {
+    if (banner) return banner;
+    banner = SW.h("div", { class: "disconnect-banner", role: "alert", id: "disconnect-banner", hidden: true });
+    document.body.prepend(banner);
+    return banner;
+  };
+  const tick = () => {
+    if (downSince === null) return;
+    const secs = Math.floor((Date.now() - downSince) / 1000);
+    if (secs < SW.CONNECTION_GRACE_S) return;
+    ensure().hidden = false;
+    banner.textContent = `Disconnected from Stagewatch \u2014 reconnecting\u2026 (${secs} s)`;
+    document.body.classList.add("disconnected");
+  };
+  return {
+    get down() { return downSince !== null; },
+    report(up) {
+      if (up) {
+        downSince = null;
+        clearInterval(timer); timer = null;
+        if (banner) banner.hidden = true;
+        document.body.classList.remove("disconnected");
+      } else if (downSince === null) {
+        downSince = Date.now();
+        timer = setInterval(tick, 1000);
+      }
+    },
+  };
+})();
+
+// For pages without a WebSocket (admin): a light heartbeat against /api/info.
+SW.heartbeat = function (everyMs = 2000) {
+  const beat = async () => {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 4000);
+      const res = await fetch("/api/info", { cache: "no-store", signal: ctrl.signal });
+      clearTimeout(t);
+      SW.connection.report(res.status < 500);
+    } catch (_) { SW.connection.report(false); }
+  };
+  setInterval(beat, everyMs);
+};
+
+// ---- QR codes (local; uses the vendored qrcode-generator in /static/vendor/qrcode.js) ----
+// Returns an <svg> element (built with DOM calls, no innerHTML) or null if it cannot be made.
+SW.qrSvg = function (text, size = 176) {
+  if (typeof qrcode !== "function") return null;
+  let qr;
+  try { qr = qrcode(0, "M"); qr.addData(text); qr.make(); } catch (_) { return null; }
+  const n = qr.getModuleCount();
+  const quiet = 2;
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${n + quiet * 2} ${n + quiet * 2}`);
+  svg.setAttribute("width", size);
+  svg.setAttribute("height", size);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `QR code for ${text}`);
+  svg.setAttribute("shape-rendering", "crispEdges");
+  const bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("width", "100%"); bg.setAttribute("height", "100%"); bg.setAttribute("fill", "#ffffff");
+  svg.append(bg);
+  let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c + quiet} ${r + quiet}h1v1h-1z`;
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute("d", d); path.setAttribute("fill", "#000000");
+  svg.append(path);
+  return svg;
 };

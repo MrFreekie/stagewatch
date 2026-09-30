@@ -50,7 +50,11 @@
       h("p", {}, "To recover, do one of these on the Stagewatch computer:"),
       h("ul", {},
         h("li", {}, "Restore config.yaml from a backup in the data folder (the unreadable file was kept next to it as config.invalid*.yaml), then restart Stagewatch."),
-        h("li", {}, "Or run ", h("code", {}, "stagewatch reset-admin-pin --data-dir <data folder>"), " and restart Stagewatch; this page then lets you set a new PIN. It only works with access to the computer's files."))));
+        h("li", {}, "Or run the reset script, which clears the PIN and restarts Stagewatch; this page then lets you set a new PIN. It only works with access to the computer's files.",
+          h("ul", {},
+            h("li", {}, "Windows (PowerShell as Administrator): ", h("code", {}, "powershell -ExecutionPolicy Bypass -File C:\\Stagewatch\\deploy\\windows\\reset-admin-pin.ps1")),
+            h("li", {}, "Raspberry Pi (Terminal): ", h("code", {}, "bash /opt/stagewatch/deploy/pi/reset-admin-pin.sh")))),
+        h("li", {}, "Step-by-step guide: docs/updating-and-backups.md (Forgotten PIN, or \"Recovery required\")."))));
   }
 
   // ----------------------------------------------------------- sections
@@ -344,7 +348,7 @@
       } catch (_) { wasDown = true; }
       if (secs > 10 * 60) {
         msg.replaceChildren("Stagewatch has not come back.");
-        sub.textContent = "Check the launcher log on the host machine. This page will reload when the server returns.";
+        sub.textContent = "Check the launcher log on the Stagewatch computer (administrators only). Windows: C:\\ProgramData\\Stagewatch\\logs\\launcher.log. Raspberry Pi: /var/lib/stagewatch/logs/launcher.log. Once Stagewatch is back, use Download diagnostics on this page and send the file when asking for help. This page will reload when the server returns.";
       } else secsEl.textContent = ` ${secs} s`;
       setTimeout(tick, 2000);
     };
@@ -469,14 +473,65 @@
       sub("Update history"), hist,
       sizes(sw.backups, "Data backups"), sizes(sw.displaced, "Displaced data (set aside by a restore)"));
   }
+  // ------------------------------------------------- connect a tablet
+  // Shows the address to type (and a QR code to scan) for each dashboard. Admin-only: the
+  // list of the computer's network addresses is not shown on the no-login dashboards.
+  function connectCard() {
+    const body = h("div", {}, h("p", { class: "muted" }, "Looking up this computer's network address…"));
+    const c = card("Connect a tablet",
+      h("p", { class: "muted" }, "On the tablet, join the same Wi-Fi as this computer, then scan a QR code or type the address into the browser."),
+      body);
+    c.id = "connect";
+    api("GET", "/api/admin/connect").then((r) => {
+      if (!r.addresses.length) {
+        body.replaceChildren(h("p", { class: "warn-text" }, "This computer does not seem to be on a network. Connect it to the show network (Wi-Fi or cable) and reload this page."));
+        return;
+      }
+      const item = (title, urls, mdns) => h("li", { class: "connect-item" },
+        SW.qrSvg(urls[0], 132) || "",
+        h("div", {},
+          h("div", { class: "muted" }, title),
+          urls.map((u) => h("div", { class: "connect-url" }, u)),
+          mdns ? h("div", { class: "muted" }, "Or, on most devices: ", h("span", { class: "mono" }, mdns), " (if that does not work, use the numbers above)") : null));
+      body.replaceChildren(h("ul", { class: "connect-list" },
+        r.dashboards.map((d) => item(`${d.title} (${d.layout})`, d.ip, d.mdns)),
+        item("Home page (all dashboards)", r.home.ip, r.home.mdns)));
+    }).catch((err) => body.replaceChildren(h("p", { class: "error" }, err.message)));
+    return c;
+  }
+
+  // ------------------------------------------------------------ support
+  function supportCard() {
+    const status = h("p", { class: "muted", role: "status" });
+    const btn = h("button", { class: "primary", style: "min-height:48px", onclick: async () => {
+      btn.disabled = true; status.textContent = "Preparing…";
+      try {
+        const res = await fetch("/api/admin/diagnostics", { credentials: "same-origin", cache: "no-store" });
+        if (!res.ok) { let m = res.statusText; try { m = (await res.json()).detail || m; } catch (_) { /* not JSON */ } throw new Error(m); }
+        const blob = await res.blob();
+        const m = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "");
+        const a = h("a", { href: URL.createObjectURL(blob), download: m ? m[1] : "stagewatch-diagnostics.zip" });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        status.textContent = "Downloaded. Send that file when you ask for help.";
+      } catch (err) { status.textContent = ""; toast(err.message, true); }
+      finally { btn.disabled = false; }
+    } }, "Download diagnostics");
+    return card("Help",
+      h("p", { class: "muted" }, "If something is not working, download this file and send it to whoever is helping you. It contains recent logs, the device list and your settings. It contains no passwords or keys."),
+      h("div", { class: "row" }, btn), status);
+  }
+
   function render() {
     entityIdsRendered = snap.entities.map((e) => e.id).join(",");
     app.replaceChildren(
       h("div", { class: "grid-2" }, siteCard(), showsCard()),
+      connectCard(),
       softwareCard(),
       devicesCard(), entitiesCard(), thresholdsCard(),
       h("div", { class: "grid-2" }, dashboardsCard(), oscCard()),
       h("div", { class: "grid-2" }, alarmLogCard(), securityCard()),
+      supportCard(),
       catalogCard());
   }
 
@@ -525,4 +580,5 @@
 
   start();
   setInterval(poll, 5000);
+  SW.heartbeat(2000);   // "Disconnected from Stagewatch" banner if the server stops answering
 })();
