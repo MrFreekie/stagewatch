@@ -25,6 +25,8 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | d&b ArraySight | Array angle, T/RH | AES70 over PoE | 🔒 | ★★ | ⬅ | |
 | L-Acoustics P1 Sensor | T/RH | Electronics HTTP API | 🔒 | ★★ | ⬅ | |
 | RuuviTag / pvvx BLE tags | Cheap T/RH/P | BLE adverts | ✅ | ★ | ⬅ | |
+| **ESP32 Bluetooth relay** (ESPHome `bluetooth_proxy`) | Picks up BLE sensor adverts (RuuviTag, pvvx, XIAO nRF52840/MG24 beacons) anywhere on site and forwards them over Wi-Fi/Ethernet. Fixes BLE's 10–30 m range and flaky Windows Bluetooth. | ESPHome native API BLE advertisement stream (reuses the `esphome` integration) | ✅ | ★★★ | ⬅ | **dev list** |
+| Seeed XIAO MG24 Sense (EFR32MG24) | USB-connected tilt (rough, ±0.5–1°; not array-angle grade) + env node via add-on BME280/SHT45; BLE beacon later. The on-board mic is **not** SPL-grade. | Arduino sketch → `ENV,`/`TILT,` lines over USB serial (phase 3 `serial_line`); BLE via the relay above | ✅ | ★ | ⬅ | |
 | METAR / met-office API | Forecast wind and pressure baseline | HTTPS | ✅ | ★ | ⬅ | |
 
 ## Power
