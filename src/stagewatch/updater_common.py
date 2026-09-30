@@ -79,6 +79,41 @@ def replace_with_retry(src, dst, *, retries: int = REPLACE_RETRIES, delay: float
             time.sleep(delay)
 
 
+def fsync_dir(directory) -> None:
+    """Best-effort fsync of a directory so a rename survives a power cut (POSIX only)."""
+    if sys.platform == "win32":
+        return
+    try:
+        fd = os.open(str(directory), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def remove_stale_temps(directory, patterns: Iterable[str], min_age_s: float = 60.0) -> int:
+    """Delete leftover temp files (from interrupted atomic writes) older than ``min_age_s``.
+    Never raises; returns how many were removed."""
+    removed = 0
+    now = time.time()
+    try:
+        candidates = [p for pat in patterns for p in Path(directory).glob(pat)]
+    except OSError:
+        return 0
+    for p in candidates:
+        try:
+            if p.is_file() and now - p.stat().st_mtime > min_age_s:
+                p.unlink()
+                removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def atomic_write_bytes(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
@@ -88,12 +123,88 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             f.flush()
             os.fsync(f.fileno())
         replace_with_retry(tmp, path)
+        fsync_dir(path.parent)
     except BaseException:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise
+
+
+# ---------------------------------------------------------------------------
+# Running-server lock (data dir): lets `reset-admin-pin` refuse while a server is up
+# ---------------------------------------------------------------------------
+
+SERVER_LOCK_NAME = "server.lock"
+_LOCK_STARTUP_GRACE_S = 120.0
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.restype = ctypes.c_void_p
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ctypes.get_last_error() == 5  # access denied: exists
+        code = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(ctypes.c_void_p(h), ctypes.byref(code))
+        k32.CloseHandle(ctypes.c_void_p(h))
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _port_open(port: int) -> bool:
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=1.0):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+def write_server_lock(data_dir, port: int) -> None:
+    try:
+        atomic_write_json(Path(data_dir) / SERVER_LOCK_NAME, {"pid": os.getpid(), "port": int(port)})
+    except OSError:
+        pass
+
+
+def remove_server_lock(data_dir) -> None:
+    """Remove the lock only if it is ours (a newer server may own it)."""
+    p = Path(data_dir) / SERVER_LOCK_NAME
+    try:
+        if read_json(p).get("pid") == os.getpid():
+            p.unlink()
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
+def server_running(data_dir) -> bool:
+    """True if a live Stagewatch server owns this data dir: the lock's PID is alive AND its
+    port answers (or the lock is fresh, i.e. the server is still starting).  A stale lock left
+    by a crash / reused PID reads as not running."""
+    p = Path(data_dir) / SERVER_LOCK_NAME
+    try:
+        info = read_json(p)
+        pid, port = int(info["pid"]), int(info["port"])
+        age = time.time() - p.stat().st_mtime
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    if not _pid_alive(pid):
+        return False
+    return _port_open(port) or age < _LOCK_STARTUP_GRACE_S
 
 
 def atomic_write_json(path: Path, obj) -> None:

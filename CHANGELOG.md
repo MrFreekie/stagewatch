@@ -16,6 +16,14 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Security
+- Config validation/YAML errors no longer log input values (`hide_input_in_errors` on all config
+  models; the load/salvage path logs section names, error types and line/column only, no tracebacks),
+  so a bad `noise_psk` or `password` can't leak into `stagewatch.log`.
+- `stagewatch reset-admin-pin` refuses while a Stagewatch server is running on that data folder
+  (server writes `server.lock`; `--force` overrides), also clears the PIN in `config.yaml.bak`, and
+  the README now warns that anyone on the network can set the new PIN until you do.
+- The `nightly` promote job only runs from `main`, so a manual dispatch from another branch can't
+  move the nightly branch.
 - The Windows install is now managed-only. The previous installer ran a SYSTEM task from a
   user-writable checkout, so any process running as that user could escalate to SYSTEM.
   The new install lives in an Administrators-owned, ACL-locked `C:\Stagewatch` with its own
@@ -42,6 +50,17 @@ them into a dated release section and tags the commit.
 - Build info (`/api/info`) runs git with the hardened flags/environment and a 3 s timeout.
 
 ### Fixed
+- Power-cut safety: config saves, PIN reset and the updater's atomic writes flush and `fsync` the
+  temp file before the rename (and the directory on POSIX). `config.yaml.bak` keeps the previous good
+  config (same secrets, same folder protection, never part of the site-config repo), and an empty or
+  unparseable `config.yaml` is restored from it before the salvage path runs.
+- Stray `.config-*.yaml` temp files (data dir) and `*.tmp` files (updater state dir) left by
+  interrupted saves are removed at startup when older than a minute.
+- Launcher: `server-console.log` is rotated at launcher start (3 old copies, 5 MB cap) and now
+  captures only stderr (the server already writes its own rotating `stagewatch.log`).
+- Launcher watchdog: a supervised server that is alive but stops answering `/api/info` on localhost
+  for about two minutes (after a startup grace period, and never while an update is pending) is
+  restarted.
 - Update check: a `nightly` branch that is not part of `main`'s history is reported as
   "not part of the main branch history" instead of "up to date".
 - Request-body cap: drains a bounded amount (1 MiB / 2 s) of a refused body before the 413, so

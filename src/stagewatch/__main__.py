@@ -107,9 +107,11 @@ async def run(args: argparse.Namespace) -> int:
     log.info("Stagewatch %s starting on http://%s:%d (data: %s)%s", version_string(),
              args.host, args.port, data_dir, " [EMULATE]" if args.emulate else "")
     handshake_task = asyncio.create_task(_write_handshake_when_started(server))
+    updater_common.write_server_lock(data_dir, args.port)  # lets `reset-admin-pin` detect us
     try:
         await server.serve()
     finally:
+        updater_common.remove_server_lock(data_dir)
         handshake_task.cancel()
         if zc is not None:
             if service is not None:
@@ -143,10 +145,19 @@ def reset_admin_pin_cli(argv: list[str]) -> None:
                                                  "Needs access to the data folder; not available over HTTP.")
     parser.add_argument("--data-dir", type=Path, default=None)
     parser.add_argument("--emulate", action="store_true", help="use the emulate data folder")
+    parser.add_argument("--force", action="store_true",
+                        help="run even if a Stagewatch server seems to be running on this data folder")
     args = parser.parse_args(argv)
     data_dir = (args.data_dir or default_data_dir(args.emulate)).resolve()
+    if not args.force and updater_common.server_running(data_dir):
+        print("error: Stagewatch appears to be running on this data folder. Stop the Stagewatch "
+              "service first (a running server would overwrite the reset), or use --force.",
+              file=sys.stderr)
+        sys.exit(1)
     try:
         print(reset_admin_pin(data_dir))
+        print("Note: until you set the new PIN in /admin, anyone on the network can set it. "
+              "Restart Stagewatch and do it promptly.")
     except (OSError, FileNotFoundError) as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)

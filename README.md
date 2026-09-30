@@ -26,6 +26,9 @@ RF and SPL.
 > from people who *do* write code are very welcome. The software is provided as-is, with no
 > warranty (see [LICENSE](LICENSE), GPL-3.0).
 
+> Product and company names mentioned are trademarks of their respective owners. No
+> affiliation or endorsement is implied.
+
 ☕ If Stagewatch helps your shows, you can [buy me a coffee](https://buymeacoffee.com/fohengineer).
 
 ---
@@ -217,7 +220,11 @@ only available on a managed install; update those with `git pull`.
   a new PIN over the network (otherwise anyone on the LAN could claim admin). Restore `config.yaml`
   from a backup, or on the Stagewatch computer run
   `stagewatch reset-admin-pin --data-dir <data folder>`, restart, and set a new PIN. This command
-  needs file access to the data folder and is not available over HTTP.
+  needs file access to the data folder and is not available over HTTP. Stop the Stagewatch service
+  first (the command refuses to run while it detects a running server; `--force` overrides). After
+  a reset, **anyone on the network can set the new PIN until you do**, so restart and set it promptly.
+  Stagewatch also keeps `config.yaml.bak` (the previous good config, same secrets, same folder
+  protection) and falls back to it automatically if `config.yaml` is empty or unreadable.
 - **Trying it offline.** `uv run python scripts/updater_sandbox.py` builds a local fake remote and
   a managed clone and runs the real launcher and server against them (no network).
 

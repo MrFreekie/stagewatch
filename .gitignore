@@ -18,6 +18,9 @@ wheels/
 data/
 config.yaml
 config.invalid.yaml
+config.yaml.bak
+.config-*.yaml
+*.bak
 secret.key
 *.key
 *.pem

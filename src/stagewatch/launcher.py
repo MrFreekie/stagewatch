@@ -118,6 +118,41 @@ class _WinJob:
             self._h = None
 
 
+CONSOLE_LOG_MAX = 5 * 1024 * 1024
+CONSOLE_LOG_KEEP = 3
+WATCHDOG_GRACE = 120.0      # no probing while the server is starting
+WATCHDOG_INTERVAL = 15.0
+WATCHDOG_FAILURES = 8       # 8 x 15 s = ~2 minutes of no answer
+
+
+def rotate_log(path: Path, keep: int = CONSOLE_LOG_KEEP) -> None:
+    """path -> path.1 -> path.2 ... (at most ``keep`` old copies).  Never raises."""
+    try:
+        if not path.exists() or path.stat().st_size == 0:
+            return
+        for i in range(keep, 0, -1):
+            src = path if i == 1 else path.with_name(f"{path.name}.{i - 1}")
+            dst = path.with_name(f"{path.name}.{i}")
+            if src.exists():
+                os.replace(src, dst)
+    except OSError:
+        pass
+
+
+def http_probe(port: int, timeout: float = 5.0) -> bool:
+    """True if something answers HTTP on localhost:port.  Any HTTP status counts as alive; only a
+    refused/timed-out connection is a failure (this checks liveness, not correctness)."""
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{int(port)}/api/info", timeout=timeout):
+            return True
+    except urllib.error.HTTPError:
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 class Child:
     """The supervised server process (and, on Windows, everything in its job)."""
 
@@ -129,8 +164,10 @@ class Child:
         else:
             kwargs["start_new_session"] = True
         self.popen = subprocess.Popen(cmd, env=env, cwd=cwd, stdin=subprocess.DEVNULL,
-                                      stdout=out_file or subprocess.DEVNULL,
-                                      stderr=subprocess.STDOUT if out_file else subprocess.DEVNULL, **kwargs)
+                                      # stdout duplicates the server's own rotating stagewatch.log;
+                                      # keep only stderr (crash tracebacks) for diagnosis.
+                                      stdout=subprocess.DEVNULL,
+                                      stderr=out_file or subprocess.DEVNULL, **kwargs)
         self.job: _WinJob | None = None
         if sys.platform == "win32":
             try:  # tiny window before assignment; the redirector has not spawned its child yet
@@ -249,9 +286,16 @@ class Launcher:
                  health_timeout: float = HEALTH_TIMEOUT, stable_seconds: float = STABLE_SECONDS,
                  backoff_min: float = BACKOFF_MIN, backoff_max: float = BACKOFF_MAX,
                  poll: float = 0.5, graceful_stop: float = GRACEFUL_STOP,
-                 git_protocols: tuple[str, ...] = ("https",), child_env: dict | None = None):
+                 git_protocols: tuple[str, ...] = ("https",), child_env: dict | None = None,
+                 watchdog_probe: Callable[[], bool] | None = None,
+                 watchdog_grace: float = WATCHDOG_GRACE, watchdog_interval: float = WATCHDOG_INTERVAL,
+                 watchdog_failures: int = WATCHDOG_FAILURES):
         self.marker = marker
         self.sd = uc.ensure_state_dir(marker.repo_path)
+        uc.remove_stale_temps(self.sd, ["*.tmp"], 60.0)  # left by interrupted atomic writes
+        self.watchdog_probe = watchdog_probe  # None = watchdog off (only the real CLI enables it)
+        self.watchdog_grace, self.watchdog_interval = watchdog_grace, watchdog_interval
+        self.watchdog_failures = watchdog_failures
         self.ctx = uc.GitContext(marker.repo_path, str(marker.git_path), self.sd, git_protocols)
         self.child_cmd = child_cmd
         self.sync_fn = sync_fn or run_uv_sync
@@ -290,11 +334,21 @@ class Launcher:
             uc.handshake_path(self.sd).unlink()
         except FileNotFoundError:
             pass
+        logs = self.marker.data_dir / "logs"
+        console = logs / "server-console.log"
+        if self._out is not None:
+            try:
+                too_big = console.stat().st_size > CONSOLE_LOG_MAX
+            except OSError:
+                too_big = False
+            if too_big:  # a crash-looping server must not fill the disk
+                self._out.close()
+                self._out = None
         if self._out is None:
-            logs = self.marker.data_dir / "logs"
             try:
                 logs.mkdir(parents=True, exist_ok=True)
-                self._out = open(logs / "server-console.log", "ab")
+                rotate_log(console)  # previous session -> .1 (max CONSOLE_LOG_KEEP old copies)
+                self._out = open(console, "ab")
             except OSError:
                 self._out = None
         log.info("Starting server: %s", " ".join(self._cmd()))
@@ -302,6 +356,9 @@ class Launcher:
         return self.current
 
     def _wait(self, child: Child) -> int:
+        began = time.monotonic()
+        next_probe = began + self.watchdog_grace
+        failures = 0
         while True:
             rc = child.poll()
             if rc is not None:
@@ -309,6 +366,21 @@ class Launcher:
                 return rc
             if self.stop_event.wait(self.poll):
                 raise StopRequested
+            if self.watchdog_probe is not None and time.monotonic() >= next_probe:
+                next_probe = time.monotonic() + self.watchdog_interval
+                if uc.pending_path(self.sd).exists():
+                    failures = 0  # an update is being staged/applied: the server is about to exit
+                elif self.watchdog_probe():
+                    failures = 0
+                else:
+                    failures += 1
+                    log.warning("Server did not answer its health check (%d/%d)",
+                                failures, self.watchdog_failures)
+                    if failures >= self.watchdog_failures and child.poll() is None:
+                        log.error("Server process %s is alive but unresponsive; restarting it", child.pid)
+                        child.stop(self.graceful_stop)
+                        rc = child.poll()
+                        return rc if rc is not None else -1
 
     # ---- health check ----
     def _healthy(self, child: Child, to_sha: str, require_handshake: bool) -> bool:
@@ -485,7 +557,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"stagewatch launcher: {e}", file=sys.stderr)
         return 2
     _setup_logging(marker.data_dir)
-    launcher = Launcher(marker)
+    launcher = Launcher(marker, watchdog_probe=lambda: http_probe(marker.port))
 
     def _stop(_signum, _frame):
         launcher.stop_event.set()

@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from ..updater_common import replace_with_retry
+from ..updater_common import atomic_write_bytes, fsync_dir, remove_stale_temps, replace_with_retry
 from ..version import CONFIG_SCHEMA_VERSION
 from .model import slugify
 
@@ -40,7 +40,8 @@ def migrate(raw: dict) -> dict:
 
 
 class _Model(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    # hide_input_in_errors: a bad noise_psk/password must never be echoed in an error message.
+    model_config = ConfigDict(extra="ignore", hide_input_in_errors=True)
 
 
 class SiteConfig(_Model):
@@ -223,6 +224,38 @@ def salvage(raw: object, text: str = "") -> tuple[Config, list[str]]:
     return cfg, notes
 
 
+def _describe_error(exc: BaseException) -> str:
+    """A log-safe description of a config load failure: section names, error types and
+    line/column only.  Never the offending input (it may be a password or key)."""
+    if isinstance(exc, ValidationError):
+        parts = []
+        for e in exc.errors(include_input=False, include_url=False, include_context=False):
+            parts.append(f"{'.'.join(str(p) for p in e.get('loc', ())) or '<root>'}: {e.get('type', 'error')}")
+        return "; ".join(parts[:10]) + ("; ..." if len(parts) > 10 else "")
+    if isinstance(exc, yaml.YAMLError):
+        mark = getattr(exc, "problem_mark", None)
+        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark is not None else ""
+        return f"YAML syntax error{where}"
+    return type(exc).__name__
+
+
+def _write_yaml_atomic(path: Path, data: dict) -> None:
+    """Write YAML durably: temp file in the same dir, flush + fsync, replace, fsync the dir."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".config-", suffix=".yaml")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+            f.flush()
+            os.fsync(f.fileno())
+        replace_with_retry(tmp, path)
+        fsync_dir(path.parent)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 class ConfigStore:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -254,32 +287,75 @@ class ConfigStore:
         os.replace(self.path, backup)
         return backup
 
+    @property
+    def bak_path(self) -> Path:
+        return self.path.with_name(self.path.name + ".bak")
+
+    def _cleanup_temps(self) -> None:
+        n = remove_stale_temps(self.path.parent, [".config-*.yaml"], 60.0)
+        if n:
+            log.info("removed %d stale temp config file(s) left by an interrupted save", n)
+
+    def _load_bak(self) -> Config | None:
+        """The previous good config, or None when there is no usable .bak.  Logs no values."""
+        try:
+            raw = yaml.safe_load(self.bak_path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict) or not raw:
+                return None
+            return Config.model_validate(migrate(raw))
+        except Exception:
+            return None
+
     def load(self) -> Config:
+        self._cleanup_temps()
         if self.path.exists():
             text = ""
             raw = None
+            unparseable = False
             try:
                 text = self.path.read_text(encoding="utf-8")
-                raw = yaml.safe_load(text)
+                try:
+                    raw = yaml.safe_load(text)
+                except yaml.YAMLError:
+                    unparseable = True
+                    raise
                 # An empty file is what a torn write leaves behind, never a valid saved config.
                 if not isinstance(raw, dict) or not raw:
+                    unparseable = True
                     raise ValueError("config root must be a non-empty mapping")
                 self.config = Config.model_validate(migrate(raw))
-            except Exception:
-                # Never refuse to boot on show day, and never let a bad file reopen onboarding:
-                # keep the bad file, salvage what validates (PIN first) and write that back.
-                self.config, notes = salvage(raw, text)
-                try:
-                    backup = self._quarantine()
-                except OSError:
-                    log.exception("could not move the invalid config aside")
-                    backup = self.path
-                log.exception("Config %s is invalid; original kept as %s. Salvaged: %s",
-                              self.path, backup.name, "; ".join(notes))
-                try:
-                    self.save()
-                except OSError:
-                    log.exception("could not write the salvaged config")
+            except Exception as exc:
+                reason = _describe_error(exc)  # locations/types only, never input values
+                restored = self._load_bak() if unparseable or isinstance(exc, UnicodeDecodeError) else None
+                if restored is not None:
+                    self.config = restored
+                    try:
+                        backup = self._quarantine()
+                    except OSError:
+                        log.error("could not move the unreadable config aside")
+                        backup = self.path
+                    log.error("Config %s is unreadable (%s); restored the previous good config from %s. "
+                              "The unreadable file was kept as %s", self.path, reason,
+                              self.bak_path.name, backup.name)
+                    try:
+                        self.save()
+                    except OSError:
+                        log.error("could not write the restored config")
+                else:
+                    # Never refuse to boot on show day, and never let a bad file reopen onboarding:
+                    # keep the bad file, salvage what validates (PIN first) and write that back.
+                    self.config, notes = salvage(raw, text)
+                    try:
+                        backup = self._quarantine()
+                    except OSError:
+                        log.error("could not move the invalid config aside")
+                        backup = self.path
+                    log.error("Config %s is invalid (%s); original kept as %s. Salvaged: %s",
+                              self.path, reason, backup.name, "; ".join(notes))
+                    try:
+                        self.save()
+                    except OSError:
+                        log.error("could not write the salvaged config")
         if self.config.admin.pin_hash:
             try:
                 (self.path.parent / ALLOW_ONBOARDING_FLAG).unlink()
@@ -291,18 +367,22 @@ class ConfigStore:
                       "'stagewatch reset-admin-pin --data-dir <data folder>' on this computer.")
         return self.config
 
+    def _backup_current(self) -> None:
+        """Keep the previous good config as config.yaml.bak (atomic).  Only a config that parses
+        as a non-empty mapping is worth keeping; a bad current file never overwrites a good .bak."""
+        try:
+            data = self.path.read_bytes()
+            parsed = yaml.safe_load(data.decode("utf-8"))
+            if isinstance(parsed, dict) and parsed:
+                atomic_write_bytes(self.bak_path, data)
+        except Exception:
+            pass  # best effort: never block a save because the backup failed
+
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         data = self.config.model_dump(mode="json")
-        fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=".config-", suffix=".yaml")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
-            replace_with_retry(tmp, self.path)
-        except BaseException:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-            raise
+        self._backup_current()
+        _write_yaml_atomic(self.path, data)
         if self.config.admin.pin_hash:  # onboarding done: the recovery override is spent
             try:
                 (self.path.parent / ALLOW_ONBOARDING_FLAG).unlink()
@@ -328,16 +408,19 @@ def reset_admin_pin(data_dir: Path) -> str:
             raw = None
         if isinstance(raw, dict) and isinstance(raw.get("admin"), dict) and raw["admin"].get("pin_hash"):
             raw["admin"]["pin_hash"] = ""
-            fd, tmp = tempfile.mkstemp(dir=data_dir, prefix=".config-", suffix=".yaml")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    yaml.safe_dump(raw, f, sort_keys=False, allow_unicode=True)
-                os.replace(tmp, path)
-            except BaseException:
-                if os.path.exists(tmp):
-                    os.unlink(tmp)
-                raise
+            _write_yaml_atomic(path, raw)
             cleared = True
+            # The .bak would still hold the old PIN hash and could silently bring it back.
+            bak = path.with_name(path.name + ".bak")
+            bak_raw = None
+            try:
+                bak_raw = yaml.safe_load(bak.read_text(encoding="utf-8"))
+            except (OSError, yaml.YAMLError, UnicodeDecodeError):
+                pass
+            if isinstance(bak_raw, dict) and isinstance(bak_raw.get("admin"), dict) \
+                    and bak_raw["admin"].get("pin_hash"):
+                bak_raw["admin"]["pin_hash"] = ""
+                _write_yaml_atomic(bak, bak_raw)
     (data_dir / ALLOW_ONBOARDING_FLAG).write_text("created by 'stagewatch reset-admin-pin'\n", encoding="utf-8")
     return ("Admin PIN cleared." if cleared else "No admin PIN was stored.") + \
         " Restart Stagewatch, then open /admin to set a new PIN."

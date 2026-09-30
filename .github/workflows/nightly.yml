@@ -48,6 +48,7 @@ jobs:
 
   promote:
     needs: [resolve, test]
+    if: github.ref == 'refs/heads/main'   # a manual run from another branch must not move nightly
     runs-on: windows-latest
     timeout-minutes: 5
     permissions:
