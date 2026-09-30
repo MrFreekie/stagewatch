@@ -1,0 +1,13 @@
+# Keeps the SHA-pinned GitHub Actions and the locked Python dependencies up to date.
+# Dependabot only opens pull requests; CI must pass and the owner merges them.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
