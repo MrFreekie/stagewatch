@@ -376,11 +376,12 @@ class Launcher:
             return self._start()
         uc.clear_pending(self.sd)  # one-shot
         log.info("Applying %s %s -> %s", p["action"], p["from_sha"][:7], p["to_sha"][:7])
+        displaced = None  # what a manual rollback's data restore moved aside
         try:
             uc.checkout_detach(self.ctx, p["to_sha"])
             self.sync_fn(self.marker)
             if p["action"] == "rollback" and p["schema_changed"]:
-                backup_mod.restore_backup(self.marker.data_dir, self.sd, p["backup_id"])
+                displaced = backup_mod.restore_backup(self.marker.data_dir, self.sd, p["backup_id"])
         except uc.UpdaterError as e:
             log.error("Apply failed: %s", e)
             return self._revert(p, e.category)
@@ -390,21 +391,34 @@ class Launcher:
             return child
         log.error("Health check failed after %s", p["action"])
         child.stop(0)
-        return self._revert(p, "health_check_failed")
+        return self._revert(p, "health_check_failed", displaced)
 
-    def _revert(self, p: dict, reason: str) -> Child:
-        """Automatic rollback to from_sha (+ restore the pre-update backup for a schema-changing update)."""
+    def _revert(self, p: dict, reason: str, displaced: Path | None = None) -> Child:
+        """Automatic return to from_sha.  For a schema-changing update, restore the pre-update
+        backup; for a manual rollback whose data restore already ran, put the displaced (newer)
+        data back so the user is not left on reverted code with the newer data moved aside."""
         restored = False
+        data_returned = False
         try:
             uc.checkout_detach(self.ctx, p["from_sha"])
             self.sync_fn(self.marker)
             if p["action"] == "update" and p["schema_changed"]:
                 backup_mod.restore_backup(self.marker.data_dir, self.sd, p["backup_id"])
                 restored = True
-            self._record(p, "rolled_back", reason, restored_backup=restored)
+            if displaced is not None:
+                backup_mod.undo_restore(self.marker.data_dir, displaced)
+                data_returned = True
+            self._record(p, "rolled_back", reason, restored_backup=restored, data_returned=data_returned)
         except uc.UpdaterError as e:
             log.error("Automatic rollback failed: %s", e)
-            self._record(p, "failed", f"{reason}; rollback_failed:{e.category}", restored_backup=restored)
+            if displaced is not None and not data_returned:
+                try:  # data first: never leave the newer data set aside if we can avoid it
+                    backup_mod.undo_restore(self.marker.data_dir, displaced)
+                    data_returned = True
+                except (uc.UpdaterError, OSError):
+                    log.exception("could not return displaced data from %s", displaced)
+            self._record(p, "failed", f"{reason}; rollback_failed:{e.category}", restored_backup=restored,
+                         data_returned=data_returned)
         return self._start()
 
     # ---- main loop ----

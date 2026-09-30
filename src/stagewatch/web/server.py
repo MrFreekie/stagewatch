@@ -14,10 +14,11 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -27,14 +28,19 @@ from ..core.config import (
 )
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Marker, slugify
+from ..core.updater import RateLimited, Updater, message_for
+from ..updater_common import UpdaterError
 from ..version import build_info
 from .auth import COOKIE, SESSION_S, SessionSigner, hash_pin, verify_pin
+from .limits import DEFAULT_BODY_LIMIT, BodySizeLimitMiddleware
 
 log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).parent / "static"
 STATE_FLUSH_S = 0.5
 MIN_PIN_LEN = 4
+# HTTP status per updater error category (default 409: "the request is fine, the state isn't")
+UPDATER_STATUS = {"rate_limited": 429, "history_not_found": 404, "bad_channel": 422, "bad_sha": 422}
 
 
 # ---------------------------------------------------------------- payloads
@@ -73,6 +79,21 @@ class DevicePatch(BaseModel):
 
 class ShowBody(BaseModel):
     name: str = Field(min_length=1, max_length=80)
+
+
+class UpdateBody(BaseModel):
+    channel: Literal["stable", "nightly"]
+    target_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    pin: str = Field(min_length=1, max_length=64)  # step-up: the admin PIN is re-entered
+
+
+class RollbackBody(BaseModel):
+    history_id: int = Field(ge=0)
+    pin: str = Field(min_length=1, max_length=64)
+
+
+class ChannelBody(BaseModel):
+    channel: Literal["stable", "nightly"]
 
 
 # ------------------------------------------------------------- live feed
@@ -131,7 +152,9 @@ class LiveFeed:
 
 
 # -------------------------------------------------------------------- app
-def create_app(hub: Hub, manage_hub: bool = True) -> FastAPI:
+def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None,
+               body_limit: int = DEFAULT_BODY_LIMIT, body_limit_overrides: dict[str, int] | None = None) -> FastAPI:
+    updater = updater or Updater.detect(hub)
     signer = SessionSigner(hub.data_dir / "secret.key")
     feed = LiveFeed(hub)
     failed_logins: list[float] = []
@@ -141,7 +164,10 @@ def create_app(hub: Hub, manage_hub: bool = True) -> FastAPI:
         if manage_hub:
             await hub.start()
         feed.start()
+        watch = asyncio.create_task(updater.watch_results(), name="updater-results")
         yield
+        watch.cancel()
+        await asyncio.gather(watch, return_exceptions=True)
         await feed.stop()
         if manage_hub:
             await hub.stop()
@@ -149,6 +175,8 @@ def create_app(hub: Hub, manage_hub: bool = True) -> FastAPI:
     app = FastAPI(title="Stagewatch", version=__version__, lifespan=lifespan,
                   docs_url=None, redoc_url=None)
     app.state.hub = hub
+    app.state.updater = updater
+    app.add_middleware(BodySizeLimitMiddleware, default_limit=body_limit, overrides=body_limit_overrides)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     # ---------------------------------------------------------- helpers
@@ -202,7 +230,8 @@ def create_app(hub: Hub, manage_hub: bool = True) -> FastAPI:
     async def info(request: Request):
         return {
             "version": __version__,
-            "build": build_info(),
+            "build": {**build_info(), "channel": updater.effective_channel(),
+                      "managed": updater.managed, "supervised": updater.supervised},
             "site": hub.config.site.name,
             "emulate": hub.emulate,
             "admin_setup_required": not hub.config.admin.pin_hash,
@@ -260,16 +289,20 @@ def create_app(hub: Hub, manage_hub: bool = True) -> FastAPI:
         set_session(response)
         return {"ok": True}
 
-    @app.post("/api/admin/login", dependencies=[Depends(require_same_origin)])
-    async def login(body: PinBody, response: Response):
+    async def check_pin(pin: str) -> None:
+        """Verify the admin PIN; failures share the login rate limiter."""
         now = time.time()
         failed_logins[:] = [t for t in failed_logins if now - t < 60]
         if len(failed_logins) >= 5:
             raise HTTPException(429, "Too many attempts; wait a minute")
-        if not hub.config.admin.pin_hash or not verify_pin(body.pin, hub.config.admin.pin_hash):
+        if not hub.config.admin.pin_hash or not verify_pin(pin, hub.config.admin.pin_hash):
             failed_logins.append(now)
             await asyncio.sleep(1.0)
             raise HTTPException(401, "Wrong PIN")
+
+    @app.post("/api/admin/login", dependencies=[Depends(require_same_origin)])
+    async def login(body: PinBody, response: Response):
+        await check_pin(body.pin)
         set_session(response)
         return {"ok": True}
 
@@ -387,6 +420,42 @@ def create_app(hub: Hub, manage_hub: bool = True) -> FastAPI:
         if not hub.delete_marker(marker_id):
             raise HTTPException(404, "No such marker")
         return {"ok": True}
+
+    # ---------------------------------------------------------- software
+    @app.exception_handler(UpdaterError)
+    async def updater_error(_request: Request, exc: UpdaterError):
+        body = {"detail": message_for(exc.category), "category": exc.category}
+        headers = {}
+        if isinstance(exc, RateLimited):
+            body["retry_after"] = exc.retry_after
+            headers["Retry-After"] = str(exc.retry_after)
+        return JSONResponse(body, status_code=UPDATER_STATUS.get(exc.category, 409), headers=headers)
+
+    @app.get("/api/admin/software", dependencies=[Depends(require_admin)])
+    async def software_status():
+        return await updater.status()
+
+    @app.post("/api/admin/software/check", dependencies=admin_deps)
+    async def software_check():
+        return await updater.check()
+
+    @app.put("/api/admin/software/channel", dependencies=admin_deps)
+    async def software_channel(body: ChannelBody):
+        return {"channel": await updater.set_channel(body.channel)}
+
+    @app.post("/api/admin/software/update", dependencies=admin_deps)
+    async def software_update(body: UpdateBody):
+        if not updater.mutable:  # 409 not_managed before asking for a PIN
+            raise UpdaterError("not_managed")
+        await check_pin(body.pin)
+        return await updater.update(body.channel, body.target_sha)
+
+    @app.post("/api/admin/software/rollback", dependencies=admin_deps)
+    async def software_rollback(body: RollbackBody):
+        if not updater.mutable:
+            raise UpdaterError("not_managed")
+        await check_pin(body.pin)
+        return await updater.rollback(body.history_id)
 
     # -------------------------------------------------------- websocket
     @app.websocket("/ws")

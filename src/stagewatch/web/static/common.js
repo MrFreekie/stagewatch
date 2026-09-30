@@ -40,6 +40,7 @@ SW.api = async function (method, url, body) {
     }
     const err = new Error(msg);
     err.status = res.status;
+    if (data && data.retry_after) err.retryAfter = data.retry_after;
     throw err;
   }
   return data;

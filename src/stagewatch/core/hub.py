@@ -45,6 +45,10 @@ class Hub:
         self.site_meta: dict = {"sensors": {}, "pressure_source": "altitude"}
         self._emas: dict[str, Ema] = {}
         self._tasks: list[asyncio.Task] = []
+        # Set by the updater: process exit code (75 = launcher applies a pending update) and the
+        # callback __main__ installs to stop uvicorn gracefully.
+        self.exit_code = 0
+        self.request_shutdown = None
         self._register_site_device()
 
     # ------------------------------------------------------------ lifecycle

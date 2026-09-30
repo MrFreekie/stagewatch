@@ -267,8 +267,26 @@
     }
   }
 
-  SW.connect(`?dashboard=${encodeURIComponent(slug)}`, onMessage, (up) => $("conn").classList.toggle("on", up));
-  SW.api("GET", "/api/info").then((i) => { $("emulate").hidden = !i.emulate; }).catch(() => {});
+  // After a software update the server restarts with new code; the live feed
+  // reconnects on its own, but this page would keep running the old JS. On
+  // each reconnect compare the running build with the one this page loaded
+  // with and reload if it changed.
+  let loadedBuild = null;
+  const buildKey = (i) => (i && i.build ? `${i.version}+${i.build.commit}` : null);
+  let wasDown = false;
+  SW.connect(`?dashboard=${encodeURIComponent(slug)}`, onMessage, (up) => {
+    $("conn").classList.toggle("on", up);
+    if (!up) { wasDown = true; return; }
+    if (!wasDown) return;
+    SW.api("GET", "/api/info").then((i) => {
+      const key = buildKey(i);
+      if (loadedBuild && key && key !== loadedBuild) location.reload();
+    }).catch(() => {});
+  });
+  SW.api("GET", "/api/info").then((i) => {
+    $("emulate").hidden = !i.emulate;
+    loadedBuild = buildKey(i);
+  }).catch(() => {});
   sounder.enable(); // works in kiosk mode (autoplay allowed); otherwise the button appears
   setInterval(() => { $("clock").textContent = SW.timeSec(serverNow()); }, 1000);
   setInterval(loadHistory, 60000); // re-bucket history so long views stay tidy

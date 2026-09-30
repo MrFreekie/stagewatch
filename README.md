@@ -106,6 +106,8 @@ Example configs are in [`esphome/`](esphome/):
 | `stagewatch-env.yaml` | ESP32 + BME280 (temperature, RH, pressure), Wi-Fi |
 | `stagewatch-env-sht45.yaml` | ESP32 + SHT45 (±0.1 °C temperature, RH), Wi-Fi |
 | `stagewatch-env-poe.yaml` | Olimex ESP32-POE(-ISO) + BME280, PoE Ethernet |
+| `stagewatch-feather-s3.yaml` | Adafruit ESP32-S3 Feather (STEMMA QT) + BME280 or SHT45, Wi-Fi |
+| `stagewatch-feather-s3-tft.yaml` | Adafruit ESP32-S3 TFT Feather + BME280 or SHT45, with on-board status display |
 
 1. Copy `esphome/secrets.example.yaml` to `esphome/secrets.yaml` (gitignored) and fill it in.
 2. Flash the node: `esphome run esphome/stagewatch-env.yaml`
@@ -132,7 +134,7 @@ there, stores data in `C:\ProgramData\Stagewatch` (SYSTEM and Administrators onl
 registers a startup task running as SYSTEM. The task runs the **launcher**
 (`stagewatch.launcher`), a small supervisor that restarts the server after a crash
 (Task Scheduler alone does not restart a process that has exited) and stops it cleanly
-with the task. The launcher is also what will apply updates and roll back a failed one.
+with the task. The launcher is also what applies updates and rolls back a failed one (see [Updating](#updating)).
 The installer also opens the port on the Private/Domain firewall profiles. Options:
 `-InstallDir`, `-DataDir`, `-Port`, `-Channel stable|nightly`, `-Ref <tag-or-sha>`.
 Remove it with `uninstall-service.ps1` (data is kept). It has not yet been verified on
@@ -147,6 +149,41 @@ bash deploy/pi/install.sh --kiosk
 
 This installs a systemd service with restart. `--managed` (untested on hardware) instead\ninstalls the hardened launcher-based service under a dedicated `stagewatch` user. `--kiosk` opens the `wall` dashboard
 full screen on the HDMI display after login.
+
+## Updating
+
+**Admin → Software** can update Stagewatch from GitHub without a terminal. It only works on a
+**managed install** (the Windows/Pi installers above), where the server runs under the launcher.
+On a development checkout or a manual run the card shows the version and says in-app updates are
+only available on a managed install; update those with `git pull`.
+
+- **Channels.** *Stable* (default) is the newest `vX.Y.Z` release tag reachable from `main`.
+  *Nightly* is the `nightly` branch, which only CI moves, to a `main` commit that passed the
+  Windows test run. Nightly is bleeding edge, tested automatically only: don't run it on show days.
+  The channel you pick is stored in `config.yaml`; the installer's choice is the default.
+- **Check, then update.** *Check for updates* fetches from GitHub (at most once every 30 s) and
+  shows the target version, its full commit id and the changelog. *Update now* asks you to
+  **re-enter the admin PIN** (so a tablet left logged in can't start an update), then restarts
+  Stagewatch. Dashboards reconnect by themselves; the admin page shows "Stagewatch is restarting
+  for an update" and reloads. Expect about a minute of downtime. There is no check for a show in
+  progress: don't update mid-show. Updates never install anything that changes where dependencies
+  come from, or the Python version; those need a manual update.
+- **Backups and rollback.** If the new version changes the config or database format, your data
+  is backed up first (`<data>/backups/`, at most 10 kept; the checksums live in the admin-only
+  `.git/stagewatch/` folder). If the new version fails to start, the launcher goes back to the
+  old version and restores that backup automatically. *Roll back* in the update history does the
+  same on demand. Anything a restore replaces is set aside in `<data>/backups/displaced-*/`
+  (never deleted automatically; the card lists the sizes). Markers recorded since the update
+  are lost from the live database on a data restore, but kept in the displaced folder.
+- **The repository must be public.** There is no token support: while the repo is private, or the
+  machine is offline, Check shows "Update source not reachable (repository is private or offline)."
+- **What this protects against.** The updater refuses downgrades, targets that are not on `main`,
+  moved release tags and dependency-source changes, and it only ever runs code from the pinned
+  GitHub origin. It **cannot** protect you from a compromised GitHub account. Turn on 2FA and set up
+  repository rulesets: no force-push or deletion on `main`; only GitHub Actions may update
+  `nightly`; no update or deletion of `v*` tags.
+- **Trying it offline.** `uv run python scripts/updater_sandbox.py` builds a local fake remote and
+  a managed clone and runs the real launcher and server against them (no network).
 
 ## OSC output
 

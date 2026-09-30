@@ -7,6 +7,7 @@
   const app = document.getElementById("app");
   let admin = null;   // /api/admin/state
   let snap = null;    // /api/snapshot
+  let sw = null;      // /api/admin/software
   let entityIdsRendered = "";
 
   function toast(msg, isError) {
@@ -278,10 +279,164 @@
         : h("p", { class: "muted" }, "No alarms yet."));
   }
 
+  // ------------------------------------------------------------ software
+  // Everything from the server is shown with textContent only (h() creates text nodes):
+  // changelogs and commit subjects are untrusted text.
+  const swBadge = () => document.getElementById("update-badge");
+  const bytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : `${Math.max(1, Math.round((n || 0) / 1024))} KiB`);
+  const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? (iso || "") : d.toLocaleString(); };
+
+  async function loadSoftware() {
+    try { sw = await api("GET", "/api/admin/software"); } catch (_) { sw = null; }
+    swBadge().hidden = !(sw && sw.update_available);   // header only, never on user dashboards
+  }
+  function rerenderSoftware() {
+    swBadge().hidden = !(sw && sw.update_available);
+    const old = document.getElementById("software");
+    if (old) old.replaceWith(softwareCard());
+  }
+  async function swAction(fn, okMsg) {
+    try { const r = await fn(); if (okMsg) toast(okMsg); return r; }
+    catch (err) {
+      toast(err.status === 429 && err.retryAfter ? `${err.message} (${err.retryAfter} s)` : err.message, true);
+      return null;
+    } finally { await loadSoftware(); rerenderSoftware(); }
+  }
+
+  function watchRestart(startCommit) {
+    const banner = h("div", { class: "restart-banner" }, "Stagewatch is restarting for an update…");
+    document.body.prepend(banner);
+    const t0 = Date.now();
+    let wasDown = false;
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/info", { cache: "no-store", credentials: "same-origin" });
+        if (!res.ok) throw new Error("down");
+        const info = await res.json();
+        if (wasDown || (info.build && info.build.commit !== startCommit)) { location.reload(); return; }
+      } catch (_) { wasDown = true; }
+      if (Date.now() - t0 > 10 * 60 * 1000) {
+        banner.textContent = "Stagewatch has not come back. Check the launcher log on the host machine.";
+        return;
+      }
+      setTimeout(tick, 2000);
+    };
+    setTimeout(tick, 1500);
+  }
+
+  // Confirm dialog with PIN step-up.  submit(pin) performs the API call.
+  function confirmDialog({ title, lines, pre, warning, confirmLabel, submit }) {
+    const pin = h("input", { type: "password", inputmode: "numeric", autocomplete: "current-password", placeholder: "Admin PIN", maxlength: 64 });
+    const err = h("p", { class: "error" });
+    const dlg = h("dialog", { class: "sw-dialog" });
+    const close = () => { dlg.close(); dlg.remove(); };
+    const go = h("button", { class: "primary", type: "submit" }, confirmLabel);
+    dlg.append(h("form", { onsubmit: async (ev) => {
+      ev.preventDefault();
+      err.textContent = "";
+      go.disabled = true;
+      try { await submit(pin.value); close(); }
+      catch (e) { err.textContent = e.message; go.disabled = false; pin.value = ""; pin.focus(); }
+    } },
+    h("h3", { style: "margin-top:0" }, title),
+    ...lines.map((l) => h("p", { style: "margin:4px 0" }, l)),
+    pre ? h("div", { class: "pre-wrap" }, pre) : null,
+    warning ? h("p", { class: "warn-text" }, warning) : null,
+    h("p", { class: "muted", style: "font-size:13px" }, "Stagewatch will restart for about a minute; dashboards reconnect by themselves. Re-enter the admin PIN to continue."),
+    h("div", { class: "row" }, pin, h("button", { type: "button", onclick: close }, "Cancel"), go),
+    err));
+    dlg.addEventListener("cancel", () => dlg.remove());
+    document.body.append(dlg);
+    dlg.showModal();
+    pin.focus();
+  }
+
+  function startUpdate(last) {
+    const from = sw.describe, to = last.target_version || "unknown version";
+    confirmDialog({
+      title: "Update Stagewatch",
+      lines: [`Channel: ${last.channel === "nightly" ? "Nightly" : "Stable"}`, `Version: ${from} → ${to}`, `Commit: ${last.target_sha}`],
+      pre: [last.changelog, last.commits && last.commits.length ? "Commits:\n" + last.commits.map((c) => `- ${c}`).join("\n") : ""].filter(Boolean).join("\n\n") || "(no changelog)",
+      warning: last.schema_changed ? "This update changes the data format. A backup is made first and restored automatically if the update fails." : "",
+      confirmLabel: "Update now",
+      submit: async (pin) => {
+        await api("POST", "/api/admin/software/update", { channel: last.channel, target_sha: last.target_sha, pin });
+        watchRestart(sw.commit);
+      },
+    });
+  }
+
+  function startRollback(entry) {
+    confirmDialog({
+      title: "Roll back Stagewatch",
+      lines: [`Version: ${entry.to_version || "current"} → ${entry.from_version || "previous"}`],
+      warning: entry.schema_changed ? "The data from before that update is restored. Anything recorded since is set aside in a displaced-… backup folder (kept, not deleted)." : "",
+      confirmLabel: "Roll back",
+      submit: async (pin) => {
+        await api("POST", "/api/admin/software/rollback", { history_id: entry.id, pin });
+        watchRestart(sw.commit);
+      },
+    });
+  }
+
+  function softwareCard() {
+    const el = (...body) => { const c = card("Software", ...body); c.id = "software"; return c; };
+    if (!sw) return el(h("p", { class: "muted" }, "Software status unavailable."));
+    const info = h("table", {}, h("tbody", {},
+      [["Version", sw.describe], ["Commit", sw.commit_full || sw.commit + (sw.dirty ? " (modified)" : "")],
+       ["Channel", sw.channel === "nightly" ? "Nightly" : "Stable"],
+       ["Install", sw.managed ? (sw.supervised ? "Managed" : "Managed, not started by the launcher") : "Development / manual"]]
+        .map(([k, v]) => h("tr", {}, h("td", { class: "muted" }, k), h("td", { class: k === "Commit" ? "mono" : "" }, v)))));
+    if (!sw.mutable) {
+      return el(info, h("p", { class: "muted" }, sw.message || "In-app updates are only available on a managed install."));
+    }
+    const chan = h("select", {}, [["stable", "Stable"], ["nightly", "Nightly"]].map(([v, l]) => h("option", { value: v }, l)));
+    chan.value = sw.channel;
+    chan.onchange = () => swAction(() => api("PUT", "/api/admin/software/channel", { channel: chan.value }), "Channel changed");
+    const checkBtn = h("button", { class: "primary", disabled: sw.job.running || sw.restarting, onclick: async (ev) => {
+      ev.target.disabled = true;
+      const r = await swAction(() => api("POST", "/api/admin/software/check"));
+      if (r && !r.ok) toast(r.message, true);
+    } }, "Check for updates");
+
+    const last = sw.last_check;
+    let result;
+    if (!last) result = h("p", { class: "muted" }, "Not checked yet.");
+    else if (!last.ok) result = h("p", { class: "error" }, `${last.message} (checked ${when(new Date(last.ts * 1000).toISOString())})`);
+    else if (!last.available) result = h("p", { class: "muted" }, `Up to date on the ${last.channel === "nightly" ? "Nightly" : "Stable"} channel (checked ${when(new Date(last.ts * 1000).toISOString())}).`);
+    else result = h("div", {},
+      h("p", {}, h("strong", {}, `Update available: ${last.target_version || "unknown version"}`), ` (currently ${last.from_version || sw.version})`),
+      h("div", { class: "mono" }, last.target_sha),
+      last.schema_changed ? h("p", { class: "warn-text" }, "This update changes the data format; a backup is made first.") : null,
+      last.changelog ? h("div", { class: "pre-wrap" }, last.changelog) : null,
+      last.commits && last.commits.length ? h("div", { class: "pre-wrap" }, last.commits.map((c) => `- ${c}`).join("\n")) : null,
+      h("button", { class: "primary", onclick: () => startUpdate(last) }, "Update now…"));
+
+    const hist = sw.history.length ? h("div", { class: "table-scroll" }, h("table", {},
+      h("thead", {}, h("tr", {}, ["When", "What", "Result", "Versions", ""].map((x) => h("th", {}, x)))),
+      h("tbody", {}, sw.history.slice(0, 10).map((e) => h("tr", {},
+        h("td", { class: "muted" }, when(e.ts)), h("td", {}, e.action || ""),
+        h("td", {}, e.result + (e.reason ? ` (${e.reason})` : "")),
+        h("td", {}, `${e.from_version || "?"} → ${e.to_version || "?"}`),
+        h("td", {}, e.can_rollback ? h("button", { class: "small", onclick: () => startRollback(e) }, "Roll back…") : null)))))) : h("p", { class: "muted" }, "No updates yet.");
+
+    const sizes = (rows, label) => rows.length ? h("div", {}, h("h3", { class: "muted", style: "font-size:13px;margin:12px 0 4px" }, label),
+      h("table", {}, h("tbody", {}, rows.map((r) => h("tr", {}, h("td", { class: "mono" }, r.id || r.name), h("td", { class: "num" }, bytes(r.size)))))))
+      : null;
+
+    return el(info,
+      h("div", { class: "row", style: "margin:10px 0" }, h("label", { class: "field" }, "Channel", chan), checkBtn),
+      sw.channel === "nightly" ? h("p", { class: "warn-text" }, "Nightly is bleeding edge, tested automatically only. Don't run it on show days.") : null,
+      result,
+      h("h3", { class: "muted", style: "font-size:13px;margin:12px 0 4px" }, "Update history"), hist,
+      sizes(sw.backups, "Data backups"), sizes(sw.displaced, "Displaced data (set aside by a restore)"));
+  }
+
   function render() {
     entityIdsRendered = snap.entities.map((e) => e.id).join(",");
     app.replaceChildren(
       h("div", { class: "grid-2" }, siteCard(), showsCard()),
+      softwareCard(),
       devicesCard(), entitiesCard(), thresholdsCard(),
       h("div", { class: "grid-2" }, dashboardsCard(), oscCard()),
       h("div", { class: "grid-2" }, alarmLogCard(), securityCard()),
@@ -289,7 +444,7 @@
   }
 
   async function refresh() {
-    [admin, snap] = await Promise.all([api("GET", "/api/admin/state"), api("GET", "/api/snapshot")]);
+    [admin, snap] = await Promise.all([api("GET", "/api/admin/state"), api("GET", "/api/snapshot"), loadSoftware()]);
     render();
   }
 

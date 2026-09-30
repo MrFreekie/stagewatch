@@ -103,6 +103,7 @@ async def run(args: argparse.Namespace) -> int:
     config = uvicorn.Config(app, host=args.host, port=args.port, log_config=None,
                             proxy_headers=False, ws_ping_interval=20)
     server = uvicorn.Server(config)
+    hub.request_shutdown = lambda: setattr(server, "should_exit", True)
     log.info("Stagewatch %s starting on http://%s:%d (data: %s)%s", version_string(),
              args.host, args.port, data_dir, " [EMULATE]" if args.emulate else "")
     handshake_task = asyncio.create_task(_write_handshake_when_started(server))

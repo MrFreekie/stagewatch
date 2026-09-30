@@ -109,6 +109,12 @@ class OscOutConfig(_Model):
     rate_hz: float = Field(1.0, gt=0, le=20)
 
 
+class UpdaterConfig(_Model):
+    """In-app updater settings.  ``channel`` is only the admin's *request*; the launcher
+    re-validates every target itself (see core/updater.py).  None = use the installer's marker."""
+    channel: Literal["stable", "nightly"] | None = None
+
+
 class Config(_Model):
     schema_version: int = CONFIG_SCHEMA_VERSION
     site: SiteConfig = Field(default_factory=SiteConfig)
@@ -123,6 +129,7 @@ class Config(_Model):
         Dashboard(slug="wall", title="Wall", layout="wall", allow_marker=False),
     ])
     osc_out: OscOutConfig = Field(default_factory=OscOutConfig)
+    updater: UpdaterConfig = Field(default_factory=UpdaterConfig)
 
     def entity_settings(self, entity_id: str) -> EntitySettings:
         return self.entities.get(entity_id) or EntitySettings()

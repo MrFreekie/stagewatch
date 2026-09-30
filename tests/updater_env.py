@@ -29,10 +29,24 @@ def git(cwd: Path, *args: str) -> str:
     return cp.stdout.strip()
 
 
-def commit(work: Path, version: str, mode: str = "good", message: str | None = None) -> str:
+DEFAULT_PYPROJECT = '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.12"\ndependencies = []\n'
+DEFAULT_LOCK = ('version = 1\n\n[[package]]\nname = "requests"\nversion = "1"\n'
+                'source = { registry = "https://pypi.org/simple" }\n')
+
+
+def commit(work: Path, version: str, mode: str = "good", message: str | None = None,
+           files: dict | None = None) -> str:
+    """Commit a fake release.  ``files`` maps repo-relative paths to text (overrides the defaults;
+    pyproject.toml/uv.lock persist from earlier commits unless given)."""
+    files = files or {}
     (work / "src" / "stagewatch").mkdir(parents=True, exist_ok=True)
     (work / "src" / "stagewatch" / "__init__.py").write_text(f'__version__ = "{version}"\n')
     (work / "mode.txt").write_text(mode)
+    for rel, text in {"pyproject.toml": DEFAULT_PYPROJECT, "uv.lock": DEFAULT_LOCK, **files}.items():
+        if rel not in files and (work / rel).exists():
+            continue
+        (work / rel).parent.mkdir(parents=True, exist_ok=True)
+        (work / rel).write_text(text)
     git(work, "add", "-A")
     git(work, "commit", "-q", "-m", message or f"v{version} {mode}")
     return git(work, "rev-parse", "HEAD")

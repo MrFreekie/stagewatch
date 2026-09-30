@@ -21,6 +21,12 @@ them into a dated release section and tags the commit.
   The new install lives in an Administrators-owned, ACL-locked `C:\Stagewatch` with its own
   toolchain, and keeps data in a protected `C:\ProgramData\Stagewatch`. The Pi gets an
   equivalent `install.sh --managed` (dedicated no-login user, hardened unit; untested on hardware).
+- In-app updates require re-entering the admin PIN (wrong PINs count towards the login rate limit),
+  are admin + same-origin only, and return short error categories to the UI (git/uv output goes to the
+  log only). The updater refuses non-managed installs, downgrades, targets outside `main`, moved tags
+  and targets that add dependency sources. The channel choice lives in `config.yaml`; the
+  installer-written managed marker is never modified by the server.
+- All request bodies are capped (64 KiB by default; `413` beyond that, per-route override hook).
 
 ### Changed
 - The default data folder is now per-user and outside the source checkout
@@ -29,10 +35,19 @@ them into a dated release section and tags the commit.
   separate `emulate` subfolder.
 
 ### Added
+- **In-app updater** (Admin -> Software): Stable and Nightly channels, check/update/roll back with a
+  PIN confirmation, changelog and full commit id shown before updating, automatic data backup when the
+  config/database format changes, update history, backup and displaced-data sizes, and an
+  "update available" badge in the admin header only. Works on managed installs only (409 `not_managed`
+  elsewhere). `GET /api/admin/software`, `POST .../check|update|rollback`, `PUT .../channel`.
+- `build_info()` / `/api/info` report `describe` (`0.2.0+14.gabc1234`), `channel`, `managed` and
+  `supervised`.
+- `scripts/updater_sandbox.py`: offline fake remote + managed clone for trying updates end to end.
 - `stagewatch.launcher`: stdlib-only supervisor that restarts a crashed server with backoff, runs it
   in a kill-on-close Job Object on Windows, and (exit code 75) applies a pending update or
   rollback, health-checks it via a handshake file and rolls back automatically on failure.
   Update state lives in the admin-only `.git/stagewatch/` folder, never the data folder.
+  If a manual rollback fails its health check, the data the restore displaced is put back.
 - Managed installs: `deploy/windows/install-service.ps1` (rewritten; `-Channel`, `-Ref`,
   `-InstallDir`) and `deploy/pi/install.sh --managed`, with a `.git/stagewatch-managed.json` marker.
 - Data backup/restore for updates (`stagewatch.backup`): consistent SQLite snapshot, sha256

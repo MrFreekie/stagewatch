@@ -325,6 +325,47 @@ def test_manual_rollback_requires_history_and_restores(h):
     assert h.wait_history(4)[3]["result"] == "refused"
 
 
+def test_failed_manual_rollback_returns_displaced_data(h):
+    """A rollback whose target code fails its health check must not leave the user on the
+    newer code with the newer data set aside: the displaced data comes back."""
+    from updater_env import commit, git
+    git(h.env.work, "checkout", "-q", "main")
+    old_bad = commit(h.env.work, "0.3.0", mode="crash", message="old, crashes")
+    new_good = commit(h.env.work, "0.3.1", mode="good", message="new, good")
+    h.env.push("main")
+    uc.fetch_updates(h.env.ctx)
+    uc.checkout_detach(h.env.ctx, new_good)
+    # data as of the (schema-changing) update's backup, then "newer" data written afterwards
+    con = sqlite3.connect(h.env.data / bk.DB_NAME)
+    con.execute("CREATE TABLE t (n INTEGER)")
+    con.execute("INSERT INTO t VALUES (1)")
+    con.commit()
+    con.close()
+    (h.env.data / "config.yaml").write_text("v: old\n")
+    bk.create_backup(h.env.data, h.sd, "pre", from_sha=old_bad, to_sha=new_good)
+    con = sqlite3.connect(h.env.data / bk.DB_NAME)
+    con.execute("INSERT INTO t VALUES (2)")
+    con.commit()
+    con.close()
+    (h.env.data / "config.yaml").write_text("v: newer\n")
+    hist = uc.append_history(h.sd, {"action": "update", "result": "ok", "from_sha": old_bad,
+                                    "to_sha": new_good, "backup_id": "pre", "schema_changed": True})
+    h.launcher.health_timeout = 1.5
+    h.start()
+    h.wait_handshake()
+    h.request_exit75(action="rollback", history_id=hist["id"], from_sha=new_good, to_sha=old_bad,
+                     backup_id="pre", schema_changed=True)
+    e = h.wait_history(2)[1]
+    assert (e["result"], e["reason"]) == ("rolled_back", "health_check_failed")
+    assert e["data_returned"] is True
+    assert h.head() == new_good
+    assert (h.env.data / "config.yaml").read_text() == "v: newer\n"
+    con = sqlite3.connect(h.env.data / bk.DB_NAME)
+    assert con.execute("SELECT count(*) FROM t").fetchone()[0] == 2
+    con.close()
+    h.wait_handshake()  # newer code is running again
+
+
 def test_launcher_restarts_crashed_server_with_backoff(h):
     h.start()
     first = h.wait_handshake()

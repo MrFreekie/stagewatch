@@ -234,12 +234,60 @@ def restore_backup(data_dir: Path, state_dir: Path, backup_id: str) -> Path:
         if dname in top:
             _move(data_dir / dname, displaced, dname)
 
-    for rel, digest in m["files"].items():
-        parts = PurePosixPath(rel).parts
-        dst = data_dir.joinpath(*parts)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(root.joinpath(*parts), dst)
-        if sha256_file(dst) != digest:
-            raise UpdaterError("restore_failed", f"copy of {rel} does not match")
+    try:
+        for rel, digest in m["files"].items():
+            parts = PurePosixPath(rel).parts
+            dst = data_dir.joinpath(*parts)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(root.joinpath(*parts), dst)
+            if sha256_file(dst) != digest:
+                raise UpdaterError("restore_failed", f"copy of {rel} does not match")
+    except (OSError, UpdaterError) as e:
+        try:  # never leave a half-restored data dir: put back what we displaced
+            undo_restore(data_dir, displaced)
+        except (OSError, UpdaterError):
+            log.exception("could not undo a failed restore; data is in %s", displaced)
+        if isinstance(e, UpdaterError):
+            raise
+        raise UpdaterError("restore_failed", str(e)) from e
     log.info("Restored backup %s (previous data set aside in %s)", backup_id, displaced.name)
     return displaced
+
+
+def undo_restore(data_dir: Path, displaced: Path) -> Path | None:
+    """Put back what :func:`restore_backup` displaced (used when the code a rollback reverted
+    to fails its health check, so the user is not left on newer code with older data).
+
+    The restored files currently in the data dir are set aside in a fresh ``displaced-<ts>/``
+    (returned; None if nothing had to move) and the original ``displaced`` dir is removed once
+    it is empty.  Server must be stopped.
+    """
+    data_dir, displaced = Path(data_dir), Path(displaced)
+    if not displaced.is_dir():
+        raise UpdaterError("restore_failed", "displaced dir missing")
+    aside = backups_root(data_dir) / f"displaced-{utc_stamp()}"
+    n = 1
+    while aside.exists():
+        n += 1
+        aside = backups_root(data_dir) / f"displaced-{utc_stamp()}-{n}"
+    aside.mkdir(parents=True)
+    names = {e.name for e in displaced.iterdir()}
+    if DB_NAME in names:  # a stale -wal/-shm of the restored DB must never meet the original DB
+        names |= {DB_NAME + "-wal", DB_NAME + "-shm"}
+    try:
+        for name in sorted(names):
+            _move(data_dir / name, aside, name)
+            if (displaced / name).exists():
+                shutil.move(str(displaced / name), str(data_dir / name))
+    except OSError as e:
+        raise UpdaterError("restore_failed", f"undo: {e}") from e
+    try:
+        displaced.rmdir()
+    except OSError:
+        pass
+    if not any(aside.iterdir()):
+        aside.rmdir()
+        return None
+    log.info("Undid restore: original data returned from %s (restored copy kept in %s)",
+             displaced.name, aside.name)
+    return aside
