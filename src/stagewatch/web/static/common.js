@@ -5,6 +5,13 @@
 
 const SW = {};
 
+// Older browsers (Chrome before 86, Safari before 14) lack replaceChildren; the pages use it.
+if (!Element.prototype.replaceChildren) {
+  Element.prototype.replaceChildren = function (...nodes) {
+    while (this.firstChild) this.removeChild(this.firstChild);
+    this.append(...nodes);
+  };
+}
 // Element builder: h("div", {class: "x", onclick: fn}, "text", child, ...)
 SW.h = function (tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -140,7 +147,8 @@ SW.Sounder = class {
       gain.gain.setValueAtTime(0.0001, t + start);
       gain.gain.exponentialRampToValueAtTime(0.3, t + start + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, t + start + 0.2);
-      osc.connect(gain).connect(this.ctx.destination);
+      osc.connect(gain);   // not chained: old Safari's connect() returns nothing
+      gain.connect(this.ctx.destination);
       osc.start(t + start);
       osc.stop(t + start + 0.22);
     }

@@ -30,8 +30,19 @@ No login needed to look. Your tech may have renamed them.
 On an iPhone or iPad: tap **Share**, then **Add to Home Screen**.
 On Android: tap the browser's **menu** (three dots), then **Add to Home screen**.
 
----
+### Supported browsers
 
+Dashboards work on:
+
+- iPad or iPhone with **iOS 12 or later**. That includes old iPad Air 1 and iPad mini 2 and 3.
+- Recent **Chrome**, **Edge** (the newer Chromium one, not the old Windows 10 one), **Firefox** and **Safari**.
+
+The **admin page** needs a little newer: **iOS 13 or later** on an iPad or iPhone.
+
+If an old browser cannot run Stagewatch, you get a plain message saying **This browser is too old for
+Stagewatch** instead of a blank page. Use another device or update the browser.
+
+---
 ## What is on the screen
 
 - **Top bar:** the site name, the show name, the time, and a small **dot**.

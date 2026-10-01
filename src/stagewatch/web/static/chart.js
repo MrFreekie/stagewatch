@@ -13,8 +13,9 @@ class TimeChart {
     this.onMarkerClick = opts.onMarkerClick || null;
     this._markerHits = [];
     this._hover = null;
-    new ResizeObserver(() => this.draw()).observe(canvas);
-    canvas.addEventListener("click", (ev) => this._click(ev));
+    // ResizeObserver needs Safari 13.1; older iPads fall back to window resize/rotation.
+    if (typeof ResizeObserver === "function") new ResizeObserver(() => this.draw()).observe(canvas);
+    else window.addEventListener("resize", () => this.draw());    canvas.addEventListener("click", (ev) => this._click(ev));
     canvas.addEventListener("mousemove", (ev) => { this._hover = this._pos(ev); this.draw(); });
     canvas.addEventListener("mouseleave", () => { this._hover = null; this.draw(); });
   }

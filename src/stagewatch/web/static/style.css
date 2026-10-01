@@ -89,9 +89,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .alarm-bar { display: none; border-radius: var(--radius); padding: 12px 14px; gap: 12px; align-items: center; flex-wrap: wrap; }
 .alarm-bar.show { display: flex; }
-.alarm-bar.l1 { background: color-mix(in srgb, var(--warn) 22%, var(--panel)); border: 1px solid var(--warn); }
-.alarm-bar.l2 { background: color-mix(in srgb, var(--alert) 28%, var(--panel)); border: 1px solid var(--alert); }
-.alarm-bar.l3 { background: color-mix(in srgb, var(--stop) 32%, var(--panel)); border: 2px solid var(--stop); }
+.alarm-bar.l1 { background: rgba(245, 184, 61, .25); background: color-mix(in srgb, var(--warn) 22%, var(--panel)); border: 1px solid var(--warn); }
+.alarm-bar.l2 { background: rgba(255, 138, 61, .3); background: color-mix(in srgb, var(--alert) 28%, var(--panel)); border: 1px solid var(--alert); }
+.alarm-bar.l3 { background: rgba(255, 77, 94, .35); background: color-mix(in srgb, var(--stop) 32%, var(--panel)); border: 2px solid var(--stop); }
 .alarm-bar.sounding { animation: pulse 1s ease-in-out infinite alternate; }
 @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.35); } }
 .alarm-bar ul { margin: 0; padding: 0; list-style: none; flex: 1; }
@@ -122,6 +122,17 @@ body.layout-wall .tile .value { font-size: 64px; }
 body.layout-wall .tile .label { font-size: 18px; }
 body.layout-wall .chart-wrap { height: 42vh; }
 body.layout-wall .only-interactive { display: none; }
+
+/* Safari before 14.1 ignores `gap` on flex containers. compat.js adds html.no-flex-gap there,
+   and these margins give the same spacing. Grid `gap` is fine everywhere we support. */
+.no-flex-gap header.top > *, .no-flex-gap .card h2 > *, .no-flex-gap .row > *, .no-flex-gap .alarm-bar > *,
+.no-flex-gap .legend > *, .no-flex-gap .connect-item > *, .no-flex-gap .sw-hist li > * { margin-right: 10px; margin-bottom: 4px; }
+.no-flex-gap .markers li > * { margin-right: 10px; }
+.no-flex-gap .wall-address > * { margin-right: 14px; }
+.no-flex-gap button.sound-toggle > * { margin-right: 8px; }
+.no-flex-gap button.sound-toggle > :last-child { margin-right: 0; }
+.no-flex-gap header.top > .spacer { margin-right: 0; }
+.no-flex-gap label.field > * + * { margin-top: 4px; }
 
 @media (max-width: 640px) {
   .grid-2 { grid-template-columns: 1fr; }
@@ -186,7 +197,7 @@ button.sound-toggle.on .sound-icon { background: var(--ok); }
 button.sound-toggle.needs-tap { border-color: var(--warn); color: var(--warn); }
 button.sound-toggle.needs-tap .sound-icon { background: var(--warn); }
 
-.disconnect-banner { position: sticky; top: 0; z-index: 40; width: 100%; background: var(--stop); color: #fff;
+.disconnect-banner { position: -webkit-sticky; position: sticky; top: 0; z-index: 40; width: 100%; background: var(--stop); color: #fff;
   text-align: center; font-weight: 700; font-size: 18px; padding: 12px 16px; font-variant-numeric: tabular-nums; }
 .disconnect-banner[hidden] { display: none; }
 body.disconnected .tile .value, body.disconnected td.num, body.disconnected .delta .big,

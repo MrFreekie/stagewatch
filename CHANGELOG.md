@@ -15,6 +15,17 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Fixed
+- Old browsers (such as the 2016 Edge on Windows 10) showed a blank page. Stagewatch now says
+  **This browser is too old for Stagewatch** and what to use instead.
+- Dashboards now work on iPads with iOS 12 (iPad Air 1, mini 2 and 3): the history chart, alarm
+  colours, the alarm sound button and the spacing in the top bar no longer break on old Safari.
+
+### Added
+- Supported browsers are listed in the using guide: dashboards on iOS 12 or later and recent
+  Chrome, Edge, Firefox and Safari; the admin page on iOS 13 or later.
+- A message if JavaScript is turned off.
+
 ### Changed
 - Install guides: the `-Ref main` step is no longer needed now that v0.2.0 is released.
 
