@@ -9,7 +9,9 @@ building.
 - **Docs**: ✅ public · 🔒 gated / on request · ❓ unverified · ❌ closed
 - **Direction**: ⬅ into Stagewatch · ➡ out of Stagewatch · ⬌ both
 
-Anything touching rigging, power or safety systems is **read-only and advisory**.
+Anything touching rigging, power or safety systems is **read-only and advisory**. For UPSs,
+conditioners and PDUs this means Stagewatch never sends shutdown, self-test or outlet on/off
+commands, and never asks for SNMP write access.
 Anything going out to audio gear is **opt-in, admin-configured, and notify-style by
 default**. Stagewatch never mutes or changes the PA or mix on its own.
 
@@ -46,7 +48,10 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | Bender RCMS / DOLD residual current monitors | Earth-leakage trend | Modbus RTU | ✅ | ★★★ | ⬅ |
 | Deep Sea Electronics generator controllers | Genset state, load, fuel | Modbus (GenComm) | 🔒 | ★★★ | ⬅ |
 | ComAp generator controllers | Genset | Modbus TCP | ✅ | ★★ | ⬅ |
-| UPS (APC / Eaton / CyberPower) | On battery, runtime | NUT / SNMP | ✅ | ★★ | ⬅ |
+| **Rackmount UPS with a network card**: APC Smart-UPS SRT/SRTL/SMT/SMTL (NMC3), Eaton 5P/5PX/9PX (Network-M2/M3), CyberPower OL/PR (RMCARD205/305), Vertiv GXT5 (RDU101), Riello (NetMan 204) | On battery, charge %, runtime left, load %, input/output V and Hz, battery temperature, alarms (overload, bypass, fault, replace battery), self-test result; mains failures and transfers as timeline markers | SNMP v1/v2c/v3: standard UPS-MIB (RFC 1628) + vendor MIBs, plus SNMP traps | ✅ | ★★★ | ⬅ |
+| UPS over USB / serial, via NUT (Network UPS Tools) | Same as above, for UPSs without a network card. A NUT server on a Pi or Linux box owns the USB cable; Stagewatch reads it over the network | NUT network protocol, TCP 3493 (RFC 9271) | ✅ | ★★★ | ⬅ |
+| Furman F1500-UPS / BlueBOLT CV2 | Battery %, charging / discharging, bank status | RS-232 ASCII / BlueBOLT CV2 local UDP (XML) | ✅ | ★★ | ⬅ |
+| Smart PDUs / conditioners: Middle Atlantic RackLink Premium+, SurgeX Squid | Per-outlet voltage, current, power | Redfish / JSON HTTP / SNMP | ✅ | ★★ | ⬅ |
 | Whirlwind PL-PM1RJ | Distro metering | Ethernet | ❓ | ★ | ⬅ |
 
 ## PA system, amplifiers, processing
