@@ -173,6 +173,7 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
 
 ### Reports and history
 - **End-of-day show report**: an HTML page (printable to PDF) with the day's temperature / humidity / wind ranges, alarms and acknowledgements, markers, SPL against the limit, and device faults. Built from the recorded history, so it can be made at any time, including after a crash or power cut; a partial day is marked as such, and gaps where the hub was down are shown rather than hidden.
+- **Import vendor logs after the event**: load a Lake Controller or L-Acoustics LA Network Manager XML event log into a show day, with clock and time-zone alignment, a preview, duplicate checks and undo, so the show report includes amp and processor faults, input failovers and mutes, even with no live connection on the night.
 - **Tour history / venue profiles**: "Last time at this venue: 14 °C, 71 % RH, delays set to X." Venue conditions and notes kept across a tour.
 
 ### Dashboards
