@@ -80,7 +80,7 @@ class _Model(BaseModel):
 
 
 _TZ_RE = re.compile(r"^[A-Za-z0-9_+\-/]{1,64}$")
-_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+_HHMM_RE = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")  # ASCII digits only; fullmatch
 
 
 def valid_timezone(v: str) -> str:
@@ -88,7 +88,7 @@ def valid_timezone(v: str) -> str:
     v = (v or "").strip()
     if v == "":
         return ""
-    if not _TZ_RE.match(v) or v.startswith("/") or ".." in v:
+    if not _TZ_RE.fullmatch(v) or v.startswith("/") or ".." in v:
         raise ValueError("not a time zone name")
     try:
         zoneinfo.ZoneInfo(v)
@@ -115,7 +115,7 @@ class SiteConfig(_Model):
     @field_validator("day_rollover")
     @classmethod
     def _rollover(cls, v: str) -> str:
-        m = _HHMM_RE.match((v or "").strip())
+        m = _HHMM_RE.fullmatch((v or "").strip())
         if not m or int(m.group(1)) > 11:
             raise ValueError("day rollover must be HH:MM between 00:00 and 11:59")
         return m.group(0)
@@ -146,7 +146,7 @@ class EsphomeDeviceConfig(_Model):
     @classmethod
     def _mac(cls, v: str) -> str:
         v = (v or "").strip().lower().replace(":", "").replace("-", "")
-        if v and not _MAC_RE.match(v):
+        if v and not _MAC_RE.fullmatch(v):
             raise ValueError("MAC must be 12 hex characters")
         return v
 
@@ -158,7 +158,14 @@ class EntitySettings(_Model):
     include_in_average: bool = True
 
 
-CALIBRATION_KEY_RE = re.compile(r"^(mac:[0-9a-f]{12}|dev:[a-z0-9_]+)/[a-z0-9_]+$")
+CALIBRATION_KEY_RE = re.compile(r"(mac:[0-9a-f]{12}|dev:[a-z0-9_]+)/[a-z0-9_]+")  # fullmatch
+# Loose shape a newer release's key could have; such entries are kept on load (forward compatible).
+_CALIBRATION_KEY_LOOSE_RE = re.compile(r"[A-Za-z0-9_.:/-]{1,128}")
+
+
+def valid_calibration_key(key: str) -> bool:
+    """Strict check for keys this build writes (use at the API; loading is lenient)."""
+    return isinstance(key, str) and CALIBRATION_KEY_RE.fullmatch(key) is not None
 CALIBRATION_HISTORY_MAX = 20
 
 
@@ -193,7 +200,22 @@ class Calibration(_Model):
     @field_validator("history", mode="before")
     @classmethod
     def _cap(cls, v):
-        return v[:CALIBRATION_HISTORY_MAX] if isinstance(v, list) else v
+        """Newest first, at most CALIBRATION_HISTORY_MAX.  An entry this version can't read (e.g. a
+        method added by a newer release) is dropped from the history with a warning; it never
+        costs the calibration itself."""
+        if not isinstance(v, list):
+            return v
+        kept = []
+        for item in v[:CALIBRATION_HISTORY_MAX]:
+            try:
+                kept.append(CalibrationEntry.model_validate(item))
+            except ValidationError:
+                pass
+        if len(kept) < len(v[:CALIBRATION_HISTORY_MAX]):
+            log.warning("Calibration history: %d entr%s this version can't read were left out",
+                        len(v[:CALIBRATION_HISTORY_MAX]) - len(kept),
+                        "y" if len(v[:CALIBRATION_HISTORY_MAX]) - len(kept) == 1 else "ies")
+        return kept
 
 
 _ONTIME_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
@@ -207,25 +229,29 @@ class WallClockConfig(_Model):
     @field_validator("ontime_url")
     @classmethod
     def _url(cls, v: str) -> str:
-        """Only ``http://host[:port]``: no https, user info, path, query or fragment."""
+        """Only ``http://host[:port]``: no https, user info, path, query or fragment.  Stored as
+        rebuilt from the parsed parts (lower-case scheme and host, port without leading zeros)."""
+        bad = "address must look like http://host:port"
         v = (v or "").strip()
+        if not v or any(not 0x21 <= ord(ch) <= 0x7E for ch in v):
+            raise ValueError(bad)  # urlsplit silently drops tabs/newlines: refuse them up front
         try:
             u = urlsplit(v)
             port = u.port
         except ValueError:
-            raise ValueError("address must look like http://host:port") from None
+            raise ValueError(bad) from None
         host = u.hostname or ""
-        if (u.scheme != "http" or "@" in u.netloc or u.path not in ("", "/") or u.query or u.fragment
-                or "#" in v or "?" in v or not host or port == 0):
-            raise ValueError("address must look like http://host:port")
+        if (u.scheme.lower() != "http" or "@" in u.netloc or u.path not in ("", "/") or u.query
+                or u.fragment or "#" in v or "?" in v or not host or port == 0):
+            raise ValueError(bad)
         if ":" in host:  # IPv6 literal
             try:
-                ipaddress.IPv6Address(host)
+                host = f"[{ipaddress.IPv6Address(host).compressed}]"
             except ValueError:
-                raise ValueError("address must look like http://host:port") from None
-        elif not _ONTIME_HOST_RE.match(host):
-            raise ValueError("address must look like http://host:port")
-        return v.rstrip("/")
+                raise ValueError(bad) from None
+        elif not _ONTIME_HOST_RE.fullmatch(host):
+            raise ValueError(bad)
+        return f"http://{host}" + (f":{port}" if port is not None else "")
 
 
 class Threshold(_Model):
@@ -263,10 +289,11 @@ class Dashboard(_Model):
             return v
         out: list[str] = []
         for c in v:
-            if isinstance(c, str) and CARD_ID_RE.match(c) and c not in out:
+            if isinstance(c, str) and CARD_ID_RE.fullmatch(c) and c not in out:
                 out.append(c)
-        if len(out) > MAX_CARDS:
-            raise ValueError(f"at most {MAX_CARDS} cards")
+        if len(out) > MAX_CARDS:  # a newer release may allow more: keep the first ones, don't fail
+            log.warning("A dashboard lists %d cards; only the first %d are kept", len(out), MAX_CARDS)
+            out = out[:MAX_CARDS]
         return out
 
     @field_validator("stage", mode="before")
@@ -277,7 +304,7 @@ class Dashboard(_Model):
     @model_validator(mode="after")
     def _default_cards(self):
         if "cards" not in self.model_fields_set:
-            self.cards = default_cards(self.layout)
+            self.__dict__["cards"] = default_cards(self.layout)  # a default: leave model_fields_set alone
         return self
 
 
@@ -320,10 +347,16 @@ class Config(_Model):
     @field_validator("calibrations")
     @classmethod
     def _calibration_keys(cls, v: dict) -> dict:
-        for key in v:
-            if not CALIBRATION_KEY_RE.match(key):
-                raise ValueError("calibration keys look like mac:<12 hex>/<sensor> or dev:<device>/<sensor>")
-        return v
+        """Lenient on load: keys in a format this build doesn't use (e.g. from a newer release)
+        are kept but unused; only keys that can't be any key at all are dropped.  Logs counts."""
+        unknown = [k for k in v if not valid_calibration_key(k)]
+        dropped = [k for k in unknown if not _CALIBRATION_KEY_LOOSE_RE.fullmatch(k)]
+        if unknown:
+            log.warning("Calibrations: %d entr%s in a format this version doesn't use (kept, not applied), "
+                        "%d unreadable entr%s dropped", len(unknown) - len(dropped),
+                        "y" if len(unknown) - len(dropped) == 1 else "ies", len(dropped),
+                        "y" if len(dropped) == 1 else "ies")
+        return {k: c for k, c in v.items() if k not in dropped}
 
     def entity_settings(self, entity_id: str) -> EntitySettings:
         return self.entities.get(entity_id) or EntitySettings()

@@ -146,14 +146,14 @@ _V2_SHOW_COLUMNS = [
 ]
 
 SAFETY_COPY_SUFFIX = ".pre-v2.bak"
-ENV_UPDATE_TRIAL = "STAGEWATCH_UPDATE_TRIAL"
+SAFETY_COPY_KEEP = 2  # outside the updater's backup retention, so bounded here
 UPDATER_BACKUP_MAX_AGE_S = 3600.0
 HEARTBEAT_S = 30.0
 CHECKPOINT_S = 60.0
 MAX_PENDING_ROWS = 200_000  # ~1.5 h of 35 rows/s kept in memory while the DB refuses writes
 STOP_REASONS = ("stop", "update", "rollback")
 NAME_MAX = 80
-_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DAY_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 
 def clean_name(name: str, what: str = "name") -> str:
@@ -167,7 +167,7 @@ def valid_day(day: str | None) -> str | None:
     """'YYYY-MM-DD' (a real calendar date) or None (= derive the day from the show's start)."""
     if day is None:
         return None
-    if not isinstance(day, str) or not _DAY_RE.match(day):
+    if not isinstance(day, str) or not _DAY_RE.fullmatch(day):
         raise ValueError("day must be YYYY-MM-DD")
     date.fromisoformat(day)  # ValueError for 2026-02-30
     return day
@@ -178,34 +178,49 @@ def _repo_root() -> Path:
 
 
 def updater_backup_covers(db_path: Path, env=None, now: float | None = None) -> bool:
-    """True when the updater has just taken a verified backup of exactly this database for the
-    code now running, so the v1 -> v2 safety copy can be skipped (saves time and disk inside the
-    launcher's health window).
+    """True only when the updater has just taken a backup of exactly this database for the code
+    now running, so the v1 -> v2 safety copy can be skipped (it costs time and disk inside the
+    launcher's health window).  Anything unsure means "make the safety copy".  All of:
 
-    ``STAGEWATCH_UPDATE_TRIAL=1`` says so directly.  The 0.2.0 launcher never sets it, so a
-    supervised start also counts when the newest backup manifest in the admin-only state dir
-    (a) contains the database, (b) was made for an update *to* the commit we are running,
-    (c) is less than an hour old and (d) lives in this database's own data folder (so the
-    emulate subfolder, which the updater does not back up, always gets its safety copy)."""
+    - a supervised start (the launcher's state dir is in the environment);
+    - no pending update file (the launcher removes it before a trial start);
+    - the newest backup record contains the database, was made for an update *to* the commit
+      we are running, and is less than an hour old;
+    - no update/rollback result has been recorded since that backup (a result means the backup
+      belongs to an update that already ran, e.g. update, roll back, then check out again);
+    - the backup is in this database's own data folder (the emulate subfolder is never backed
+      up), passes ``backup.verify_backup`` (sha256 against the admin-only record, no symlinks)
+      and is a v1 database."""
     from .. import updater_common as uc
     env = os.environ if env is None else env
-    if env.get(ENV_UPDATE_TRIAL) == "1":
-        return True
     sd = env.get(uc.ENV_STATE_DIR)
     if env.get(uc.ENV_SUPERVISED) != "1" or not sd:
         return False
     try:
-        from ..backup import DB_NAME, list_backups
+        from ..backup import DB_NAME, list_backups, verify_backup
+        sd = Path(sd)
         head = uc.read_head_file(_repo_root())
-        manifests = list_backups(Path(sd))
-        if not head or not manifests:
+        manifests = list_backups(sd)
+        if not head or not manifests or uc.pending_path(sd).exists():
             return False
         m = manifests[-1]
-        created = calendar.timegm(time.strptime(m.get("created", ""), "%Y-%m-%dT%H:%M:%SZ"))
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        created = calendar.timegm(time.strptime(m.get("created", ""), fmt))
         now = time.time() if now is None else now
-        return (DB_NAME in m["files"] and m.get("to_sha") == head
-                and -300 <= now - created <= UPDATER_BACKUP_MAX_AGE_S
-                and (Path(db_path).parent / "backups" / m["id"] / DB_NAME).is_file())
+        if DB_NAME not in m["files"] or m.get("to_sha") != head                 or not -300 <= now - created <= UPDATER_BACKUP_MAX_AGE_S:
+            return False
+        for e in uc.load_history(sd):
+            ts = e.get("ts")
+            if not isinstance(ts, str) or calendar.timegm(time.strptime(ts, fmt)) >= created:
+                return False
+        data_dir = Path(db_path).parent
+        verify_backup(data_dir, sd, m["id"])
+        copy = data_dir / "backups" / m["id"] / DB_NAME
+        ro = sqlite3.connect(copy.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            return ro.execute("PRAGMA user_version").fetchone()[0] == 1
+        finally:
+            ro.close()
     except Exception:  # noqa: BLE001 - unsure means "make the safety copy"
         return False
 
@@ -218,6 +233,7 @@ class Recorder:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA synchronous=NORMAL")
         self._db.executescript(_SCHEMA)
+        self._remove_torn_safety_copies()
         self._migrate()
         self._pending: list[tuple[int, float, str, float | None]] = []
         self._dropped = 0
@@ -247,20 +263,36 @@ class Recorder:
     def _holds_data(self) -> bool:
         return bool(self._db.execute("SELECT EXISTS (SELECT 1 FROM shows)").fetchone()[0])
 
+    def _remove_torn_safety_copies(self) -> None:
+        """A safety copy interrupted by a kill or power cut stays a .tmp file: never a .bak."""
+        for p in self.path.parent.glob(self.path.name + ".pre-v2*.tmp*"):
+            try:
+                p.unlink()
+                log.warning("Removed an unfinished safety copy of the database (%s)", p.name)
+            except OSError:
+                pass
+
     def _safety_copy(self) -> Path:
         """Consistent, integrity-checked copy of the v1 database next to it, before the first v2
-        migration (protects dev installs and the emulate folder, which no updater backup covers)."""
+        migration (protects dev installs and the emulate folder, which no updater backup covers).
+        Written as .tmp and renamed only when complete; only the newest SAFETY_COPY_KEEP are kept."""
         from ..backup import backup_db
+        from ..updater_common import fsync_dir, replace_with_retry
         dst = self.path.with_name(self.path.name + SAFETY_COPY_SUFFIX)
         if dst.exists():  # an older copy (e.g. update, roll back, update again): keep both
             dst = self.path.with_name(f"{self.path.name}.pre-v2-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.bak")
+        tmp = dst.with_name(dst.name + ".tmp")
         began = time.monotonic()
         try:
-            backup_db(self.path, dst)
+            backup_db(self.path, tmp)  # online backup + PRAGMA integrity_check
+            with open(tmp, "rb+") as f:
+                os.fsync(f.fileno())
+            replace_with_retry(tmp, dst)
+            fsync_dir(dst.parent)
         except BaseException as e:
             for suffix in ("", "-journal", "-wal", "-shm"):
                 try:
-                    os.unlink(str(dst) + suffix)
+                    os.unlink(str(tmp) + suffix)
                 except OSError:
                     pass
             log.error("Could not save a safety copy of the database before upgrading it (%s); "
@@ -268,7 +300,18 @@ class Recorder:
             raise
         log.info("Saved a safety copy of the database as %s before upgrading it (%.1f s)",
                  dst.name, time.monotonic() - began)
+        self._prune_safety_copies(dst)
         return dst
+
+    def _prune_safety_copies(self, newest: Path) -> None:
+        copies = sorted(self.path.parent.glob(self.path.name + ".pre-v2*.bak"),
+                        key=lambda p: (p == newest, p.stat().st_mtime), reverse=True)
+        for old in copies[SAFETY_COPY_KEEP:]:
+            try:
+                old.unlink()
+                log.info("Removed an older safety copy of the database (%s)", old.name)
+            except OSError:
+                pass
 
     def _v1_to_v2(self) -> None:
         """DB v2, in one transaction: on any error the database stays exactly at v1."""
@@ -415,6 +458,13 @@ class Recorder:
                     self._db.rollback()
                 except sqlite3.Error:
                     pass
+                if not isinstance(e, sqlite3.OperationalError):
+                    # Not a busy/locked/disk condition that may pass: retrying the same batch would
+                    # block all later history, so drop it (logged without values).
+                    self._dropped += len(rows)
+                    log.error("Could not save readings (%s); %d readings were dropped",
+                              type(e).__name__, len(rows))
+                    return
                 self._pending = rows + self._pending
                 over = len(self._pending) - MAX_PENDING_ROWS
                 if over > 0:
@@ -518,9 +568,15 @@ class Recorder:
             (now, now, version or "", json.dumps(doc, separators=(",", ":")) if doc is not None else None)).lastrowid
         self._db.commit()
         self._last_heartbeat = now
-        if prev is not None and prev[3] is None:
-            return {"id": prev[0], "started": prev[1], "last_seen": prev[2], "down_s": max(0.0, now - prev[2])}
-        return None
+        if prev is None or prev[3] is not None:
+            return None
+        try:  # a damaged or hand-edited row must never stop the hub starting
+            last_seen = float(prev[2])
+            if last_seen != last_seen or last_seen in (float("inf"), float("-inf")):
+                return None
+            return {"id": prev[0], "started": prev[1], "last_seen": last_seen, "down_s": max(0.0, now - last_seen)}
+        except (TypeError, ValueError):
+            return None
 
     def runs(self, limit: int = 50) -> list[dict]:
         rows = self._db.execute("SELECT id, started, last_seen, stopped, stop_reason, version, doc "

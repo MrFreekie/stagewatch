@@ -34,7 +34,7 @@ LAYOUT_DEFAULTS: dict[str, tuple[str, ...]] = {
 MAX_CARDS = 16
 # Any well-formed id survives a load, so ids from a newer release (e.g. 0.4.0's spl_limits,
 # contacts) are kept through a downgrade and re-upgrade; renderers skip ids they don't know.
-CARD_ID_RE = re.compile(r"^[a-z_]{1,32}$")
+CARD_ID_RE = re.compile(r"[a-z_]{1,32}")  # use fullmatch
 
 
 def default_cards(layout: str) -> list[str]:
@@ -44,6 +44,17 @@ def default_cards(layout: str) -> list[str]:
 def legacy_cards(layout: str) -> list[str]:
     """The card list a dashboard from config v1 migrates to: today's look, unchanged."""
     return list(LEGACY_CARDS) + (["connect_footer"] if layout == "wall" else [])
+
+
+def strict_cards_error(cards) -> str | None:
+    """For the API (loading is lenient): a fixed-text problem with a submitted card list, or None."""
+    if not isinstance(cards, list) or len(cards) > MAX_CARDS:
+        return f"A dashboard can have at most {MAX_CARDS} cards"
+    if any(not isinstance(c, str) or not CARD_ID_RE.fullmatch(c) for c in cards) or len(set(cards)) != len(cards):
+        return "Card names must be listed once each"
+    if unknown_cards(cards):
+        return "Unknown card"
+    return None
 
 
 def unknown_cards(cards: list[str]) -> list[str]:

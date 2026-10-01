@@ -78,7 +78,7 @@ def v1_dir(tmp_path) -> Path:
 
 @pytest.fixture(autouse=True)
 def _not_supervised(monkeypatch):
-    for name in (rec_mod.ENV_UPDATE_TRIAL, uc.ENV_SUPERVISED, uc.ENV_STATE_DIR):
+    for name in ("STAGEWATCH_UPDATE_TRIAL", uc.ENV_SUPERVISED, uc.ENV_STATE_DIR):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -211,10 +211,49 @@ def test_failed_safety_copy_stops_before_migrating(v1_db, monkeypatch):
     assert _dump(v1_db) == before and not list(v1_db.parent.glob("*.bak"))
 
 
-def test_update_trial_skips_the_safety_copy(v1_db, monkeypatch):
-    monkeypatch.setenv(rec_mod.ENV_UPDATE_TRIAL, "1")
+def test_trial_environment_variable_alone_never_skips_the_safety_copy(v1_db, monkeypatch):
+    monkeypatch.setenv("STAGEWATCH_UPDATE_TRIAL", "1")
     Recorder(v1_db).close()
-    assert _q(v1_db, "PRAGMA user_version") == [(2,)] and not list(v1_db.parent.glob("*.bak"))
+    assert (v1_db.parent / "stagewatch.sqlite3.pre-v2.bak").is_file()
+
+
+def test_torn_safety_copy_is_removed_and_never_counts(v1_db):
+    torn = v1_db.with_name("stagewatch.sqlite3.pre-v2.bak.tmp")
+    torn.write_bytes(b"SQLite format 3\x00 cut off by a power cut")
+    v1_db.with_name("stagewatch.sqlite3.pre-v2.bak.tmp-journal").write_bytes(b"x")
+    Recorder(v1_db).close()
+    assert not list(v1_db.parent.glob("*.tmp*"))
+    good = v1_db.with_name("stagewatch.sqlite3.pre-v2.bak")
+    assert _q(good, "PRAGMA integrity_check") == [("ok",)] and _q(good, "PRAGMA user_version") == [(1,)]
+
+
+def test_interrupted_safety_copy_leaves_only_a_tmp_file(v1_db, monkeypatch):
+    from stagewatch import updater_common
+
+    def killed(src, dst, **kw):
+        raise KeyboardInterrupt  # stands in for the kill arriving between copy and rename
+
+    monkeypatch.setattr(updater_common, "replace_with_retry", killed)
+    with pytest.raises(KeyboardInterrupt):
+        Recorder(v1_db)
+    assert not list(v1_db.parent.glob("*.bak")) and not list(v1_db.parent.glob("*.tmp*"))
+    assert _q(v1_db, "PRAGMA user_version") == [(1,)]
+
+
+def test_only_the_newest_safety_copies_are_kept(v1_db):
+    import os as _os
+    old = []
+    for i, name in enumerate(("pre-v2.bak", "pre-v2-20260101T000000Z.bak", "pre-v2-20260102T000000Z.bak")):
+        f = v1_db.with_name(f"stagewatch.sqlite3.{name}")
+        f.write_bytes(b"old")
+        _os.utime(f, (1_700_000_000 + i, 1_700_000_000 + i))
+        old.append(f)
+    Recorder(v1_db).close()
+    left = sorted(f.name for f in v1_db.parent.glob("stagewatch.sqlite3.pre-v2*.bak"))
+    assert len(left) == rec_mod.SAFETY_COPY_KEEP == 2
+    assert old[2].name in left  # the newest older copy survives, beside the one just made
+    new = [n for n in left if n != old[2].name][0]
+    assert _q(v1_db.parent / new, "PRAGMA user_version") == [(1,)]
 
 
 def _updater_world(tmp_path, monkeypatch, *, data_dir: Path, to_sha: str):
@@ -231,6 +270,10 @@ def _updater_world(tmp_path, monkeypatch, *, data_dir: Path, to_sha: str):
     return head
 
 
+def _backup_dir(data_dir: Path) -> Path:
+    return next(p for p in (data_dir / "backups").iterdir() if not p.name.startswith("displaced"))
+
+
 def test_supervised_start_after_an_updater_backup_skips_the_safety_copy(v1_dir, tmp_path, monkeypatch):
     head = _updater_world(tmp_path, monkeypatch, data_dir=v1_dir, to_sha="a" * 40)
     db = v1_dir / "stagewatch.sqlite3"
@@ -240,6 +283,47 @@ def test_supervised_start_after_an_updater_backup_skips_the_safety_copy(v1_dir, 
     assert not updater_backup_covers(emulate)  # the emulate folder is never in the updater's backup
     Recorder(db).close()
     assert not list(v1_dir.glob("*.bak")) and head
+
+
+@pytest.mark.parametrize("damage", ["truncated", "replaced", "missing"])
+def test_damaged_updater_backup_means_a_safety_copy(v1_dir, tmp_path, monkeypatch, damage):
+    _updater_world(tmp_path, monkeypatch, data_dir=v1_dir, to_sha="a" * 40)
+    copy = _backup_dir(v1_dir) / "stagewatch.sqlite3"
+    if damage == "truncated":
+        copy.write_bytes(copy.read_bytes()[:4096])
+    elif damage == "replaced":
+        shutil.copyfile(FIX / "stagewatch.sqlite3", copy)  # a valid DB, but not the one that was hashed
+    else:
+        copy.unlink()
+    assert not updater_backup_covers(v1_dir / "stagewatch.sqlite3")
+    Recorder(v1_dir / "stagewatch.sqlite3").close()
+    assert (v1_dir / "stagewatch.sqlite3.pre-v2.bak").is_file()
+
+
+def test_backup_of_a_v2_database_does_not_count(v1_dir, tmp_path, monkeypatch):
+    Recorder(v1_dir / "stagewatch.sqlite3").close()  # now v2 (and it made its own safety copy)
+    for f in v1_dir.glob("*.bak"):
+        f.unlink()
+    _updater_world(tmp_path, monkeypatch, data_dir=v1_dir, to_sha="a" * 40)
+    shutil.copyfile(FIX / "stagewatch.sqlite3", v1_dir / "stagewatch.sqlite3")
+    assert not updater_backup_covers(v1_dir / "stagewatch.sqlite3")
+
+
+def test_backup_already_used_by_an_update_result_does_not_count(v1_dir, tmp_path, monkeypatch):
+    """Update, roll back, then check the new commit out again by hand within the hour."""
+    _updater_world(tmp_path, monkeypatch, data_dir=v1_dir, to_sha="a" * 40)
+    sd = Path(rec_mod.os.environ[uc.ENV_STATE_DIR])
+    assert updater_backup_covers(v1_dir / "stagewatch.sqlite3")
+    uc.append_history(sd, {"result": "ok", "action": "rollback",
+                           "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 1))})
+    assert not updater_backup_covers(v1_dir / "stagewatch.sqlite3")
+
+
+def test_pending_update_file_means_a_safety_copy(v1_dir, tmp_path, monkeypatch):
+    _updater_world(tmp_path, monkeypatch, data_dir=v1_dir, to_sha="a" * 40)
+    sd = Path(rec_mod.os.environ[uc.ENV_STATE_DIR])
+    uc.pending_path(sd).write_text("{}", encoding="utf-8")
+    assert not updater_backup_covers(v1_dir / "stagewatch.sqlite3")
 
 
 def test_supervised_start_with_an_unrelated_backup_makes_the_safety_copy(v1_dir, tmp_path, monkeypatch):
@@ -381,6 +465,17 @@ def test_killed_process_leaves_an_open_run_and_the_next_start_marks_it(tmp_path)
     hub2.recorder.close()
 
 
+def test_damaged_run_row_never_blocks_start(tmp_path):
+    Hub(tmp_path).recorder.close()
+    db = sqlite3.connect(str(tmp_path / "stagewatch.sqlite3"))
+    db.execute("INSERT INTO hub_runs (started, last_seen) VALUES (1, 'not a time')")
+    db.commit()
+    db.close()
+    hub = Hub(tmp_path)
+    assert not [m for m in hub.recorder.markers() if m.source == "hub"]
+    hub.recorder.close()
+
+
 def test_down_text():
     assert down_text(20) == "down less than a minute"
     assert down_text(4 * 60 + 10) == "down about 4 min"
@@ -443,6 +538,28 @@ def test_locked_db_during_flush_loses_no_rows(tmp_path, caplog):
     rec.flush()
     assert rec._pending == []
     assert _q(p, "SELECT COUNT(*), MIN(value), MAX(value) FROM states") == [(101, 0.0, 100.0)]
+    rec.close()
+
+
+def test_non_retryable_error_drops_only_that_batch(tmp_path, caplog):
+    rec = Recorder(tmp_path / "db.sqlite3")
+    real = rec._db
+
+    class Broken:
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        def executemany(self, *a):
+            raise sqlite3.IntegrityError("constraint failed")
+
+    rec._db = Broken()
+    rec.record_state("a.b", 123.456, 1.0)
+    rec.flush()
+    assert rec._pending == [] and "IntegrityError" in caplog.text and "123.456" not in caplog.text
+    rec._db = real
+    rec.record_state("a.b", 2.0, 2.0)
+    rec.flush()
+    assert _q(tmp_path / "db.sqlite3", "SELECT value FROM states") == [(2.0,)]
     rec.close()
 
 
@@ -530,8 +647,9 @@ def test_unknown_card_ids_are_kept_on_load():
                                                          "Bad-Id", 5, "x" * 33]})
     assert d.cards == ["env_tiles", "spl_limits", "contacts"]
     assert cards.unknown_cards(d.cards) == ["spl_limits", "contacts"]
-    with pytest.raises(ValueError):
-        Dashboard(slug="x", cards=[f"c_{chr(97 + i)}" for i in range(17)])
+    many = Dashboard(slug="x", cards=[f"c_{chr(97 + i)}" for i in range(17)])  # load: keep 16, no failure
+    assert len(many.cards) == 16 and many.cards[0] == "c_a"
+    assert Dashboard(slug="x", cards=["env_tiles\n"]).cards == []
     assert Dashboard(slug="x", stage="  Main stage ").stage == "Main stage"
     with pytest.raises(ValueError):
         Dashboard(slug="x", stage="x" * 41)
@@ -574,18 +692,23 @@ def test_site_time_validators():
             SiteConfig(timezone=bad)
     for ok in ("00:00", "06:00", "11:59"):
         assert SiteConfig(day_rollover=ok).day_rollover == ok
-    for bad in ("12:00", "6:00", "23:30", "06:60", "", "0600"):
+    assert SiteConfig(day_rollover="06:00\n").day_rollover == "06:00"  # surrounding whitespace is trimmed
+    for bad in ("12:00", "6:00", "23:30", "06:60", "", "0600", "0\u0666:00", "06:\u0660\u0660"):
         with pytest.raises(ValueError):
             SiteConfig(day_rollover=bad)
 
 
 def test_wall_clock_address_rules():
     for ok, norm in (("http://127.0.0.1:4001", "http://127.0.0.1:4001"), ("http://ontime.local:4001/", "http://ontime.local:4001"),
-                     ("http://[::1]:4001", "http://[::1]:4001"), ("http://ontime", "http://ontime")):
+                     ("http://[::1]:4001", "http://[::1]:4001"), ("http://ontime", "http://ontime"),
+                     ("HTTP://OnTime.Local:004001", "http://ontime.local:4001"),
+                     ("http://[0:0:0:0:0:0:0:1]:4001", "http://[::1]:4001")):
         assert WallClockConfig(ontime_url=ok).ontime_url == norm
+    assert WallClockConfig(ontime_url=" http://host:4001\n").ontime_url == "http://host:4001"  # trimmed
     for bad in ("https://127.0.0.1:4001", "http://user:pw@host:4001", "http://host:4001/api", "http://host:4001?x=1",
                 "http://host:4001#x", "ftp://host", "host:4001", "http://:4001", "http://host:0", "http://host:99999",
-                "http://ho st:4001"):
+                "http://ho st:4001", "http://ho\nst:4001", "http://host\t:4001", "http://hóst:4001",
+                "http://[nonsense]:4001"):
         with pytest.raises(ValueError):
             WallClockConfig(ontime_url=bad)
     with pytest.raises(ValueError):
@@ -606,9 +729,59 @@ def test_calibration_models():
     ok = Config.model_validate({"calibrations": {"mac:025e00000001/temperature": {"offset": 1},
                                                  "dev:foh/humidity": {}}})
     assert set(ok.calibrations) == {"mac:025e00000001/temperature", "dev:foh/humidity"}
-    for key in ("mac:025E00000001/temperature", "mac:025e0000/temperature", "foh.temperature", "dev:foh/"):
-        with pytest.raises(ValueError):
-            Config.model_validate({"calibrations": {key: {}}})
+    from stagewatch.core.config import valid_calibration_key
+    for key in ("mac:025E00000001/temperature", "mac:025e0000/temperature", "foh.temperature", "dev:foh/",
+                "mac:025e00000001/temperature\n"):
+        assert not valid_calibration_key(key)  # strict check, for the API
+    assert valid_calibration_key("mac:025e00000001/temperature")
+
+
+def test_newer_config_entries_are_kept_or_dropped_without_salvage(tmp_path, caplog):
+    """A config from a newer release: unknown calibration key formats, more cards, a new history
+    method.  Loading keeps what it can and warns; it never resets whole sections."""
+    entry = {"offset": 0.5, "date": "2026-10-01T12:00:00Z", "method": "manual"}
+    raw = {"schema_version": CONFIG_SCHEMA_VERSION + 1, "admin": {"pin_hash": ""},
+           "site": {"name": "Newer"},
+           "calibrations": {"mac:025e00000001/temperature": {"offset": 0.5, "history": [
+                                {**entry, "method": "assistant"}, entry]},
+                            "chip:0123abcd/temperature": {"offset": 0.2},
+                            "bad key with spaces": {"offset": 9}},
+           "dashboards": [{"slug": "foh", "cards": [f"card_{chr(97 + i)}" for i in range(20)]}]}
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    cfg = ConfigStore(tmp_path / "config.yaml").load()
+    assert not list(tmp_path.glob("config.invalid*.yaml"))  # no salvage
+    assert cfg.site.name == "Newer"
+    assert set(cfg.calibrations) == {"mac:025e00000001/temperature", "chip:0123abcd/temperature"}
+    cal = cfg.calibrations["mac:025e00000001/temperature"]
+    assert cal.offset == 0.5 and [h.method for h in cal.history] == ["manual"]
+    assert len(cfg.dashboard("foh").cards) == 16
+    assert "format this version doesn't use" in caplog.text and "only the first 16" in caplog.text
+
+
+def test_put_dashboards_is_strict_and_keeps_cards_not_sent(v1_dir):
+    from fastapi.testclient import TestClient
+
+    from stagewatch.web.server import create_app
+    hub = Hub(v1_dir)
+    with TestClient(create_app(hub, manage_hub=False)) as client:
+        rows = [{"slug": d.slug, "title": d.title, "layout": d.layout} for d in hub.config.dashboards]
+        assert client.put("/api/admin/dashboards", json=rows).status_code == 401
+        client.post("/api/admin/login", json={"pin": "1234"})
+        assert client.put("/api/admin/dashboards", json=rows, headers={"Origin": "http://evil.example"}).status_code == 403
+        # today's admin page sends no cards: existing dashboards keep theirs, a new one gets defaults
+        r = client.put("/api/admin/dashboards", json=rows + [{"slug": "bar", "layout": "phone"}])
+        assert r.status_code == 200
+        assert hub.config.dashboard("lobby").cards == list(cards.LEGACY_CARDS) + ["connect_footer"]
+        assert hub.config.dashboard("bar").cards == cards.default_cards("phone")
+        ok = [{**rows[0], "cards": ["chart", "wall_clock"], "stage": " Main "}]
+        assert client.put("/api/admin/dashboards", json=ok).status_code == 200
+        assert hub.config.dashboard("foh").cards == ["chart", "wall_clock"] and hub.config.dashboard("foh").stage == "Main"
+        for bad in (["spl_limits"], ["chart", "chart"], ["Chart"], ["chart\n"], [5], list(cards.KNOWN_CARDS) * 3):
+            r = client.put("/api/admin/dashboards", json=[{**rows[0], "cards": bad}])
+            assert r.status_code == 422, bad
+            assert "evil" not in r.text
+        assert hub.config.dashboard("foh").cards == ["chart", "wall_clock"]  # nothing changed
+    hub.recorder.close()
 
 
 def test_admin_state_masks_secrets_after_migration(v1_dir):

@@ -23,10 +23,12 @@ them into a dated release section and tags the commit.
   update is set aside in the backups folder, not deleted. The conversion takes a few seconds, even
   with a long history.
 - If you run Stagewatch from a downloaded copy (not installed), it saves a safety copy of your show
-  history as `stagewatch.sqlite3.pre-v2.bak` in your data folder before converting it. You can
-  delete that file once you are happy with the new version.
+  history as `stagewatch.sqlite3.pre-v2.bak` in your data folder before converting it. It keeps
+  only the two newest of these copies and deletes older ones. You can delete them once you are
+  happy with the new version.
 - Show history: all your existing shows are kept and grouped into one event called "Event 1".
-- Dashboards look the same as before after the update.
+- Dashboards look the same as before after the update, and saving **User dashboards** in the admin
+  page keeps what each dashboard shows.
 
 ### Added
 - Show history: Stagewatch now records when it starts and stops. After a crash, a power cut or
