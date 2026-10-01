@@ -124,6 +124,7 @@ Get-NetFirewallRule -DisplayName "Stagewatch*" | Select-Object DisplayName, Enab
 | No **Acknowledge** button | Only shows while an alarm is sounding, and only on dashboards allowed to acknowledge. |
 | No alarm sound | Sound needs a tap. Tap **Alarm sound** in the top bar until it says **On** (you hear a short test beep). If it says **Off**, it is muted on that tablet. Also check the tablet volume and silent switch. |
 | The dashboard address just bounces back to the home page | There is no dashboard with that name. Use the tiles on the home page. |
+| The page only says **This browser is too old for Stagewatch** | That device's browser is too old. Dashboards need an iPad or iPhone on iOS 12 or later, or a recent Chrome, Edge, Firefox or Safari. The admin page needs iOS 13 or later. Use another device, or update this one. |
 | An **EMULATE MODE** banner at the top | This is a demo with fake sensors, not the real install. |
 | Times are wrong | The times come from the Stagewatch computer. On a Raspberry Pi with no internet, its clock may be out ([Pi guide](install-raspberry-pi.md#the-pi-has-no-clock-battery)). |
 | Temperature or speed of sound looks silly | Check each sensor in the **Sensors** card. One sensor in the sun or by a lamp can be wrong. Untick **Average** for it in Admin, or move it. |

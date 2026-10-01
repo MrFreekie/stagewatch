@@ -113,7 +113,8 @@
     Promise.resolve(sounder.ctx && sounder.ctx.resume()).then(() => { renderSound(); sounder.beep(); }).catch(() => {});
   });
   sounder.onchange = renderSound;
-  for (const evt of ["pointerdown", "keydown"]) {
+  // pointerdown needs Safari 13; touchend/mousedown cover iOS 12.
+  for (const evt of ["pointerdown", "touchend", "mousedown", "keydown"]) {
     document.addEventListener(evt, () => { if (soundWanted() && !sounder.enabled) { sounder.enable(); renderSound(); } });
   }
 
