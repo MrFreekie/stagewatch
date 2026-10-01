@@ -183,6 +183,7 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
 
 ### Much later
 - Import speaker positions and distances from Soundvision / ArrayCalc for the drift and air-loss figures.
+- **Docker container** (advanced, Linux / Raspberry Pi hosts): multi-arch image, data in a mounted volume, host networking for ESPHome discovery, updates by pulling a new image (the in-app Update button becomes a "new version available" notice).
 - Rain sensor / gauge. Crew noise dose. Curfew countdown card with overrun warning. E-ink displays for delay towers and rigging points.
 
 ## Documented as not integrable (for now)
