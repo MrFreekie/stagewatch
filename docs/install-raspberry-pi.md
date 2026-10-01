@@ -6,7 +6,8 @@ it starts by itself when powered, and it can drive a wall screen directly.
 Time needed: about 40 minutes, mostly waiting.
 Do this **at home or in the office**, with internet. Not at the venue.
 
-> **Note.** The Raspberry Pi mode has **not yet been tested on real hardware**.
+> **Note.** The Raspberry Pi mode is **tested on Debian 13.7 in a virtual machine, and
+> has not yet been tested on real Raspberry Pi hardware**.
 > Try it at home before you rely on it at a show.
 > Stagewatch is an advisory tool with no warranty. See the
 > [main README](../README.md#stagewatch).
@@ -119,17 +120,16 @@ prompt comes back.
 
 ## Step 6. Run the installer
 
-> **Read this first: which version?**
-> The installer normally picks the **latest release** for you. **Until a newer release
-> than v0.1.0 is published on the
-> [Releases page](https://github.com/MrFreekie/stagewatch/releases), add `--ref main`.**
-> The old v0.1.0 does not contain the parts the installer needs.
-> Once the Releases page shows **v0.2.0 or later**, leave `--ref main` off.
+> **Which version do I get?**
+> The installer picks the **latest release** for you (see the
+> [Releases page](https://github.com/MrFreekie/stagewatch/releases)). You don't need to add
+> anything. **Advanced:** to pin a particular version, or to install the Nightly build,
+> add `--ref <tag-or-sha>` to the command below.
 
 Paste this and press Enter. It installs Stagewatch **and** the full-screen kiosk:
 
 ```bash
-cd ~/stagewatch && bash deploy/pi/install.sh --managed --ref main --kiosk
+cd ~/stagewatch && bash deploy/pi/install.sh --managed --kiosk
 ```
 
 It asks for your password. It then takes **several minutes** while it downloads Python
@@ -141,7 +141,8 @@ What the options mean:
 |---|---|
 | `--managed` | The safe way to install. Runs Stagewatch as its own locked-down user, starts it at every boot, restarts it if it crashes, and lets you update it from the admin page. The program goes in `/opt/stagewatch` and your data in `/var/lib/stagewatch`. |
 | `--kiosk` | After the Pi logs in, opens the **wall** dashboard full screen on the Pi's screen. Leave this off if the Pi has no screen. |
-| `--ref main` | Use the newest code, until a proper release is published. See the box above. |
+| `--ref <tag-or-sha>` | Advanced. Install a particular version instead of the latest release. Leave it off normally. |
+| `--channel nightly` | Advanced. Follow the Nightly build instead of Stable. Not for show days. |
 | `--port 8080` | Optional. The default is 8080. |
 
 **What you should see near the end:**
@@ -252,8 +253,8 @@ Check the time on the Pi's screen (top right) before you set markers.
 |---|---|---|
 | `uv not found` when running the installer | uv is not installed, or the Terminal is old. | Close the Terminal and open a new one. Run `uv --version`. If it fails, repeat Step 4. |
 | `git not found (apt install git).` | Git is missing. | Repeat the first command in Step 4. |
-| `no release tag found; pass --ref <tag-or-sha>` or `could not resolve ref` | No usable release. | Add `--ref main` (Step 6). |
-| An error about `updater_common` or `launcher.py` | It picked the old v0.1.0 release. | Run Step 6 again **with** `--ref main`. It is safe to re-run. |
+| `no release tag found; pass --ref <tag-or-sha>` or `could not resolve ref` | The installer could not find a release to use. | Check the Pi can reach GitHub, then run Step 6 again. If it still fails, add `--ref v0.2.0` to the command. It is safe to re-run. |
+| You installed from `main` before v0.2.0 was released | You have a pre-release build, not a numbered release. | Open **Admin → Software**. If **Channel** says **Nightly**, change it to **Stable**, then tap **Check for updates**. |
 | `/opt/stagewatch exists and is owned by ...; refusing.` | Something else made that folder. | Look inside it. If you made it and it holds nothing you need: `sudo rm -rf /opt/stagewatch`, then run Step 6 again. |
 | `existing clone has a different origin; refusing.` | `/opt/stagewatch` came from somewhere else. | As above. |
 | Clone fails (network error) | The Pi cannot reach GitHub. | Check its internet. Open <https://github.com/MrFreekie/stagewatch> in the Pi's browser. |

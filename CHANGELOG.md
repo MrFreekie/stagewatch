@@ -15,6 +15,9 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Changed
+- Install guides: the `-Ref main` step is no longer needed now that v0.2.0 is released.
+
 ## [0.2.0] - 2026-10-01
 
 ### Highlights

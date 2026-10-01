@@ -23,7 +23,8 @@ Jump to: [Install problems](#install-problems) |
 | `git.exe not found at C:\Program Files\Git\...` | Install Git for Windows with the default settings ([Windows guide, Step 1](install-windows.md#step-1-install-git)). |
 | `uv not found on PATH` / `uv is not recognized` | Install uv, then close PowerShell and open a **new Administrator** PowerShell ([Step 3](install-windows.md#step-3-install-uv)). |
 | `...public and reachable from this machine?` | No internet, or GitHub is blocked. Open <https://github.com/MrFreekie/stagewatch> in a browser on that computer. |
-| Error mentioning `updater_common` or `launcher.py` | The old v0.1.0 release was picked. Run the installer again with `-Ref main` (Windows) or `--ref main` (Pi). |
+| You installed from `main` before v0.2.0 was released | You have a pre-release build. Open **Admin → Software**. If **Channel** says **Nightly**, change it to **Stable**, then tap **Check for updates**. |
+| `No release tag ... Pass -Ref <tag-or-sha>` | The installer could not find a release. Check the computer can reach GitHub and run it again. If it still fails, add `-Ref v0.2.0` (Windows) or `--ref v0.2.0` (Pi) to the end of the command. |
 | `C:\Stagewatch already exists and is not owned by...` | Something else made that folder. Delete it if it holds nothing you need, then run the installer again. |
 | Pi: `uv not found`, `git not found`, `no release tag found` | See the table at the bottom of the [Pi guide](install-raspberry-pi.md#if-it-doesnt-work). |
 | Antivirus or SmartScreen warns | Only continue with files from the links in the guide. If it keeps blocking, pause the antivirus while installing, then turn it back on. |

@@ -33,8 +33,8 @@
     -Channel stable|nightly     -Ref <tag-or-sha>   -SourceUrl <https git url>   -Emulate
     -GitPath "C:\Program Files\Git\cmd\git.exe"
 
-  UNTESTED ON HARDWARE: verify on a real machine (ACLs, SYSTEM start, launcher restart) before
-  relying on it at a show. Existing data in DataDir is kept.
+  Tested on Windows 11 and Windows 10 virtual machines, not yet on a real show PC: try it on your
+  own machine (ACLs, SYSTEM start, launcher restart) before relying on it at a show. Existing data in DataDir is kept.
 #>
 [CmdletBinding()]
 param(
@@ -269,4 +269,4 @@ Write-Host "  Code:      $InstallDir  (release $sha, detached)"
 Write-Host "  Dashboard: http://localhost:$Port   (tablets: http://<this-pc-ip>:$Port)"
 Write-Host "  Data/logs: $DataDir  (SYSTEM + Administrators only; open an elevated Explorer/PowerShell to read)"
 Write-Host "Note: set the show network adapter to the 'Private' network profile so the firewall rules apply."
-Write-Host "Note: this install is UNTESTED ON HARDWARE until verified on a real machine."
+Write-Host "Note: tested on Windows 11 and 10 virtual machines, not yet on a real show PC. Try it before show day."

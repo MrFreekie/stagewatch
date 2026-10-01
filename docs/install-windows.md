@@ -6,7 +6,8 @@ PC boots**, restarts itself if it crashes, and can be updated from a web page.
 Time needed: about 20 minutes, mostly waiting for downloads.
 Do this **at home or in the office**, with internet. Not at the venue.
 
-> **Note.** This boot install has **not yet been tested on real hardware**.
+> **Note.** This boot install is **tested on Windows 11 and Windows 10 (virtual
+> machines)**. It has not yet been tested on a real show PC.
 > Try it on your own PC before you rely on it at a show.
 > Stagewatch is an advisory tool with no warranty. See the
 > [main README](../README.md#stagewatch).
@@ -102,13 +103,11 @@ If you get "not recognised" instead, see [If it doesn't work](#if-it-doesnt-work
 
 ## Step 4. Download and run the Stagewatch installer
 
-> **Read this first: which version?**
-> The installer normally picks the **latest release** for you. **Until a newer release
-> than v0.1.0 is published on the
-> [Releases page](https://github.com/MrFreekie/stagewatch/releases), add `-Ref main`
-> to the end of the second command below.** The old v0.1.0 does not contain the
-> boot installer's parts and the install would fail.
-> Once the Releases page shows **v0.2.0 or later**, leave `-Ref main` off.
+> **Which version do I get?**
+> The installer picks the **latest release** for you (see the
+> [Releases page](https://github.com/MrFreekie/stagewatch/releases)). You don't need to add
+> anything. **Advanced:** to pin a particular version, add `-Ref <tag-or-sha>` to the end of the
+> command in 4b. To follow the Nightly build instead, add `-Channel nightly`.
 
 **4a. Download the installer.** In the Administrator PowerShell window, paste this and
 press Enter:
@@ -126,10 +125,8 @@ so you can open it in Notepad and read it if you like.
 **4b. Run it.** Paste this and press Enter:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\install-service.ps1" -Ref main
+powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\install-service.ps1"
 ```
-
-(Once a release later than v0.1.0 exists, drop the ` -Ref main` at the end.)
 
 This takes **several minutes**. It downloads Stagewatch and its own copy of Python. Do not
 close the window. Lots of text will scroll past.
@@ -286,8 +283,8 @@ Press **Ctrl + C** in the window to stop it.
 | `uv not found on PATH` or `'uv' is not recognized` | uv is not installed, or you did not open a **new** window after installing it. | Close PowerShell, open a **new Administrator** PowerShell, run `uv --version`. If it still fails, redo Step 3. |
 | `git : The term 'git' is not recognized` | Same, for Git. | Close PowerShell and open a new one. If still no, redo Step 1. |
 | `...public and reachable from this machine?` | The PC could not reach GitHub. | Check the internet. Open <https://github.com/MrFreekie/stagewatch> in a browser on that PC. Try again. Work networks sometimes block GitHub. |
-| `No release tag ... Pass -Ref <tag-or-sha>` | No release is published. | Add `-Ref main` to the command in Step 4b. |
-| An error mentioning `updater_common` or `launcher.py` | The installer picked the old v0.1.0 release. | Run Step 4b again **with** `-Ref main`. It is safe to re-run. |
+| `No release tag ... Pass -Ref <tag-or-sha>` | The installer could not find a release to use. | Check the PC can reach GitHub, then run Step 4b again. If it still fails, add ` -Ref v0.2.0` to the end of the command. |
+| You installed from `main` before v0.2.0 was released | You have a pre-release build, not a numbered release. | Open **Admin → Software**. If **Channel** says **Nightly**, change it to **Stable**, then tap **Check for updates**. |
 | `C:\Stagewatch already exists and is not owned by BUILTIN\Administrators` | A folder called `C:\Stagewatch` was made by something else. The installer refuses on purpose. | Look inside it. If you made it and it holds nothing you need, delete it and try again. |
 | `... is not empty and is not a Stagewatch clone` | Same, with files in it. | Same. Move or delete the folder, or choose another with `-InstallDir`. |
 | The browser says "can't connect" on the PC | Stagewatch is still starting, or is not running. | Wait a minute. Then see [Troubleshooting](troubleshooting.md#the-page-will-not-load-on-the-pc). |

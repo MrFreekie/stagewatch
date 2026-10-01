@@ -55,8 +55,8 @@ Nightly is selected.
 
 You can only check about once every 30 seconds.
 
-If you installed with `-Ref main` before the first release was published, Stable shows
-**Up to date** until the next numbered release appears. That is expected.
+If you installed from `main` before v0.2.0 was released, you have a pre-release build.
+Set **Channel** to **Stable** and tap **Check for updates** to move onto the numbered releases.
 
 ## Update
 

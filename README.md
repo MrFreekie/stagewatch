@@ -46,8 +46,9 @@ crew, with every step explained and what you should see after it. Start here:
 - More: [updating and backups](docs/updating-and-backups.md) (including a forgotten PIN),
   [troubleshooting](docs/troubleshooting.md) and a [glossary](docs/glossary.md).
 
-The Windows boot install and the Raspberry Pi mode have **not yet been tested on real
-hardware**. Try them at home before you rely on them at a show.
+The managed install is **tested on Windows 11 and Windows 10 (virtual machines), and on
+Debian 13.7 (virtual machine). It is not yet tested on Raspberry Pi hardware.** Try it at
+home before you rely on it at a show.
 
 The rest of this page is reference material for installers and developers.
 
@@ -139,9 +140,10 @@ sound travels through. Check it against a reference thermometer and set the offs
 ## Run at boot
 
 Step by step for beginners: [Windows](docs/install-windows.md) and
-[Raspberry Pi](docs/install-raspberry-pi.md). Until a release newer than v0.1.0 is
-published, pass `-Ref main` (Windows) or `--ref main` (Pi), because the installer's default
-is the newest release tag and v0.1.0 predates the managed install.
+[Raspberry Pi](docs/install-raspberry-pi.md). The installer picks the latest release
+(currently v0.2.0). To pin a version, pass `-Ref <tag-or-sha>` (Windows) or
+`--ref <tag-or-sha>` (Pi); to follow Nightly, pass `-Channel nightly` / `--channel nightly`. The managed install is tested on Windows 11 and Windows 10
+(virtual machines) and on Debian 13.7 (virtual machine), and **not yet on Raspberry Pi hardware**.
 
 **Windows** (FOH laptop or mini-PC). Needs Git for Windows and `uv`. Run this in an
 elevated PowerShell:
@@ -159,8 +161,8 @@ registers a startup task running as SYSTEM. The task runs the **launcher**
 with the task. The launcher is also what applies updates and rolls back a failed one (see [Updating](#updating)).
 The installer also opens the port on the Private/Domain firewall profiles. Options:
 `-InstallDir`, `-DataDir`, `-Port`, `-Channel stable|nightly`, `-Ref <tag-or-sha>`.
-Remove it with `uninstall-service.ps1` (data is kept). It has not yet been verified on
-real hardware. Development checkouts on your Desktop are not affected: run those with
+Remove it with `uninstall-service.ps1` (data is kept). It has been tested in Windows 11 and
+Windows 10 virtual machines, not yet on a real show PC. Development checkouts on your Desktop are not affected: run those with
 `uv run stagewatch` as usual.
 
 **Raspberry Pi** (Pi OS Bookworm, 64-bit):
