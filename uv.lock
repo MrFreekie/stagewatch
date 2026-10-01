@@ -655,6 +655,7 @@ dependencies = [
     { name = "ifaddr", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "python-osc", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "pyyaml", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "tzdata", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "uvicorn", extra = ["standard"], marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
@@ -672,6 +673,7 @@ requires-dist = [
     { name = "ifaddr", specifier = ">=0.2.0" },
     { name = "python-osc", specifier = ">=1.10.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "tzdata", specifier = ">=2026.4" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
