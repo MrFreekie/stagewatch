@@ -61,7 +61,7 @@ about 1.5 ms. Stagewatch measures the air where the sound travels. When you set 
 marker such as **"Aligned"** at soundcheck, it shows how much the travel time has
 changed since then.
 
-## Features (v0.1)
+## Features
 
 - **ESPHome nodes**: discovered automatically over mDNS and adopted by an admin.
   Each connects over the encrypted native API and reconnects on its own.
@@ -337,9 +337,9 @@ tag `vX.Y.Z`. It never pushes.
 
 ## Roadmap
 
-Released and in progress:
+Released:
 1. **v0.1:** ESPHome environment, averaging, markers, alarms, dashboards, OSC, autostart
-2. **v0.2 (in progress):** in-app updater (Stable / Nightly channels, automatic backup and rollback), managed install, crash-restarting launcher
+2. **v0.2:** in-app updater (Stable / Nightly channels, automatic backup and rollback), managed install, crash-restarting launcher
 
 Planned:
 3. **v0.3:** events and show days, one site time zone, per-dashboard card picker, day schedule / setlist card, Wall Clock card (Ontime), hardware identity with calibration records that follow each sensor

@@ -15,6 +15,32 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Highlights
+- **Update from the admin page.** Admin → Software checks for new versions, updates with one tap
+  (admin PIN required) and can roll back if anything goes wrong. Your data is backed up
+  automatically when an update changes how it is stored. Choose **Stable** or **Nightly** (newest,
+  less tested).
+- **Starts by itself when the PC switches on**, before anyone logs in, and restarts itself if it
+  crashes. Windows installs into a protected `C:\Stagewatch` folder, and your show data lives
+  separately in `C:\ProgramData\Stagewatch`. Tested on Windows 11 and Windows 10. A Raspberry Pi /
+  Linux version is included: tested on Debian 13.7 in a virtual machine, **not yet on Raspberry Pi
+  hardware**.
+- **Connect a tablet:** the admin page shows each dashboard's address and a QR code to scan. Wall
+  screens show one in the footer.
+- **Alarm sound button** on every dashboard: tap it at soundcheck to hear a test beep and arm the
+  alarm sound.
+- **"Disconnected" banner** when a screen loses its connection, so old readings never look live.
+- **Download diagnostics** (Admin → Help): one zip to send when asking for help, with passwords,
+  keys and the PIN removed.
+- **Forgotten admin PIN:** simple reset scripts for Windows and Raspberry Pi.
+- **New step-by-step guides:** install on Windows or a Raspberry Pi, build your first sensor node,
+  and use Stagewatch on show day.
+- **Action needed if your ESPHome nodes use an API password:** that is no longer supported (ESPHome
+  itself removed it in 2026.1). Re-flash those nodes with an API encryption key instead; the
+  first-sensor-node guide shows how.
+
+The sections below list every change in detail.
+
 ### Removed
 - ESPHome API password support (removed upstream in ESPHome 2026.1; use the API encryption key). Old `config.yaml` files with a `password` on an ESPHome node still load; the value is dropped on the next save.
 
@@ -88,6 +114,8 @@ them into a dated release section and tags the commit.
 - Pi installer: `--managed` no longer exits silently on an unknown ref or when no release tag exists
   (`set -e` fired before the message); runs from `/` so `sudo -u stagewatch` works when your home is
   private; takes over a data folder left by the non-managed mode; missing option values are reported.
+- Windows install guide: the download commands now switch on TLS 1.2 first. Some Windows 10 PCs
+  otherwise fail with "Could not create SSL/TLS secure channel".
 - Pi kiosk: disables screen blanking on X11, suppresses Chromium's "restore pages" bubble after a
   power cut, and reports a missing browser instead of failing cryptically.
 
@@ -150,6 +178,10 @@ them into a dated release section and tags the commit.
 - GitHub Actions: `ci.yml` (tests and secret scan on Windows) and `nightly.yml` (fast-forwards
   the `nightly` branch to a tested main commit).
 - `--print-data-dir` option.
+- ESPHome example configs for the Adafruit Feather ESP32-S3 and ESP32-S3 TFT (environment node with
+  STEMMA QT sensors; **untested on hardware**, pins and calibration are examples only).
+- `SECURITY.md`: how to report a security problem privately, and Dependabot checks for outdated
+  dependencies and GitHub Actions.
 - GPL-3.0 licence.
 - `scripts/site_config.py`: keep an installation's `config.yaml` in a separate
   **private** git repository (refuses public remotes; never includes `secret.key`,
