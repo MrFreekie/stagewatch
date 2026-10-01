@@ -65,7 +65,7 @@ You need three small text files from the project. Open a normal **PowerShell** w
 (Start, type `powershell`, Enter), paste this and press Enter:
 
 ```powershell
-$d = "$HOME\Documents\stagewatch-node"; New-Item -ItemType Directory -Force $d | Out-Null; foreach ($f in "stagewatch-feather-s3.yaml","stagewatch-feather-s3-tft.yaml","secrets.example.yaml") { Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/MrFreekie/stagewatch/main/esphome/$f" -OutFile "$d\$f" }; Copy-Item "$d\secrets.example.yaml" "$d\secrets.yaml"; explorer $d
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $d = "$HOME\Documents\stagewatch-node"; New-Item -ItemType Directory -Force $d | Out-Null; foreach ($f in "stagewatch-feather-s3.yaml","stagewatch-feather-s3-tft.yaml","secrets.example.yaml") { Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/MrFreekie/stagewatch/main/esphome/$f" -OutFile "$d\$f" }; Copy-Item "$d\secrets.example.yaml" "$d\secrets.yaml"; explorer $d
 ```
 
 **What you should see:** a folder window opens with four files in it:

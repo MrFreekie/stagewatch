@@ -73,10 +73,14 @@ You never have to touch Python yourself.
 Paste this into the **Administrator PowerShell** window and press **Enter**:
 
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-(This is the official command from [docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/).)
+(This is the official command from [docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/),
+with one addition at the start. Some Windows 10 PCs don't use the modern secure connection
+(TLS 1.2) by default, and without it the download fails with *"Could not create SSL/TLS
+secure channel"*. The addition switches it on for this window only. It's harmless on
+Windows 11.)
 
 **What you should see:** a few lines of text ending with something like
 "everything's installed".
@@ -110,8 +114,10 @@ If you get "not recognised" instead, see [If it doesn't work](#if-it-doesnt-work
 press Enter:
 
 ```powershell
-Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/MrFreekie/stagewatch/main/deploy/windows/install-service.ps1" -OutFile "$HOME\Downloads\install-service.ps1"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/MrFreekie/stagewatch/main/deploy/windows/install-service.ps1" -OutFile "$HOME\Downloads\install-service.ps1"
 ```
+
+(The first part switches on the modern secure connection, as in Step 3.)
 
 **What you should see:** nothing at all, and the prompt comes back. That is normal. A
 file called `install-service.ps1` is now in your **Downloads** folder. It is plain text,
@@ -276,6 +282,7 @@ Press **Ctrl + C** in the window to stop it.
 |---|---|---|
 | `Run this from an elevated (Administrator) PowerShell.` | The window is not an Administrator one. | Close it. Open a new one with **Run as administrator** (Step 2). |
 | `git.exe not found at C:\Program Files\Git\cmd\git.exe` | Git is not installed, or it went somewhere else. | Redo Step 1 with the default folder. If Git is somewhere else, add `-GitPath "C:\path\to\git.exe"` to the run command. |
+| `Could not create SSL/TLS secure channel` | This Windows 10 PC isn't using the modern secure connection (TLS 1.2) for downloads. | Use the commands exactly as shown in Steps 3 and 4a: they start with a part that switches it on. If you opened a new window, run the whole command again. If it still fails, run Windows Update and check the PC's date and time are correct. |
 | `uv not found on PATH` or `'uv' is not recognized` | uv is not installed, or you did not open a **new** window after installing it. | Close PowerShell, open a **new Administrator** PowerShell, run `uv --version`. If it still fails, redo Step 3. |
 | `git : The term 'git' is not recognized` | Same, for Git. | Close PowerShell and open a new one. If still no, redo Step 1. |
 | `...public and reachable from this machine?` | The PC could not reach GitHub. | Check the internet. Open <https://github.com/MrFreekie/stagewatch> in a browser on that PC. Try again. Work networks sometimes block GitHub. |
