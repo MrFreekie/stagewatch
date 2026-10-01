@@ -17,6 +17,9 @@
 # Needs uv (https://docs.astral.sh/uv/), git and python3. Run as the normal desktop user (not root);
 # it uses sudo only for the systemd unit, the system user and the data directory.
 set -euo pipefail
+# Debian 13 defaults to umask 0002, which makes new folders group-writable; the in-app updater
+# (rightly) refuses to update a program folder that anyone but its owner could change.
+umask 022
 
 PORT=8080
 KIOSK=0
@@ -164,6 +167,9 @@ with open(e["M_CODE"] + "/.git/stagewatch-managed.json", "w", encoding="utf-8") 
 PY
   sudo -u "$SVC_USER" mkdir -p "$CODE/.git/stagewatch/backups"
   sudo -u "$SVC_USER" touch "$CODE/.git/stagewatch/gitconfig"
+  # No group/world write anywhere in the program folder, whatever the umask was when it was
+  # created (this also repairs installs made under umask 0002). Data stays 0700.
+  sudo chmod -R go-w "$CODE"
 
   sudo tee /etc/systemd/system/stagewatch.service >/dev/null <<EOF
 [Unit]
@@ -179,6 +185,7 @@ Environment=HOME=$DATA_DIR
 ExecStart=$CODE/.venv/bin/python -P $CODE/src/stagewatch/launcher.py --marker $CODE/.git/stagewatch-managed.json
 Restart=always
 RestartSec=5
+UMask=0022
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=$CODE $DATA_DIR
