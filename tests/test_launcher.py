@@ -1,5 +1,6 @@
 import ast
 import json
+import os
 import sqlite3
 import sys
 import textwrap
@@ -34,7 +35,10 @@ FAKE_SERVER = textwrap.dedent('''
         for name, code in (("exit75", 75), ("crash", 1)):
             p = os.path.join(ctl, name)
             if os.path.exists(p):
-                os.remove(p)
+                try:
+                    os.remove(p)
+                except OSError:  # Windows: the test may still have it open; retry next poll
+                    continue
                 sys.exit(code)
         time.sleep(0.05)
 ''')
@@ -93,7 +97,14 @@ class Harness:
         p.update(pending)
         # write raw (not via write_pending) so invalid content can be tested too
         uc.pending_path(self.sd).write_text(json.dumps(p))
-        (self.ctl / "exit75").write_text("")
+        self.signal("exit75")
+
+    def signal(self, name):
+        """Tell the fake server to exit. Write then rename, so it never sees (or tries to delete)
+        a file that is still being written: on Windows that delete fails and crashes it with exit 1."""
+        tmp = self.ctl / f".{name}.tmp"
+        tmp.write_text("")
+        os.replace(tmp, self.ctl / name)
 
     def head(self):
         return uc.head_sha(self.env.ctx)
@@ -171,7 +182,7 @@ def test_pending_without_exit75_is_rejected_when_child_crashes(h):
     h.wait_handshake()
     uc.pending_path(h.sd).write_text(json.dumps({"format": 1, "action": "update",
                                                  "from_sha": h.env.shas["c1"], "to_sha": h.env.shas["c2"]}))
-    (h.ctl / "crash").write_text("")  # exits 1, not 75
+    h.signal("crash")  # exits 1, not 75
     entries = h.wait_history()
     assert entries[0]["result"] == "rejected"
     assert h.head() == h.env.shas["c1"] and h.sync_calls == []
@@ -373,7 +384,7 @@ def test_failed_manual_rollback_returns_displaced_data(h):
 def test_launcher_restarts_crashed_server_with_backoff(h):
     h.start()
     first = h.wait_handshake()
-    (h.ctl / "crash").write_text("")
+    h.signal("crash")
     h.wait(lambda: (x := uc.read_handshake(h.sd)) and x["pid"] != first["pid"] and h.launcher.nonce == x["nonce"])
     assert h.history() == []  # plain crash: no update history noise
 
