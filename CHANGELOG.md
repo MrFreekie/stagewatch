@@ -20,6 +20,8 @@ them into a dated release section and tags the commit.
   default settings make new folders group-writable. The installer now sets safe permissions itself
   and repairs an existing install. **Action needed** if you installed on Debian 13 before this fix:
   run the installer again (your data is kept), then check for updates.
+- Update history showed "0.2.0 → 0.2.0" for Nightly updates. When the version number is the same, it now
+  also shows which build, for example "0.2.0 (3d4f56e) → 0.2.0 (3f91b89)".
 - Update checks failed with "Update source not reachable" (or were refused) when the project had no Nightly build published yet, even on the Stable channel. A missing Nightly build no longer blocks Stable updates or re-running the installers.
 - Old browsers (such as the 2016 Edge on Windows 10) showed a blank page. Stagewatch now says
   **This browser is too old for Stagewatch** and what to use instead.

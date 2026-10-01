@@ -380,6 +380,9 @@ async def test_rollback_schedules_pending_from_history(rig):
     h = _ok_history(rig)
     st = await rig.updater.status()
     assert st["history"][0]["can_rollback"] is True
+    # short commits let the UI tell apart two builds with the same version number (Nightly)
+    assert st["history"][0]["from_commit"] == rig.env.shas["c1"][:7]
+    assert st["history"][0]["to_commit"] == rig.env.shas["c2"][:7]
     out = await rig.updater.rollback(h["id"])
     assert out["restarting"] and out["to_version"] == "0.1.0"
     assert rig.pending() == {"format": 1, "action": "rollback", "from_sha": rig.env.shas["c2"],

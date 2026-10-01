@@ -452,10 +452,16 @@
         h("div", { class: "pre-wrap", tabindex: "0", role: "region", "aria-label": "What's changed" }, changesText(last))] : null,
       h("button", { class: "primary sw-go", disabled: sw.restarting, onclick: () => startUpdate(last) }, "Update now…"));
 
+    // Nightly builds keep the release's version number, so show the commit when the versions match.
+    const histLabel = (e) => {
+      const fv = e.from_version || "?", tv = e.to_version || "?";
+      if (fv !== tv || !e.from_commit || !e.to_commit) return `${fv} → ${tv}`;
+      return `${fv} (${e.from_commit}) → ${tv} (${e.to_commit})`;
+    };
     // A list, not a table: on a phone a wide table hides the Roll back button off-screen.
     const hist = sw.history.length ? h("ul", { class: "sw-hist" }, sw.history.slice(0, 10).map((e) => h("li", {},
       h("div", { class: "sw-hist-main" },
-        h("div", {}, h("strong", {}, `${e.from_version || "?"} → ${e.to_version || "?"}`), `  ${e.action || ""}: `,
+        h("div", {}, h("strong", {}, histLabel(e)), `  ${e.action || ""}: `,
           h("span", { class: e.result === "ok" ? "sw-ok" : "warn-text" }, (e.result === "ok" ? "✓ " : "⚠ ") + e.result), e.reason ? ` (${e.reason})` : ""),
         h("div", { class: "muted", style: "font-size:12px" }, when(e.ts))),
       e.can_rollback ? h("button", { class: "small danger", disabled: sw.restarting, onclick: () => startRollback(e) }, "Roll back…") : null)))

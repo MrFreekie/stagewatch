@@ -467,6 +467,8 @@ class Updater:
                 "id": e.get("id"), "ts": e.get("ts"), "action": e.get("action"), "result": e.get("result"),
                 "reason": e.get("reason") or "", "channel": e.get("channel"),
                 "from_version": e.get("from_version"), "to_version": e.get("to_version"),
+                # short commits, so two builds with the same version number can be told apart
+                "from_commit": (e.get("from_sha") or "")[:7], "to_commit": (e.get("to_sha") or "")[:7],
                 "schema_changed": bool(e.get("schema_changed")),
                 "restored_backup": bool(e.get("restored_backup")), "data_returned": bool(e.get("data_returned")),
                 "can_rollback": bool(head and e.get("action") == "update" and e.get("result") == "ok"
