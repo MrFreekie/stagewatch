@@ -171,10 +171,11 @@ Windows 10 virtual machines, not yet on a real show PC. Development checkouts on
 bash deploy/pi/install.sh --kiosk
 ```
 
-This installs a systemd service with restart that runs from your checkout as your user (no
-in-app updates). `--managed` (untested on hardware) instead installs the hardened launcher-based
-service under a dedicated `stagewatch` user in `/opt/stagewatch`, with data in
-`/var/lib/stagewatch` (readable only with `sudo`). `--kiosk` opens the `wall` dashboard
+This installs the hardened launcher-based service (starts at boot, restarts on crash, in-app
+updates) under a dedicated `stagewatch` user in `/opt/stagewatch`, with data in
+`/var/lib/stagewatch` (readable only with `sudo`). Tested on a Debian 13.7 virtual machine;
+untested on Raspberry Pi hardware. If you used the older Linux install (service ran from your
+own checkout), run the installer again: it takes over and keeps your data. `--kiosk` opens the `wall` dashboard
 full screen on the HDMI display after login (labwc or X11 desktops; set *Screen Blanking* to Off
 in `raspi-config` on Wayland). A Pi has no battery-backed clock: without internet (NTP) it starts
 with the last saved time, so add an RTC HAT or join a network with time service before the show,

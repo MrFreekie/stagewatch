@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Remove the Stagewatch service and kiosk autostart. Data in /var/lib/stagewatch is kept.
+# Remove the Stagewatch service and kiosk autostart. Data in /var/lib/stagewatch (and the program
+# in /opt/stagewatch) is kept. Works for the current install and for an older one (service run
+# from your own checkout): both used the same service name.
 set -euo pipefail
 sudo systemctl disable --now stagewatch.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/stagewatch.service

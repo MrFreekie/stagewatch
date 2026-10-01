@@ -20,6 +20,18 @@ them into a dated release section and tags the commit.
 
 ### Changed
 - Install guides: the `-Ref main` step is no longer needed now that v0.2.0 is released.
+- Raspberry Pi / Linux: there is now only one way to install. `install.sh` always sets up the
+  protected, updatable install (own `stagewatch` user, program in `/opt/stagewatch`, data in
+  `/var/lib/stagewatch`). `--managed` is still accepted but does nothing. Tested on a Debian 13.7
+  virtual machine; still not tested on real Raspberry Pi hardware.
+
+### Removed
+- The older Linux install, where the service ran from your own downloaded folder as your own user
+  and could not be updated from the admin page.
+  **Action needed** if you used it: run `bash deploy/pi/install.sh --kiosk` again from your
+  Stagewatch folder (leave off `--kiosk` if you did not use it). The installer stops the old
+  service, switches you over and **keeps your data**; it also saves a safety copy of it as
+  `/var/lib/stagewatch.pre-managed-<date>` that you can delete once you are happy.
 
 ## [0.2.0] - 2026-10-01
 

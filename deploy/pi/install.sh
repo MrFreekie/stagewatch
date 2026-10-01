@@ -1,33 +1,32 @@
 #!/usr/bin/env bash
-# Install Stagewatch on Raspberry Pi OS (Bookworm, 64-bit) as a systemd service
-# that starts at boot and restarts on failure. Optional HDMI kiosk display.
+# Install Stagewatch on Raspberry Pi OS / Debian as a hardened, updatable systemd service that
+# starts at boot and restarts on failure. Optional HDMI kiosk display.
 #
-#   cd ~/stagewatch && bash deploy/pi/install.sh [--kiosk] [--port 8080] [--emulate]
-#   bash deploy/pi/install.sh --managed [--channel stable|nightly] [--ref <tag-or-sha>]
+#   cd ~/stagewatch && bash deploy/pi/install.sh [--channel stable|nightly] [--ref <tag-or-sha>]
 #        [--source-url https://github.com/MrFreekie/stagewatch.git] [--kiosk] [--port 8080] [--emulate]
 #
-# --managed: *** UNTESTED ON HARDWARE *** Installs a hardened, updatable service in
-#   /opt/stagewatch, run by a dedicated no-login system user "stagewatch" (no sudo), with data
-#   in /var/lib/stagewatch (mode 0700). The service runs the launcher (crash restart, in-app
-#   updates and rollback). The copy in /opt/stagewatch is a fresh clone; the checkout you run
-#   this script from is not used by the service. The kiosk stays on the desktop user.
-# Without --managed: the older mode (service runs from this checkout as you; no in-app updates).
+# *** Tested on a Debian 13.7 virtual machine; UNTESTED ON RASPBERRY PI HARDWARE ***
+# Installs into /opt/stagewatch (a fresh clone; the checkout you run this script from is not used by
+# the service), run by a dedicated no-login system user "stagewatch" (no sudo), with data in
+# /var/lib/stagewatch (mode 0700). The service runs the launcher (crash restart, in-app updates and
+# rollback). The kiosk stays on the desktop user.
+# --managed is accepted and ignored: it is the only mode now.
+# An older install (service run from your own checkout as you) is stopped and taken over; its data
+# in /var/lib/stagewatch is kept (a safety copy is made first).
 #
-# Needs uv (https://docs.astral.sh/uv/) and, for --managed, git and python3. Run as the normal
-# desktop user (not root); it uses sudo only for the systemd unit, the system user and the
-# data directory.
+# Needs uv (https://docs.astral.sh/uv/), git and python3. Run as the normal desktop user (not root);
+# it uses sudo only for the systemd unit, the system user and the data directory.
 set -euo pipefail
 
 PORT=8080
 KIOSK=0
 EMULATE=""
-MANAGED=0
 CHANNEL=stable
 REF=""
 SOURCE_URL="https://github.com/MrFreekie/stagewatch.git"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --managed) MANAGED=1 ;;
+    --managed) ;; # accepted for backwards compatibility; no-op
     --channel) CHANNEL="${2:?--channel needs a value}"; shift ;;
     --ref) REF="${2:?--ref needs a value}"; shift ;;
     --source-url) SOURCE_URL="${2:?--source-url needs a value}"; shift ;;
@@ -40,7 +39,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-USER_NAME="$(id -un)"
 DATA_DIR=/var/lib/stagewatch
 
 if ! command -v uv >/dev/null 2>&1; then
@@ -74,10 +72,33 @@ install_managed() {
       echo "$CODE exists and is owned by $owner; refusing."; exit 1
     fi
   fi
+  # An older install used the same unit name and the same data folder, but ran from the user's own
+  # checkout as that user. Detect it (a unit that is not the launcher), stop it and say so.
+  local UNIT=/etc/systemd/system/stagewatch.service LEGACY=0
+  if [[ -f "$UNIT" ]] && ! grep -q 'launcher\.py' "$UNIT"; then
+    LEGACY=1
+    echo "Found an older Stagewatch install (service ran from your own checkout, no in-app updates)."
+    echo "Stopping it and replacing it with the managed install. Your data is kept."
+  fi
   sudo systemctl stop stagewatch.service 2>/dev/null || true
+  if [[ $LEGACY -eq 1 ]]; then
+    sudo systemctl disable stagewatch.service 2>/dev/null || true
+    # Safety copy of the old data (the service is stopped, so the database is consistent). Never
+    # deleted by Stagewatch. Skipped if the data folder does not exist.
+    if [[ -d "$DATA_DIR" ]]; then
+      local BAK
+      BAK="$DATA_DIR.pre-managed-$(date +%Y%m%d-%H%M%S)"
+      if sudo cp -a "$DATA_DIR" "$BAK"; then
+        sudo chmod 0700 "$BAK"
+        echo "Safety copy of the old data: $BAK (delete it yourself when happy)."
+      else
+        echo "Could not make a safety copy of $DATA_DIR; stopping so nothing is lost."; exit 1
+      fi
+    fi
+  fi
   sudo install -d -o "$SVC_USER" -g "$SVC_USER" -m 0700 "$DATA_DIR"
-  # Data left by the non-managed mode is owned by the desktop user; hand it to the service user
-  # or the database/config would be unwritable (crash loop).
+  # Data left by the older install is owned by the desktop user; hand it to the service user
+  # or the database/config would be unwritable (crash loop). Nothing is deleted.
   sudo chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
   sudo install -d -o "$SVC_USER" -g "$SVC_USER" -m 0755 "$CODE"
 
@@ -172,40 +193,11 @@ WantedBy=multi-user.target
 EOF
   sudo systemctl daemon-reload
   sudo systemctl enable --now stagewatch.service
-  echo "Managed service enabled (UNTESTED ON HARDWARE): sudo systemctl status stagewatch"
+  echo "Service enabled (tested on a Debian VM, UNTESTED ON RASPBERRY PI HARDWARE): sudo systemctl status stagewatch"
   echo "Code: $CODE ($SHA, detached)   Data: $DATA_DIR (0700, user $SVC_USER)"
 }
 
-if [[ $MANAGED -eq 1 ]]; then
-  install_managed
-else
-  echo "Repository: $REPO"
-  (cd "$REPO" && uv sync --frozen --no-dev)
-
-  sudo mkdir -p "$DATA_DIR"
-  sudo chown "$USER_NAME":"$USER_NAME" "$DATA_DIR"
-
-  sudo tee /etc/systemd/system/stagewatch.service >/dev/null <<EOF
-[Unit]
-Description=Stagewatch show-site monitoring hub
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-User=$USER_NAME
-WorkingDirectory=$REPO
-ExecStart=$REPO/.venv/bin/python -m stagewatch --port $PORT --data-dir $DATA_DIR $EMULATE
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  sudo systemctl daemon-reload
-  sudo systemctl enable --now stagewatch.service
-  echo "Service enabled: sudo systemctl status stagewatch"
-fi
+install_managed
 
 if [[ $KIOSK -eq 1 ]]; then
   install -m 755 "$REPO/deploy/pi/kiosk.sh" "$HOME/.local/bin/stagewatch-kiosk" 2>/dev/null || {

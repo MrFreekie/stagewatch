@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Forgotten the Stagewatch admin PIN, or the admin page says "Recovery required"?
-# Run this on the Stagewatch Raspberry Pi (managed install):
+# Run this on the Stagewatch Raspberry Pi (installed with install.sh):
 #
 #   bash /opt/stagewatch/deploy/pi/reset-admin-pin.sh
 #
@@ -30,7 +30,7 @@ PY
 fi
 
 if [[ ! -x "$CODE/.venv/bin/python" ]]; then
-  echo "Could not find Stagewatch at $CODE. Is this a managed install (install.sh --managed)?"
+  echo "Could not find Stagewatch at $CODE. Was Stagewatch installed with deploy/pi/install.sh? (Re-run it if this was an older install.)"
   exit 1
 fi
 if [[ ! -d "$DATA_DIR" ]]; then
