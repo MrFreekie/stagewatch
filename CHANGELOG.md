@@ -15,6 +15,9 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Fixed
+- Update checks failed with "Update source not reachable" (or were refused) when the project had no Nightly build published yet, even on the Stable channel. A missing Nightly build no longer blocks Stable updates or re-running the installers.
+
 ### Changed
 - Install guides: the `-Ref main` step is no longer needed now that v0.2.0 is released.
 

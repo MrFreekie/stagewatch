@@ -105,6 +105,16 @@ def test_fetch_and_channel_targets(env):
         uc.resolve_channel_target(ctx, "main")
 
 
+def test_missing_nightly_branch_does_not_block_stable(env):
+    # Before the Nightly workflow has ever run, origin has no `nightly` branch. Git treats a
+    # missing source ref as fatal; that must not break Stable checks (seen on the Debian VM).
+    ctx, work, s = env.ctx, env.work, env.shas
+    git(work, "push", "-q", "origin", ":refs/heads/nightly")
+    uc.fetch_updates(ctx)
+    assert uc.resolve_channel_target(ctx, "stable") == s["c2"]
+    assert uc.resolve_channel_target(ctx, "nightly") is None
+
+
 def test_stable_ignores_rc_and_off_main_tags(env):
     ctx, work, s = env.ctx, env.work, env.shas
     c4 = commit(work, "0.3.0-rc.1")

@@ -612,17 +612,29 @@ def version_at(ctx: GitContext, sha: str) -> str | None:
     return m.group(1) if m else None
 
 
-FETCH_REFSPECS = ["+refs/heads/nightly:refs/remotes/origin/nightly",
-                  "+refs/heads/main:refs/remotes/origin/main",
+FETCH_REFSPECS = ["+refs/heads/main:refs/remotes/origin/main",
                   "refs/tags/v*:refs/tags/v*"]  # NO '+' on tags: a moved tag must fail the fetch
+NIGHTLY_REFSPEC = "+refs/heads/nightly:refs/remotes/origin/nightly"
 
 
 def fetch_updates(ctx: GitContext) -> None:
-    """Fetch main, nightly and v* tags. A moved/deleted-and-recreated tag makes this fail."""
+    """Fetch main and v* tags (required), then nightly (optional).
+
+    A moved/deleted-and-recreated tag makes this fail. A missing ``nightly`` branch does not:
+    git treats a missing source ref as fatal, and that must never block Stable updates (the
+    branch only exists once the Nightly workflow has run).
+    """
     try:
         run_git(ctx, "fetch", "--no-tags", "--quiet", "origin", *FETCH_REFSPECS)
     except GitError as e:
         raise GitError("fetch_failed", e.detail) from e
+    try:
+        run_git(ctx, "fetch", "--no-tags", "--quiet", "origin", NIGHTLY_REFSPEC)
+    except GitError as e:
+        if "couldn't find remote ref" not in (e.detail or ""):
+            raise GitError("fetch_failed", e.detail) from e
+        # gone upstream: drop any stale local copy so Nightly reports "nothing available"
+        run_git(ctx, "update-ref", "-d", "refs/remotes/origin/nightly", ok=(0, 1))
 
 
 def latest_stable_tag(ctx: GitContext, main_ref: str = "refs/remotes/origin/main") -> tuple[str, str] | None:

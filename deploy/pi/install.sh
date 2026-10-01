@@ -92,7 +92,10 @@ install_managed() {
     [[ "$("${RUN[@]}" "${G[@]}" -C "$CODE" config --get remote.origin.url)" == "$SOURCE_URL" ]] \
       || { echo "existing clone has a different origin; refusing."; exit 1; }
     "${RUN[@]}" "${G[@]}" -C "$CODE" fetch --quiet --no-tags origin \
-      +refs/heads/main:refs/remotes/origin/main +refs/heads/nightly:refs/remotes/origin/nightly 'refs/tags/v*:refs/tags/v*'
+      +refs/heads/main:refs/remotes/origin/main 'refs/tags/v*:refs/tags/v*'
+    # nightly is optional: it only exists once the Nightly workflow has run
+    "${RUN[@]}" "${G[@]}" -C "$CODE" fetch --quiet --no-tags origin \
+      +refs/heads/nightly:refs/remotes/origin/nightly 2>/dev/null || true
   fi
   local SHA
   if [[ -n "$REF" ]]; then

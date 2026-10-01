@@ -138,8 +138,10 @@ New-Item -ItemType File -Path $script:EmptyGitConfig | Out-Null
         $origin = (Invoke-Git @("-C", $InstallDir, "config", "--get", "remote.origin.url") | Select-Object -First 1)
         if ($origin -ne $SourceUrl) { throw "Existing clone's origin ($origin) differs from -SourceUrl ($SourceUrl). Refusing." }
         Invoke-Git @("-C", $InstallDir, "fetch", "--quiet", "--no-tags", "origin",
-                     "+refs/heads/main:refs/remotes/origin/main", "+refs/heads/nightly:refs/remotes/origin/nightly",
-                     "refs/tags/v*:refs/tags/v*") | Out-Null
+                     "+refs/heads/main:refs/remotes/origin/main", "refs/tags/v*:refs/tags/v*") | Out-Null
+        # nightly is optional: it only exists once the Nightly workflow has run
+        Invoke-Git @("-C", $InstallDir, "fetch", "--quiet", "--no-tags", "origin",
+                     "+refs/heads/nightly:refs/remotes/origin/nightly") -AllowFail | Out-Null
     }
     $g = @("-C", $InstallDir)
 
