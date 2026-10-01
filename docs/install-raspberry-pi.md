@@ -129,8 +129,13 @@ prompt comes back.
 Paste this and press Enter. It installs Stagewatch **and** the full-screen kiosk:
 
 ```bash
-cd ~/stagewatch && bash deploy/pi/install.sh --managed --kiosk
+cd ~/stagewatch && bash deploy/pi/install.sh --kiosk
 ```
+
+> **Installed Stagewatch on this Pi before?** Run the same command again. It stops the old
+> service, switches to this install and **keeps your data** (it also saves a safety copy next
+> to it, named `/var/lib/stagewatch.pre-managed-...`). If you typed `--managed` before, you can
+> leave it off now; it does nothing.
 
 It asks for your password. It then takes **several minutes** while it downloads Python
 and libraries. Do not close the window.
@@ -139,7 +144,6 @@ What the options mean:
 
 | Option | What it does |
 |---|---|
-| `--managed` | The safe way to install. Runs Stagewatch as its own locked-down user, starts it at every boot, restarts it if it crashes, and lets you update it from the admin page. The program goes in `/opt/stagewatch` and your data in `/var/lib/stagewatch`. |
 | `--kiosk` | After the Pi logs in, opens the **wall** dashboard full screen on the Pi's screen. Leave this off if the Pi has no screen. |
 | `--ref <tag-or-sha>` | Advanced. Install a particular version instead of the latest release. Leave it off normally. |
 | `--channel nightly` | Advanced. Follow the Nightly build instead of Stable. Not for show days. |
@@ -276,7 +280,8 @@ bash ~/stagewatch/deploy/pi/uninstall.sh
 **What you should see:** `Stagewatch service removed.`
 
 This removes the boot service and the kiosk auto-start. It **keeps** your data in
-`/var/lib/stagewatch` and the program in `/opt/stagewatch`.
+`/var/lib/stagewatch` and the program in `/opt/stagewatch`. It also works if you still have
+the older Linux install.
 
 To remove the program too:
 
