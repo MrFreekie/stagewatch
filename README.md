@@ -346,7 +346,7 @@ Planned:
 4. **v0.4:** SPL limit display, key onsite contacts
 5. **v0.5:** per-event logo
 6. **Manual backup and restore:** "Back up now" with a note, a list of automatic and manual backups, download a backup, restore a chosen backup (admin PIN; applied safely by the launcher with the current data kept aside), scheduled daily backups with retention. Builds on the updater's backup system.
-7. **Easier setup:** a one-click Windows installer, browser-based flashing for sensor nodes (plug in over USB, click Install, no YAML), and a **Windows portable edition**. The portable edition is a zip you unzip and double-click, with no admin rights needed, for trying Stagewatch out, demos and USB sticks. It can be turned into a full install later.
+7. **Easier setup:** a one-click Windows installer, browser-based flashing for sensor nodes (plug in over USB, click Install, no YAML), and a **Windows portable edition**. The portable edition is a zip you unzip and double-click, with no admin rights needed, for trying Stagewatch out, demos and USB sticks. To make it permanent later, install Stagewatch normally and copy your data across.
 
 Later:
 - **ESPHome expansion:** wind (mean and gust, with warnings), inclinometers, relay/buzzer/stack-light outputs, Pi GPIO, dashboard and automation editors, Bluetooth relay
