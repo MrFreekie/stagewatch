@@ -9,22 +9,55 @@ leave a truncated config on a show day.
 from __future__ import annotations
 
 import base64
+import ipaddress
 import logging
 import os
 import re
 import tempfile
 import time
+import zoneinfo
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from ..updater_common import atomic_write_bytes, fsync_dir, remove_stale_temps, replace_with_retry
 from ..version import CONFIG_SCHEMA_VERSION
+from .cards import CARD_ID_RE, MAX_CARDS, default_cards, legacy_cards
 from .model import slugify
 
 log = logging.getLogger(__name__)
+
+# The default dashboards of config v1 (0.2.0), used when a v1 file has no dashboards key.
+_V1_DEFAULT_DASHBOARDS = [
+    {"slug": "foh", "title": "FOH", "layout": "tablet", "allow_marker": True, "allow_ack": True},
+    {"slug": "phone", "title": "Phone", "layout": "phone", "allow_marker": True},
+    {"slug": "wall", "title": "Wall", "layout": "wall", "allow_marker": False},
+]
+
+
+def _v1_to_v2(raw: dict) -> dict:
+    """Config v1 -> v2 (pure, idempotent).  Only dashboards need work: each existing dashboard
+    gets exactly what it showed in 0.2.0 as its ``cards`` (plus the schedule card, which stays
+    hidden until there is a schedule).  Everything else new arrives through model defaults.
+    Keys the models no longer have (e.g. an ESPHome ``password``) are left for validation to
+    ignore and disappear at the next save; they are never logged."""
+    out = dict(raw)
+    dashboards = out.get("dashboards", None)
+    if "dashboards" not in out:
+        dashboards = [dict(d) for d in _V1_DEFAULT_DASHBOARDS]
+    if isinstance(dashboards, list):
+        migrated = []
+        for d in dashboards:
+            if isinstance(d, dict) and "cards" not in d:
+                layout = d.get("layout", "tablet")
+                d = {**d, "cards": legacy_cards(layout if isinstance(layout, str) else "tablet")}
+            migrated.append(d)
+        out["dashboards"] = migrated
+    return out
 
 
 def migrate(raw: dict) -> dict:
@@ -34,7 +67,9 @@ def migrate(raw: dict) -> dict:
     if version > CONFIG_SCHEMA_VERSION:
         log.warning("config.yaml is schema %s, newer than this build (%s); "
                     "unknown settings will be ignored", version, CONFIG_SCHEMA_VERSION)
-    # e.g. if version < 2: raw = _v1_to_v2(raw); version = 2
+    if version < 2:
+        raw = _v1_to_v2(raw)
+        version = 2
     raw["schema_version"] = CONFIG_SCHEMA_VERSION
     return raw
 
@@ -44,6 +79,24 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="ignore", hide_input_in_errors=True)
 
 
+_TZ_RE = re.compile(r"^[A-Za-z0-9_+\-/]{1,64}$")
+_HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+def valid_timezone(v: str) -> str:
+    """'' (use this computer's zone) or an IANA zone name that zoneinfo can load."""
+    v = (v or "").strip()
+    if v == "":
+        return ""
+    if not _TZ_RE.match(v) or v.startswith("/") or ".." in v:
+        raise ValueError("not a time zone name")
+    try:
+        zoneinfo.ZoneInfo(v)
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError, OSError):
+        raise ValueError("unknown time zone") from None
+    return v
+
+
 class SiteConfig(_Model):
     name: str = "Stagewatch"
     altitude_m: float = Field(0.0, ge=-500, le=6000)
@@ -51,10 +104,28 @@ class SiteConfig(_Model):
     stale_after_s: float = Field(60.0, ge=5, le=3600)
     smoothing_tau_s: float = Field(30.0, ge=0, le=900)
     outlier_reject: bool = True
+    timezone: str = ""          # "" = not set: use this computer's zone
+    day_rollover: str = "06:00"  # a show day runs from this time to the same time next morning
+
+    @field_validator("timezone")
+    @classmethod
+    def _tz(cls, v: str) -> str:
+        return valid_timezone(v)
+
+    @field_validator("day_rollover")
+    @classmethod
+    def _rollover(cls, v: str) -> str:
+        m = _HHMM_RE.match((v or "").strip())
+        if not m or int(m.group(1)) > 11:
+            raise ValueError("day rollover must be HH:MM between 00:00 and 11:59")
+        return m.group(0)
 
 
 class AdminConfig(_Model):
     pin_hash: str = ""
+
+
+_MAC_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
 class EsphomeDeviceConfig(_Model):
@@ -64,16 +135,97 @@ class EsphomeDeviceConfig(_Model):
     name: str = ""
     area: str = ""
     noise_psk: str = ""
+    mac: str = ""  # the board's MAC (12 lowercase hex), set by the hub on first connect
 
     @field_validator("id")
     @classmethod
     def _slug(cls, v: str) -> str:
         return slugify(v)
 
+    @field_validator("mac")
+    @classmethod
+    def _mac(cls, v: str) -> str:
+        v = (v or "").strip().lower().replace(":", "").replace("-", "")
+        if v and not _MAC_RE.match(v):
+            raise ValueError("MAC must be 12 hex characters")
+        return v
+
 
 class EntitySettings(_Model):
+    """Legacy per-entity calibration, keyed by entity id.  Kept as the pending map: entries move to
+    ``Config.calibrations`` once the hardware behind the entity is known."""
     offset: float = 0.0
     include_in_average: bool = True
+
+
+CALIBRATION_KEY_RE = re.compile(r"^(mac:[0-9a-f]{12}|dev:[a-z0-9_]+)/[a-z0-9_]+$")
+CALIBRATION_HISTORY_MAX = 20
+
+
+class CalibrationEntry(_Model):
+    offset: float = Field(allow_inf_nan=False)
+    date: str  # ISO-8601, UTC
+    method: Literal["manual", "reference", "import", "migrated", "moved"]
+    reference: str = Field("", max_length=120)
+    note: str = Field("", max_length=200)
+
+    @field_validator("date")
+    @classmethod
+    def _utc(cls, v: str) -> str:
+        try:
+            d = datetime.fromisoformat(v)
+        except (TypeError, ValueError):
+            raise ValueError("date must be ISO-8601") from None
+        if d.tzinfo is None or d.utcoffset() != timedelta(0):
+            raise ValueError("date must be in UTC")
+        return v
+
+
+class Calibration(_Model):
+    """Calibration of one sensor, keyed by hardware (``mac:<12hex>/<object_id>``) so it follows
+    the board when it is re-adopted.  Canonical units: degC, %RH, Pa."""
+    offset: float = Field(0.0, allow_inf_nan=False)
+    include_in_average: bool = True
+    history: list[CalibrationEntry] = Field(default_factory=list)  # newest first
+    chip: str = Field("", max_length=64)  # reserved
+    applied_on_node: bool = False  # reserved; ignored
+
+    @field_validator("history", mode="before")
+    @classmethod
+    def _cap(cls, v):
+        return v[:CALIBRATION_HISTORY_MAX] if isinstance(v, list) else v
+
+
+_ONTIME_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
+
+
+class WallClockConfig(_Model):
+    source: Literal["ontime"] = "ontime"
+    ontime_url: str = "http://127.0.0.1:4001"
+    warn_offset_s: float = Field(2.0, ge=0.5, le=60)
+
+    @field_validator("ontime_url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        """Only ``http://host[:port]``: no https, user info, path, query or fragment."""
+        v = (v or "").strip()
+        try:
+            u = urlsplit(v)
+            port = u.port
+        except ValueError:
+            raise ValueError("address must look like http://host:port") from None
+        host = u.hostname or ""
+        if (u.scheme != "http" or "@" in u.netloc or u.path not in ("", "/") or u.query or u.fragment
+                or "#" in v or "?" in v or not host or port == 0):
+            raise ValueError("address must look like http://host:port")
+        if ":" in host:  # IPv6 literal
+            try:
+                ipaddress.IPv6Address(host)
+            except ValueError:
+                raise ValueError("address must look like http://host:port") from None
+        elif not _ONTIME_HOST_RE.match(host):
+            raise ValueError("address must look like http://host:port")
+        return v.rstrip("/")
 
 
 class Threshold(_Model):
@@ -94,11 +246,39 @@ class Dashboard(_Model):
     layout: Literal["tablet", "phone", "wall"] = "tablet"
     allow_marker: bool = True
     allow_ack: bool = False
+    # Ordered card ids (core/cards.py).  Not given -> the layout's default (new dashboards).
+    cards: list[str] = Field(default_factory=list)
+    stage: str = Field("", max_length=40)  # which stage this screen follows ("" = all)
 
     @field_validator("slug")
     @classmethod
     def _slug(cls, v: str) -> str:
         return slugify(v)
+
+    @field_validator("cards", mode="before")
+    @classmethod
+    def _cards(cls, v):
+        """Keep every well-formed id (also ids from a newer release), in order, once each."""
+        if not isinstance(v, list):
+            return v
+        out: list[str] = []
+        for c in v:
+            if isinstance(c, str) and CARD_ID_RE.match(c) and c not in out:
+                out.append(c)
+        if len(out) > MAX_CARDS:
+            raise ValueError(f"at most {MAX_CARDS} cards")
+        return out
+
+    @field_validator("stage", mode="before")
+    @classmethod
+    def _stage(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def _default_cards(self):
+        if "cards" not in self.model_fields_set:
+            self.cards = default_cards(self.layout)
+        return self
 
 
 class OscDestination(_Model):
@@ -125,7 +305,8 @@ class Config(_Model):
     admin: AdminConfig = Field(default_factory=AdminConfig)
     mdns_name: str = "stagewatch"
     esphome_devices: list[EsphomeDeviceConfig] = Field(default_factory=list)
-    entities: dict[str, EntitySettings] = Field(default_factory=dict)
+    entities: dict[str, EntitySettings] = Field(default_factory=dict)  # legacy/pending calibrations
+    calibrations: dict[str, Calibration] = Field(default_factory=dict)
     thresholds: list[Threshold] = Field(default_factory=list)
     dashboards: list[Dashboard] = Field(default_factory=lambda: [
         Dashboard(slug="foh", title="FOH", layout="tablet", allow_marker=True, allow_ack=True),
@@ -134,6 +315,15 @@ class Config(_Model):
     ])
     osc_out: OscOutConfig = Field(default_factory=OscOutConfig)
     updater: UpdaterConfig = Field(default_factory=UpdaterConfig)
+    wall_clock: WallClockConfig = Field(default_factory=WallClockConfig)
+
+    @field_validator("calibrations")
+    @classmethod
+    def _calibration_keys(cls, v: dict) -> dict:
+        for key in v:
+            if not CALIBRATION_KEY_RE.match(key):
+                raise ValueError("calibration keys look like mac:<12 hex>/<sensor> or dev:<device>/<sensor>")
+        return v
 
     def entity_settings(self, entity_id: str) -> EntitySettings:
         return self.entities.get(entity_id) or EntitySettings()

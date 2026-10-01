@@ -6,9 +6,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import zoneinfo
+from datetime import datetime
 from pathlib import Path
 
-from .. import acoustics
+from .. import __version__, acoustics
 from .alarms import AlarmChange, AlarmEngine
 from .bus import EventBus
 from .config import ConfigStore
@@ -28,6 +30,32 @@ SITE_ENTITIES = {
     "site.dew_point": ("Dew point", Kind.DEW_POINT, 1),
 }
 DEVICE_OFFLINE_LEVEL = 1
+EXIT_APPLY = 75  # updater_common.EXIT_APPLY: the launcher applies a pending update/rollback
+
+
+def time_doc(site, now: float | None = None) -> dict:
+    """The site's time settings at ``now``, stored with each hub run (reports for past days
+    must show the zone that was in use on the day)."""
+    now = time.time() if now is None else now
+    try:
+        if site.timezone:
+            offset = datetime.fromtimestamp(now, zoneinfo.ZoneInfo(site.timezone)).utcoffset()
+            utc_offset_s = int(offset.total_seconds()) if offset is not None else 0
+        else:
+            utc_offset_s = int(time.localtime(now).tm_gmtoff)
+    except Exception:  # noqa: BLE001 - never stop the hub over a time zone
+        utc_offset_s = 0
+    return {"tz": site.timezone, "utc_offset_s": utc_offset_s, "day_rollover": site.day_rollover}
+
+
+def down_text(seconds: float) -> str:
+    minutes = round(seconds / 60)
+    if minutes < 1:
+        return "down less than a minute"
+    if minutes < 120:
+        return f"down about {minutes} min"
+    hours = round(seconds / 3600)
+    return f"down about {hours} h" if hours < 48 else f"down about {round(seconds / 86400)} days"
 
 
 class Hub:
@@ -38,6 +66,7 @@ class Hub:
         self.store = ConfigStore(data_dir / "config.yaml")
         self.config = self.store.load()
         self.recorder = Recorder(data_dir / "stagewatch.sqlite3")
+        unclean = self.recorder.begin_run(__version__, time_doc(self.config.site))
         self.alarms = AlarmEngine()
         self.devices: dict[str, Device] = {}
         self.entities: dict[str, Entity] = {}
@@ -48,8 +77,15 @@ class Hub:
         # Set by the updater: process exit code (75 = launcher applies a pending update) and the
         # callback __main__ installs to stop uvicorn gracefully.
         self.exit_code = 0
+        self.stop_reason = "update"  # what exit code 75 means this time: "update" or "rollback"
         self.request_shutdown = None
+        self.bus.subscribe("device", lambda _topic, device: self._device_meta(device))
         self._register_site_device()
+        if unclean is not None:
+            text = f"Stagewatch restarted after an unexpected stop ({down_text(unclean['down_s'])})"
+            log.warning("%s; the previous run did not stop cleanly", text)
+            self.recorder.log_alarm("hub", "unclean_stop", 0, text)
+            self.add_marker(text, "hub")
 
     # ------------------------------------------------------------ lifecycle
     def add_integration(self, integration: Integration) -> None:
@@ -75,7 +111,7 @@ class Hub:
                 await integration.stop()
             except Exception:
                 log.exception("Integration %s failed to stop", integration.manifest.domain)
-        self.recorder.close()
+        self.recorder.close(self.stop_reason if self.exit_code == EXIT_APPLY else "stop")
 
     @staticmethod
     async def _periodic(interval: float, fn) -> None:
@@ -93,12 +129,28 @@ class Hub:
 
     # ------------------------------------------------------------- registry
     def _register_site_device(self) -> None:
-        self.devices[SITE_DEVICE_ID] = Device(
+        self.register_device(Device(
             SITE_DEVICE_ID, "Site average", "stagewatch", "Stagewatch", "Derived",
-            status=Status.OK)
+            status=Status.OK))
         for entity_id, (name, kind, decimals) in SITE_ENTITIES.items():
-            self.entities[entity_id] = Entity(entity_id, SITE_DEVICE_ID, name, kind,
-                                              UNITS.get(kind, ""), decimals, derived=True)
+            self.register_entity(Entity(entity_id, SITE_DEVICE_ID, name, kind,
+                                        UNITS.get(kind, ""), decimals, derived=True))
+
+    def _entity_meta(self, entity: Entity) -> None:
+        """Describe the entity in the history (written only when something changed)."""
+        device = self.devices.get(entity.device_id)
+        try:
+            self.recorder.upsert_entity_meta(
+                entity.id, entity.device_id, entity.kind.value, entity.unit, entity.name,
+                device.name if device else "", device.area if device else "",
+                {"decimals": entity.decimals, "category": getattr(device, "category", "sensor")})
+        except Exception:  # noqa: BLE001 - descriptive data must never break registration
+            log.exception("Could not record the description of %s", entity.id)
+
+    def _device_meta(self, device: Device) -> None:
+        for entity in list(self.entities.values()):
+            if entity.device_id == device.id:
+                self._entity_meta(entity)
 
     def register_device(self, device: Device) -> Device:
         existing = self.devices.get(device.id)
@@ -143,6 +195,7 @@ class Hub:
             entity = existing
         else:
             self.entities[entity.id] = entity
+        self._entity_meta(entity)
         self.bus.publish("entity", entity)
         return entity
 
