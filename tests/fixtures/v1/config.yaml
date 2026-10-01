@@ -1,0 +1,82 @@
+schema_version: 1
+site:
+  name: Fixture Arena
+  altitude_m: 35.0
+  reference_distance_m: 45.0
+  stale_after_s: 60.0
+  smoothing_tau_s: 30.0
+  outlier_reject: true
+admin:
+  pin_hash: pbkdf2_sha256$200000$G0X5/WUxy5qIKk6NAv9mcg==$8IPIz0/7X1ne4KYSIPdRUMkNbGtRbtNxCRwFErrG5so=
+mdns_name: stagewatch
+esphome_devices:
+- id: foh
+  host: foh-node.local
+  port: 6053
+  name: FOH
+  area: FOH
+  noise_psk: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+- id: stage_l
+  host: 192.0.2.11
+  port: 6053
+  name: Stage left
+  area: Stage
+  noise_psk: ''
+  password: fixture-legacy-api-password
+- id: stage_r
+  host: 192.0.2.12
+  port: 6053
+  name: Stage right
+  area: Stage
+  noise_psk: ''
+entities:
+  foh.temperature:
+    offset: -0.4
+    include_in_average: true
+  stage_l.humidity:
+    offset: 2.5
+    include_in_average: false
+thresholds:
+- id: foh_hot
+  entity: foh.temperature
+  label: FOH hot
+  above: 30.0
+  below: null
+  level: 2
+  hysteresis: 0.5
+  hold_s: 10.0
+  enabled: true
+- id: site_damp
+  entity: site.humidity
+  label: Damp
+  above: 85.0
+  below: null
+  level: 1
+  hysteresis: 0.0
+  hold_s: 0.0
+  enabled: true
+dashboards:
+- slug: foh
+  title: FOH
+  layout: tablet
+  allow_marker: true
+  allow_ack: true
+- slug: monitors
+  title: Monitor world
+  layout: phone
+  allow_marker: true
+  allow_ack: false
+- slug: lobby
+  title: Lobby screen
+  layout: wall
+  allow_marker: false
+  allow_ack: false
+osc_out:
+  destinations:
+  - host: 192.0.2.50
+    port: 9000
+    enabled: true
+  per_node: false
+  rate_hz: 1.0
+updater:
+  channel: stable
