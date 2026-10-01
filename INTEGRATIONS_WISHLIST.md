@@ -44,15 +44,21 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 ## Power
 | Integration | Brings | Protocol | Docs | Pri | Dir |
 |---|---|---|---|---|---|
-| Distro meters (Eastron, Carlo Gavazzi, Schneider, Socomec, Janitza) | V / A / Hz / kW / THD per phase | Modbus RTU/TCP | ✅ | ★★★ | ⬅ |
-| Bender RCMS / DOLD residual current monitors | Earth-leakage trend | Modbus RTU | ✅ | ★★★ | ⬅ |
-| Deep Sea Electronics generator controllers | Genset state, load, fuel | Modbus (GenComm) | 🔒 | ★★★ | ⬅ |
-| ComAp generator controllers | Genset | Modbus TCP | ✅ | ★★ | ⬅ |
+| **Distro meters with built-in Ethernet**: Eastron SDM630-TCP / SDM630MCT-TCP, Janitza UMG 96-PA (+ -EL module) / UMG 96RM-E, Carlo Gavazzi EM24 E1, Schneider PM5560, ABB M4M 30 Ethernet, Phoenix Contact EMpro, Siemens PAC3200/3220 | Current per phase **and neutral**, the meter's own **max-demand / peak** values (so short peaks are not missed), V, Hz, kW, kWh, THD | Modbus TCP (read-only: function codes 03/04 only) | ✅ | ★★★ | ⬅ |
+| Distro meters on RS485 (Modbus RTU), via an isolated RS485-to-Ethernet gateway (e.g. Moxa MGate MB3170I) | As above | Modbus RTU through a Modbus TCP gateway | ✅ | ★★★ | ⬅ |
+| **Earth leakage with a continuous mA reading** (not just a trip relay): Janitza UMG 96-PA-RCM-EL (type A/B), Bender RCMS150-01 / RCMS410 (+ COM465IP gateway), Doepke e.Guard RCM B (PoE), Socomec Digiware R-60, Siemens 5SV8 COM | Residual current in mA per circuit, leakage creep trend, time above warning level | Modbus TCP / Modbus RTU / MQTT (Bender COM465IP) | ✅ | ★★★ | ⬅ |
+| Shelly Pro 3EM / Pro 3EM-400 (120 A or 400 A clamps, optional neutral CT) | Current per phase + N, V, kW, kWh. Cheap and quick to clamp on; no peak-hold values | HTTP RPC / MQTT / Modbus TCP | ✅ | ★★★ | ⬅ |
+| Schneider PowerTag (wireless, via Panel Server) | Current per phase (+ N on some models), kWh | Modbus TCP from the Panel Server | ✅ | ★★ | ⬅ |
+| StageSmarts C24 distro | Supply voltages, current incl. neutral, per-channel load | Built-in web server (API unknown) | ❓ | ★ | ⬅ |
+| Portable power loggers (Fluke 1736/1738, Chauvin Arnoux PEL 104/106) | Live power data during setup | Vendor apps only; no open live interface found | ❌ | ★ | ⬅ |
+| Deep Sea Electronics generator controllers (DSE7320 MKII etc.; Ethernet via DSE855 / DSE890) | Genset state, load, fuel | Modbus (GenComm register map on request from DSE). Start/stop/mode keys are never sent | 🔒 | ★★★ | ⬅ |
+| ComAp generator controllers (InteliLite 4) | Genset | Modbus TCP, port 502 (full register list on request) | 🔒 | ★★ | ⬅ |
 | **Rackmount UPS with a network card**: APC Smart-UPS SRT/SRTL/SMT/SMTL (NMC3), Eaton 5P/5PX/9PX (Network-M2/M3), CyberPower OL/PR (RMCARD205/305), Vertiv GXT5 (RDU101), Riello (NetMan 204) | On battery, charge %, runtime left, load %, input/output V and Hz, battery temperature, alarms (overload, bypass, fault, replace battery), self-test result; mains failures and transfers as timeline markers | SNMP v1/v2c/v3: standard UPS-MIB (RFC 1628) + vendor MIBs, plus SNMP traps | ✅ | ★★★ | ⬅ |
 | UPS over USB / serial, via NUT (Network UPS Tools) | Same as above, for UPSs without a network card. A NUT server on a Pi or Linux box owns the USB cable; Stagewatch reads it over the network | NUT network protocol, TCP 3493 (RFC 9271) | ✅ | ★★★ | ⬅ |
 | Furman F1500-UPS / BlueBOLT CV2 | Battery %, charging / discharging, bank status | RS-232 ASCII / BlueBOLT CV2 local UDP (XML) | ✅ | ★★ | ⬅ |
 | Smart PDUs / conditioners: Middle Atlantic RackLink Premium+, SurgeX Squid | Per-outlet voltage, current, power | Redfish / JSON HTTP / SNMP | ✅ | ★★ | ⬅ |
-| Whirlwind PL-PM1RJ | Distro metering | Ethernet | ❓ | ★ | ⬅ |
+| Whirlwind PL-PM1RJ (US 120 V only) | Distro metering incl. neutral | Ethernet web page | ❓ | ★ | ⬅ |
+| Rental power platforms (Aggreko Connect, Power Logistics, Atlas Copco FleetLink, Pramac Link) | Genset / distro telemetry | Vendor cloud portals; no public API found | 🔒 | ★ | ⬅ |
 
 ## PA system, amplifiers, processing
 | Integration | Brings | Protocol | Docs | Pri | Dir |
