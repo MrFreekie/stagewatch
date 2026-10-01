@@ -64,7 +64,7 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | Integration | Brings | Protocol | Docs | Pri | Dir |
 |---|---|---|---|---|---|
 | d&b amplifiers, DS100 | Mains voltage, temperature, protect/fault | OCA / AES70 | ✅ | ★★★ | ⬅ |
-| L-Acoustics LA-series, P1, LC16D | Amp health, mains, temperature | Electronics HTTP API | 🔒 | ★★★ | ⬅ |
+| L-Acoustics amplified controllers: LA2Xi, LA4X, LA12X, LA7.16(i) (LA8 to be confirmed), plus P1 and LC16D | Amp fault state, per-channel protect / temperature state / limit / impedance faults, fuse protect, power supply, input source and fallback, AES / AVB / clock status, standby, preset | HTTP JSON API, polled with GET only (never commands). The vendor API docs are on request; the open-source Companion module shows the structure. **Option:** watch the LA Network Manager event log (XML) on the system tech's laptop | 🔒 / ❓ | ★★★ | ⬅ |
 | DirectOut Prodigy / ACE | Input status, clock, redundancy state | Vendor remote protocol | ❓ | ★★★ | ⬅ |
 | Powersoft | Amp health | Vendor | ❓ | ★★ | ⬅ |
 | Lake / Lab.gruppen | Processor and amp health | Lake third-party API | ❓ | ★★ | ⬅ |
