@@ -15,6 +15,8 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-01
+
 ### Highlights
 - **Update from the admin page.** Admin → Software checks for new versions, updates with one tap
   (admin PIN required) and can roll back if anything goes wrong. Your data is backed up
@@ -214,5 +216,6 @@ The sections below list every change in detail.
 - Version tracking: build info (version, git commit, schema versions) in the API,
   admin UI and logs; config and database schema versions with migration hooks.
 
-[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/MrFreekie/stagewatch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MrFreekie/stagewatch/releases/tag/v0.1.0
