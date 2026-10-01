@@ -28,6 +28,12 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | **ESP32 Bluetooth relay** (ESPHome `bluetooth_proxy`) | Picks up BLE sensor adverts (RuuviTag, pvvx, XIAO nRF52840/MG24 beacons) anywhere on site and forwards them over Wi-Fi/Ethernet. Fixes BLE's 10–30 m range and flaky Windows Bluetooth. | ESPHome native API BLE advertisement stream (reuses the `esphome` integration) | ✅ | ★★★ | ⬅ | **dev list** |
 | Seeed XIAO MG24 Sense (EFR32MG24) | USB-connected tilt (rough, ±0.5–1°; not array-angle grade) + env node via add-on BME280/SHT45; BLE beacon later. The on-board mic is **not** SPL-grade. | Arduino sketch → `ENV,`/`TILT,` lines over USB serial (phase 3 `serial_line`); BLE via the relay above | ✅ | ★ | ⬅ | |
 | METAR / met-office API | Forecast wind and pressure baseline | HTTPS | ✅ | ★ | ⬅ | |
+| **WeatherFlow Tempest** weather station | Wind (mean, gust, direction), rain, **lightning distance and count**, temperature, humidity, pressure, sun / UV: one box covers the wind, lightning, rain and heat-stress features | Local UDP broadcast on the LAN (no cloud needed) | ✅ | ★★★ | ⬅ | |
+| Davis WeatherLink Live | Wind, rain, temperature / humidity from Davis stations | Local HTTP API (+ UDP live broadcast) | ✅ | ★★ | ⬅ | |
+| Ecowitt gateways | Wind, rain, temperature / humidity; lightning with the WH57 sensor | Gateway "custom server" HTTP push to Stagewatch | ❓ (community-documented) | ★★ | ⬅ | |
+| Kestrel handheld weather meters (LiNK models) | Reference temperature / humidity / wind for calibration | Bluetooth LE (LiNK) | ❓ (check what is documented) | ★★ | ⬅ | |
+| Air quality and CO2: Aranet4, ESPHome SCD41 / PM sensors | CO2 and particulates in indoor arenas, tents and dusty sites (crew welfare) | Bluetooth LE (Aranet4) / ESPHome native API | ✅ ESPHome, ❓ Aranet4 | ★★ | ⬅ | |
+| Official weather warnings (Met Office and other national services) | Severe wind and thunderstorm warnings for the site on the timeline, when the hub is online | CAP / RSS feeds over HTTPS | ✅ (check each country's terms) | ★★ | ⬅ | |
 | **Lightning detector node** (ESPHome + AS3935 breakout) | Strike distance (km) and strike count/trend, for the event's lightning / "30-30" procedure. Advisory only; the AS3935 estimates distance to the storm front and can false-trigger near switching power supplies | ESPHome `as3935_i2c` / `as3935_spi` (reuses the `esphome` integration) | ✅ | ★★★ | ⬅ | **planned** |
 | Online lightning data (e.g. Blitzortung) | Strikes near the site when the hub has internet; cross-check for the local detector | HTTPS / WebSocket | ❓ (terms of use must be checked; Blitzortung restricts use of its data) | ★★ | ⬅ | |
 | Amp rack monitor node (ESPHome) | Rack temperature, fan running (tach or airflow), rack door contact, UPS dry contact | ESPHome native API | ✅ | ★★ | ⬅ | planned |
@@ -52,6 +58,12 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | Powersoft | Amp health | Vendor | ❓ | ★★ | ⬅ |
 | Lake / Lab.gruppen | Processor and amp health | Lake third-party API | ❓ | ★★ | ⬅ |
 | Meyer Galaxy / self-powered cabinets | Cabinet health | Vendor | ❓ | ★ | ⬅ |
+| Martin Audio (Vu-Net / iKON amplifiers) | Amp and cabinet health, temperature, faults | Vendor (check for a third-party protocol) | ❓ | ★★ | ⬅ |
+| Adamson (amplified systems / PLM-based racks) | Amp health, faults | Vendor (check) | ❓ | ★★ | ⬅ |
+| Nexo (NXAMP / NeMo) | Amp health, temperature, protect | Vendor (check for a NeMo / NXAMP remote protocol) | ❓ | ★★ | ⬅ |
+| JBL / Crown (HiQnet: Performance Manager, I-Tech, VTX amps) | Amp health, mains, temperature, faults | HiQnet (Harman third-party protocol, check availability) | ❓ | ★★ | ⬅ |
+| Biamp Tesira | Read named control values (system status, faults, levels) | Tesira Text Protocol (TTP) over Telnet/SSH | ✅ | ★★ | ⬅ |
+| Spatial / immersive processors: L-ISA Controller, KLANG | Snapshot / scene recall → marker; processor status | OSC | ❓ (check each vendor's OSC docs) | ★★ | ⬅ |
 | Delay / alignment tools (any OSC receiver) | Averaged T/RH/P + speed of sound | OSC `/stagewatch/avg/env` | ✅ | ★★★ | ➡ **v0.1** |
 
 ## Consoles
@@ -69,6 +81,7 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | Shure ULX-D / Axient Digital / QLX-D / SLX-D / PSM | Battery runtime, RF, audio, interference | TCP 2202 command strings | ✅ | ★★★ | ⬅ |
 | Sennheiser EW-DX / Digital 6000 / EW-D | Battery, RF, warnings | SSCv1 / SSCv2 | ✅ | ★★★ | ⬅ |
 | Wisycom, Lectrosonics, Sony DWX | Battery / RF | Vendor | ❓ | ★ | ⬅ |
+| **RF Explorer** spectrum analysers | RF noise floor and interference on chosen bands over time, on the same timeline as dropouts | USB serial API | ✅ | ★★ | ⬅ |
 | Riedel, Clear-Com, Green-GO intercom | Hold / show stop → marker; alarm → call light | GPIO | ✅ | ★★ | ⬌ |
 
 ## Measurement, SPL, noise
@@ -85,6 +98,8 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | Luminex GigaCore, Netgear AV M4250 | Link, PoE budget, port errors | SNMP / REST | ✅ / ❓ | ★★ | ⬅ |
 | **Syslog receiver** (show switches, routers, Wi-Fi APs, other gear) | Switch and network events on the show timeline: port up/down, PoE overload, loop / spanning-tree changes, errors. Filter by device and severity; chosen messages become alarms or markers. Only accepts messages from devices the admin lists; size- and rate-limited; stored with the show's history | Syslog RFC 3164 / RFC 5424 over UDP (and TCP). Uses a port above 1024 (e.g. 5514) by default, because port 514 needs extra permissions on Linux | ✅ | ★★★ | ⬅ |
 | SNMP traps (switches, UPS) | Same idea as syslog, for gear that only sends traps | SNMP v2c / v3 traps | ✅ | ★★ | ⬅ |
+| UniFi controller API (UniFi Network application) | Wi-Fi client counts, AP and switch health, device offline: explains "the tablets keep dropping" | UniFi Network API (REST; check the official vs community API) | ❓ | ★★ | ⬅ |
+| Clock servers (Meinberg and others) | NTP / PTP health of the show network: sync state, offset, holdover | SNMP (vendor MIBs) / web | ✅ (Meinberg MIBs) | ★★ | ⬅ |
 | **Stagewatch computer health** (built in) | CPU temperature and load, free disk, memory, network link state, clock sync offset: so the monitor is monitored too | Local OS | ✅ | ★★★ | ⬅ |
 | Dante / AES67 | Device presence, PTP clock leader and **leader changes** (clock health) | mDNS / PTP | partly | ★★ | ⬅ |
 | QLab, grandMA3, TouchOSC, Chataigne | Markers in, alarms out | OSC | ✅ | ★★ | ⬌ |
