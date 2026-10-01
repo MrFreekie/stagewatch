@@ -67,7 +67,7 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | L-Acoustics amplified controllers: LA2Xi, LA4X, LA12X, LA7.16(i) (LA8 to be confirmed), plus P1 and LC16D | Amp fault state, per-channel protect / temperature state / limit / impedance faults, fuse protect, power supply, input source and fallback, AES / AVB / clock status, standby, preset | HTTP JSON API, polled with GET only (never commands). The vendor API docs are on request; the open-source Companion module shows the structure. **Option:** watch the LA Network Manager event log (XML) on the system tech's laptop | 🔒 / ❓ | ★★★ | ⬅ |
 | DirectOut Prodigy / ACE | Input status, clock, redundancy state | Vendor remote protocol | ❓ | ★★★ | ⬅ |
 | Powersoft | Amp health | Vendor | ❓ | ★★ | ⬅ |
-| Lake / Lab.gruppen | Processor and amp health | Lake third-party API | ❓ | ★★ | ⬅ |
+| Lake / Lab.gruppen processors and amps: LM 26 / LM 44, LMX 48 / LMX 88, PLM / PLM+ / D Series | PSU A/B, temperature, fan, NO INPUT, clock slipping, Dante faults, input source change (failover), mutes, frame offline | DLM (Direct Lake Messaging, binary UDP; read-only queries; spec on request). **Option:** watch the Lake Controller Event Log (XML) on the system tech's laptop; set the log save interval in Lake Controller v8 so it is written during the show | ❓ / ✅ (log) | ★★ | ⬅ |
 | Meyer Galaxy / self-powered cabinets | Cabinet health | Vendor | ❓ | ★ | ⬅ |
 | Martin Audio (Vu-Net / iKON amplifiers) | Amp and cabinet health, temperature, faults | Vendor (check for a third-party protocol) | ❓ | ★★ | ⬅ |
 | Adamson (amplified systems / PLM-based racks) | Amp health, faults | Vendor (check) | ❓ | ★★ | ⬅ |
