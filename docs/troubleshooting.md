@@ -164,7 +164,8 @@ See also the table at the end of the [sensor node guide](first-sensor-node.md#if
 | What you see | Try this |
 |---|---|
 | Software card: "In-app updates are only available on a managed install" | This copy was not installed with the installer. Use the [install guide](README.md). |
-| "Update source not reachable (repository is private or offline)" | The PC has no internet, or cannot reach GitHub. |
+| "Update source not reachable (repository is private or offline)" | The PC has no internet, or cannot reach GitHub. On a Raspberry Pi or Linux PC that has moved to a different network, also check it can look up web addresses: `ping github.com`. |
+| Update history says **refused (unsafe_permissions)** | Stagewatch will not update a program folder that someone other than its owner could change. On a Raspberry Pi or Linux PC, run the installer again from your Stagewatch folder (`bash deploy/pi/install.sh`, plus `--kiosk` if you use it). It fixes the folder permissions and keeps your data. Then tap **Check for updates** again. On Windows, run the installer again too. |
 | Page stuck on "Stagewatch is restarting for an update" | Wait 2 minutes, reload, then see [Updating and backups](updating-and-backups.md#what-to-do-if-an-update-goes-wrong). |
 | "Too many attempts; wait a minute" | Too many wrong PINs. Wait a minute. |
 | Forgot the admin PIN | [Reset it](updating-and-backups.md#forgotten-pin-or-recovery-required) with the ready-made reset script (one command). |
