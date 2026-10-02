@@ -59,6 +59,9 @@ them into a dated release section and tags the commit.
 - A message if JavaScript is turned off.
 
 ### Changed
+- Dashboards: a dashboard with no cards now says so, and where to choose cards, instead of
+  showing a blank screen. On wall screens the "approximate" note and the small lines under each
+  tile are larger. In **Edit cards**, the ▲ and ▼ buttons have a clear outline in the light theme.
 - Admin page: the **User dashboards** card now spans the full width, to make room for
   **Edit cards**. **OSC output** sits next to **Security**, and the **Alarm log** below them.
 - Windows install guide: a new section for PCs with more than one network card. It covers

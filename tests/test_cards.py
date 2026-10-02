@@ -150,8 +150,8 @@ def test_every_known_card_has_one_hidden_section_and_a_registry_entry():
 
 
 def test_only_the_alarm_banner_is_outside_the_card_system():
-    """An empty card list must leave only the alarm banner in <main> (the header and the
-    disconnected banner are outside <main>)."""
+    """An empty card list must leave only the alarm banner (and the "no cards" notice, which
+    shows only then) in <main>; the header and the disconnected banner are outside <main>."""
     main = re.search(r"<main[^>]*>(.*)</main>", _html(), re.S).group(1)
     main = re.sub(r"<!--.*?-->", "", main, flags=re.S)
     top = []  # direct children of <main>: track nesting depth
@@ -166,9 +166,10 @@ def test_only_the_alarm_banner_is_outside_the_card_system():
         if depth == 0:
             top.append(attrs)
         depth += 1
-    assert len(top) == 1 + len(cards.KNOWN_CARDS) - 1   # the banner + every card except the footer
+    assert len(top) == 2 + len(cards.KNOWN_CARDS) - 1   # banner + notice + every card except the footer
     assert 'id="alarms"' in top[0] and "data-card" not in top[0]
-    assert all("data-card" in a and re.search(r"\shidden\b", a) for a in top[1:])
+    assert 'id="no-cards"' in top[1] and re.search(r"\shidden\b", top[1])
+    assert all("data-card" in a and re.search(r"\shidden\b", a) for a in top[2:])
     assert re.search(r"\[data-card\]\[hidden\]\s*\{\s*display:\s*none", (STATIC / "style.css").read_text(encoding="utf-8"))
 
 

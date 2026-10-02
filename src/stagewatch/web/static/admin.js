@@ -249,8 +249,8 @@
     chart: ["History chart", "Readings over time, with markers."],
     markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
-    wall_clock: ["Wall Clock", "The show clock from Ontime."],
-    connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, always at the bottom of the screen."],
+    wall_clock: ["Wall Clock", "The show clock from Ontime. Stays hidden until Ontime is connected."],
+    connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
   const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
 

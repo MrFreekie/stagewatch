@@ -100,6 +100,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .alarm-bar.l3 { background: rgba(255, 77, 94, .35); background: color-mix(in srgb, var(--stop) 32%, var(--panel)); border: 2px solid var(--stop); }
 .alarm-bar.notice { background: var(--panel-2); border: 1px solid var(--grid); }
 .alarm-bar li.silent { font-weight: 400; }
+.alarm-bar.notice li { color: var(--text); }
 .alarm-bar.sounding { animation: pulse 1s ease-in-out infinite alternate; }
 @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.35); } }
 .alarm-bar ul { margin: 0; padding: 0; list-style: none; flex: 1; }
@@ -128,6 +129,8 @@ body.layout-phone .chart-wrap { height: 240px; }
 body.layout-wall { font-size: 18px; }
 body.layout-wall .tile .value { font-size: 64px; }
 body.layout-wall .tile .label { font-size: 18px; }
+body.layout-wall .tile .foot { font-size: 16px; }
+body.layout-wall .tile .foot.approx { font-size: 18px; }   /* the "approximate" note must be readable from the back */
 body.layout-wall .chart-wrap { height: 42vh; }
 body.layout-wall .only-interactive { display: none; }
 
@@ -204,7 +207,8 @@ dialog.sw-dialog .pre-wrap { max-height: 32vh; }
 .card-pick input { flex: none; }
 .card-pick > span { display: flex; flex-direction: column; min-width: 0; }
 .card-pick .muted { font-size: 13px; }
-.card-picker button { min-width: 44px; min-height: 44px; padding: 4px 10px; }
+.card-picker button { min-width: 44px; min-height: 44px; padding: 4px 10px; border-color: var(--muted); }   /* the panel and the button share a background in the light theme: the outline shows where to tap */
+.card-picker button:disabled { border-color: var(--grid); }
 .no-flex-gap .card-picker li > *, .no-flex-gap .card-pick > * { margin-right: 10px; }
 
 /* Small support footer on the landing and admin pages (never on user dashboards). */

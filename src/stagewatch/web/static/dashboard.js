@@ -236,17 +236,19 @@
         h("td", { class: "num" }, fmt(kind, v[id].then)), h("td", { class: "muted" }, "→"),
         h("td", { class: "num" }, fmt(kind, v[id].now)), h("td", { class: "num" }, fmtDelta(kind, v[id].delta)));
       const ms = d.delta_travel_ms;
-      box.replaceChildren(
+      const note = rangeNote();
+      // (replaceChildren would print a null child as the text "null", so only real nodes go in.)
+      box.replaceChildren(...[
         h("div", { class: "muted" }, `Since "${d.marker.label}" at ${SW.fmtTime(d.marker.ts)}`),
         h("div", { class: "big" }, ms === null ? "—" : `${SW.signed(ms, 3)} ms`),
         h("div", { class: "muted", style: "font-size:12px;margin-bottom:6px" },
           `change in sound travel time over ${d.reference_distance_m} m (positive = sound now arrives later)`),
-        rangeNote() ? h("div", { class: "notice approx", style: "margin-bottom:6px" }, rangeNote()) : null,
+        note ? h("div", { class: "notice approx", style: "margin-bottom:6px" }, note) : null,
         h("table", {}, h("tbody", {},
           row("Temp", "site.temperature", "temperature"),
           row("RH", "site.humidity", "humidity"),
           row("Pressure", "site.pressure", "pressure"),
-          row("c", "site.speed_of_sound", "speed_of_sound"))));
+          row("c", "site.speed_of_sound", "speed_of_sound")))].filter(Boolean));
     } catch (err) {
       box.replaceChildren(h("span", { class: "error" }, err.message));
     }
@@ -323,6 +325,7 @@
       else if (!on) c.el.hidden = true;
     }
     for (const r of oldRows) r.remove();   // emptied by the moves above
+    $("no-cards").hidden = want.length > 0;
   }
 
   // ---------------------------------------------------------- live feed
