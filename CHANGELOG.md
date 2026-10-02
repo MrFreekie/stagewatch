@@ -16,6 +16,21 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Dashboards: a new Schedule card shows what's on NOW (and how long it has left), what's NEXT
+  (with a countdown) and the CURFEW (with a countdown). On a tablet it also shows the running
+  order, with finished items greyed out. Tap an act to see its setlist. On a phone it's a short
+  strip; tap it to see the rest. On a wall screen it's a large NOW / NEXT / CURFEW strip you can
+  read from across the room. The curfew turns amber at 15 minutes ("15 MIN WARNING"), orange at
+  5 minutes ("5 MIN WARNING") and red only once it has passed ("PAST CURFEW"). It never beeps.
+  The card stays hidden until the show day has a schedule. If a dashboard has a Stage set, it
+  shows only that stage's items, plus items with no stage.
+- Admin page: a new Schedule card for the current show day. Add, remove and reorder items, and
+  set each one's start and end time, kind (doors, act, changeover, curfew or other), title, stage
+  and setlist. The setlist box shows a preview of how it will look on dashboards. To bring in a
+  running order, paste it (or open a CSV or text file) and click **Preview**. Any line Stagewatch
+  can't read is listed by its line number, and you then add the rest in one click. **Load demo
+  day** fills in an example running order around the current time. If someone else changes the
+  schedule while you're editing, Stagewatch tells you and keeps what you typed.
 - Day schedule (behind the scenes for now; the dashboard card and the admin editor come next):
   Stagewatch can now store the running order for each show day, with doors, acts, changeovers
   and curfew, an optional stage per item, and a plain-text or Markdown setlist per act. Times

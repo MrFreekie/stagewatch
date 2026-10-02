@@ -175,7 +175,7 @@ def test_only_the_alarm_banner_is_outside_the_card_system():
 
 def _visible_cards(dash_cards: list[str], schedule_items: int = 0) -> list[str]:
     """The cards dashboard.js shows: ids it knows, once each, in order; the schedule only with
-    items (none before the schedule feature) and the Wall Clock not before its feature."""
+    items for the dashboard's stage, and the Wall Clock not before its feature."""
     known = _registry_ids()
     out = [c for i, c in enumerate(dash_cards) if c in known and c not in dash_cards[:i]]
     return [c for c in out if not (c == "schedule" and not schedule_items) and c != "wall_clock"]
@@ -207,6 +207,34 @@ def test_dashboard_js_gates_work_on_assigned_cards():
     assert 'if (has("sensors")) renderSensors();' in js        # no sensor table work without the card
     assert 'layout !== "wall"' not in js and "layout === \"wall\" &&" in js  # wall only hides the sound button
     assert "innerHTML" not in js
+
+
+def test_schedule_card_is_built_and_hides_itself_without_items():
+    """WP8: the schedule card is no longer a stub. It hides while this dashboard's stage has no
+    items, fetches its items only while assigned, and has phone and wall rules."""
+    js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
+    entry = re.search(r"^\s{4}schedule: \{(.*)\},$", js, re.M).group(1)
+    assert "render: renderSchedule" in entry and "empty: () => schedItems().length === 0" in entry
+    assert "render: nothing" not in entry
+    assert _visible_cards(["schedule", "env_tiles"], schedule_items=0) == ["env_tiles"]
+    assert _visible_cards(["schedule", "env_tiles"], schedule_items=3) == ["schedule", "env_tiles"]
+    css = (STATIC / "style.css").read_text(encoding="utf-8")
+    assert "body.layout-phone .sched-strip { display: flex; }" in css
+    assert "body.layout-wall .sched-more { display: none; }" in css
+    html = _html()
+    assert re.search(r'<section class="card" data-card="schedule" id="schedule-card" hidden>\s*<h2>Schedule</h2>', html)
+
+
+def test_schedule_card_uses_the_dashboard_stage(client):
+    _admin(client)
+    assert _put(client, [{"slug": "foh", "cards": ["schedule"], "stage": "Main"}]).status_code == 200
+    client.cookies.clear()
+    with client.websocket_connect("/ws?dashboard=foh") as ws:
+        snap = ws.receive_json()
+    assert snap["dashboard"]["stage"] == "Main" and "schedule" in snap
+    js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
+    assert "state.dash && state.dash.stage ? state.dash.stage" in js
+    assert "SW.scheduleOrder((state.schedule && state.schedule.items) || [], schedStage())" in js
 
 
 def test_admin_card_names_cover_every_known_card():
