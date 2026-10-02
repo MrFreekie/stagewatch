@@ -174,3 +174,19 @@ def test_pages_and_static_files_are_rechecked_after_updates(client):
         r = client.get(path)
         assert r.status_code == 200, path
         assert r.headers.get("cache-control") == "no-cache", path
+
+
+def test_pages_load_scripts_by_content_hash(client):
+    # A browser holding old cached scripts (v0.2.0 sent no cache headers) must still get the new
+    # ones after an update: every /static/ reference carries a hash of that file's contents.
+    import hashlib
+    import re
+    from stagewatch.web.server import STATIC
+    for path in ("/", "/admin", "/d/foh"):
+        html = client.get(path).text
+        refs = re.findall(r'(?:src|href)="/static/([^"]+)"', html)
+        assert refs, path
+        for ref in refs:
+            name, _, v = ref.partition("?v=")
+            assert v == hashlib.sha256((STATIC / name).read_bytes()).hexdigest()[:10], ref
+            assert client.get(f"/static/{ref}").status_code == 200, ref

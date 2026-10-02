@@ -10,9 +10,11 @@ Roles:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import platform
+import re
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -22,7 +24,7 @@ from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import unicodedata
 
@@ -53,6 +55,33 @@ UPDATER_STATUS = {"rate_limited": 429, "history_not_found": 404, "bad_channel": 
 
 
 # ---------------------------------------------------------------- payloads
+_STATIC_REF = re.compile(r'((?:src|href)="/static/)([^"?#]+)(")')
+_page_cache: dict[str, tuple[tuple, str]] = {}
+
+
+def versioned_page(name: str) -> HTMLResponse:
+    """A page with each /static/ file it loads tagged by a hash of that file's contents
+    ("/static/dashboard.js?v=3f9a1c2b7e"). After an update the page asks for new URLs, so a
+    browser can never mix a new page with old cached scripts (v0.2.0 sent no cache headers, so
+    browsers may hold its files for days)."""
+    html_path = STATIC / name
+    html = html_path.read_text(encoding="utf-8")
+    refs = [m.group(2) for m in _STATIC_REF.finditer(html)]
+    key = tuple((r, (STATIC / r).stat().st_mtime_ns if (STATIC / r).is_file() else 0)
+                for r in [name, *refs])
+    cached = _page_cache.get(name)
+    if cached is None or cached[0] != key:
+        def tag(m: re.Match) -> str:
+            f = STATIC / m.group(2)
+            if not f.is_file():
+                return m.group(0)
+            v = hashlib.sha256(f.read_bytes()).hexdigest()[:10]
+            return f"{m.group(1)}{m.group(2)}?v={v}{m.group(3)}"
+        cached = (key, _STATIC_REF.sub(tag, html))
+        _page_cache[name] = cached
+    return HTMLResponse(cached[1], headers={"Cache-Control": "no-cache"})
+
+
 class RevalidatingStaticFiles(StaticFiles):
     """Static files the browser must re-check every time (cheap: ETag, 304 on a LAN). Without it,
     after an update a tablet can run a new admin.js against a cached old common.js."""
@@ -370,17 +399,17 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     # ------------------------------------------------------------ pages
     @app.get("/", include_in_schema=False)
     async def index():
-        return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+        return versioned_page("index.html")
 
     @app.get("/d/{slug}", include_in_schema=False)
     async def dashboard_page(slug: str):
         if hub.config.dashboard(slug) is None:
             return RedirectResponse("/")
-        return FileResponse(STATIC / "dashboard.html", headers={"Cache-Control": "no-cache"})
+        return versioned_page("dashboard.html")
 
     @app.get("/admin", include_in_schema=False)
     async def admin_page():
-        return FileResponse(STATIC / "admin.html", headers={"Cache-Control": "no-cache"})
+        return versioned_page("admin.html")
 
     # -------------------------------------------------------- public API
     @app.get("/api/info")

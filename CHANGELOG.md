@@ -108,8 +108,10 @@ them into a dated release section and tags the commit.
 
 ### Fixed
 - After an update, a tablet or browser could keep using some old page files and show a broken
-  admin page or dashboard until it was refreshed by hand. Browsers now check for new files each
-  time a page loads.
+  admin page or dashboard until it was refreshed by hand (for example a dashboard showing only
+  its top bar). Pages now ask for their files by a fingerprint of each file's contents, and
+  browsers check for new files each time a page loads, so nobody needs to press Ctrl+F5 after an
+  update, including when updating from 0.2.0.
 - Old iPads and other browsers without a date picker show a plain box for dates. You can now
   type the date there as dd/mm/yyyy, and the day is written out underneath so you can check it.
 - Software: after an update, a roll back and another update, **Roll back...** showed against two
