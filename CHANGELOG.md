@@ -20,6 +20,18 @@ them into a dated release section and tags the commit.
   notice, never beeps, never needs an Acknowledge, and does not change the alarm level sent over
   OSC. The alarm log marks these entries with "(silent)". Nothing uses it yet; the Wall Clock
   source will, so a venue without Ontime never beeps.
+- Dashboards: you can now choose which cards each dashboard shows, and in what order. In
+  **Admin → User dashboards**, click **Edit cards** on a dashboard, tick the cards you want and
+  use ▲ and ▼ to order them, then click **Save dashboards**. Your existing dashboards keep
+  exactly the cards they show today. A dashboard with no cards shows only alarms.
+- Dashboards: each dashboard can follow a **Stage** (for example "Main stage"), set in the same
+  panel. Cards that show one stage, such as the schedule, will use it.
+- Dashboards: the **Open on a tablet** address and QR code is now a card. Wall screens keep it,
+  and you can add it to any other dashboard too.
+- Dashboards: when the temperature is outside 0–30 °C, or the air pressure outside 75–102 kPa,
+  a quiet note under **Speed of sound** (and in the marker drift panel) says the figures are
+  approximate. That is the range the speed-of-sound formula is tested for. The values are still
+  shown and used, and it is not an alarm.
 - Site time: set the show site's time zone under **Admin → Site → Time zone**. Every time on
   dashboards and the admin page (the clock, the chart, markers, the alarm log, show start times)
   then shows site time in 24-hour format, even on a tablet set to the wrong zone or country.
@@ -47,6 +59,11 @@ them into a dated release section and tags the commit.
 - A message if JavaScript is turned off.
 
 ### Changed
+- Dashboards: a dashboard with no cards now says so, and where to choose cards, instead of
+  showing a blank screen. On wall screens the "approximate" note and the small lines under each
+  tile are larger. In **Edit cards**, the ▲ and ▼ buttons have a clear outline in the light theme.
+- Admin page: the **User dashboards** card now spans the full width, to make room for
+  **Edit cards**. **OSC output** sits next to **Security**, and the **Alarm log** below them.
 - Windows install guide: a new section for PCs with more than one network card. It covers
   setting each network to Private and fixing "Unidentified network" show networks that Windows
   keeps as Public.
@@ -106,6 +123,10 @@ them into a dated release section and tags the commit.
   `/var/lib/stagewatch.pre-managed-<date>` that you can delete once you are happy.
 
 ### Security
+- The "Open on a tablet" footer now gives the address on the network the screen is using, never an
+  address from another network card (for example the venue internet or a VPN).
+- Dashboard titles (up to 80 characters) and stage names can no longer contain hidden or control
+  characters that could make them read misleadingly on screens.
 - When the admin page sent something invalid, the error reply repeated back what was sent,
   which could include a PIN typed into the wrong place. Error replies now say only which field was
   wrong and why.

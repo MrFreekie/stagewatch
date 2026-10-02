@@ -77,8 +77,9 @@ changed since then.
   acknowledge, a sounder, and automatic markers. There's also an alarm when a
   device goes offline.
 - **Dashboards**: tablet, phone and wall layouts, each at its own URL. Users view
-  them with no login. Each dashboard has its own permission for adding markers and
-  acknowledging alarms. Updates are live and reconnect automatically.
+  them with no login. You choose which cards each dashboard shows, and in what order.
+  Each dashboard has its own permission for adding markers and acknowledging alarms.
+  Updates are live and reconnect automatically.
 - **Admin console**: PIN protected, with first-run setup.
 - **OSC output**: `/stagewatch/avg/env`, `/stagewatch/alarm`, and optional
   per-node messages.

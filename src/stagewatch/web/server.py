@@ -24,7 +24,9 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocke
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+import unicodedata
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .. import __version__
 from ..core.config import (
@@ -86,8 +88,31 @@ class DevicePatch(BaseModel):
     area: str | None = None
 
 
+def _has_hidden_chars(text: str) -> bool:
+    """Control or format characters (newlines, zero-width, bidi overrides such as U+202E)."""
+    return any(unicodedata.category(ch) in ("Cc", "Cf") for ch in text)
+
+
 class DashboardBody(Dashboard):
-    """PUT /api/admin/dashboards: strict card list (loading a saved config is lenient)."""
+    """PUT /api/admin/dashboards: strict card list, title and stage (loading a saved config is lenient)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    @field_validator("title")
+    @classmethod
+    def _title_strict(cls, v: str) -> str:
+        if len(v) > 80:
+            raise ValueError("Dashboard titles can be up to 80 characters")
+        if _has_hidden_chars(v):
+            raise ValueError("Dashboard titles can't contain hidden or control characters")
+        return v
+
+    @field_validator("stage")
+    @classmethod
+    def _stage_strict(cls, v: str) -> str:
+        if _has_hidden_chars(v):
+            raise ValueError("Stage names can't contain hidden or control characters")
+        return v
 
     @field_validator("cards", mode="before")
     @classmethod
@@ -370,7 +395,25 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "ignored": esp.ignored_list() if esp else [],
             "shows": hub.recorder.shows(),
             "alarm_log": hub.recorder.alarm_log(),
+            # For the "Edit cards" panel: the cards this build knows, in picker order, and the
+            # defaults a new dashboard gets for each layout.
+            "cards": {"known": list(cards_mod.KNOWN_CARDS),
+                      "defaults": {layout: cards_mod.default_cards(layout) for layout in cards_mod.LAYOUT_DEFAULTS}},
+            "stages": known_stages(),
         }
+
+    def known_stages() -> list[str]:
+        """Stage names already in use, for the dashboard Stage field's suggestions: device areas
+        and other dashboards' stages (schedule item stages join here once schedules exist)."""
+        names = [d.area for d in hub.devices.values() if d.id != "site"]
+        names += [d.area for d in hub.config.esphome_devices]
+        names += [d.stage for d in hub.config.dashboards]
+        seen: dict[str, str] = {}
+        for n in names:
+            n = (n or "").strip()
+            if n and len(n) <= 40 and n.casefold() not in seen:
+                seen[n.casefold()] = n
+        return sorted(seen.values(), key=str.casefold)[:100]
 
     @app.put("/api/admin/site", dependencies=admin_deps)
     async def put_site(body: SiteConfig):
@@ -548,13 +591,18 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     @app.get("/api/dashboard/{slug}/address")
     async def dashboard_address(slug: str, request: Request):
-        """For the wall display footer only: one LAN address + the dashboard path (no list of
-        interfaces, nothing else).  Other layouts get nothing."""
+        """For the "Open on a tablet" footer card only: one LAN address + the dashboard path (no
+        list of interfaces, nothing else).  Dashboards without the connect_footer card (any
+        layout) get nothing."""
         d = hub.config.dashboard(slug)
-        if d is None or d.layout != "wall":
+        if d is None or "connect_footer" not in d.cards:
             return {"url": ""}
         addrs = await asyncio.to_thread(lan_addresses)
-        return {"url": netinfo.connect_urls(addrs[:1], server_port(request), d.slug)["ip"][0] if addrs else ""}
+        # Prefer the address this request arrived on, so a PC with several network cards (or a
+        # VPN / virtual adapter) never hands out an address from another network.
+        here = (request.scope.get("server") or ("", 0))[0]
+        pick = [here] if here in addrs else addrs[:1]
+        return {"url": netinfo.connect_urls(pick, server_port(request), d.slug)["ip"][0] if pick else ""}
 
     # ------------------------------------------------------- diagnostics
     def _diag_sources() -> list[Path]:
