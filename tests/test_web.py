@@ -153,3 +153,16 @@ def test_no_http_route_resets_the_pin(client):
     _setup_admin(client)
     paths = {getattr(r, "path", "") for r in client.app.routes}
     assert not any("reset" in p for p in paths)
+
+
+def test_validation_errors_never_echo_submitted_values(client):
+    # FastAPI's default 422 body includes the submitted value; a PIN must never come back.
+    _setup_admin(client)
+    secret = "98765-not-echoed"
+    for body in ({"current": "1234", "new": [secret]}, {"current": "1234", "new": {"x": secret}}):
+        r = client.put("/api/admin/pin", json=body)
+        assert r.status_code == 422
+        assert secret not in r.text
+        assert all(set(d) <= {"loc", "msg", "type"} for d in r.json()["detail"])
+    r = client.post("/api/admin/setup", json={"pin": [secret]})
+    assert r.status_code in (409, 422) and secret not in r.text

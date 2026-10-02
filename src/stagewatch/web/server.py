@@ -21,6 +21,7 @@ from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
@@ -479,6 +480,14 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if not hub.delete_marker(marker_id):
             raise HTTPException(404, "No such marker")
         return {"ok": True}
+
+    # FastAPI's default 422 body echoes the submitted value ("input") and pydantic's context
+    # ("ctx"), which can include a PIN or key. Return only where and what kind of problem.
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_request: Request, exc: RequestValidationError):
+        detail = [{"loc": list(e.get("loc", ())), "msg": str(e.get("msg", "Invalid value")),
+                   "type": str(e.get("type", ""))} for e in exc.errors()[:20]]
+        return JSONResponse({"detail": detail}, status_code=422)
 
     # ---------------------------------------------------------- software
     @app.exception_handler(UpdaterError)
