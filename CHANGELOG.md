@@ -90,6 +90,11 @@ them into a dated release section and tags the commit.
   service, switches you over and **keeps your data**; it also saves a safety copy of it as
   `/var/lib/stagewatch.pre-managed-<date>` that you can delete once you are happy.
 
+### Security
+- When the admin page sent something invalid, the error reply repeated back what was sent,
+  which could include a PIN typed into the wrong place. Error replies now say only which field was
+  wrong and why.
+
 ## [0.2.0] - 2026-10-01
 
 ### Highlights
