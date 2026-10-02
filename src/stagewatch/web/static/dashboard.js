@@ -73,10 +73,12 @@
   function renderAlarms() {
     const bar = $("alarms");
     const active = state.alarms;
-    bar.className = "alarm-bar" + (active.length ? ` show l${Math.max(...active.map((a) => a.level))}` : "")
+    const loud = active.filter((a) => !a.silent);
+    // Only silent alarms: a calm "notice" style, no level colour, no Ack.
+    bar.className = "alarm-bar" + (loud.length ? ` show l${Math.max(...loud.map((a) => a.level))}` : (active.length ? " show notice" : ""))
       + (state.sounding ? " sounding" : "");
     $("alarm-list").replaceChildren(...active.map((a) =>
-      h("li", {}, h("span", { class: "lvl" }, a.level_name), a.message, a.acked ? h("span", { class: "muted" }, " (acknowledged)") : null)));
+      h("li", { class: a.silent ? "silent" : "" }, h("span", { class: "lvl" }, a.silent ? "notice" : a.level_name), a.message, a.acked ? h("span", { class: "muted" }, " (acknowledged)") : null)));
     const canAck = state.isAdmin || (state.dash && state.dash.allow_ack);
     $("ack").hidden = !(canAck && state.sounding);
     sounder.set(state.sounding);

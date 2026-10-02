@@ -16,6 +16,10 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Quiet notices: an alarm can now be marked silent. It shows in the alarm bar as a calm grey
+  notice, never beeps, never needs an Acknowledge, and does not change the alarm level sent over
+  OSC. The alarm log marks these entries with "(silent)". Nothing uses it yet; the Wall Clock
+  source will, so a venue without Ontime never beeps.
 - Site time: set the show site's time zone under **Admin → Site → Time zone**. Every time on
   dashboards and the admin page (the clock, the chart, markers, the alarm log, show start times)
   then shows site time in 24-hour format, even on a tablet set to the wrong zone or country.

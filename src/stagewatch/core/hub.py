@@ -204,7 +204,8 @@ class Hub:
             self._alarm_changed([change])
         self.bus.publish("device_removed", device_id)
 
-    def set_device_status(self, device_id: str, status: Status, detail: str = "") -> None:
+    def set_device_status(self, device_id: str, status: Status, detail: str = "",
+                          silent_alarm: bool = False) -> None:
         device = self.devices.get(device_id)
         if device is None or (device.status == status and device.status_detail == detail):
             return
@@ -213,7 +214,8 @@ class Hub:
         offline = status in (Status.MISSING, Status.FAULT)
         change = self.alarms.set_condition(
             f"device:{device_id}", offline, DEVICE_OFFLINE_LEVEL,
-            f"{device.name}: {status.value}{' - ' + detail if detail else ''}", time.time())
+            f"{device.name}: {status.value}{' - ' + detail if detail else ''}", time.time(),
+            silent=silent_alarm)
         if change:
             self._alarm_changed([change])
 
@@ -313,8 +315,9 @@ class Hub:
     def _alarm_changed(self, changes: list[AlarmChange]) -> None:
         for change in changes:
             a = change.alarm
-            self.recorder.log_alarm(a.id, change.event, a.level, a.message)
-            if change.event == "raise" and a.level >= 2:
+            self.recorder.log_alarm(a.id, change.event, a.level,
+                                     a.message + (" (silent)" if a.silent else ""))
+            if change.event == "raise" and a.level >= 2 and not a.silent:
                 self.add_marker(f"ALARM: {a.message}", "alarm")
         self.bus.publish("alarms", self.alarms.to_list())
 
