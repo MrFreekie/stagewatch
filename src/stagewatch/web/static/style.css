@@ -14,6 +14,9 @@
   --alert: #ff8a3d;
   --stop: #ff4d5e;
   --marker: #f5b83d;
+  /* Timeline marker kinds (colour never travels alone: each also has its own glyph). -ink is the text on that colour. */
+  --marker-crew: #f5b83d; --marker-system: #9aa3b5; --marker-alarm: #ff8a3d; --marker-schedule: #4da3ff; --marker-device: #c38bff;
+  --marker-crew-ink: #111; --marker-system-ink: #111; --marker-alarm-ink: #111; --marker-schedule-ink: #111; --marker-device-ink: #111;
   --s1: #4da3ff; --s2: #3ecf8e; --s3: #c38bff; --s4: #ff8a3d; --s5: #f25f9c; --s6: #5fd4e0;
   --radius: 10px;
   color-scheme: dark;
@@ -23,6 +26,8 @@
     --bg: #f3f5f9; --panel: #ffffff; --panel-2: #eef1f6; --text: #151a24; --muted: #5d6678;
     --grid: #dde2ea; --accent: #1f6fd1; --on-accent: #fff; --ok: #16975c; --warn: #b7791f; --alert: #c75a12;
     --stop: #cc2233; --marker: #d9950b; color-scheme: light;
+    --marker-crew: #d9950b; --marker-system: #6b7385; --marker-alarm: #b84e0c; --marker-schedule: #1f6fd1; --marker-device: #8a4fd6;
+    --marker-crew-ink: #111; --marker-system-ink: #fff; --marker-alarm-ink: #fff; --marker-schedule-ink: #fff; --marker-device-ink: #fff;
   }
 }
 * { box-sizing: border-box; }
@@ -108,6 +113,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .alarm-bar li .lvl { text-transform: uppercase; font-size: 12px; margin-right: 8px; opacity: .85; }
 
 .markers li { display: flex; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--grid); cursor: pointer; align-items: baseline; }
+.markers li .mk { flex: none; min-width: 18px; height: 18px; line-height: 18px; border-radius: 4px; text-align: center; font-size: 11px; align-self: center; }
 .markers li.sel { background: var(--panel-2); }
 .markers li .t { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 48px; }
 .markers ul { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
