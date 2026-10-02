@@ -121,6 +121,103 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel-2);
   border: 1px solid var(--grid); padding: 10px 16px; border-radius: 8px; z-index: 20; }
 
+/* ---- dashboard: Schedule card (NOW / NEXT / CURFEW, running order, setlist) ----
+   Curfew levels: a thick coloured border plus a filled text tag ("15 MIN WARNING", "5 MIN
+   WARNING", "PAST CURFEW"), never colour alone. Red (--stop) only once the curfew has passed. */
+.sched-now { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.sched-block { background: var(--panel-2); border: 2px solid var(--grid); border-left-width: 8px; border-radius: 8px;
+  padding: 10px 14px; min-width: 0; }
+.sched-block.now { border-left-color: var(--accent); }
+.sched-block.lvl-warn { border-color: var(--warn); }
+.sched-block.lvl-alert { border-color: var(--alert); }
+.sched-block.lvl-past { border-color: var(--stop); }
+.sched-label { color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sched-title { font-size: 24px; font-weight: 700; line-height: 1.2; margin-top: 2px; overflow-wrap: break-word; word-wrap: break-word; }
+.sched-block.none .sched-title { color: var(--muted); font-weight: 500; }
+.sched-count { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.sched-count:empty, .sched-line:empty { display: none; }
+.sched-line { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.sched-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 800;
+  letter-spacing: .03em; color: var(--bg); background: var(--muted); }
+.sched-tag[hidden] { display: none; }
+.sched-tag.lvl-warn { background: var(--warn); }
+.sched-tag.lvl-alert { background: var(--alert); }
+.sched-tag.lvl-past { background: var(--stop); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .sched-tag.lvl-warn, :root:not([data-theme="dark"]) .sched-tag.lvl-alert { color: var(--text); }
+  :root:not([data-theme="dark"]) .sched-tag.lvl-past { color: var(--panel); }
+}
+.sched-more { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+.sched-order h3, .sched-set-head { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; overflow-wrap: break-word; word-wrap: break-word; }
+.sched-order ol { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; }
+.sched-order li { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 8px;
+  border-bottom: 1px solid var(--grid); border-left: 4px solid transparent; }
+.sched-order li.tap { cursor: pointer; }
+.sched-order li.past { opacity: .5; }
+.sched-order li.now { border-left-color: var(--accent); font-weight: 600; }
+.sched-order li.sel { background: var(--panel-2); }
+.sched-order li:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sched-row-time { font-variant-numeric: tabular-nums; min-width: 104px; color: var(--muted); }
+.sched-order li.now .sched-row-time { color: var(--text); }
+.sched-row-title { flex: 1; min-width: 0; overflow-wrap: break-word; word-wrap: break-word; }
+.sched-row-kind { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.sched-order li.tap .sched-row-kind { color: var(--accent); }
+.sched-nowtag { font-size: 12px; font-weight: 800; color: var(--accent); letter-spacing: .04em; }
+.sched-nowtag[hidden] { display: none; }
+.sched-setlist { background: var(--panel-2); border-radius: 8px; padding: 10px 14px; min-width: 0; max-height: 400px; overflow-y: auto; }
+.sched-set-head { color: var(--text); font-size: 15px; text-transform: none; letter-spacing: 0; }
+.sched-set-body { font-size: 17px; line-height: 1.45; overflow-wrap: break-word; word-wrap: break-word; }
+.sched-set-body h3, .sched-set-body h4, .sched-set-body h5 { margin: 10px 0 4px; font-size: 15px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.sched-set-body ol, .sched-set-body ul { margin: 4px 0; padding-left: 28px; }
+.sched-set-body p { margin: 6px 0; }
+.sched-set-body code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; background: var(--bg); padding: 0 4px; border-radius: 4px; }
+.sched-setlist button { margin-top: 8px; }
+/* The strip is the phone's collapsed view (a button that expands); other layouts don't show it. */
+.sched-strip { display: none; width: 100%; text-align: left; flex-direction: column; align-items: stretch; gap: 2px;
+  padding: 8px 12px; min-height: 56px; background: var(--panel-2); }
+.sched-strip-l1 { display: flex; gap: 8px; align-items: baseline; font-size: 18px; font-weight: 700; min-width: 0; }
+.sched-strip-now { overflow-wrap: break-word; word-wrap: break-word; min-width: 0; }
+.sched-strip-l2 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 15px; font-variant-numeric: tabular-nums; }
+.sched-strip-more { color: var(--accent); font-size: 13px; font-weight: 600; }
+body.disconnected .sched-block, body.disconnected .sched-strip { opacity: .6; }
+@media (max-width: 900px) { .sched-more { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .sched-now { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- admin: Schedule card ---- */
+.sched-edit { list-style: none; margin: 8px 0 0; padding: 0; }
+.sched-edit-row { border-bottom: 1px solid var(--grid); padding: 8px 0; }
+.sched-edit-fields { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.sched-edit-n { min-width: 24px; align-self: center; font-variant-numeric: tabular-nums; text-align: right; }
+.sched-edit-fields input.num { width: 76px; }
+.sched-edit-title { flex: 1 1 220px; }
+.sched-edit-title input { width: 100%; }
+.sched-edit-fields select { min-width: 120px; }
+.sched-edit-btns button { min-width: 44px; }
+.sched-edit-btns button:first-child { min-width: 104px; }   /* "Setlist" and "Setlist ✓" line up */
+.sched-date { font-size: 12px; font-variant-numeric: tabular-nums; }
+input.invalid, textarea.invalid { border-color: var(--stop); }
+.sched-edit-err { margin: 6px 0 0 32px; }
+.sched-setlist-edit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin: 8px 0 0 32px; }
+.sched-setlist-edit .hint { grid-column: 1 / -1; margin: 0; }
+textarea { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--grid); border-radius: 8px;
+  padding: 8px 10px; width: 100%; max-width: 100%; resize: vertical; }
+.sched-import-text { font-family: ui-monospace, Consolas, monospace; font-size: 14px; }
+.sched-preview { background: var(--panel-2); border-radius: 8px; padding: 6px 12px; min-height: 60px; max-height: 260px; overflow-y: auto; }
+.sched-preview ol, .sched-preview ul { padding-left: 24px; }
+.sched-import-errors { margin: 4px 0 8px; padding-left: 20px; }
+.sched-conflict { background: var(--panel-2); border: 2px solid var(--warn); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+.sched-conflict p { margin: 0 0 8px; }
+#schedule-admin details > summary { font-weight: 600; margin-top: 12px; }
+@media (max-width: 700px) {
+  .sched-setlist-edit { grid-template-columns: minmax(0, 1fr); margin-left: 0; }
+  .sched-edit-err { margin-left: 0; }
+}
+.no-flex-gap .sched-label > *, .no-flex-gap .sched-strip-l1 > *, .no-flex-gap .sched-strip-l2 > *,
+.no-flex-gap .sched-order li > *, .no-flex-gap .sched-edit-fields > * { margin-right: 8px; }
+
 /* Layouts */
 body.layout-phone main { padding: 10px; gap: 10px; }
 body.layout-phone .tile .value { font-size: 28px; }
@@ -135,6 +232,24 @@ body.layout-wall .tile .foot { font-size: 16px; }
 body.layout-wall .tile .foot.approx { font-size: 18px; }   /* the "approximate" note must be readable from the back */
 body.layout-wall .chart-wrap { height: 42vh; }
 body.layout-wall .only-interactive { display: none; }
+/* Schedule card per layout. Phone: the strip, expanding to the full card on tap. Wall: only the
+   NOW / NEXT / CURFEW strip, large enough to read at 5 m (no running order, no setlist). */
+body.layout-phone #schedule-card > h2 { display: none; }
+body.layout-phone .sched-strip { display: flex; }
+body.layout-phone #schedule-card .sched-body { display: none; margin-top: 10px; }
+body.layout-phone #schedule-card.sched-open .sched-body { display: block; }
+body.layout-phone .sched-now, body.layout-phone .sched-more { grid-template-columns: minmax(0, 1fr); }
+body.layout-phone .sched-title { font-size: 20px; }
+body.layout-phone .sched-count { font-size: 24px; }
+body.layout-wall .sched-more { display: none; }
+body.layout-wall #schedule-card > h2 { font-size: 22px; }
+body.layout-wall .sched-now { gap: 16px; }
+body.layout-wall .sched-block { padding: 14px 20px; border-width: 4px; border-left-width: 14px; }
+body.layout-wall .sched-label { font-size: 26px; }
+body.layout-wall .sched-title { font-size: 46px; }
+body.layout-wall .sched-count { font-size: 64px; }
+body.layout-wall .sched-line { font-size: 26px; }
+body.layout-wall .sched-tag { font-size: 24px; padding: 2px 14px; }
 
 /* Safari before 14.1 ignores `gap` on flex containers. compat.js adds html.no-flex-gap there,
    and these margins give the same spacing. Grid `gap` is fine everywhere we support. */

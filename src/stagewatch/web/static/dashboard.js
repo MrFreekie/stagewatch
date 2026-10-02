@@ -26,7 +26,7 @@
 
   const state = {
     entities: {}, devices: {}, markers: [], alarms: [], sounding: false,
-    site: {}, show: {}, dash: null, isAdmin: false, now: Date.now() / 1000,
+    site: {}, show: {}, schedule: { items: [] }, scheduleMeta: null, dash: null, isAdmin: false, now: Date.now() / 1000,
     mode: localGet("sw.mode", "temperature"), span: Number(localGet("sw.span", 3600)),
     selectedMarker: null, history: {},
   };
@@ -273,6 +273,191 @@
     try { await SW.api("POST", "/api/alarms/ack", { dashboard: slug }); } catch (err) { toast(err.message); }
   });
 
+  // ------------------------------------------------------------ schedule
+  // NOW / NEXT / CURFEW and the running order for this dashboard's stage (dash.stage; empty = all
+  // stages). The DOM is built once per schedule change (snapshot or "schedule" message); a
+  // one-second tick then only updates text and classes in place. The tick runs only while the
+  // card is on this dashboard and has items, and stops itself otherwise. Countdowns come from the
+  // server-corrected clock (serverNow); nothing here sounds or raises an alarm.
+  // Layouts (style.css): tablet shows everything; phone shows a strip that expands on tap; wall
+  // shows only the large NOW / NEXT / CURFEW strip.
+  const sched = { timer: null, ui: null, rows: [], items: [], selected: null, open: false, setlistKey: "",
+    loadedKey: "", loading: false };
+  const schedH2 = $("schedule-card").querySelector("h2");
+  const schedStage = () => (state.dash && state.dash.stage ? state.dash.stage : "");
+  const schedItems = () => SW.scheduleOrder((state.schedule && state.schedule.items) || [], schedStage());
+  const setText = (el, s) => { if (el.textContent !== s) el.textContent = s; };
+  const setClass = (el, c) => { if (el.className !== c) el.className = c; };
+  const hasSetlist = (it) => !!(it && it.setlist && it.setlist.trim());
+  const timeRange = (it) => (it.planned_end !== null && it.planned_end !== undefined
+    ? `${SW.fmtTime(it.planned_start)}–${SW.fmtTime(it.planned_end)}` : SW.fmtTime(it.planned_start));
+  const KIND_NAMES = { doors: "Doors", act: "", changeover: "Changeover", curfew: "Curfew", other: "" };
+  // "Changeover" beside an item, unless its title already says so.
+  const kindNote = (it) => {
+    const k = KIND_NAMES[it.kind] || "";
+    return k && it.title.toLowerCase().indexOf(k.toLowerCase()) !== 0 ? k : "";
+  };
+  const CURFEW_TAGS ={ warn: "15 MIN WARNING", alert: "5 MIN WARNING", past: "PAST CURFEW" };
+  const until = (s) => `in ${SW.fmtDuration(s, true)}`;
+
+  function schedBlock(kind, label) {
+    const b = { kind, title: h("div", { class: "sched-title" }), count: h("div", { class: "sched-count" }),
+      line: h("div", { class: "sched-line" }), tag: h("span", { class: "sched-tag", hidden: true }) };
+    b.el = h("div", { class: `sched-block ${kind}` },
+      h("div", { class: "sched-label" }, h("span", {}, label), b.tag), b.title, b.count, b.line);
+    return b;
+  }
+
+  // The snapshot and the "schedule" message carry only {show_id, revision}. The items (with
+  // setlists) come from GET /api/schedule?stage=..., fetched only while the card is on this
+  // dashboard and only when the show, the revision or the dashboard's stage has changed.
+  const schedKey = (m) => (m ? `${m.show_id}|${m.revision}|${schedStage().toLowerCase()}` : "");
+  async function syncSchedule() {
+    if (!has("schedule") || !state.scheduleMeta) return;
+    if (schedKey(state.scheduleMeta) === sched.loadedKey || sched.loading) return;
+    sched.loading = true;
+    try {
+      const stage = schedStage();
+      const r = await SW.api("GET", `/api/schedule${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`);
+      state.schedule = { show_id: r.show_id, day: r.day, revision: r.revision, items: r.items || [] };
+      sched.loadedKey = schedKey(r);
+    } catch (_) {
+      // Keep what is on screen; the next snapshot (reconnect) or schedule message tries again.
+    } finally { sched.loading = false; }
+    if (has("schedule")) {
+      CARDS.schedule.el.hidden = CARDS.schedule.empty();
+      renderSchedule();
+    }
+    // Changed again while this request was in flight: fetch once more.
+    if (sched.loadedKey && schedKey(state.scheduleMeta) !== sched.loadedKey) syncSchedule();
+  }
+
+  function stopScheduleTimer() { if (sched.timer) { clearInterval(sched.timer); sched.timer = null; } }
+
+  function renderSchedule() {
+    const card = $("schedule-card");
+    sched.items = schedItems();
+    const stage = schedStage();
+    schedH2.textContent = stage ? `Schedule · ${stage}` : "Schedule";
+    if (!has("schedule") || !sched.items.length) {
+      stopScheduleTimer();
+      sched.ui = null;
+      card.replaceChildren(schedH2);
+      return;
+    }
+    if (sched.selected !== null && !sched.items.some((it) => it.id === sched.selected)) sched.selected = null;
+    const ui = {
+      now: schedBlock("now", "Now"), next: schedBlock("next", "Next"), curfew: schedBlock("curfew", "Curfew"),
+      stripNow: h("span", { class: "sched-strip-now" }), stripRest: h("span", { class: "sched-strip-rest" }),
+      stripTag: h("span", { class: "sched-tag", hidden: true }), stripMore: h("span", { class: "sched-strip-more", "aria-hidden": "true" }),
+      setHead: h("h3", { class: "sched-set-head" }), setBody: h("div", { class: "sched-set-body" }),
+      setBack: h("button", { type: "button", class: "touch", hidden: true, onclick: () => { sched.selected = null; tickSchedule(); } }, "Back to what's on now"),
+    };
+    ui.strip = h("button", { type: "button", class: "sched-strip", "aria-expanded": sched.open ? "true" : "false",
+      onclick: () => {
+        sched.open = !sched.open;
+        ui.strip.setAttribute("aria-expanded", sched.open ? "true" : "false");
+        card.classList.toggle("sched-open", sched.open);
+        setText(ui.stripMore, sched.open ? "Less ▲" : "More ▼");
+      } },
+    h("span", { class: "sched-strip-l1" }, h("span", { class: "sched-label" }, "Now"), ui.stripNow),
+    h("span", { class: "sched-strip-l2" }, ui.stripRest, ui.stripTag), ui.stripMore);
+    ui.stripMore.textContent = sched.open ? "Less ▲" : "More ▼";
+    const ends = SW.scheduleEnds(sched.items);
+    sched.rows = sched.items.map((it, i) => {
+      const tap = hasSetlist(it);
+      const nowTag = h("span", { class: "sched-nowtag", hidden: true }, "NOW");
+      const pick = () => { sched.selected = sched.selected === it.id ? null : it.id; tickSchedule(); };
+      const el = h("li", tap ? { role: "button", tabindex: "0", title: "Show the setlist", onclick: pick,
+        onkeydown: (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); pick(); } } } : {},
+      h("span", { class: "sched-row-time" }, timeRange(it)),
+      h("span", { class: "sched-row-title" }, it.title, it.stage && !stage ? h("span", { class: "muted" }, ` · ${it.stage}`) : null),
+      nowTag,
+      h("span", { class: "sched-row-kind" }, tap ? "Setlist ›" : kindNote(it)));
+      return { el, item: it, end: ends[i], nowTag, tap };
+    });
+    sched.ui = ui;
+    sched.setlistKey = "";
+    card.classList.toggle("sched-open", sched.open);
+    card.replaceChildren(schedH2, ui.strip,
+      h("div", { class: "sched-body" },
+        h("div", { class: "sched-now" }, ui.now.el, ui.next.el, ui.curfew.el),
+        h("div", { class: "sched-more" },
+          h("div", { class: "sched-order" }, h("h3", {}, "Running order"), h("ol", {}, sched.rows.map((r) => r.el))),
+          h("div", { class: "sched-setlist" }, ui.setHead, ui.setBody, ui.setBack))));
+    tickSchedule();
+    if (!sched.timer) sched.timer = setInterval(tickSchedule, 1000);
+  }
+
+  // Once a second: text and classes only (no rebuild).
+  function tickSchedule() {
+    const ui = sched.ui;
+    if (!ui || !has("schedule")) { stopScheduleTimer(); return; }
+    const now = serverNow();
+    const nn = SW.scheduleNowNext(sched.items, now, "");
+    const cur = nn.current, nxt = nn.next, cf = nn.curfew;
+    const idle = { before: "Not started yet", between: "Nothing on now", over: "Show over", empty: "—" };
+
+    // NOW: title, time since its planned start, and time left when its end is known.
+    setText(ui.now.title, cur ? cur.title : (idle[nn.state] || "—"));
+    setText(ui.now.count, cur ? (nn.currentEnd !== null ? `${SW.fmtDuration(nn.currentEnd - now, true)} left` : `on for ${SW.fmtDuration(now - cur.planned_start)}`) : "");
+    setText(ui.now.line, cur ? `Started ${SW.fmtTime(cur.planned_start)}, ${SW.fmtDuration(now - cur.planned_start)} ago`
+      + (nn.currentEnd !== null ? ` · ends ${SW.fmtTime(nn.currentEnd)}` : "") : "");
+    // NEXT: planned time and countdown.
+    setText(ui.next.title, nxt ? nxt.title : "Nothing more today");
+    setText(ui.next.count, nxt ? until(nxt.planned_start - now) : "");
+    setText(ui.next.line, nxt ? `Starts ${SW.fmtTime(nxt.planned_start)}` : "");
+    // CURFEW: neutral above 15 min, warn at 15, alert at 5, stop colour once passed. Always with text.
+    const s = nn.secondsToCurfew;
+    const lvl = SW.curfewLevel(s);
+    setClass(ui.curfew.el, `sched-block curfew${lvl ? ` lvl-${lvl}` : " none"}`);
+    setText(ui.curfew.title, cf ? SW.fmtTime(cf.planned_start) : "No curfew set");
+    setText(ui.curfew.count, cf ? (s > 0 ? until(s) : `${SW.fmtDuration(-s)} ago`) : "");
+    setText(ui.curfew.line, cf && cf.title.trim().toLowerCase() !== "curfew" ? cf.title : "");
+    for (const tag of [ui.curfew.tag, ui.stripTag]) {
+      const text = CURFEW_TAGS[lvl] || "";
+      setText(tag, text);
+      setClass(tag, `sched-tag${lvl ? ` lvl-${lvl}` : ""}`);
+      tag.hidden = !text;
+    }
+    // Phone strip: one glance line, tap for the rest.
+    setText(ui.stripNow, cur ? cur.title : (idle[nn.state] || "—"));
+    const rest = [];
+    if (nxt) rest.push(`Next ${SW.fmtTime(nxt.planned_start)}, ${until(nxt.planned_start - now)}`);
+    if (cf) rest.push(s > 0 ? `Curfew ${until(s)}` : "Past curfew");
+    setText(ui.stripRest, rest.join(" · "));
+
+    // Running order: past items dimmed, the current one marked NOW (text as well as colour).
+    let showId = sched.selected;
+    if (showId === null) {
+      const pick = [cur, nxt].filter(hasSetlist)[0] || cur || nxt;
+      showId = pick ? pick.id : null;
+    }
+    for (const r of sched.rows) {
+      const isNow = !!cur && r.item.id === cur.id;
+      const past = !isNow && r.end !== null && r.end <= now;
+      setClass(r.el, "sched-row" + (past ? " past" : "") + (isNow ? " now" : "") + (r.tap ? " tap" : "")
+        + (r.tap && r.item.id === showId ? " sel" : ""));
+      r.nowTag.hidden = !isNow;
+    }
+    // Setlist panel: the tapped act, else what's on now (or next) with a setlist.
+    const item = showId === null ? null : sched.items.filter((it) => it.id === showId)[0] || null;
+    const key = item ? `${item.id}|${sched.selected === null ? "auto" : "pick"}|${item === cur}|${item.title}|${item.setlist}` : "none";
+    if (key !== sched.setlistKey) {
+      sched.setlistKey = key;
+      if (!item) {
+        ui.setHead.textContent = "Setlist";
+        ui.setBody.replaceChildren(h("p", { class: "muted" }, "Nothing on now. Tap an act in the running order to see its setlist."));
+      } else {
+        const when = sched.selected !== null ? "" : (item === cur ? "Now: " : "Next: ");
+        ui.setHead.textContent = `${when}${item.title}`;
+        ui.setBody.replaceChildren(hasSetlist(item) ? SW.renderMarkdown(item.setlist)
+          : h("p", { class: "muted" }, "No setlist for this one."));
+      }
+      ui.setBack.hidden = sched.selected === null;
+    }
+  }
+
   // --------------------------------------------------------------- cards
   // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists
   // which cards it shows and in what order (dash.cards); ids this build doesn't know (from a
@@ -283,8 +468,8 @@
   const nothing = () => {};
   const CARDS = {
     env_tiles: { el: cardEl("env_tiles"), wide: true, render: renderTiles },
-    // Filled in by the schedule feature; hidden while the show has no schedule.
-    schedule: { el: cardEl("schedule"), wide: true, render: nothing, empty: () => true },
+    // Hidden while the show has no schedule for this dashboard's stage.
+    schedule: { el: cardEl("schedule"), wide: true, render: renderSchedule, empty: () => schedItems().length === 0 },
     // renderMarkers also puts the marker lines on the chart (with or without the Markers card).
     chart: { el: cardEl("chart"), wide: true, render: () => { renderSegs(); renderMarkers(); loadHistory(); } },
     markers: { el: cardEl("markers"), render: renderMarkers },
@@ -338,6 +523,7 @@
     state.site = msg.site;
     SW.setSiteTime(msg.site.time);
     state.show = msg.show;
+    state.scheduleMeta = msg.schedule || null;   // {show_id, day, revision}: the items are fetched
     state.isAdmin = msg.is_admin;
     state.dash = msg.dashboard;
     state.now = msg.now;
@@ -354,6 +540,8 @@
     layoutCards();
     renderAlarms();
     for (const id of assignedCards()) CARDS[id].render();
+    if (!has("schedule")) stopScheduleTimer();
+    syncSchedule();
   }
 
   // "Open on a tablet" footer card: where tablets can reach this dashboard. Only the address and
@@ -404,6 +592,10 @@
         state.markers = state.markers.filter((m) => m.id !== msg.id);
         if (state.selectedMarker === msg.id) { state.selectedMarker = null; $("delta").hidden = true; }
         renderMarkers(); break;
+      case "schedule":   // only {show_id, revision}: fetch the items if they changed
+        state.scheduleMeta = Object.assign({}, state.scheduleMeta || {}, { show_id: msg.show_id, revision: msg.revision });
+        syncSchedule();
+        break;
       case "alarms": state.alarms = msg.alarms; state.sounding = msg.sounding; renderAlarms(); break;
       case "reload": location.reload(); break;
     }

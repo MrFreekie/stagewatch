@@ -31,6 +31,15 @@ def test_no_html_parsing_sinks_in_our_scripts():
     assert not hits, "build elements with SW.h / textContent instead:\n" + "\n".join(hits)
 
 
+def test_setlists_render_without_links():
+    """Schedule text is untrusted and public: setlists go through SW.renderMarkdown with links
+    left off (the default), on the dashboard and in the admin preview."""
+    for name in ("dashboard.js", "admin.js"):
+        code = _code_only((STATIC / name).read_text(encoding="utf-8"))
+        assert "SW.renderMarkdown(" in code, name
+        assert "links: true" not in code and "links:true" not in code, name
+
+
 def test_the_check_itself_catches_sinks():
     assert SINKS.search("el.innerHTML = x")
     assert SINKS.search("el.insertAdjacentHTML('beforeend', x)")
