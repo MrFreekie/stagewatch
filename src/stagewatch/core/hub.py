@@ -73,7 +73,8 @@ class Hub:
         self.devices: dict[str, Device] = {}
         self.entities: dict[str, Entity] = {}
         self.integrations: dict[str, Integration] = {}
-        self.site_meta: dict = {"sensors": {}, "pressure_source": "altitude"}
+        self.site_meta: dict = {"sensors": {}, "pressure_source": "altitude",
+                                "c_out_of_range": False, "c_out_of_range_bounds": []}
         self._emas: dict[str, Ema] = {}
         self._tasks: list[asyncio.Task] = []
         # Set by the updater: process exit code (75 = launcher applies a pending update) and the
@@ -288,12 +289,18 @@ class Hub:
             "site.speed_of_sound": None,
             "site.dew_point": None,
         }
+        range_issues: list[str] = []
         if temp is not None:
             p = pressure if pressure is not None else acoustics.pressure_at_altitude_pa(site.altitude_m)
             values["site.speed_of_sound"] = acoustics.speed_of_sound(
                 temp, rh if rh is not None else 50.0, p)
+            # Outside the formula's tested range the value is still shown and used; dashboards
+            # add a quiet "approximate" note. No alarm.
+            range_issues = acoustics.speed_of_sound_range_issues(temp, p)
             if rh is not None:
                 values["site.dew_point"] = acoustics.dew_point_c(temp, rh)
+        self.site_meta["c_out_of_range"] = bool(range_issues)
+        self.site_meta["c_out_of_range_bounds"] = range_issues
         for entity_id, value in values.items():
             entity = self.entities[entity_id]
             entity.value = entity.raw_value = value

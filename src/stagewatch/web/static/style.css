@@ -68,6 +68,12 @@ main { padding: 16px; display: grid; gap: 16px; max-width: 1600px; margin: 0 aut
 .tile .value .unit { font-size: 16px; font-weight: 500; color: var(--muted); margin-left: 4px; }
 .tile .foot { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .tile.stale .value { color: var(--muted); }
+/* "Outside the formula's tested range": a quiet note, not a warning colour. */
+.approx { font-style: italic; }
+
+/* Dashboard cards (dashboard.js CARDS): unassigned or empty cards stay hidden, whatever their
+   own display rule says (.tiles is a grid). */
+[data-card][hidden] { display: none; }
 
 .chart-wrap { position: relative; height: 320px; }
 .chart-wrap canvas { width: 100%; height: 100%; display: block; }
@@ -185,6 +191,19 @@ dialog.sw-dialog .pre-wrap { max-height: 32vh; }
 .sw-hist { list-style: none; margin: 0; padding: 0; }
 .sw-hist li { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--grid); }
 .sw-hist-main { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+
+/* ---- admin: "Edit cards" panel (User dashboards card) ---- */
+/* Sticky to the left edge so it stays in view while the wide table scrolls sideways on a phone. */
+.cards-panel { background: var(--panel-2); border-radius: 8px; padding: 10px 12px; white-space: normal;
+  max-width: 760px; max-width: min(760px, calc(100vw - 72px)); position: -webkit-sticky; position: sticky; left: 0; }
+.card-picker { list-style: none; margin: 0; padding: 0; }
+.card-picker li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--grid); }
+.card-pick { display: flex; align-items: center; gap: 12px; flex: 1; min-height: 44px; cursor: pointer; min-width: 0; }
+.card-pick input { flex: none; }
+.card-pick > span { display: flex; flex-direction: column; min-width: 0; }
+.card-pick .muted { font-size: 13px; }
+.card-picker button { min-width: 44px; min-height: 44px; padding: 4px 10px; }
+.no-flex-gap .card-picker li > *, .no-flex-gap .card-pick > * { margin-right: 10px; }
 
 /* Small support footer on the landing and admin pages (never on user dashboards). */
 .site-footer { text-align: center; color: var(--muted); font-size: 13px; padding: 16px 16px 24px; }

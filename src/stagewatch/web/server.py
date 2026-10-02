@@ -370,7 +370,25 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "ignored": esp.ignored_list() if esp else [],
             "shows": hub.recorder.shows(),
             "alarm_log": hub.recorder.alarm_log(),
+            # For the "Edit cards" panel: the cards this build knows, in picker order, and the
+            # defaults a new dashboard gets for each layout.
+            "cards": {"known": list(cards_mod.KNOWN_CARDS),
+                      "defaults": {layout: cards_mod.default_cards(layout) for layout in cards_mod.LAYOUT_DEFAULTS}},
+            "stages": known_stages(),
         }
+
+    def known_stages() -> list[str]:
+        """Stage names already in use, for the dashboard Stage field's suggestions: device areas
+        and other dashboards' stages (schedule item stages join here once schedules exist)."""
+        names = [d.area for d in hub.devices.values() if d.id != "site"]
+        names += [d.area for d in hub.config.esphome_devices]
+        names += [d.stage for d in hub.config.dashboards]
+        seen: dict[str, str] = {}
+        for n in names:
+            n = (n or "").strip()
+            if n and len(n) <= 40 and n.casefold() not in seen:
+                seen[n.casefold()] = n
+        return sorted(seen.values(), key=str.casefold)[:100]
 
     @app.put("/api/admin/site", dependencies=admin_deps)
     async def put_site(body: SiteConfig):
@@ -548,10 +566,11 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     @app.get("/api/dashboard/{slug}/address")
     async def dashboard_address(slug: str, request: Request):
-        """For the wall display footer only: one LAN address + the dashboard path (no list of
-        interfaces, nothing else).  Other layouts get nothing."""
+        """For the "Open on a tablet" footer card only: one LAN address + the dashboard path (no
+        list of interfaces, nothing else).  Dashboards without the connect_footer card (any
+        layout) get nothing."""
         d = hub.config.dashboard(slug)
-        if d is None or d.layout != "wall":
+        if d is None or "connect_footer" not in d.cards:
             return {"url": ""}
         addrs = await asyncio.to_thread(lan_addresses)
         return {"url": netinfo.connect_urls(addrs[:1], server_port(request), d.slug)["ip"][0] if addrs else ""}

@@ -242,9 +242,72 @@
           [...tbody.children].map((tr, i) => tr._read(i))), "Thresholds saved").then(refresh) }, "Save thresholds")));
   }
 
+  // Card names and one-line hints for the "Edit cards" panel (ids: core/cards.py).
+  const CARD_INFO = {
+    env_tiles: ["Site readings", "Tiles for temperature, humidity, pressure, speed of sound and dew point."],
+    schedule: ["Schedule", "Now, next and curfew. Stays hidden until the show has a schedule."],
+    chart: ["History chart", "Readings over time, with markers."],
+    markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
+    sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
+    wall_clock: ["Wall Clock", "The show clock from Ontime."],
+    connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, always at the bottom of the screen."],
+  };
+  const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
+
+  // The "Edit cards" panel for one dashboard: which cards it shows, in what order, and its stage.
+  // Returns {el, read(), setDefaults(layout), count()}.
+  function cardsEditor(d, onChange) {
+    const known = (admin.cards && admin.cards.known) || Object.keys(CARD_INFO);
+    let items = [];
+    const ul = h("ul", { class: "card-picker" });
+    const fill = (list) => {
+      const on = list.filter((id, i) => known.indexOf(id) >= 0 && list.indexOf(id) === i);
+      items = on.map((id) => ({ id, on: true })).concat(known.filter((id) => on.indexOf(id) < 0).map((id) => ({ id, on: false })));
+      draw();
+    };
+    const move = (i, dir) => {
+      const j = i + dir;
+      if (j < 0 || j >= items.length) return;
+      const t = items[i]; items[i] = items[j]; items[j] = t;
+      draw();
+      // keep the keyboard on the card that moved
+      const btn = ul.children[j] && ul.children[j].querySelector(dir < 0 ? ".card-up" : ".card-down");
+      if (btn && !btn.disabled) btn.focus();
+    };
+    const draw = () => {
+      ul.replaceChildren(...items.map((it, i) => {
+        const info = CARD_INFO[it.id] || [it.id, ""];
+        const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; onChange(); } });
+        return h("li", {},
+          h("label", { class: "card-pick" }, box, h("span", {}, h("strong", {}, info[0]), info[1] ? h("span", { class: "muted" }, info[1]) : null)),
+          h("button", { type: "button", class: "card-up", "aria-label": `Move ${info[0]} up`, title: "Move up", disabled: i === 0, onclick: () => move(i, -1) }, "▲"),
+          h("button", { type: "button", class: "card-down", "aria-label": `Move ${info[0]} down`, title: "Move down", disabled: i === items.length - 1, onclick: () => move(i, 1) }, "▼"));
+      }));
+      onChange();
+    };
+    const stage = h("input", { class: "touch", value: d.stage || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off" });
+    // Ids from a newer Stagewatch (kept in the settings after a downgrade) can't be saved by this one.
+    const newer = (d.cards || []).filter((id) => known.indexOf(id) < 0);
+    fill(d.cards || (admin.cards && admin.cards.defaults.tablet) || []);
+    const el = h("div", { class: "cards-panel" },
+      h("p", { class: "muted hint" }, "Tick the cards this dashboard shows. Use ▲ and ▼ to change the order, top to bottom. With no cards ticked, the screen shows only alarms. Wall Clock is never switched on by default: tick it here if you want it."),
+      newer.length ? h("p", { class: "warn-text hint" }, `This dashboard also lists cards from a newer version of Stagewatch (${newer.join(", ")}). This version can't show them, and saving here removes them.`) : null,
+      ul,
+      h("div", { class: "row", style: "margin-top:10px" },
+        field("Stage", stage)),
+      h("p", { class: "muted hint" }, "Which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage."));
+    return {
+      el,
+      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage) }),
+      setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
+      count: () => items.filter((it) => it.on).length,
+    };
+  }
+
   function dashboardsCard() {
     const tbody = h("tbody");
     const addRow = (d = {}) => {
+      const isNew = !d.slug;
       const slug = h("input", { value: d.slug || "", placeholder: "url-name" });
       const title = h("input", { value: d.title || "" });
       const layout = h("select", {}, ["tablet", "phone", "wall"].map((l) => h("option", { value: l }, l)));
@@ -252,20 +315,39 @@
       const mk = h("input", { type: "checkbox", checked: d.allow_marker !== false });
       const ack = h("input", { type: "checkbox", checked: !!d.allow_ack });
       const link = d.slug ? h("a", { href: `/d/${d.slug}`, target: "_blank" }, "open") : "";
-      const tr = h("tr", {}, h("td", {}, slug), h("td", {}, title), h("td", {}, layout), h("td", {}, mk), h("td", {}, ack), h("td", {}, link),
-        h("td", {}, h("button", { class: "small danger", onclick: () => tr.remove() }, "✕")));
-      tr._read = () => ({ slug: val(slug), title: val(title), layout: layout.value, allow_marker: mk.checked, allow_ack: ack.checked });
-      tbody.append(tr);
+      const editBtn = h("button", { type: "button", class: "touch", "aria-expanded": "false" });
+      const panelRow = h("tr", { class: "cards-panel-row", hidden: true });
+      let editor = null;
+      const label = () => { if (editor) editBtn.textContent = `Edit cards (${editor.count()})`; };
+      editor = cardsEditor(isNew ? { cards: (admin.cards && admin.cards.defaults.tablet) || [] } : d, label);
+      label();
+      panelRow.append(h("td", { colspan: 8 }, editor.el));
+      const setOpen = (open) => {
+        panelRow.hidden = !open;
+        editBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        if (d.slug) { if (open) openCardPanels.add(d.slug); else openCardPanels.delete(d.slug); }
+      };
+      editBtn.onclick = () => setOpen(panelRow.hidden);
+      // A new dashboard starts with its layout's cards; changing its layout picks that layout's set.
+      if (isNew) layout.onchange = () => editor.setDefaults(layout.value);
+      const tr = h("tr", {}, h("td", {}, slug), h("td", {}, title), h("td", {}, layout), h("td", {}, mk), h("td", {}, ack),
+        h("td", {}, editBtn), h("td", {}, link),
+        h("td", {}, h("button", { class: "small danger", onclick: () => { tr.remove(); panelRow.remove(); } }, "✕")));
+      tr._read = () => Object.assign({ slug: val(slug), title: val(title), layout: layout.value, allow_marker: mk.checked, allow_ack: ack.checked }, editor.read());
+      tbody.append(tr, panelRow);
+      setOpen(isNew || openCardPanels.has(d.slug));
     };
     admin.config.dashboards.forEach(addRow);
+    const stages = admin.stages || [];
     return card("User dashboards",
-      h("p", { class: "muted" }, "Each dashboard has its own URL (/d/<name>) for tablets, phones and kiosk displays. Users can view without logging in; tick what they may do."),
+      h("p", { class: "muted" }, "Each dashboard has its own URL (/d/<name>) for tablets, phones and kiosk displays. Users can view without logging in; tick what they may do. Use Edit cards to choose what each one shows."),
+      h("datalist", { id: "stage-list" }, stages.map((s) => h("option", { value: s }))),
       h("div", { class: "table-scroll" }, h("table", {},
-        h("thead", {}, h("tr", {}, ["URL name", "Title", "Layout", "Add markers", "Ack alarms", "", ""].map((x) => h("th", {}, x)))), tbody)),
+        h("thead", {}, h("tr", {}, ["URL name", "Title", "Layout", "Add markers", "Ack alarms", "Cards", "", ""].map((x) => h("th", {}, x)))), tbody)),
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { onclick: () => addRow() }, "Add dashboard"),
         h("button", { class: "primary", onclick: () => run(() => api("PUT", "/api/admin/dashboards",
-          [...tbody.children].map((tr) => tr._read())), "Dashboards saved").then(refresh) }, "Save dashboards")));
+          [...tbody.children].filter((tr) => tr._read).map((tr) => tr._read())), "Dashboards saved").then(refresh) }, "Save dashboards")));
   }
 
   function oscCard() {
@@ -583,8 +665,9 @@
       connectCard(),
       softwareCard(),
       devicesCard(), entitiesCard(), thresholdsCard(),
-      h("div", { class: "grid-2" }, dashboardsCard(), oscCard()),
-      h("div", { class: "grid-2" }, alarmLogCard(), securityCard()),
+      dashboardsCard(),   // full width: room for the "Edit cards" panel
+      h("div", { class: "grid-2" }, oscCard(), securityCard()),
+      alarmLogCard(),
       supportCard(),
       catalogCard());
   }

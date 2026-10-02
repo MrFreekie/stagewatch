@@ -55,7 +55,7 @@ def test_connect_info_is_admin_only_and_uses_configured_port(client):
 def test_wall_address_is_public_but_minimal(client):
     r = client.get("/api/dashboard/wall/address").json()
     assert r == {"url": "http://192.0.2.10:8123/d/wall"}      # one address, no interface list
-    assert client.get("/api/dashboard/foh/address").json() == {"url": ""}   # only the wall layout
+    assert client.get("/api/dashboard/foh/address").json() == {"url": ""}   # no connect_footer card
     assert client.get("/api/dashboard/nope/address").json() == {"url": ""}
 
 
