@@ -94,7 +94,13 @@ def resolve(day: date | str, hhmm: str, site: _Site) -> float:
     d = _as_date(day)
     if t < _rollover(site):
         d += timedelta(days=1)
-    naive = datetime.combine(d, t).replace(fold=0)
+    return wall_ts(d, t, site)
+
+
+def wall_ts(d: date | str, t: dtime, site: _Site) -> float:
+    """UTC epoch seconds for wall-clock time ``t`` on calendar date ``d`` (no day rollover).
+    Gap and overlap follow the same PEP 495 ``fold=0`` rules as ``resolve``."""
+    naive = datetime.combine(_as_date(d), t.replace(tzinfo=None)).replace(fold=0)
     tz = zone(site)
     if tz is None:
         return naive.timestamp()  # naive = OS local time; PEP 495 fold=0 rules apply

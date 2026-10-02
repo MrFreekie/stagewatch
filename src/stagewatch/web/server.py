@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -39,6 +39,7 @@ from ..core.model import Device, Entity, Marker, slugify
 from ..core.recorder import valid_day
 from .. import diagnostics, netinfo
 from ..core import cards as cards_mod
+from ..core import schedule as sched
 from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
 from ..version import build_info
@@ -52,6 +53,12 @@ STATE_FLUSH_S = 0.5
 MIN_PIN_LEN = 4
 # HTTP status per updater error category (default 409: "the request is fine, the state isn't")
 UPDATER_STATUS = {"rate_limited": 429, "history_not_found": 404, "bad_channel": 422, "bad_sha": 422}
+# Per-path request-body limits above the 64 KiB default (plan §1.11), merged under the
+# ``body_limit_overrides`` argument of create_app. Sized to the real need, never unlimited.
+DEFAULT_BODY_OVERRIDES: dict[str, int] = {
+    "/api/admin/schedule": 512 * 1024,         # 300 items, up to 256 KB of setlists in total
+    "/api/admin/schedule/import": 256 * 1024,  # 64 KB of text, JSON-escaped
+}
 
 
 # ---------------------------------------------------------------- payloads
@@ -264,6 +271,110 @@ class EventPatch(BaseModel):
         return _clean_label(v, "Event")
 
 
+# ---------------------------------------------------------------- schedule
+class ScheduleItemBody(BaseModel):
+    """One schedule item as the admin page sends it: local 24-hour HH:MM times on the current
+    show's day (``end`` may be empty). ``id`` keeps an existing item's id. The time checks that
+    need the site's zone and day rollover (end after start) run in the endpoint."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    id: int | None = Field(None, ge=1, le=2**53)
+    stage: str = Field("", max_length=400)
+    kind: Literal["doors", "act", "changeover", "curfew", "other"] = "other"
+    title: str = Field(max_length=1000)
+    start: str = Field(max_length=5)
+    end: str = Field("", max_length=5)
+    setlist: str = Field("", max_length=sched.SETLIST_MAX_BYTES)  # characters; bytes checked below
+
+    @field_validator("title")
+    @classmethod
+    def _title(cls, v: str) -> str:
+        return sched.clean_title(v)
+
+    @field_validator("stage")
+    @classmethod
+    def _stage(cls, v: str) -> str:
+        return sched.clean_stage(v)
+
+    @field_validator("setlist")
+    @classmethod
+    def _setlist(cls, v: str) -> str:
+        return sched.clean_setlist(v)
+
+    @field_validator("start")
+    @classmethod
+    def _start(cls, v: str) -> str:
+        t = sched.norm_hhmm(v)
+        if t is None:
+            raise ValueError(sched.MSG_TIME)
+        return t
+
+    @field_validator("end")
+    @classmethod
+    def _end(cls, v: str) -> str:
+        if not v.strip():
+            return ""
+        t = sched.norm_hhmm(v)
+        if t is None:
+            raise ValueError(sched.MSG_END_TIME)
+        return t
+
+
+class SchedulePut(BaseModel):
+    """PUT /api/admin/schedule: replace the current show's whole schedule. ``show_id`` is the show
+    the page was editing; if another show has started since, the request is refused (409)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    show_id: int = Field(ge=1)
+    items: list[ScheduleItemBody]
+
+    @field_validator("items", mode="before")
+    @classmethod
+    def _count(cls, v):
+        if isinstance(v, list) and len(v) > sched.MAX_ITEMS:
+            raise ValueError(sched.MSG_TOO_MANY)
+        return v
+
+    @model_validator(mode="after")
+    def _totals(self):
+        if sum(sched.utf8_len(i.setlist) for i in self.items) > sched.SETLIST_TOTAL_MAX_BYTES:
+            raise ValueError(sched.MSG_SETLIST_TOTAL)
+        ids = [i.id for i in self.items if i.id is not None]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Each item id can only be used once")
+        return self
+
+
+class ScheduleImportBody(BaseModel):
+    """POST /api/admin/schedule/import. ``dry_run`` (the default) only parses and returns the rows
+    and line errors for a preview. ``dry_run: false`` adds the rows after the current items; it
+    needs ``show_id`` and changes nothing if any line has a problem."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    text: str = Field(max_length=sched.IMPORT_MAX_BYTES)  # characters; bytes checked below
+    format: Literal["auto", "csv", "lines"] = "auto"
+    dry_run: bool = True
+    show_id: int | None = Field(None, ge=1)
+
+    @field_validator("text")
+    @classmethod
+    def _size(cls, v: str) -> str:
+        if sched.utf8_len(v) > sched.IMPORT_MAX_BYTES:
+            raise ValueError(sched.MSG_IMPORT_TOO_BIG)
+        return v
+
+    @model_validator(mode="after")
+    def _commit_needs_show(self):
+        if not self.dry_run and self.show_id is None:
+            raise ValueError("To add the rows to the schedule, send the show_id you are editing")
+        return self
+
+
+class ScheduleDemoBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    show_id: int | None = Field(None, ge=1)
+
+
 class UpdateBody(BaseModel):
     channel: Literal["stable", "nightly"]
     target_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
@@ -317,6 +428,8 @@ class LiveFeed:
                             "sounding": self.hub.alarms.sounding})
         elif topic == "device" and isinstance(payload, Device):
             self._send_all({"type": "device", "device": payload.to_dict()})
+        elif topic == "schedule" and isinstance(payload, dict):
+            self._send_all({"type": "schedule", **payload})
         elif topic in ("device_removed", "config", "show"):
             self._send_all({"type": "reload"})
 
@@ -362,7 +475,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                   docs_url=None, redoc_url=None)
     app.state.hub = hub
     app.state.updater = updater
-    app.add_middleware(BodySizeLimitMiddleware, default_limit=body_limit, overrides=body_limit_overrides)
+    app.add_middleware(BodySizeLimitMiddleware, default_limit=body_limit,
+                       overrides={**DEFAULT_BODY_OVERRIDES, **(body_limit_overrides or {})})
     app.mount("/static", RevalidatingStaticFiles(directory=STATIC), name="static")
 
     # ---------------------------------------------------------- helpers
@@ -437,6 +551,20 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     @app.get("/api/snapshot")
     async def snapshot():
         return hub.snapshot()
+
+    @app.get("/api/schedule")
+    async def get_schedule(stage: str | None = Query(None, max_length=sched.STAGE_MAX)):
+        """The current show's running order (read-only, public: anyone on the show network can
+        read it). ``stage`` keeps items for that stage plus items with no stage. ``now_next``
+        holds item ids as of ``now``; dashboards count down themselves."""
+        now = time.time()
+        items = hub.schedule.public_items(stage)
+        nn = sched.now_next(items, now, None)
+        ids = {k: (nn[k]["id"] if nn[k] else None) for k in ("current", "next", "curfew")}
+        return {"show_id": hub.recorder.show_id, "day": hub.show_info()["day"], "now": now,
+                "stage": (stage or "").strip(), "items": items,
+                "now_next": {"state": nn["state"], "current_id": ids["current"], "next_id": ids["next"],
+                             "curfew_id": ids["curfew"], "seconds_to_curfew": nn["seconds_to_curfew"]}}
 
     @app.get("/api/history")
     async def history(entities: str, since: float | None = None, until: float | None = None,
@@ -543,12 +671,22 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "cards": {"known": list(cards_mod.KNOWN_CARDS),
                       "defaults": {layout: cards_mod.default_cards(layout) for layout in cards_mod.LAYOUT_DEFAULTS}},
             "stages": known_stages(),
+            # For the Schedule card (WP8): the limits the server enforces, and whether
+            # "Load demo day" is allowed right now.
+            "schedule_limits": {
+                "kinds": list(sched.KINDS), "max_items": sched.MAX_ITEMS, "title_max": sched.TITLE_MAX,
+                "stage_max": sched.STAGE_MAX, "setlist_max_bytes": sched.SETLIST_MAX_BYTES,
+                "setlist_total_max_bytes": sched.SETLIST_TOTAL_MAX_BYTES,
+                "import_max_bytes": sched.IMPORT_MAX_BYTES, "import_max_rows": sched.IMPORT_MAX_ROWS,
+                "demo_allowed": demo_allowed(),
+            },
         }
 
     def known_stages() -> list[str]:
         """Stage names already in use, for the dashboard Stage field's suggestions: device areas
-        and other dashboards' stages (schedule item stages join here once schedules exist)."""
+        and other dashboards' stages, and the stages in the current show's schedule."""
         names = [d.area for d in hub.devices.values() if d.id != "site"]
+        names += hub.schedule.stages()
         names += [d.area for d in hub.config.esphome_devices]
         names += [d.stage for d in hub.config.dashboards]
         seen: dict[str, str] = {}
@@ -560,10 +698,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     @app.put("/api/admin/site", dependencies=admin_deps)
     async def put_site(body: SiteConfig):
-        old_tz = hub.config.site.timezone
-        hub.config.site = body
-        if body.timezone != old_tz:
-            hub.site_time_changed(old_tz, body.timezone)  # re-bases the schedule (WP7)
+        hub.set_site(body)  # a time zone (or show day) change re-bases the schedule
         hub.save_config()
         return body
 
@@ -684,6 +819,65 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(409, "A new event was already started on another admin page. "
                                      "Nothing has been changed. Reload to see it.")
         return hub.rename_event(body.name)
+
+    # Schedule (admin writes). Like the show handlers these never await, so the stale-show check
+    # and the write can't interleave with another request.
+    STALE_SCHEDULE = ("This schedule belongs to a show day that has ended (a new show was started "
+                      "on another page). Nothing has been changed. Reload to see the current day.")
+
+    def demo_allowed() -> bool:
+        return hub.emulate or not hub.schedule.items()
+
+    def schedule_422(errors: list[sched.FieldError]) -> JSONResponse:
+        detail = [{"loc": ["body", "items", e.index, e.field] if e.index >= 0 else ["body", "items"],
+                   "msg": e.msg, "type": "value_error"} for e in errors[:20]]
+        return JSONResponse({"detail": detail}, status_code=422)
+
+    @app.put("/api/admin/schedule", dependencies=admin_deps)
+    async def put_schedule(body: SchedulePut):
+        if body.show_id != hub.recorder.show_id:
+            raise HTTPException(409, STALE_SCHEDULE)
+        rows, errors = sched.build_rows([i.model_dump() for i in body.items], hub.show_info()["day"],
+                                        hub.config.site)
+        if errors:
+            return schedule_422(errors)
+        return hub.schedule.replace(body.show_id, rows)
+
+    @app.post("/api/admin/schedule/import", dependencies=admin_deps)
+    async def import_schedule(body: ScheduleImportBody):
+        if body.show_id is not None and body.show_id != hub.recorder.show_id:
+            raise HTTPException(409, STALE_SCHEDULE)
+        try:
+            res = sched.parse_import(body.text, body.format, hub.show_info()["day"], hub.config.site)
+        except sched.ImportTooLarge as e:
+            return JSONResponse({"detail": str(e)}, status_code=422)
+        out = {"format": res.format, "rows": res.rows, "errors": res.errors, "error_count": res.error_count}
+        if body.dry_run:
+            return out
+        if res.error_count:
+            return JSONResponse({**out, "detail": "Some lines could not be read. Nothing has been added."},
+                                status_code=422)
+        try:
+            schedule = hub.schedule.append(body.show_id, res.rows)
+        except sched.ImportTooLarge as e:
+            return JSONResponse({"detail": str(e)}, status_code=422)
+        except sched.StaleShow:
+            raise HTTPException(409, STALE_SCHEDULE) from None
+        return {**out, "schedule": schedule}
+
+    @app.post("/api/admin/schedule/demo", dependencies=admin_deps)
+    async def schedule_demo(body: ScheduleDemoBody | None = None):
+        show_id = body.show_id if body is not None else None
+        if show_id is not None and show_id != hub.recorder.show_id:
+            raise HTTPException(409, STALE_SCHEDULE)
+        if not demo_allowed():
+            raise HTTPException(409, "The demo day only loads when the schedule is empty (or in "
+                                     "emulate mode). Nothing has been changed.")
+        try:
+            return hub.schedule.load_demo(show_id)
+        except sched.DemoDoesNotFit:
+            raise HTTPException(409, "The demo day can't load this close to the day rollover, or "
+                                     "on a show day that isn't today. Nothing has been changed.") from None
 
     def events_with_shows() -> list[dict]:
         """Events, newest first, each with its shows (days) newest first. Bounded: the newest

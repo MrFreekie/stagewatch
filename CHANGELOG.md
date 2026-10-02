@@ -16,6 +16,18 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Day schedule (behind the scenes for now; the dashboard card and the admin editor come next):
+  Stagewatch can now store the running order for each show day, with doors, acts, changeovers
+  and curfew, an optional stage per item, and a plain-text or Markdown setlist per act. Times
+  are 24-hour site time. A time earlier than the day rollover (06:00 by default) counts as the
+  next morning, so "23:00–00:30" works. You can paste a running order as lines such as
+  `19:00 Doors` or `19:30-20:15 Support`, or as CSV (`start,end,title,kind,stage`). You see a
+  preview first, and any line Stagewatch can't read is listed by its line number. Limits: 300
+  items, 120 characters per title, 8 KB per setlist. Anyone on the show network can read the
+  schedule; only the admin can change it. If you change the site's time zone or the show's day,
+  every item keeps its local time (for example 19:00 stays 19:00, even across a clock change).
+  A tab left open on an earlier day can't overwrite today's schedule. Emulate mode starts with a
+  "Demo Festival", Day 1, and a demo running order around the current time.
 - Private site-config backup (`scripts/site_config.py`) now tracks an explicit list of files:
   `config.yaml`, event logos, on-site contacts, and event documents and templates. Backups,
   `config.yaml.bak`, temp files, `emulate/`, the key, the history database and logs are never

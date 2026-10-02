@@ -57,8 +57,8 @@ CREATE TABLE IF NOT EXISTS alarm_log (
 """
 
 # ---- DB v2 (0.3.0): everything 0.3.0-0.5.0 need, created at once so later releases need no bump.
-# Tables nothing writes yet: schedule_items (until the schedule ships), spl_limit_revisions (0.4.0),
-# device_log (syslog receiver / imported vendor logs). Every statement is idempotent.
+# Tables nothing writes yet: spl_limit_revisions (0.4.0), device_log (syslog receiver / imported
+# vendor logs), and schedule_items.actual_* ("Started now", later). Every statement is idempotent.
 _V2_TABLES = [
     """CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -550,6 +550,56 @@ class Recorder:
         cur = self._db.execute("DELETE FROM markers WHERE id = ?", (marker_id,))
         self._db.commit()
         return cur.rowcount > 0
+
+    # --------------------------------------------------------------- schedule
+    _SCHEDULE_COLS = "id, sort, stage, kind, title, planned_start, planned_end, setlist, updated"
+
+    def schedule_items(self, show_id: int | None = None) -> list[dict]:
+        """A show's schedule rows (planned times only), ordered by start."""
+        show_id = show_id if show_id is not None else self.show_id
+        rows = self._db.execute(
+            f"SELECT {self._SCHEDULE_COLS} FROM schedule_items WHERE show_id = ? "
+            "ORDER BY planned_start, sort, id", (show_id,)).fetchall()
+        return [{"id": r[0], "sort": r[1], "stage": r[2], "kind": r[3], "title": r[4],
+                 "planned_start": r[5], "planned_end": r[6], "setlist": r[7], "updated": r[8]} for r in rows]
+
+    def replace_schedule(self, show_id: int, rows: list[dict]) -> None:
+        """Replace a show's whole schedule in one transaction (all or nothing). A row keeps its
+        ``id`` only if that id already belongs to this show's schedule; others get a new id."""
+        now = time.time()
+        db = self._db
+        try:
+            own = {r[0] for r in db.execute("SELECT id FROM schedule_items WHERE show_id = ?", (show_id,))}
+            db.execute("DELETE FROM schedule_items WHERE show_id = ?", (show_id,))
+            used: set[int] = set()
+            for i, r in enumerate(rows):
+                rid = r.get("id")
+                keep = isinstance(rid, int) and rid in own and rid not in used
+                if keep:
+                    used.add(rid)
+                db.execute(
+                    "INSERT INTO schedule_items (id, show_id, sort, stage, kind, title, planned_start, "
+                    "planned_end, setlist, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (rid if keep else None, show_id, int(r.get("sort", i)), r["stage"], r["kind"], r["title"],
+                     float(r["planned_start"]),
+                     None if r.get("planned_end") is None else float(r["planned_end"]), r["setlist"], now))
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+
+    def set_schedule_times(self, show_id: int, changes: list[tuple[int, float, float | None]]) -> None:
+        """Move items (id, planned_start, planned_end) of one show, in one transaction."""
+        now = time.time()
+        try:
+            self._db.executemany(
+                "UPDATE schedule_items SET planned_start = ?, planned_end = ?, updated = ? "
+                "WHERE id = ? AND show_id = ?",
+                [(s, e, now, i, show_id) for i, s, e in changes])
+            self._db.commit()
+        except BaseException:
+            self._db.rollback()
+            raise
 
     # ------------------------------------------------------------------ alarms
     def log_alarm(self, alarm_id: str, event: str, level: int, message: str) -> None:
