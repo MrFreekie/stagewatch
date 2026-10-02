@@ -92,6 +92,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .alarm-bar.l1 { background: rgba(245, 184, 61, .25); background: color-mix(in srgb, var(--warn) 22%, var(--panel)); border: 1px solid var(--warn); }
 .alarm-bar.l2 { background: rgba(255, 138, 61, .3); background: color-mix(in srgb, var(--alert) 28%, var(--panel)); border: 1px solid var(--alert); }
 .alarm-bar.l3 { background: rgba(255, 77, 94, .35); background: color-mix(in srgb, var(--stop) 32%, var(--panel)); border: 2px solid var(--stop); }
+.alarm-bar.notice { background: var(--panel-2); border: 1px solid var(--grid); }
+.alarm-bar li.silent { font-weight: 400; }
 .alarm-bar.sounding { animation: pulse 1s ease-in-out infinite alternate; }
 @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.35); } }
 .alarm-bar ul { margin: 0; padding: 0; list-style: none; flex: 1; }

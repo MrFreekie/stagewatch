@@ -25,10 +25,11 @@ class ActiveAlarm:
     message: str
     since: float
     acked: bool = False
+    silent: bool = False  # on-screen notice only: never sounds, never counts toward max_level
 
     def to_dict(self) -> dict:
         return {"id": self.id, "level": self.level, "level_name": LEVEL_NAMES.get(self.level, ""),
-                "message": self.message, "since": self.since, "acked": self.acked}
+                "message": self.message, "since": self.since, "acked": self.acked, "silent": self.silent}
 
 
 @dataclass
@@ -103,11 +104,11 @@ class AlarmEngine:
         return changes
 
     def set_condition(self, alarm_id: str, active: bool, level: int, message: str,
-                      now: float) -> AlarmChange | None:
+                      now: float, silent: bool = False) -> AlarmChange | None:
         """Raise/clear a non-threshold alarm (e.g. device missing)."""
         current = self.active.get(alarm_id)
         if active and current is None:
-            alarm = ActiveAlarm(alarm_id, level, message, now)
+            alarm = ActiveAlarm(alarm_id, level, message, now, silent=silent)
             self.active[alarm_id] = alarm
             return AlarmChange(alarm, "raise")
         if not active and current is not None:
@@ -116,18 +117,18 @@ class AlarmEngine:
         return None
 
     def ack_all(self) -> list[ActiveAlarm]:
-        acked = [a for a in self.active.values() if not a.acked]
+        acked = [a for a in self.active.values() if not a.acked and not a.silent]
         for a in acked:
             a.acked = True
         return acked
 
     @property
     def sounding(self) -> bool:
-        return any(not a.acked for a in self.active.values())
+        return any(not a.acked and not a.silent for a in self.active.values())
 
     @property
     def max_level(self) -> int:
-        return max((a.level for a in self.active.values()), default=0)
+        return max((a.level for a in self.active.values() if not a.silent), default=0)
 
     def to_list(self) -> list[dict]:
         return [a.to_dict() for a in sorted(self.active.values(),
