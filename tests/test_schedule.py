@@ -28,7 +28,8 @@ EVIL = {"Origin": "http://evil.example"}
 LON = SiteConfig(timezone="Europe/London", day_rollover="06:00")
 NY = SiteConfig(timezone="America/New_York", day_rollover="06:00")
 DAY = "2026-10-02"  # Fri 2 Oct 2026, BST (UTC+1)
-PUBLIC_ITEM_KEYS = {"id", "stage", "kind", "title", "start", "end", "planned_start", "planned_end", "setlist"}
+PUBLIC_ITEM_KEYS = {"id", "stage", "kind", "title", "date", "start", "end", "planned_start", "planned_end",
+                    "setlist"}
 
 
 def utc(*args) -> float:
@@ -97,7 +98,7 @@ def test_csv_positional_header_quotes_and_bad_rows():
         ("Changeover", "changeover", ""), ("Headliner", "act", "main stage")]
     assert [(e["line"], e["error"]) for e in res.errors] == [
         (5, sched.MSG_KIND), (6, sched.MSG_ROW_LONG), (7, sched.MSG_ROW_SHORT), (8, sched.MSG_TITLE_LEN),
-        (9, sched.MSG_STAGE_LEN), (10, sched.MSG_LINE_HIDDEN), (11, sched.MSG_LINE_HIDDEN)]
+        (9, sched.MSG_STAGE_LEN), (10, sched.MSG_TITLE_HIDDEN), (11, sched.MSG_LINE_HIDDEN)]
     assert "evil" not in json.dumps(res.errors) and "Tab" not in json.dumps(res.errors)
 
 
@@ -115,6 +116,45 @@ def test_csv_multiline_quoted_cell_reports_the_right_line():
     assert [r["title"] for r in res.rows] == ["Fine"]
     # the quoted newline is a control character in a title; the next rows keep their own numbers
     assert [(e["line"], e["error"]) for e in res.errors] == [(1, sched.MSG_LINE_HIDDEN), (4, sched.MSG_TIME)]
+
+
+def test_excel_csv_utf8_with_a_byte_order_mark():
+    """Excel's "CSV UTF-8" save starts the file with U+FEFF and uses CRLF line ends."""
+    text = "﻿Start,End,Title,Kind,Stage\r\n18:00,,Doors,,\r\n19:00,19:45,Café Society,act,Main\r\n"
+    res = sched.parse_import(text, "auto", DAY, LON)
+    assert res.format == "csv" and res.errors == []
+    assert [(r["title"], r["stage"]) for r in res.rows] == [("Doors", ""), ("Café Society", "Main")]
+    # only one leading mark is removed; one anywhere else is still a hidden character
+    res = sched.parse_import("﻿19:00 Doors\n20:00 Band﻿", "lines", DAY, LON)
+    assert [r["title"] for r in res.rows] == ["Doors"] and res.errors == [{"line": 2, "error": sched.MSG_LINE_HIDDEN}]
+
+
+def test_tsv_paste_from_a_spreadsheet():
+    with_header = "Start\tEnd\tTitle\tKind\tStage\n18:00\t\tDoors\t\t\n19:00\t19:45\tSupport, live\tact\tMain\n"
+    res = sched.parse_import(with_header, "auto", DAY, LON)
+    assert res.format == "tsv" and res.errors == []
+    assert [(r["start"], r["end"], r["title"], r["kind"], r["stage"]) for r in res.rows] == [
+        ("18:00", "", "Doors", "doors", ""), ("19:00", "19:45", "Support, live", "act", "Main")]
+    without = "18:00\t\tDoors\n19:00\t19:45\tSupport\n20:00\tHeadliner\n21:00\tbad\tRow\n"
+    res = sched.parse_import(without, "auto", DAY, LON)
+    assert res.format == "tsv"
+    assert [(r["start"], r["end"], r["title"]) for r in res.rows] == [
+        ("18:00", "", "Doors"), ("19:00", "19:45", "Support"), ("20:00", "", "Headliner")]
+    assert res.errors == [{"line": 4, "error": sched.MSG_END_TIME}]
+    # a tab between the time and the title in a lines paste is fine
+    assert [r["title"] for r in sched.parse_import("19:00\tDoors", "lines", DAY, LON).rows] == ["Doors"]
+    # ...but a title can't contain one
+    assert sched.parse_import("19:00 Door\ts", "lines", DAY, LON).errors == [
+        {"line": 1, "error": sched.MSG_TITLE_HIDDEN}]
+
+
+def test_spring_forward_gap_times_are_refused_on_import():
+    """Sun 29 Mar 2026 in London: 01:00-01:59 doesn't exist (01:00 GMT -> 02:00 BST)."""
+    sat = "2026-03-28"  # the night of 28/29 Mar: 01:30 is the morning after (before the rollover)
+    res = sched.parse_import("01:30 Too late\n00:30 Fine\n00:45-01:15 Ends in the gap\n02:00 Fine too", "lines", sat, LON)
+    gap = "That time doesn't exist on this date because the clocks go forward. Use 02:00 or later."
+    assert res.errors == [{"line": 1, "error": gap}, {"line": 3, "error": gap}]
+    assert [r["planned_start"] for r in res.rows] == [utc(2026, 3, 29, 0, 30), utc(2026, 3, 29, 1, 0)]
 
 
 def test_auto_detects_lines_with_commas_in_titles():
@@ -156,6 +196,14 @@ def test_text_checks():
             sched.clean_title(bad)
     with pytest.raises(ValueError):
         sched.clean_title("two\nlines")
+    # line and paragraph separators (Zl, Zp) and piled-up combining marks
+    for bad in ("line sep", "para sep", "é̂̃̄"):
+        with pytest.raises(ValueError):
+            sched.clean_title(bad)
+        with pytest.raises(ValueError):
+            sched.clean_stage(bad)
+    assert sched.clean_title("é̂̃ ok") == "é̂̃ ok"  # three is fine
+    assert sched.clean_title("Beyoncé and Björk") == "Beyoncé and Björk"
     with pytest.raises(ValueError, match="8 KB"):
         sched.clean_setlist("€" * 2731)  # 8,193 bytes
     assert sched.clean_setlist("€" * 2730)
@@ -245,6 +293,17 @@ def test_rebase_across_the_london_dst_change():
     assert again[1]["planned_start"] == utc(2026, 10, 26, 1, 30)
 
 
+def test_rebase_onto_a_spring_forward_gap():
+    """Fri 27 -> Sat 28 Mar 2026: the morning after becomes Sun 29 Mar, when 01:00-01:59 is
+    skipped. 01:30 lands on the fold=0 instant 01:30Z (shown as 02:30 BST)."""
+    items = [_item(1, "Late", "act", utc(2026, 3, 28, 1, 30)),          # 01:30 GMT, Sat morning
+             _item(2, "Evening", "act", utc(2026, 3, 27, 19, 0))]
+    moved = sched.rebase(items, "2026-03-27", LON, "2026-03-28", LON)
+    assert moved[0]["planned_start"] == utc(2026, 3, 29, 1, 30)
+    assert sitetime.local_hhmm(moved[0]["planned_start"], LON) == "02:30"
+    assert moved[1]["planned_start"] == utc(2026, 3, 28, 19, 0)
+
+
 def test_rebase_to_another_zone_keeps_local_times():
     items = [_item(1, "Doors", "doors", utc(2026, 10, 2, 17, 0)), _item(2, "Curfew", "curfew", utc(2026, 10, 2, 23, 30))]
     moved = sched.rebase(items, DAY, LON, DAY, NY)
@@ -282,8 +341,21 @@ BASIC = [
 ]
 
 
-def _put(c, items, show_id=None, **kw):
-    return c.put("/api/admin/schedule", json={"show_id": show_id or c.hub.recorder.show_id, "items": items}, **kw)
+def _put(c, items, show_id=None, revision=None, **kw):
+    rev = c.hub.schedule.revision() if revision is None else revision
+    return c.put("/api/admin/schedule", json={"show_id": show_id or c.hub.recorder.show_id, "revision": rev,
+                                              "items": items}, **kw)
+
+
+def _commit(c, text, revision=None, show_id=None):
+    rev = c.hub.schedule.revision() if revision is None else revision
+    return c.post("/api/admin/schedule/import", json={"text": text, "dry_run": False, "revision": rev,
+                                                      "show_id": show_id or c.hub.recorder.show_id})
+
+
+def _editable(items):
+    """What the admin page sends back for unchanged items."""
+    return [{k: i[k] for k in ("id", "date", "stage", "kind", "title", "start", "end", "setlist")} for i in items]
 
 
 # =================================================================== API
@@ -293,19 +365,23 @@ def test_put_schedule_resolves_times_and_round_trips(client):
     r = _put(client, BASIC)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body) == {"show_id", "day", "items"} and body["day"] == DAY
+    assert set(body) == {"show_id", "day", "revision", "items"} and body["day"] == DAY
+    assert body["revision"] == client.hub.schedule.revision() > 0
     items = body["items"]
     assert [i["title"] for i in items] == ["Doors", "Support", "Acoustic tent", "Curfew"]
     assert all(set(i) == PUBLIC_ITEM_KEYS for i in items)
     cur = items[-1]
-    assert (cur["start"], cur["end"], cur["planned_start"]) == ("00:30", "", utc(2026, 10, 2, 23, 30))
+    assert (cur["date"], cur["start"], cur["end"], cur["planned_start"]) == (
+        "2026-10-03", "00:30", "", utc(2026, 10, 2, 23, 30))
+    assert items[0]["date"] == DAY
     assert items[1]["planned_end"] == utc(2026, 10, 2, 18, 45) and items[1]["setlist"] == "1. One\n2. **Two**"
     # sending the list back with ids keeps the ids
     ids = [i["id"] for i in items]
-    resend = [{k: i[k] for k in ("id", "stage", "kind", "title", "start", "end", "setlist")} for i in items]
+    resend = _editable(items)
     resend[0]["title"] = "Doors open"
-    again = _put(client, resend).json()["items"]
-    assert [i["id"] for i in again] == ids and again[0]["title"] == "Doors open"
+    again = _put(client, resend).json()
+    assert [i["id"] for i in again["items"]] == ids and again["items"][0]["title"] == "Doors open"
+    assert again["revision"] > body["revision"]
     # an empty list clears it
     assert _put(client, []).json()["items"] == []
 
@@ -333,8 +409,7 @@ def test_stale_show_id_gets_409_and_changes_nothing(client):
     assert r.status_code == 409 and "Nothing has been changed" in r.json()["detail"]
     assert client.hub.schedule.items() == []                             # Day 2 untouched
     assert len(client.hub.recorder.schedule_items(old)) == 4              # Day 1 untouched
-    assert client.post("/api/admin/schedule/import",
-                       json={"text": "19:00 Doors", "dry_run": False, "show_id": old}).status_code == 409
+    assert _commit(client, "19:00 Doors", show_id=old).status_code == 409
     assert client.post("/api/admin/schedule/demo", json={"show_id": old}).status_code == 409
     assert client.hub.schedule.items() == []
 
@@ -355,6 +430,11 @@ SECRET = "zz-do-not-echo-zz"
     ([{"kind": "act", "title": "Band", "start": "19:00", "end": "18:00"}], "end"),
     ([{"kind": "act", "title": "Band", "start": "05:00", "end": "07:00"}], "end"),  # across the rollover
     ([{"kind": "act", "title": "Band", "start": "19:00", "colour": SECRET}], "colour"),
+    ([{"kind": "act", "title": "Line sep" + SECRET, "start": "19:00"}], "title"),
+    ([{"kind": "act", "title": "Band", "start": "19:00", "stage": "Zalgó̂̃̄" + SECRET}], "stage"),
+    ([{"kind": "act", "title": "Band", "start": "19:00", "date": "2026-10-09"}], "date"),  # not the show day
+    ([{"kind": "act", "title": "Band", "start": "19:00", "date": "2026-02-30"}], "date"),
+    ([{"kind": "act", "title": "Band", "start": "19:00", "date": SECRET}], "date"),
     ([{"kind": "act", "title": "Band", "start": "19:00"}] * 301, "items"),
     ([{"kind": "act", "title": f"Band {n}", "start": "19:00", "setlist": "s" * 8000} for n in range(33)], "items"),
     ([{"id": 7, "kind": "act", "title": "A", "start": "19:00"}, {"id": 7, "kind": "act", "title": "B", "start": "20:00"}],
@@ -362,6 +442,7 @@ SECRET = "zz-do-not-echo-zz"
 ])
 def test_caps_and_bad_items_get_422_without_echo(client, items, where):
     _admin(client)
+    _london_day(client)
     r = _put(client, items)
     assert r.status_code == 422, r.text
     assert SECRET not in r.text and "x" * 121 not in r.text and "s" * 200 not in r.text
@@ -391,20 +472,114 @@ def test_import_dry_run_then_commit(client):
     assert [row["title"] for row in body["rows"]] == ["Doors", "Support: Band", "Curfew"]
     assert SECRET not in r.text
     assert client.hub.schedule.items() == []  # a dry run changes nothing
-    # committing with a bad line adds nothing
+    # committing with a bad line adds nothing, and returns where the problems are, not the rows
     sid = client.hub.recorder.show_id
-    r = client.post("/api/admin/schedule/import", json={"text": text, "dry_run": False, "show_id": sid})
-    assert r.status_code == 422 and "Nothing has been added" in r.json()["detail"] and SECRET not in r.text
+    r = _commit(client, text)
+    assert r.status_code == 422 and SECRET not in r.text
+    assert r.json() == {"detail": "Some lines could not be read. Nothing has been added.",
+                        "errors": [{"line": 3, "error": sched.MSG_LINE_UNREADABLE}], "error_count": 1}
     assert client.hub.schedule.items() == []
-    # commit needs a show id
-    assert client.post("/api/admin/schedule/import", json={"text": "19:00 Doors", "dry_run": False}).status_code == 422
+    # commit needs a show id and a revision
+    for partial in ({"show_id": sid}, {"revision": 0}, {}):
+        assert client.post("/api/admin/schedule/import",
+                           json={"text": "19:00 Doors", "dry_run": False, **partial}).status_code == 422
     # a clean import is added after what is there
     assert _put(client, [{"kind": "act", "title": "Soundcheck", "start": "16:00"}]).status_code == 200
-    r = client.post("/api/admin/schedule/import",
-                    json={"text": "start,end,title\n19:00,,Doors\n19:30,20:15,Support", "dry_run": False,
-                          "show_id": sid})
+    r = _commit(client, "start,end,title\n19:00,,Doors\n19:30,20:15,Support")
     assert r.status_code == 200, r.text
     assert [i["title"] for i in r.json()["schedule"]["items"]] == ["Soundcheck", "Doors", "Support"]
+    assert r.json()["schedule"]["revision"] == client.hub.schedule.revision()
+
+
+def test_lost_update_tab_a_put_after_tab_b_import(client):
+    _admin(client)
+    _london_day(client)
+    assert _put(client, BASIC).status_code == 200
+    # Tab A and tab B both load the schedule
+    loaded = client.get("/api/schedule").json()
+    rev_a = rev_b = loaded["revision"]
+    # Tab B imports two more rows
+    r = _commit(client, "21:00 Headliner\n22:30 Encore", revision=rev_b)
+    assert r.status_code == 200
+    # Tab A, still on the old revision, saves its edit: refused, B's rows survive
+    edit = _editable(loaded["items"])
+    edit[0]["title"] = "Doors (tab A)"
+    r = _put(client, edit, revision=rev_a)
+    assert r.status_code == 409
+    assert r.json()["detail"] == ("The schedule was changed elsewhere. Reload to see it, then make your "
+                                  "change again.")
+    titles = [i["title"] for i in client.get("/api/schedule").json()["items"]]
+    assert "Headliner" in titles and "Encore" in titles and "Doors (tab A)" not in titles
+    # Tab B importing again on its own stale revision is refused too
+    assert _commit(client, "23:00 Late", revision=rev_b).status_code == 409
+    # after reloading, A's change goes through
+    fresh = client.get("/api/schedule").json()
+    edit = _editable(fresh["items"])
+    edit[0]["title"] = "Doors (tab A)"
+    assert _put(client, edit, revision=fresh["revision"]).status_code == 200
+
+
+def test_revision_survives_a_restart(tmp_path):
+    hub = Hub(tmp_path)
+    rows, _ = sched.build_rows(BASIC, DAY, LON)
+    hub.schedule.replace(None, rows)
+    rev = hub.schedule.revision()
+    hub.schedule.replace(None, rows)  # two writes in the same millisecond still differ
+    assert hub.schedule.revision() > rev
+    rev = hub.schedule.revision()
+    hub.recorder.close()
+    again = Hub(tmp_path)
+    try:
+        assert again.schedule.revision() == rev
+    finally:
+        again.recorder.close()
+
+
+def test_unchanged_save_after_a_rollover_change_moves_nothing(client):
+    """Show day Fri 2 Oct, an item at 03:00 (the morning after: 02:00Z on Sat 3 Oct). Changing the
+    rollover to 02:00 and saving the unchanged list must not move it to Fri 2 Oct."""
+    _admin(client)
+    _london_day(client)
+    _put(client, BASIC + [{"kind": "other", "title": "Load-out", "start": "03:00", "end": "05:30"}])
+    before = client.get("/api/schedule").json()
+    load_out = next(i for i in before["items"] if i["title"] == "Load-out")
+    assert load_out["planned_start"] == utc(2026, 10, 3, 2, 0) and load_out["date"] == "2026-10-03"
+    s = client.hub.config.site.model_dump()
+    for rollover in ("02:00", "06:00", "00:00", "06:00"):
+        assert client.put("/api/admin/site", json={**s, "day_rollover": rollover}).status_code == 200
+        cur = client.get("/api/schedule").json()
+        assert _put(client, _editable(cur["items"]), revision=cur["revision"]).status_code == 200
+        after = client.get("/api/schedule").json()["items"]
+        assert [(i["id"], i["planned_start"], i["planned_end"]) for i in after] == [
+            (i["id"], i["planned_start"], i["planned_end"]) for i in before["items"]], rollover
+
+
+def test_dated_item_end_is_the_first_matching_time_after_the_start(client):
+    _admin(client)
+    _london_day(client)
+    r = _put(client, [{"kind": "act", "title": "Late", "date": DAY, "start": "23:00", "end": "01:00"},
+                      {"kind": "act", "title": "Early", "date": "2026-10-03", "start": "07:00", "end": "08:00"}])
+    assert r.status_code == 200, r.text
+    late, early = sorted(r.json()["items"], key=lambda i: i["planned_start"])
+    assert (late["planned_start"], late["planned_end"]) == (utc(2026, 10, 2, 22, 0), utc(2026, 10, 3, 0, 0))
+    # pinned to the morning after even though 07:00 is after the rollover
+    assert early["planned_start"] == utc(2026, 10, 3, 6, 0) and early["date"] == "2026-10-03"
+
+
+def test_spring_forward_gap_times_are_refused_on_put(client):
+    _admin(client)
+    _london_day(client, "2026-03-28")
+    r = _put(client, [{"kind": "act", "title": "Band", "start": "01:30"}])
+    assert r.status_code == 422
+    assert r.json()["detail"] == [{"loc": ["body", "items", 0, "start"], "type": "value_error",
+                                   "msg": "That time doesn't exist on this date because the clocks go "
+                                          "forward. Use 02:00 or later."}]
+    r = _put(client, [{"kind": "act", "title": "Band", "date": "2026-03-29", "start": "00:30", "end": "01:15"}])
+    assert r.status_code == 422 and r.json()["detail"][0]["loc"][-1] == "end"
+    # the evening before and the time the clocks reach are fine
+    r = _put(client, [{"kind": "act", "title": "Band", "start": "02:00"}, {"kind": "act", "title": "Eve", "start": "20:00"}])
+    assert r.status_code == 200
+    assert [i["planned_start"] for i in r.json()["items"]] == [utc(2026, 3, 28, 20, 0), utc(2026, 3, 29, 1, 0)]
 
 
 def test_import_caps_get_422_without_echo(client):
@@ -420,8 +595,7 @@ def test_import_caps_get_422_without_echo(client):
     assert r.status_code == 422 and r.json()["detail"] == sched.MSG_IMPORT_TOO_MANY
     # an import that would take the schedule over 300 items
     assert _put(client, [{"kind": "act", "title": f"Item {n}", "start": "19:00"} for n in range(299)]).status_code == 200
-    r = client.post("/api/admin/schedule/import", json={"text": "19:00 A\n19:00 B", "dry_run": False,
-                                                         "show_id": client.hub.recorder.show_id})
+    r = _commit(client, "19:00 A\n19:00 B")
     assert r.status_code == 422 and r.json()["detail"] == sched.MSG_TOO_MANY
     assert len(client.hub.schedule.items()) == 299
     for bad in ({"text": "x", "format": "xml"}, {"text": "x", "extra": 1}):
@@ -436,7 +610,8 @@ def test_public_get_is_read_only_and_has_no_private_fields(client):
     r = client.get("/api/schedule")
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"show_id", "day", "now", "stage", "items", "now_next"}
+    assert set(body) == {"show_id", "day", "revision", "now", "stage", "items", "now_next"}
+    assert body["revision"] == client.hub.schedule.revision()
     assert set(body["now_next"]) == {"state", "current_id", "next_id", "curfew_id", "seconds_to_curfew"}
     for it in body["items"]:
         assert set(it) == PUBLIC_ITEM_KEYS
@@ -448,7 +623,7 @@ def test_public_get_is_read_only_and_has_no_private_fields(client):
     for method in ("post", "put", "patch", "delete"):
         assert getattr(client, method)("/api/schedule").status_code == 405
     snap = client.get("/api/snapshot").json()["schedule"]
-    assert set(snap) == {"show_id", "day", "items"} and all(set(i) == PUBLIC_ITEM_KEYS for i in snap["items"])
+    assert snap == {"show_id": body["show_id"], "day": DAY, "revision": body["revision"]}  # no items
 
 
 def test_patch_day_rebases_the_schedule_across_dst(client):
@@ -562,6 +737,27 @@ def test_demo_day_relative_to_now(tmp_path):
         hub.recorder.close()
 
 
+@pytest.mark.parametrize("minutes_to_rollover,fits", [(95, False), (91, False), (96, True)])
+def test_demo_refuses_when_the_curfew_would_cross_the_rollover(tmp_path, minutes_to_rollover, fits):
+    """Rollover 05:00 UTC, show day Thu 1 Oct, now on the Friday morning. With the rollover at
+    now+91 or now+95 min only the curfew (95 min, no end) lands past it, so it would resolve to
+    05:xx on Thursday, a day early: every row is checked, not just the first."""
+    hub = Hub(tmp_path)
+    try:
+        hub.config.site = SiteConfig(timezone="UTC", day_rollover="05:00")
+        hub.recorder.set_show_day("2026-10-01")
+        now = utc(2026, 10, 2, 5, 0) - minutes_to_rollover * 60
+        if fits:
+            items = hub.schedule.load_demo(now=now)["items"]
+            assert items[-1]["kind"] == "curfew" and items[-1]["planned_start"] == now + 95 * 60
+        else:
+            with pytest.raises(sched.DemoDoesNotFit):
+                hub.schedule.load_demo(now=now)
+            assert hub.schedule.items() == []
+    finally:
+        hub.recorder.close()
+
+
 def test_emulate_starts_with_demo_festival_and_a_demo_day(tmp_path):
     first = Hub(tmp_path, emulate=True)
     first.config.site = _site_away_from(time.time())
@@ -572,8 +768,10 @@ def test_emulate_starts_with_demo_festival_and_a_demo_day(tmp_path):
     with TestClient(create_app(hub)) as c:
         snap = c.get("/api/snapshot").json()
         assert snap["show"]["event_name"] == "Demo Festival" and snap["show"]["name"] == "Day 1"
-        assert [i["kind"] for i in snap["schedule"]["items"]] == ["doors", "act", "changeover", "act", "curfew"]
-        nn = c.get("/api/schedule").json()["now_next"]
+        assert set(snap["schedule"]) == {"show_id", "day", "revision"} and snap["schedule"]["revision"] > 0
+        full = c.get("/api/schedule").json()
+        assert [i["kind"] for i in full["items"]] == ["doors", "act", "changeover", "act", "curfew"]
+        nn = full["now_next"]
         assert nn["state"] == "running" and nn["seconds_to_curfew"] > 90 * 60
         # emulate mode: the demo can be reloaded over an existing schedule
         _admin(c)
@@ -587,19 +785,42 @@ def test_ws_schedule_message(tmp_path):
         _admin(c)
         with c.websocket_connect("/ws") as ws:
             snap = ws.receive_json()
-            assert snap["type"] == "snapshot" and snap["schedule"]["items"] == []
-            assert set(snap["schedule"]) == {"show_id", "day", "items"}
-            assert _put(c, BASIC).status_code == 200
+            assert snap["type"] == "snapshot"
+            assert snap["schedule"] == {"show_id": hub.recorder.show_id, "day": hub.show_info()["day"], "revision": 0}
+            r = _put(c, BASIC)
+            assert r.status_code == 200
             for _ in range(50):
                 msg = ws.receive_json()
                 if msg["type"] == "schedule":
                     break
             else:
                 raise AssertionError("no schedule message")
-            assert set(msg) == {"type", "show_id", "day", "items"}
-            assert msg["show_id"] == hub.recorder.show_id
-            assert [i["title"] for i in msg["items"]] == ["Doors", "Support", "Acoustic tent", "Curfew"]
-            assert all(set(i) == PUBLIC_ITEM_KEYS for i in msg["items"])
+            # small: no items or setlists; the dashboard fetches GET /api/schedule?stage=
+            assert msg == {"type": "schedule", "show_id": hub.recorder.show_id, "revision": r.json()["revision"]}
+
+
+def test_live_feed_drops_messages_for_a_client_over_the_byte_cap(tmp_path):
+    from stagewatch.web import server as srv
+    hub = Hub(tmp_path)
+    try:
+        feed = srv.LiveFeed(hub)
+        slow, ok = srv.ClientQueue(), srv.ClientQueue()
+        feed.clients.update({slow, ok})
+        big = {"type": "x", "pad": "p" * (srv.CLIENT_QUEUE_MAX_BYTES // 2)}
+        feed._send_all(big)
+        # ok is a reader that keeps up: it takes its message before the next arrives
+        ok.get_nowait()
+        assert ok.bytes == 0
+        feed._send_all(big)  # the second would take the slow client over the cap: dropped
+        assert slow.qsize() == 1 and ok.qsize() == 1 and 0 < slow.bytes <= srv.CLIENT_QUEUE_MAX_BYTES
+        slow.get_nowait()
+        assert slow.bytes == 0
+        feed._send_all(big)  # caught up: messages flow again
+        assert slow.qsize() == 1
+        slow.put_nowait({"type": "pong"})  # direct puts (the /ws pong) are counted too
+        assert slow.bytes > srv.CLIENT_QUEUE_MAX_BYTES // 2 and slow.qsize() == 2
+    finally:
+        hub.recorder.close()
 
 
 def test_recorder_replace_is_all_or_nothing(tmp_path):
@@ -645,13 +866,32 @@ def test_default_limit_still_applies_elsewhere_and_overrides_merge(tmp_path):
         assert c.post("/api/admin/schedule/import", content=b" " * (256 * 1024), headers=hdr).status_code != 413
 
 
+def _raw_put(client, items):
+    body = json.dumps({"show_id": client.hub.recorder.show_id, "revision": client.hub.schedule.revision(),
+                       "items": items}, ensure_ascii=False).encode()
+    assert len(body) <= DEFAULT_BODY_OVERRIDES["/api/admin/schedule"], len(body)
+    return client.put("/api/admin/schedule", content=body, headers={"content-type": "application/json"})
+
+
 def test_a_full_schedule_fits_under_its_body_limit(client):
-    """300 items with 256 KB of setlists (the caps) must not hit the 512 KiB body limit."""
+    """300 items with 256 KB of setlists (the caps) must not hit the body limit."""
     _admin(client)
     per = sched.SETLIST_TOTAL_MAX_BYTES // 300
     items = [{"kind": "act", "title": "T" * 120, "start": "19:00", "end": "20:00", "stage": "S" * 40,
               "setlist": "é" * (per // 2), "id": None} for _ in range(300)]
-    body = json.dumps({"show_id": client.hub.recorder.show_id, "items": items}, ensure_ascii=False).encode()
-    assert len(body) <= DEFAULT_BODY_OVERRIDES["/api/admin/schedule"]
-    r = client.put("/api/admin/schedule", content=body, headers={"content-type": "application/json"})
+    r = _raw_put(client, items)
     assert r.status_code == 200 and len(r.json()["items"]) == 300
+
+
+def test_worst_case_json_escaping_gets_422_not_413(client):
+    """Setlists of quote marks double in size when JSON-escaped. Just over the 256 KB setlist cap,
+    with the longest titles and stages (also all quotes), the body still fits: the admin is told
+    which cap was hit (422) instead of a bare "too large" (413)."""
+    _admin(client)
+    total = sched.SETLIST_TOTAL_MAX_BYTES + 1
+    sizes = [min(sched.SETLIST_MAX_BYTES, total - k * sched.SETLIST_MAX_BYTES) for k in range(33)]
+    sizes = [s for s in sizes if s > 0]
+    items = [{"kind": "act", "title": '"' * 120, "start": "19:00", "stage": '"' * 40,
+              "setlist": '"' * (sizes[n] if n < len(sizes) else 1)} for n in range(300)]
+    r = _raw_put(client, items)
+    assert r.status_code == 422 and sched.MSG_SETLIST_TOTAL in r.text

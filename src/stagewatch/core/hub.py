@@ -508,11 +508,12 @@ class Hub:
 
     # ------------------------------------------------------------- snapshot
     def schedule_snapshot(self) -> dict:
+        """{show_id, day, revision}: no items (dashboards fetch GET /api/schedule)."""
         try:
-            return self.schedule.public()
+            return self.schedule.summary()
         except Exception:  # noqa: BLE001 - never break the snapshot over the schedule
             log.exception("Schedule snapshot failed")
-            return {"show_id": self.recorder.show_id, "day": "", "items": []}
+            return {"show_id": self.recorder.show_id, "day": "", "revision": 0}
 
     def snapshot(self) -> dict:
         now = time.time()
