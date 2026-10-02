@@ -246,6 +246,21 @@ A sleeping PC is not watching the air.
 
 Nodes and tablets reconnect on their own after a restart.
 
+### Turn off Fast Startup (recommended)
+
+Windows "Fast Startup" makes **Shut down** a kind of hibernate, not a real shutdown. Stagewatch
+then can't tell the PC was switched off, so its history may say *"restarted after an unexpected
+stop"* instead of *"the computer restarted or lost power"*. It can also leave old network settings
+in place after you move venues.
+
+1. Open **Control Panel** > **Hardware and Sound** > **Power Options**.
+2. Click **Choose what the power buttons do** (on the left).
+3. Click **Change settings that are currently unavailable**. Windows may ask for an admin password.
+4. Untick **Turn on fast startup (recommended)**, then click **Save changes**.
+
+**What you'll see:** nothing changes straight away. Start-up may take a few seconds longer.
+(If the tick box isn't there, Fast Startup is already off on this PC.)
+
 ---
 
 ## Try it without any sensors (optional)

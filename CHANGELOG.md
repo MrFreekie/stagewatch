@@ -30,6 +30,8 @@ them into a dated release section and tags the commit.
 - A message if JavaScript is turned off.
 
 ### Changed
+- Windows install guide: a new step suggests turning off Fast Startup on show PCs, so a normal
+  shut down is recorded as "the computer restarted or lost power" rather than an unexpected stop.
 - Saved data: this update converts your settings and show history to a new format, ready for
   events, show days, running orders and the Wall Clock. Stagewatch takes a backup automatically
   before it updates. Going back to the older version (**Admin → Software → Roll back…**) restores
