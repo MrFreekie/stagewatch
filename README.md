@@ -106,8 +106,11 @@ your installation stays exactly as it was. Old config and databases are migrated
 automatically when a newer version starts. **Back up the data folder** to keep your
 setup. It contains secrets, so keep backups private.
 
-**Keep your site config in a private git repo (optional).** This tracks only
-`config.yaml`, never `secret.key`, the database or logs, and it refuses public remotes:
+**Keep your site config in a private git repo (optional).** It tracks an
+allow-list: `config.yaml`, event logos, on-site contacts, and event documents and
+templates (contacts and documents can hold personal data). It never tracks `secret.key`,
+the database, logs, `config.yaml.bak`, `backups/`, `emulate/` or temp files, `push`
+rewrites the repo's `.gitignore` each time, and it refuses public remotes:
 
 ```bash
 gh repo create YOUR_NAME/stagewatch-site --private

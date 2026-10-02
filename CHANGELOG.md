@@ -16,6 +16,11 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Private site-config backup (`scripts/site_config.py`) now tracks an explicit list of files:
+  `config.yaml`, event logos, on-site contacts, and event documents and templates. Backups,
+  `config.yaml.bak`, temp files, `emulate/`, the key, the history database and logs are never
+  included, and `push` refreshes the repo's `.gitignore` each time (and stops tracking anything
+  it now excludes). Contacts and documents may hold personal data, so keep that repo private.
 - Quiet notices: an alarm can now be marked silent. It shows in the alarm bar as a calm grey
   notice, never beeps, never needs an Acknowledge, and does not change the alarm level sent over
   OSC. The alarm log marks these entries with "(silent)". Nothing uses it yet; the Wall Clock
