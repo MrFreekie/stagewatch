@@ -107,6 +107,9 @@ them into a dated release section and tags the commit.
   virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
+- The admin page no longer wipes text you are typing. Its five-second refresh used to rebuild the
+  page while you were in a text area, or after you had typed into a field and clicked away; it now
+  leaves the page alone until you save, and only updates the live values.
 - After an update, a tablet or browser could keep using some old page files and show a broken
   admin page or dashboard until it was refreshed by hand (for example a dashboard showing only
   its top bar). Pages now ask for their files by a fingerprint of each file's contents, and
