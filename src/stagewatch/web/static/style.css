@@ -196,6 +196,7 @@ body.disconnected .sched-block, body.disconnected .sched-strip { opacity: .6; }
 .sched-edit-title input { width: 100%; }
 .sched-edit-fields select { min-width: 120px; }
 .sched-edit-btns button { min-width: 44px; }
+.sched-edit-btns button:first-child { min-width: 104px; }   /* "Setlist" and "Setlist ✓" line up */
 .sched-date { font-size: 12px; font-variant-numeric: tabular-nums; }
 input.invalid, textarea.invalid { border-color: var(--stop); }
 .sched-edit-err { margin: 6px 0 0 32px; }

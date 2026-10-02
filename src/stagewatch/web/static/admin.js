@@ -782,7 +782,8 @@
       oninput: (ev) => { imp.text = ev.target.value; } });
     ta.value = imp.text;
     const fmtSel = h("select", { class: "touch", "aria-label": "Format", onchange: (ev) => { imp.format = ev.target.value; } },
-      [["auto", "Work it out"], ["lines", "One item per line"], ["csv", "CSV (start, end, title, kind, stage)"]].map(([v, l]) => h("option", { value: v }, l)));
+      [["auto", "Work it out"], ["lines", "One item per line"], ["csv", "CSV (start, end, title, kind, stage)"],
+        ["tsv", "Copied from a spreadsheet (tab-separated)"]].map(([v, l]) => h("option", { value: v }, l)));
     fmtSel.value = imp.format;
     const file = h("input", { type: "file", accept: ".csv,.txt,.tsv,text/csv,text/plain", class: "touch", onchange: (ev) => {
       const f = ev.target.files && ev.target.files[0];
