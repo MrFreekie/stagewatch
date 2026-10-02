@@ -147,7 +147,7 @@
     const canDelete = state.isAdmin;
     const items = [...state.markers].sort((a, b) => b.ts - a.ts).map((m) =>
       h("li", { class: m.id === state.selectedMarker ? "sel" : "", onclick: () => selectMarker(m.id) },
-        h("span", { class: "t" }, SW.time(m.ts)),
+        h("span", { class: "t" }, SW.fmtTime(m.ts)),
         h("span", { style: "flex:1" }, m.label),
         canDelete ? h("button", { class: "small danger", title: "Delete marker", onclick: (ev) => { ev.stopPropagation(); deleteMarker(m.id); } }, "✕") : null));
     $("marker-list").replaceChildren(...(items.length ? items : [h("li", { class: "muted" }, "No markers yet. Add one at soundcheck, e.g. \"Aligned\".")]));
@@ -215,7 +215,7 @@
         h("td", { class: "num" }, fmt(kind, v[id].now)), h("td", { class: "num" }, fmtDelta(kind, v[id].delta)));
       const ms = d.delta_travel_ms;
       box.replaceChildren(
-        h("div", { class: "muted" }, `Since "${d.marker.label}" at ${SW.time(d.marker.ts)}`),
+        h("div", { class: "muted" }, `Since "${d.marker.label}" at ${SW.fmtTime(d.marker.ts)}`),
         h("div", { class: "big" }, ms === null ? "—" : `${SW.signed(ms, 3)} ms`),
         h("div", { class: "muted", style: "font-size:12px;margin-bottom:6px" },
           `change in sound travel time over ${d.reference_distance_m} m (positive = sound now arrives later)`),
@@ -256,6 +256,7 @@
     state.alarms = msg.alarms;
     state.sounding = msg.sounding;
     state.site = msg.site;
+    SW.setSiteTime(msg.site.time);
     state.show = msg.show;
     state.isAdmin = msg.is_admin;
     state.dash = msg.dashboard;
@@ -297,6 +298,7 @@
         state.now = msg.now;
         syncClock(msg.now);
         state.site = { ...state.site, ...msg.site };
+        SW.setSiteTime(msg.site && msg.site.time);   // keeps the offset fresh across a DST change
         const shown = new Set(chartEntities());
         for (const e of msg.entities) {
           state.entities[e.id] = e;
@@ -342,7 +344,7 @@
   }).catch(() => {});
   if (soundWanted()) sounder.enable(); // works in kiosk mode (autoplay allowed); otherwise tap the sound button
   renderSound();
-  setInterval(() => { $("clock").textContent = SW.timeSec(serverNow()); }, 1000);
+  setInterval(() => { $("clock").textContent = SW.fmtTime(serverNow(), { seconds: true }); }, 1000);
   setInterval(loadHistory, 60000); // re-bucket history so long views stay tidy
   setInterval(() => { state.now = serverNow(); renderSensors(); }, 5000);
 })();

@@ -6,13 +6,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-import zoneinfo
-from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
 from .. import __version__, acoustics
 from ..boottime import system_boot_time
+from . import sitetime
 from .alarms import AlarmChange, AlarmEngine
 from .bus import EventBus
 from .config import ConfigStore
@@ -40,11 +39,7 @@ def time_doc(site, now: float | None = None) -> dict:
     must show the zone that was in use on the day)."""
     now = time.time() if now is None else now
     try:
-        if site.timezone:
-            offset = datetime.fromtimestamp(now, zoneinfo.ZoneInfo(site.timezone)).utcoffset()
-            utc_offset_s = int(offset.total_seconds()) if offset is not None else 0
-        else:
-            utc_offset_s = int(time.localtime(now).tm_gmtoff)
+        utc_offset_s = sitetime.utc_offset_s(now, site)
     except Exception:  # noqa: BLE001 - never stop the hub over a time zone
         utc_offset_s = 0
     return {"tz": site.timezone, "utc_offset_s": utc_offset_s, "day_rollover": site.day_rollover}
@@ -141,6 +136,21 @@ class Hub:
                 fn()
             except Exception:
                 log.exception("Periodic task %s failed", getattr(fn, "__name__", fn))
+
+    # ------------------------------------------------------------ site time
+    def site_time(self, now: float | None = None) -> dict:
+        """The public ``time`` block: {timezone, utc_offset_s, day_rollover}."""
+        now = time.time() if now is None else now
+        try:
+            return sitetime.time_block(self.config.site, now)
+        except Exception:  # noqa: BLE001 - never break the snapshot over a time zone
+            log.exception("Site time block failed")
+            return {"timezone": "", "utc_offset_s": 0, "day_rollover": "06:00"}
+
+    def site_time_changed(self, old_timezone: str, new_timezone: str) -> None:
+        """Hook: the site's time zone changed. The current show's schedule is re-based here to
+        keep its local HH:MM (plan §2.1). A no-op until the schedule exists (WP7)."""
+        return None
 
     def save_config(self) -> None:
         self.store.config = self.config
@@ -362,7 +372,8 @@ class Hub:
             "now": now,
             "site": {"name": self.config.site.name,
                      "reference_distance_m": self.config.site.reference_distance_m,
-                     "stale_after_s": stale_after, **self.site_meta},
+                     "stale_after_s": stale_after, **self.site_meta,
+                     "time": self.site_time(now)},
             "show": self.recorder.current_show(),
             "devices": [d.to_dict() for d in self.devices.values()],
             "entities": [e.to_dict(now, stale_after) for e in self.entities.values()],

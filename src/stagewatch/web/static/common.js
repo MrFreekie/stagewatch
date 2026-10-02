@@ -84,8 +84,89 @@ SW.signed = function (v, dec) {
   return v > 0 ? `+${s}` : s;
 };
 
-SW.time = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-SW.timeSec = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+// ---- Site time ------------------------------------------------------------
+// Every time on screen is the show site's wall clock, 24-hour, whatever zone the tablet is set
+// to. The server sends a `time` block ({timezone, utc_offset_s, day_rollover}) in the snapshot
+// and /api/info; pages pass it to SW.setSiteTime(). Inputs are UTC epoch seconds.
+// - timezone set: Intl.DateTimeFormat with that IANA zone (DST-correct for any instant).
+// - timezone "" (not set): the server computer's zone, as ts + utc_offset_s read in UTC. Exact
+//   except across a DST change while no zone is set.
+// - nothing from the server yet: this browser's own zone.
+// Hours come from formatToParts and are assembled here: `hourCycle` is too new for iOS 12, and
+// `hour12: false` makes some browsers print midnight as "24".
+SW.site = { timezone: "", utc_offset_s: null, day_rollover: "06:00" };
+SW._tf = {};   // cached formatters, one per option set; cleared when the zone changes
+SW.setSiteTime = function (t) {
+  if (!t) return;
+  if (t.timezone !== SW.site.timezone) SW._tf = {};
+  SW.site = { timezone: t.timezone || "", utc_offset_s: typeof t.utc_offset_s === "number" ? t.utc_offset_s : null,
+    day_rollover: t.day_rollover || "06:00" };
+};
+// The browser's locale with Latin digits forced ("ar-EG" -> "ar-EG-u-nu-latn"). The Unicode
+// "-u-nu-" extension works in every Intl version (iOS 10+); the newer `numberingSystem`
+// option is passed too and is simply ignored by browsers that don't know it.
+SW._latnLocale = function () {
+  try {
+    const l = new Intl.DateTimeFormat().resolvedOptions().locale;
+    return l && l.indexOf("-u-") < 0 ? l + "-u-nu-latn" : l;
+  } catch (_) { return undefined; }
+};
+SW._formatter = function (key, opts) {
+  if (!(key in SW._tf)) {
+    SW._tf[key] = null;   // stays null for an unknown zone in this browser, or no Intl
+    const locales = key.indexOf("parts") === 0 ? ["en-US"] : [SW._latnLocale(), undefined];
+    for (const loc of locales) {
+      try { SW._tf[key] = new Intl.DateTimeFormat(loc, opts); break; } catch (_) { /* try the next */ }
+    }
+  }
+  return SW._tf[key];
+};
+// {y, mo, d, h, mi, s} of the site's wall clock at ts, plus how they were obtained.
+SW._siteParts = function (ts) {
+  const tz = SW.site.timezone;
+  if (tz) {
+    const f = SW._formatter("parts|" + tz, { timeZone: tz, hour12: false, year: "numeric", month: "numeric",
+      day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
+    if (f && f.formatToParts) {
+      try {
+        const p = {};
+        for (const part of f.formatToParts(new Date(ts * 1000))) p[part.type] = Number(part.value);
+        if (p.year >= 0 && p.hour >= 0) return { y: p.year, mo: p.month, d: p.day, h: p.hour % 24, mi: p.minute, s: p.second };
+      } catch (_) { /* fall through to the offset */ }
+    }
+  }
+  let off = SW.site.utc_offset_s;
+  if (off === null) off = -new Date(ts * 1000).getTimezoneOffset() * 60;   // not known yet: this browser
+  const d = new Date((Math.floor(ts) + off) * 1000);
+  return { y: d.getUTCFullYear(), mo: d.getUTCMonth() + 1, d: d.getUTCDate(), h: d.getUTCHours(), mi: d.getUTCMinutes(), s: d.getUTCSeconds() };
+};
+// Site UTC offset (s) at ts: used to align chart ticks to site-local hours.
+SW.siteOffset = function (ts) {
+  const p = SW._siteParts(ts);
+  return Math.round((Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) / 1000 - Math.floor(ts)) / 60) * 60;
+};
+SW.fmtOffset = function (sec) {
+  const m = Math.round(Math.abs(sec) / 60);
+  const pad = (n) => (n < 10 ? "0" : "") + n;
+  return `UTC${sec < 0 ? "-" : "+"}${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+};
+// "14:05", {seconds: true} "14:05:09", {date: true} "Fri 2 Oct 2026, 14:05" (date order per locale).
+SW.fmtTime = function (ts, opts) {
+  if (ts === null || ts === undefined || !Number.isFinite(Number(ts))) return "—";
+  ts = Number(ts);
+  const o = opts || {};
+  const p = SW._siteParts(ts);
+  const pad = (n) => (n < 10 ? "0" : "") + n;
+  let s = `${pad(p.h)}:${pad(p.mi)}`;
+  if (o.seconds) s += `:${pad(p.s)}`;
+  if (!o.date) return s;
+  // Date part: formatted in UTC from the site's calendar date, so no zone maths happens twice.
+  const f = SW._formatter("date", { timeZone: "UTC", numberingSystem: "latn", weekday: "short", day: "numeric",
+    month: "short", year: "numeric" });
+  let ds = `${p.y}-${pad(p.mo)}-${pad(p.d)}`;
+  if (f) { try { ds = f.format(new Date(Date.UTC(p.y, p.mo - 1, p.d, 12))); } catch (_) { /* keep ISO */ } }
+  return `${ds}, ${s}`;
+};
 
 SW.age = function (updated, now) {
   if (!updated) return "never";

@@ -169,7 +169,7 @@ class LiveFeed:
             entities = [e.to_dict(now, stale_after) for e in self._dirty.values()]
             self._dirty.clear()
             self._send_all({"type": "states", "now": now, "entities": entities,
-                            "site": {**self.hub.site_meta}})
+                            "site": {**self.hub.site_meta, "time": self.hub.site_time(now)}})
 
 
 # -------------------------------------------------------------------- app
@@ -257,6 +257,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "build": {**build_info(), "channel": updater.effective_channel(),
                       "managed": updater.managed, "supervised": updater.supervised},
             "site": hub.config.site.name,
+            "time": hub.site_time(),
             "emulate": hub.emulate,
             "admin_setup_required": not hub.config.admin.pin_hash and not hub.store.recovery_required,
             "recovery_required": hub.store.recovery_required,
@@ -373,7 +374,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     @app.put("/api/admin/site", dependencies=admin_deps)
     async def put_site(body: SiteConfig):
+        old_tz = hub.config.site.timezone
         hub.config.site = body
+        if body.timezone != old_tz:
+            hub.site_time_changed(old_tz, body.timezone)  # re-bases the schedule (WP7)
         hub.save_config()
         return body
 

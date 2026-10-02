@@ -149,6 +149,9 @@ body.layout-wall .only-interactive { display: none; }
   padding: 8px 10px; font-size: 13px; max-height: 240px; overflow-y: auto; margin: 6px 0; overscroll-behavior: contain; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
 .warn-text { color: var(--warn); }
+.touch { min-height: 44px; }
+p.hint { font-size: 13px; line-height: 1.4; margin: 8px 0; max-width: 60ch; }
+p.warn-text button { display: block; margin-top: 8px; max-width: 100%; text-align: left; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .warn-text { color: #8a5a0f; } }
 #software .sw-sub, dialog.sw-dialog h3.sw-sub { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; margin: 16px 0 6px; }
 #software .sw-sub:first-of-type { margin-top: 0; }

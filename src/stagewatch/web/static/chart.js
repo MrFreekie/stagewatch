@@ -48,6 +48,33 @@ class TimeChart {
     return steps.find((s) => span / s <= 7) || 86400;
   }
 
+  // Axis tick instants (UTC epoch s) in [t0, t1] that fall on site-local multiples of tstep
+  // (whole hours/minutes on the site clock: matters for +05:30-style zones and 2 h+ steps).
+  // offsetAt(ts) is the site's UTC offset in seconds. The offset is re-read at every tick, so
+  // the ticks stay on the site grid across a DST change inside the window:
+  // - local time L is tried with the current offset, then with the offset found there;
+  // - if L doesn't exist (spring-forward gap), the next boundary after the gap is used;
+  // - a repeated hour (fall-back) is labelled once.
+  static siteTicks(t0, t1, tstep, offsetAt) {
+    const toInstant = (L, o) => {
+      const n1 = L - o, o1 = offsetAt(n1);
+      if (o1 === o) return n1;
+      const n2 = L - o1;
+      if (offsetAt(n2) === o1) return n2;
+      return Math.ceil((n1 + o1) / tstep) * tstep - o1;   // L is in the gap
+    };
+    const ticks = [];
+    let o = offsetAt(t0);
+    let t = toInstant(Math.ceil((t0 + o) / tstep) * tstep, o);
+    let guard = 0;   // never hang a tablet on a bad offset
+    while (t <= t1 && ticks.length < 100 && guard++ < 1000) {
+      if (t >= t0 && (!ticks.length || t > ticks[ticks.length - 1])) ticks.push(t);
+      o = offsetAt(t);
+      t = toInstant((Math.floor((t + o) / tstep) + 1) * tstep, o);
+    }
+    return ticks;
+  }
+
   draw() {
     const dpr = window.devicePixelRatio || 1;
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
@@ -99,10 +126,10 @@ class TimeChart {
     // x labels
     ctx.textAlign = "center"; ctx.textBaseline = "top";
     const tstep = TimeChart.timeStep(t1 - t0);
-    for (let t = Math.ceil(t0 / tstep) * tstep; t <= t1; t += tstep) {
+    for (const t of TimeChart.siteTicks(t0, t1, tstep, SW.siteOffset)) {
       const xx = Math.round(x(t)) + 0.5;
       ctx.beginPath(); ctx.moveTo(xx, pad.t); ctx.lineTo(xx, pad.t + ph); ctx.stroke();
-      ctx.fillText(new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), xx, pad.t + ph + 6);
+      ctx.fillText(SW.fmtTime(t), xx, pad.t + ph + 6);
     }
 
     // series (break the line across gaps > 5 minutes: sensor offline)
@@ -129,7 +156,7 @@ class TimeChart {
       ctx.strokeStyle = fg; ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.moveTo(this._hover.x, pad.t); ctx.lineTo(this._hover.x, pad.t + ph); ctx.stroke();
       ctx.setLineDash([]);
-      const lines = [new Date(t * 1000).toLocaleTimeString()];
+      const lines = [SW.fmtTime(t, { seconds: true })];
       for (const s of this.series) {
         let best = null;
         for (const p of s.points) if (best === null || Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;

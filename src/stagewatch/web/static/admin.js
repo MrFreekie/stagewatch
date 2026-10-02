@@ -67,6 +67,35 @@
     const stale = h("input", { class: "num", type: "number", step: "1", value: s.stale_after_s });
     const tau = h("input", { class: "num", type: "number", step: "1", value: s.smoothing_tau_s });
     const outl = h("input", { type: "checkbox", checked: s.outlier_reject });
+    // Time zone: a searchable list where the browser can supply one, otherwise plain text.
+    // The server checks the name either way.
+    const zones = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+    const tzList = zones.length ? h("datalist", { id: "tz-list" }, zones.map((z) => h("option", { value: z }))) : null;
+    const tz = h("input", { class: "touch", value: s.timezone, list: tzList ? "tz-list" : null, placeholder: "e.g. Europe/London",
+      maxlength: 64, autocomplete: "off", autocapitalize: "off", spellcheck: false });
+    const rollover = h("input", { class: "num touch", value: s.day_rollover, placeholder: "06:00", maxlength: 5,
+      inputmode: "numeric", pattern: "(0[0-9]|1[01]):[0-5][0-9]" });
+    // The server's 422 text is for developers; say it in crew words. Nothing typed is echoed back.
+    const siteError = (err) => {
+      const m = String(err.message || "");
+      if (err.status === 422 && m.indexOf("timezone:") === 0) return "That time zone isn't recognised. Pick one from the list, or type a name like Europe/London. Nothing has been changed.";
+      if (err.status === 422 && m.indexOf("day_rollover:") === 0) return "Type the new-day start as HH:MM between 00:00 and 11:59, for example 03:00. Nothing has been changed.";
+      return m;
+    };
+    const save = (overrides) => api("PUT", "/api/admin/site", Object.assign({
+      name: val(name), altitude_m: Number(alt.value), reference_distance_m: Number(dist.value),
+      stale_after_s: Number(stale.value), smoothing_tau_s: Number(tau.value), outlier_reject: outl.checked,
+      timezone: val(tz), day_rollover: val(rollover),
+    }, overrides || {})).then(() => { toast("Site saved"); return refresh(); }, (err) => toast(siteError(err), true));
+    let tzNote = null;
+    if (!s.timezone) {
+      const t = (snap.site && snap.site.time) || {};
+      let browserZone = "";
+      try { browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) { /* old browser */ }
+      tzNote = h("p", { class: "warn-text", role: "status" },
+        `Time zone not set. Dashboards use the clock of the computer running Stagewatch (${SW.fmtOffset(t.utc_offset_s || 0)} now). `,
+        browserZone ? h("button", { type: "button", class: "touch", onclick: () => save({ timezone: browserZone }) }, `Use ${browserZone} from this browser`) : null);
+    }
     return card("Site",
       h("div", { class: "row" },
         field("Site / show name", name),
@@ -76,10 +105,12 @@
         field("Smoothing τ (s)", tau),
         field("Reject outliers (≥3 sensors)", outl)),
       h("div", { class: "row", style: "margin-top:10px" },
-        h("button", { class: "primary", onclick: () => run(() => api("PUT", "/api/admin/site", {
-          name: val(name), altitude_m: Number(alt.value), reference_distance_m: Number(dist.value),
-          stale_after_s: Number(stale.value), smoothing_tau_s: Number(tau.value), outlier_reject: outl.checked,
-        }), "Site saved").then(refresh) }, "Save site")));
+        field("Time zone", tz), tzList,
+        field("New show day starts at (HH:MM, 24-hour)", rollover)),
+      h("p", { class: "muted hint" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before. Use 03:00 or later for the new day, to stay clear of the hour when the clocks change."),
+      tzNote,
+      h("div", { class: "row", style: "margin-top:10px" },
+        h("button", { class: "primary", onclick: () => save() }, "Save site")));
   }
 
   function adoptForm(prefill = {}) {
@@ -269,7 +300,7 @@
   function showsCard() {
     const name = h("input", { placeholder: "e.g. Festival day 2" });
     return card("Shows",
-      h("p", {}, "Current: ", h("strong", {}, snap.show.name), h("span", { class: "muted" }, ` (since ${new Date(snap.show.started * 1000).toLocaleString()})`)),
+      h("p", {}, "Current: ", h("strong", {}, snap.show.name), h("span", { class: "muted" }, ` (since ${SW.fmtTime(snap.show.started, { date: true })})`)),
       h("form", { class: "row", onsubmit: (ev) => {
         ev.preventDefault();
         if (!val(name)) return;
@@ -277,7 +308,7 @@
         run(() => api("POST", "/api/admin/shows", { name: val(name) }), "New show started").then(refresh);
       } }, name, h("button", { class: "primary", type: "submit" }, "Start new show")),
       h("details", {}, h("summary", { class: "muted" }, `Previous shows (${admin.shows.length})`),
-        h("ul", {}, admin.shows.map((s) => h("li", {}, `${s.name}: ${new Date(s.started * 1000).toLocaleString()}`)))));
+        h("ul", {}, admin.shows.map((s) => h("li", {}, `${s.name}: ${SW.fmtTime(s.started, { date: true })}`)))));
   }
 
   function securityCard() {
@@ -305,7 +336,7 @@
     return card("Alarm log (this show)",
       admin.alarm_log.length ? h("div", { class: "table-scroll", style: "max-height:260px;overflow-y:auto" }, h("table", {},
         h("tbody", {}, admin.alarm_log.map((a) => h("tr", {},
-          h("td", { class: "muted" }, SW.timeSec(a.ts)), h("td", {}, a.event), h("td", {}, ["", "advisory", "alert", "stop"][a.level] || ""), h("td", {}, a.message))))))
+          h("td", { class: "muted" }, SW.fmtTime(a.ts, { seconds: true })), h("td", {}, a.event), h("td", {}, ["", "advisory", "alert", "stop"][a.level] || ""), h("td", {}, a.message))))))
         : h("p", { class: "muted" }, "No alarms yet."));
   }
 
@@ -314,7 +345,7 @@
   // changelogs and commit subjects are untrusted text.
   const swBadge = () => document.getElementById("update-badge");
   const bytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : `${Math.max(1, Math.round((n || 0) / 1024))} KiB`);
-  const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? (iso || "") : d.toLocaleString(); };
+  const when = (iso) => { const t = Date.parse(iso); return Number.isNaN(t) ? (iso || "") : SW.fmtTime(t / 1000, { date: true }); };
 
   // Changelog excerpt + commit subjects as one plain-text block (blank-line runs collapsed).
   const changesText = (last) => [last.changelog, last.commits && last.commits.length ? "Commits:\n" + last.commits.map((c) => `- ${c}`).join("\n") : ""]
@@ -443,7 +474,7 @@
     }
     const sub = (text) => h("h3", { class: "sw-sub" }, text);
     const chanName = (c) => (c === "nightly" ? "Nightly" : "Stable");
-    const checkedAt = (last) => when(new Date(last.ts * 1000).toISOString());
+    const checkedAt = (last) => SW.fmtTime(last.ts, { date: true });
     const chan = h("select", { id: "sw-channel" }, [["stable", "Stable"], ["nightly", "Nightly"]].map(([v, l]) => h("option", { value: v }, l)));
     chan.value = sw.channel;
     chan.onchange = () => swAction(() => api("PUT", "/api/admin/software/channel", { channel: chan.value }), "Channel changed");
@@ -560,6 +591,7 @@
 
   async function refresh() {
     [admin, snap] = await Promise.all([api("GET", "/api/admin/state"), api("GET", "/api/snapshot"), loadSoftware()]);
+    SW.setSiteTime(snap.site && snap.site.time);
     render();
   }
 
@@ -571,6 +603,7 @@
       const s = await api("GET", "/api/snapshot");
       if (s.entities.map((e) => e.id).join(",") !== entityIdsRendered) { await refresh(); return; }
       snap = s;
+      SW.setSiteTime(s.site && s.site.time);
       for (const e of s.entities) {
         const td = document.querySelector(`[data-live="${CSS.escape(e.id)}"]`);
         if (td) td.textContent = fmt(e.kind, e.value);
