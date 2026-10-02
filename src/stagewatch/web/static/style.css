@@ -127,6 +127,8 @@ body.layout-phone .tile .value { font-size: 28px; }
 body.layout-phone .grid-2 { grid-template-columns: 1fr; }
 body.layout-phone .chart-wrap { height: 240px; }
 body.layout-wall { font-size: 18px; }
+body.layout-wall header.top .title { font-size: 32px; }
+body.layout-wall header.top .sub { font-size: 26px; }   /* dashboard, event and day: readable at 5 m */
 body.layout-wall .tile .value { font-size: 64px; }
 body.layout-wall .tile .label { font-size: 18px; }
 body.layout-wall .tile .foot { font-size: 16px; }
@@ -167,7 +169,9 @@ body.layout-wall .only-interactive { display: none; }
 p.event-now { margin: 4px 0; overflow-wrap: break-word; word-wrap: break-word; }
 .event-group { margin-top: 10px; overflow-wrap: break-word; word-wrap: break-word; }
 .event-group ul { margin: 4px 0 0; }
-.date-echo { color: var(--text); font-variant-numeric: tabular-nums; }
+.date-echo { display: block; color: var(--text); font-variant-numeric: tabular-nums; min-height: 1.2em; }
+.card details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.event-group li { margin: 4px 0; }
 p.hint { font-size: 13px; line-height: 1.4; margin: 8px 0; max-width: 60ch; }
 p.warn-text button { display: block; margin-top: 8px; max-width: 100%; text-align: left; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .warn-text { color: #8a5a0f; } }
