@@ -59,6 +59,9 @@ eq(SW.fmtTime(utc(2026, 10, 2, 13, 5), { date: true }), "Fri 2 Oct 2026, 14:05",
 eq(SW.fmtTime(utc(2026, 10, 4, 23, 30), { date: true }), "Mon 5 Oct 2026, 00:30", "site date, not UTC date");
 eq(SW.fmtDate(2026, 10, 5), "Mon 5 Oct 2026", "Monday");
 eq(SW.fmtDate(2028, 2, 29), "Tue 29 Feb 2028", "leap day");
+eq(SW.fmtDay("2026-10-04"), "Sun 4 Oct 2026", "show day");
+eq(SW.fmtDay("2026-13-01"), "2026-13-01", "not a date");
+eq(SW.fmtDay(null), "—", "no day");
 
 // ---- numbers: comma thousands, full-stop decimals
 eq(SW.num(1013.25, 1), "1,013.3", "thousands");

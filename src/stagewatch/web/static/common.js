@@ -181,16 +181,12 @@ SW.fmtTime = function (ts, opts) {
 };
 
 // A show day ("YYYY-MM-DD", already in site time from the server) as "Fri 2 Oct 2026": always
-// day-month-year in English, whatever the browser's language. Uses SW.fmtDate where the page
-// has it. Anything that isn't a date comes back unchanged.
+// day-month-year in English, whatever the browser's language. Anything that isn't a date comes
+// back unchanged.
 SW.fmtDay = function (day) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day || "");
-  if (!m) return day || "—";
-  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
-  if (typeof SW.fmtDate === "function") return SW.fmtDate(y, mo, d);
-  const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(Date.UTC(y, mo - 1, d, 12)).getUTCDay()];
-  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][mo - 1];
-  return mon ? `${wd} ${d} ${mon} ${y}` : day;
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) return day || "—";
+  return SW.fmtDate(Number(m[1]), Number(m[2]), Number(m[3]));
 };
 
 SW.age = function (updated, now) {
