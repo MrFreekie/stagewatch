@@ -10,6 +10,7 @@ Roles:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import platform
 import sys
@@ -36,7 +37,7 @@ from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
 from ..version import build_info
 from .auth import COOKIE, SESSION_S, SessionSigner, hash_pin, verify_pin
-from .limits import DEFAULT_BODY_LIMIT, BodySizeLimitMiddleware
+from .limits import DEFAULT_BODY_LIMIT, WS_MAX_MESSAGE, BodySizeLimitMiddleware
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +74,10 @@ class AdoptBody(BaseModel):
     name: str = ""
     area: str = ""
     noise_psk: str = ""
+
+
+class IgnoreBody(BaseModel):
+    key: str = Field(min_length=1, max_length=80)
 
 
 class DevicePatch(BaseModel):
@@ -360,6 +365,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "config": cfg,
             "integrations": [i.info() for i in hub.integrations.values()],
             "discovered": esp.discovered_list() if esp else [],
+            "ignored": esp.ignored_list() if esp else [],
             "shows": hub.recorder.shows(),
             "alarm_log": hub.recorder.alarm_log(),
         }
@@ -383,6 +389,22 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         return {"id": cfg.id}
+
+    @app.post("/api/admin/esphome/ignore", dependencies=admin_deps)
+    async def ignore_discovered(body: IgnoreBody):
+        try:
+            found = esphome().ignore(body.key)
+        except ValueError:
+            raise HTTPException(409, "The ignore list is full. Unignore some nodes first") from None
+        if not found:
+            raise HTTPException(404, "That node is not on the network any more")
+        return {"ok": True}
+
+    @app.post("/api/admin/esphome/unignore", dependencies=admin_deps)
+    async def unignore_discovered(body: IgnoreBody):
+        if not esphome().unignore(body.key):
+            raise HTTPException(404, "That node is not in the ignore list")
+        return {"ok": True}
 
     @app.patch("/api/admin/devices/{device_id}", dependencies=admin_deps)
     async def patch_device(device_id: str, body: DevicePatch):
@@ -600,7 +622,14 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         send_task = asyncio.create_task(sender())
         try:
             while True:
-                msg = await websocket.receive_json()
+                frame = await websocket.receive()
+                if frame["type"] == "websocket.disconnect":
+                    break
+                raw = frame.get("text") if frame.get("text") is not None else frame.get("bytes") or b""
+                if len(raw) > WS_MAX_MESSAGE:  # uvicorn enforces this too; this covers other servers
+                    await websocket.close(code=1009)
+                    break
+                msg = json.loads(raw)
                 kind = msg.get("type") if isinstance(msg, dict) else None
                 if kind == "add_marker" and (admin or dashboard_allows(dashboard, "marker")):
                     hub.add_marker(str(msg.get("label", "Marker")),

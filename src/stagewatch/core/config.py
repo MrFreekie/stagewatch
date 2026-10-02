@@ -326,12 +326,18 @@ class UpdaterConfig(_Model):
     channel: Literal["stable", "nightly"] | None = None
 
 
+MAX_IGNORED = 200
+
+
 class Config(_Model):
     schema_version: int = CONFIG_SCHEMA_VERSION
     site: SiteConfig = Field(default_factory=SiteConfig)
     admin: AdminConfig = Field(default_factory=AdminConfig)
     mdns_name: str = "stagewatch"
     esphome_devices: list[EsphomeDeviceConfig] = Field(default_factory=list)
+    # Discovered ESPHome nodes the admin chose to hide (other people's gear on a shared network).
+    # Keys come from esphome.discovery_key(): the MAC when the node advertises one, else its name.
+    esphome_ignored: list[str] = Field(default_factory=list)  # capped at MAX_IGNORED when adding
     entities: dict[str, EntitySettings] = Field(default_factory=dict)  # legacy/pending calibrations
     calibrations: dict[str, Calibration] = Field(default_factory=dict)
     thresholds: list[Threshold] = Field(default_factory=list)

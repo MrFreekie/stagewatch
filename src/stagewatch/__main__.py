@@ -21,6 +21,7 @@ from .integrations.esphome import EsphomeIntegration
 from .integrations.osc_out import OscOutIntegration
 from .netinfo import local_ipv4  # noqa: F401  (also used by tests)
 from .version import build_info, version_string
+from .web.limits import WS_MAX_MESSAGE
 from .web.server import create_app
 
 log = logging.getLogger("stagewatch")
@@ -105,7 +106,8 @@ async def run(args: argparse.Namespace) -> int:
             service = None
 
     config = uvicorn.Config(app, host=args.host, port=args.port, log_config=None,
-                            proxy_headers=False, ws_ping_interval=20)
+                            proxy_headers=False, ws_ping_interval=20,
+                            ws_max_size=WS_MAX_MESSAGE)
     server = uvicorn.Server(config)
     hub.request_shutdown = lambda: setattr(server, "should_exit", True)
     log.info("Stagewatch %s starting on http://%s:%d (data: %s)%s", version_string(),

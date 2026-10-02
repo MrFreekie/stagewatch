@@ -392,6 +392,19 @@ async def test_rollback_schedules_pending_from_history(rig):
     assert "Rolling back software 0.2.0 → 0.1.0" in [m.label for m in rig.hub.recorder.markers()]
 
 
+async def test_roll_back_offered_on_newest_matching_entry_only(rig):
+    # update -> rollback -> update again leaves two ok updates ending at the same HEAD
+    uc.checkout_detach(rig.env.ctx, rig.env.shas["c2"])
+    old = _ok_history(rig)
+    uc.append_history(rig.env.marker().state_dir, {"action": "rollback", "result": "ok",
+                                                   "from_sha": rig.env.shas["c2"], "to_sha": rig.env.shas["c1"]})
+    new = _ok_history(rig)
+    st = await rig.updater.status()
+    flags = {e["id"]: e["can_rollback"] for e in st["history"]}
+    assert flags[new["id"]] is True and flags[old["id"]] is False
+    assert sum(flags.values()) == 1
+
+
 async def test_rollback_refusals(rig):
     with pytest.raises(uc.UpdaterError) as ei:
         await rig.updater.rollback(7)

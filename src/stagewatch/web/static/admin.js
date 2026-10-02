@@ -9,6 +9,7 @@
   let snap = null;    // /api/snapshot
   let sw = null;      // /api/admin/software
   let entityIdsRendered = "";
+  let showIgnored = false;  // "Show ignored" toggle on the ESPHome nodes card
 
   function toast(msg, isError) {
     const el = h("div", { class: "toast" + (isError ? " error" : "") }, msg);
@@ -104,14 +105,29 @@
         h("td", {}, d.friendly_name || d.name, h("div", { class: "muted", style: "font-size:12px" }, d.host)),
         h("td", {}, `${d.address}:${d.port}`),
         h("td", {}, d.board, d.encrypted ? h("div", { class: "muted", style: "font-size:12px" }, "encrypted") : null),
-        h("td", {}, h("button", { class: "small", onclick: (ev) => {
-          const row = ev.target.closest("tr");
-          const formRow = h("tr", {}, h("td", { colspan: 4 }, adoptForm(d)));
-          row.after(formRow);
-        } }, "Adopt…"))))))
+        h("td", {}, h("div", { class: "row" },
+          h("button", { class: "small", onclick: (ev) => {
+            const row = ev.target.closest("tr");
+            const formRow = h("tr", {}, h("td", { colspan: 4 }, adoptForm(d)));
+            row.after(formRow);
+          } }, "Adopt…"),
+          h("button", { class: "small", title: "Hide this node from the list. It is not connected to either way.",
+            onclick: () => run(() => api("POST", "/api/admin/esphome/ignore", { key: d.key }), "Node ignored").then(refresh) }, "Ignore")))))))
       : h("p", { class: "muted" }, snap && admin.integrations.some((i) => i.emulate)
         ? "Emulate mode: discovery is off; emulated nodes are shown below."
         : "No unadopted ESPHome nodes found on the network yet (mDNS). You can add one by host/IP below.");
+
+    const ignored = admin.ignored || [];
+    const ignoredBlock = ignored.length ? h("div", { style: "margin-top:8px" },
+      h("button", { class: "small", onclick: () => { showIgnored = !showIgnored; render(); } },
+        showIgnored ? `Hide ignored (${ignored.length})` : `Show ignored (${ignored.length})`),
+      showIgnored ? h("div", { class: "table-scroll" }, h("table", {},
+        h("tbody", {}, ignored.map((g) => h("tr", {},
+          h("td", {}, g.friendly_name || g.name || "Not on the network now",
+            h("div", { class: "muted", style: "font-size:12px" }, g.host || g.key)),
+          h("td", {}, h("button", { class: "small",
+            onclick: () => run(() => api("POST", "/api/admin/esphome/unignore", { key: g.key }), "Node unignored").then(refresh) }, "Unignore")))))))
+        : null) : null;
 
     const devices = snap.devices.filter((d) => d.id !== "site");
     const devTable = h("table", {},
@@ -131,6 +147,7 @@
 
     return card("ESPHome nodes",
       h("div", { class: "table-scroll" }, discTable),
+      ignoredBlock,
       h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADD BY HOST / IP"),
       adoptForm(),
       h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADOPTED"),

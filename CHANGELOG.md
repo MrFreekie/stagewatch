@@ -31,6 +31,10 @@ them into a dated release section and tags the commit.
   page keeps what each dashboard shows.
 
 ### Added
+- ESPHome nodes: on a shared show network, other people's devices no longer clutter your
+  **Discovered node** list. Click **Ignore** next to a node to hide it. **Show ignored** lists the
+  hidden ones, and **Unignore** brings one back. You can ignore up to 200 nodes. Stagewatch only
+  connects to nodes you adopt, so ignoring changes nothing else.
 - Show history: Stagewatch now records when it starts and stops. After a crash, a power cut or
   the PC switching off without shutting Stagewatch down, it adds a marker such as "Stagewatch
   restarted after an unexpected stop (down about 4 min)", so the gap is easy to see on the chart.
@@ -38,6 +42,10 @@ them into a dated release section and tags the commit.
   last minute of readings.
 
 ### Fixed
+- Software: after an update, a roll back and another update, **Roll back...** showed against two
+  entries in the update history. It now shows only on the newest one.
+- Security: Stagewatch now refuses messages larger than 64 KB from a dashboard's live connection.
+  Normal dashboards are not affected.
 - Readings are no longer lost if the history file is busy for a moment while Stagewatch saves
   them: Stagewatch keeps them and tries again.
 - Raspberry Pi / Linux: in-app updates were refused with "unsafe_permissions" on Debian 13, whose

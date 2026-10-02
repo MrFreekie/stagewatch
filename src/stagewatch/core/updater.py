@@ -462,7 +462,12 @@ class Updater:
         if not self.marker:
             return []
         out = []
+        offered = False  # "Roll back" goes on the newest matching entry only
         for e in reversed(uc.load_history(self.marker.state_dir)):
+            eligible = bool(head and e.get("action") == "update" and e.get("result") == "ok"
+                            and e.get("to_sha") == head and isinstance(e.get("id"), int))
+            can_rollback = eligible and not offered
+            offered = offered or eligible
             out.append({
                 "id": e.get("id"), "ts": e.get("ts"), "action": e.get("action"), "result": e.get("result"),
                 "reason": e.get("reason") or "", "channel": e.get("channel"),
@@ -471,8 +476,7 @@ class Updater:
                 "from_commit": (e.get("from_sha") or "")[:7], "to_commit": (e.get("to_sha") or "")[:7],
                 "schema_changed": bool(e.get("schema_changed")),
                 "restored_backup": bool(e.get("restored_backup")), "data_returned": bool(e.get("data_returned")),
-                "can_rollback": bool(head and e.get("action") == "update" and e.get("result") == "ok"
-                                     and e.get("to_sha") == head and isinstance(e.get("id"), int)),
+                "can_rollback": can_rollback,
             })
         return out
 

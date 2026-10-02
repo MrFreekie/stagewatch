@@ -27,7 +27,7 @@ from zeroconf import ServiceStateChange
 from zeroconf.asyncio import AsyncServiceBrowser, AsyncServiceInfo, AsyncZeroconf
 
 from ... import __version__
-from ...core.config import EsphomeDeviceConfig
+from ...core.config import MAX_IGNORED, EsphomeDeviceConfig
 from ...core.model import Device, Entity, Kind, Status, slugify
 from ...core.plugin import Integration, Manifest
 from .emulate import EmulatedNode
@@ -136,6 +136,13 @@ class _NodeConnection:
             self.hub.update_state(entity_id, None if state.missing_state else float(state.state), now)
 
 
+def discovery_key(d: dict) -> str:
+    """Stable key for hiding a discovered node: its MAC (lower-case hex, no separators) when the
+    mDNS TXT record has one, otherwise its mDNS name.  Prefixed so the two can't clash."""
+    mac = "".join(c for c in str(d.get("mac") or "").lower() if c in "0123456789abcdef")
+    return f"mac:{mac}" if len(mac) == 12 else f"name:{str(d.get('name') or '').lower()}"
+
+
 class EsphomeIntegration(Integration):
     manifest = MANIFEST
 
@@ -207,10 +214,43 @@ class EsphomeIntegration(Integration):
 
     # ---------------------------------------------------------------- admin
     def discovered_list(self) -> list[dict]:
+        """Discovered nodes the admin hasn't ignored, each with its ``key`` and ``adopted`` flag."""
         adopted_hosts = {c.host.lower() for c in self.hub.config.esphome_devices}
-        return [{**d, "adopted": d["host"].lower() in adopted_hosts
+        ignored = set(self.hub.config.esphome_ignored)
+        return [{**d, "key": discovery_key(d), "adopted": d["host"].lower() in adopted_hosts
                  or d["address"] in adopted_hosts}
-                for d in sorted(self.discovered.values(), key=lambda d: d["name"])]
+                for d in sorted(self.discovered.values(), key=lambda d: d["name"])
+                if discovery_key(d) not in ignored]
+
+    def ignored_list(self) -> list[dict]:
+        """Ignored entries for the admin page, labelled when the node is on the network now."""
+        seen = {discovery_key(d): d for d in self.discovered.values()}
+        out = []
+        for key in self.hub.config.esphome_ignored:
+            d = seen.get(key)
+            out.append({"key": key, "name": d["name"] if d else "", "host": d["host"] if d else "",
+                        "friendly_name": d["friendly_name"] if d else "", "seen": d is not None})
+        return out
+
+    def ignore(self, key: str) -> bool:
+        """Hide a node that is currently discovered.  False if there is no such node."""
+        if not any(discovery_key(d) == key for d in self.discovered.values()):
+            return False
+        ignored = self.hub.config.esphome_ignored
+        if key not in ignored:
+            if len(ignored) >= MAX_IGNORED:
+                raise ValueError("full")
+            ignored.append(key)
+            self.hub.save_config()
+        return True
+
+    def unignore(self, key: str) -> bool:
+        ignored = self.hub.config.esphome_ignored
+        if key not in ignored:
+            return False
+        ignored.remove(key)
+        self.hub.save_config()
+        return True
 
     async def adopt(self, cfg: EsphomeDeviceConfig) -> EsphomeDeviceConfig:
         if any(c.id == cfg.id for c in self.hub.config.esphome_devices):

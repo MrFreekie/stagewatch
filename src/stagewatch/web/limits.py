@@ -3,7 +3,8 @@
 Pure ASGI middleware: refuses a request with ``413`` when its declared ``Content-Length``
 exceeds the limit, and caps the streamed body for chunked / lying clients, so no endpoint can
 be made to buffer an unbounded body.  Applies to every HTTP request that has a body (any
-method); WebSocket frames are not covered.  ``overrides`` maps an exact path to a different
+method).  WebSocket messages are capped separately by ``WS_MAX_MESSAGE``
+(uvicorn ``ws_max_size`` plus a check in the /ws handler).  ``overrides`` maps an exact path to a different
 limit in bytes (the per-route hook), or pass ``limit_for(scope) -> int | None`` for anything
 fancier.
 """
@@ -16,6 +17,7 @@ from typing import Callable, Mapping
 from fastapi import HTTPException
 
 DEFAULT_BODY_LIMIT = 64 * 1024
+WS_MAX_MESSAGE = 64 * 1024  # largest message a browser may send on /ws (uvicorn's own default is 16 MiB)
 DRAIN_MAX_BYTES = 1024 * 1024  # read (and discard) at most this much of a refused body ...
 DRAIN_TIMEOUT_S = 2.0          # ... for at most this long, so the client sees the 413, not a reset
 
