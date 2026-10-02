@@ -42,8 +42,8 @@ class TimeChart {
   _markerMetrics() {
     const wall = !!(document.body && document.body.classList && document.body.classList.contains("layout-wall"));
     const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-    if (wall) return { font: 15, h: 24, pitch: 28, touch: true };
-    if (touch) return { font: 12, h: 20, pitch: 24, touch: true };
+    if (wall) return { font: 20, h: 30, pitch: 34, touch: true };
+    if (touch) return { font: 13, h: 24, pitch: 30, touch: true };
     return { font: 12, h: 18, pitch: 20, touch: false };
   }
 
@@ -108,7 +108,7 @@ class TimeChart {
     if (!vis.length) return 0;
     ctx.font = `${m.font}px system-ui, sans-serif`;
     const lead = m.font + 6;   // glyph and its spacing
-    const lanes = TimeChart.layoutMarkers(vis, (l) => ctx.measureText(l).width + lead + 6, w, 3);
+    const lanes = TimeChart.layoutMarkers(vis, (l) => ctx.measureText(l).width + lead + 6, w, 3, { compactW: m.touch ? 22 : 14 });
     let used = 0;
     for (const l of lanes) used = Math.max(used, l.row + 1);
     this._ml.lanes = lanes; this._ml.rowsUsed = used;
@@ -302,7 +302,7 @@ class TimeChart {
         if (it.selected) { ctx.strokeStyle = text; ctx.lineWidth = 1.5; ctx.strokeRect(ln.lx + 0.5, y + 0.5, ln.w - 1, m.h - 1); }
       }
       // tap target: the whole row height, and at least 24 px wide on touch screens
-      const hw = ln.compact && m.touch ? Math.max(ln.w, 24) : ln.w;
+      const hw = ln.compact && m.touch ? Math.max(ln.w, 32) : ln.w;
       this._markerHits.push({ x: ln.lx - (hw - ln.w) / 2, w: hw, y: y - 2, h: m.pitch, marker: it.marker });
     }
     ctx.font = "12px system-ui, sans-serif";

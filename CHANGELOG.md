@@ -120,6 +120,9 @@ them into a dated release section and tags the commit.
   key on every node to stop other devices pretending to be yours.
 
 ### Changed
+- Wall screen: the CURFEW block is wider, so "1 h 24 min ago" no longer wraps, and chart marker
+  labels are larger. On touch screens marker tabs are taller and easier to tap. In the running
+  order, finished items are easier to read.
 - Markers on the chart are easier to read. Labels now stack in up to three rows instead of
   piling on top of each other, and when there is still no room a marker shrinks to a small
   tab you can tap to select it. Markers are coloured by where they came from, and each also
