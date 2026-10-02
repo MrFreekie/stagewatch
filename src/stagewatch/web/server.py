@@ -181,6 +181,8 @@ class DevicePatch(BaseModel):
     kept, so the same board at the new address keeps its calibration. The MAC itself can't be
     set here (the hub records it from the board)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     area: str | None = None
     host: str | None = Field(None, max_length=253)
@@ -1204,7 +1206,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 if len(raw) > WS_MAX_MESSAGE:  # uvicorn enforces this too; this covers other servers
                     await websocket.close(code=1009)
                     break
-                msg = json.loads(raw)
+                try:
+                    msg = json.loads(raw)
+                except ValueError:  # one bad frame is ignored; the client keeps its connection
+                    continue
                 kind = msg.get("type") if isinstance(msg, dict) else None
                 if kind == "add_marker" and (admin or dashboard_allows(dashboard, "marker")):
                     hub.add_marker(str(msg.get("label", "Marker")),

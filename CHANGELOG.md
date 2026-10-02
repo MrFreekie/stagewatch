@@ -16,8 +16,24 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
-- Day schedule (behind the scenes for now; the dashboard card and the admin editor come next):
-  Stagewatch can now store the running order for each show day, with doors, acts, changeovers
+- Dashboards: a new Schedule card shows what's on NOW (and how long it has left), what's NEXT
+  (with a countdown) and the CURFEW (with a countdown). On a tablet it also shows the running
+  order, with finished items greyed out. Tap an act to see its setlist. On a phone it's a short
+  strip; tap it to see the rest. On a wall screen it's a large NOW / NEXT / CURFEW strip you can
+  read from across the room. The curfew turns amber at 15 minutes ("15 MIN WARNING"), orange at
+  5 minutes ("5 MIN WARNING") and red only once it has passed ("PAST CURFEW"). It never beeps.
+  The card stays hidden until the show day has a schedule. If a dashboard has a Stage set, it
+  shows only that stage's items, plus items with no stage.
+- Admin page: a new Schedule card for the current show day. Add, remove and reorder items, and
+  set each one's start and end time, kind (doors, act, changeover, curfew or other), title, stage
+  and setlist. The setlist box shows a preview of how it will look on dashboards. To bring in a
+  running order, paste it (or open a CSV or text file) and click **Preview**. Any line Stagewatch
+  can't read is listed by its line number, and you then add the rest in one click. **Load demo
+  day** fills in an example running order around the current time. If someone else changes the
+  schedule while you're editing, Stagewatch tells you and keeps what you typed. Click **Reload**
+  to see their version: your own list is then kept as text in the Paste box, so you can copy
+  from it.
+- Day schedule (used by the Schedule cards above): Stagewatch can now store the running order for each show day, with doors, acts, changeovers
   and curfew, an optional stage per item, and a plain-text or Markdown setlist per act. Times
   are 24-hour site time. A time earlier than the day rollover (06:00 by default) counts as the
   next morning, so "23:00–00:30" works. You can paste a running order as lines such as
@@ -46,7 +62,7 @@ them into a dated release section and tags the commit.
   use ▲ and ▼ to order them, then click **Save dashboards**. Your existing dashboards keep
   exactly the cards they show today. A dashboard with no cards shows only alarms.
 - Dashboards: each dashboard can follow a **Stage** (for example "Main stage"), set in the same
-  panel. Cards that show one stage, such as the schedule, will use it.
+  panel. Cards that show one stage, such as the schedule, use it.
 - Dashboards: the **Open on a tablet** address and QR code is now a card. Wall screens keep it,
   and you can add it to any other dashboard too.
 - Dashboards: when the temperature is outside 0–30 °C, or the air pressure outside 75–102 kPa,
@@ -104,6 +120,15 @@ them into a dated release section and tags the commit.
   key on every node to stop other devices pretending to be yours.
 
 ### Changed
+- Wall screen: the CURFEW block is wider, so "1 h 24 min ago" no longer wraps, and chart marker
+  labels are larger. On touch screens marker tabs are taller and easier to tap. In the running
+  order, finished items are easier to read.
+- Markers on the chart are easier to read. Labels now stack in up to three rows instead of
+  piling on top of each other, and when there is still no room a marker shrinks to a small
+  tab you can tap to select it. Markers are coloured by where they came from, and each also
+  has its own shape: amber ▼ for crew marks, grey ■ for Stagewatch's own notes, orange ▲ for
+  alarms (blue ◆ and purple ● are kept for the schedule and contacts). The marker list shows the
+  same shape and colour. The marker you select always keeps its full label.
 - Dates and numbers now always use UK style, whatever language the tablet or browser is set
   to. Dates run day, month, year ("Fri 2 Oct 2026, 14:05"), and large numbers have a comma
   for thousands ("1,013.2 hPa").

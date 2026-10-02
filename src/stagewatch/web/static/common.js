@@ -47,6 +47,7 @@ SW.api = async function (method, url, body) {
     }
     const err = new Error(msg);
     err.status = res.status;
+    err.detail = data ? data.detail : undefined;   // the raw list, for forms that mark the field
     if (data && data.retry_after) err.retryAfter = data.retry_after;
     throw err;
   }
@@ -179,6 +180,23 @@ SW.renderMarkdown = function (text, opts) {
   }
   if (truncated) { const p = el("p", "muted"); txt(p, "(Text shortened: it was too long to show in full.)"); frag.appendChild(p); }
   return frag;
+};
+
+// Timeline marker look by origin, shared by the chart and the marker list. The origin is the
+// text before any ":" ("dashboard:foh" is a crew mark); unknown origins count as crew marks.
+// Colours are the --marker-<key> tokens in style.css (--marker-<key>-ink is the text on them).
+SW.MARKER_STYLES = {
+  crew: { key: "crew", glyph: "▼", name: "Crew mark", fallback: "#f5b83d", ink: "#111" },
+  system: { key: "system", glyph: "■", name: "Stagewatch note", fallback: "#9aa3b5", ink: "#111" },
+  alarm: { key: "alarm", glyph: "▲", name: "Alarm", fallback: "#ff8a3d", ink: "#111" },
+  schedule: { key: "schedule", glyph: "◆", name: "Schedule", fallback: "#4da3ff", ink: "#111" },
+  device: { key: "device", glyph: "●", name: "Contact or device", fallback: "#c38bff", ink: "#111" },
+};
+SW.MARKER_SOURCES = { hub: "system", updater: "system", alarm: "alarm", schedule: "schedule", contact: "device", device: "device" };
+SW.markerStyle = function (src) {
+  const base = String(src === null || src === undefined ? "" : src).split(":")[0].trim().toLowerCase();
+  const key = Object.prototype.hasOwnProperty.call(SW.MARKER_SOURCES, base) ? SW.MARKER_SOURCES[base] : "crew";
+  return SW.MARKER_STYLES[key];
 };
 
 // Display formatting. Values arrive in canonical units (degC, %, Pa, m/s).
@@ -341,6 +359,108 @@ SW.age = function (updated, now) {
   if (s < 90) return `${s}s ago`;
   if (s < 5400) return `${Math.round(s / 60)}m ago`;
   return `${(s / 3600).toFixed(1)}h ago`;
+};
+
+// ---- Schedule: NOW / NEXT / CURFEW --------------------------------------------
+// Pure functions, no DOM: the dashboard counts down itself, every second, from the items' planned
+// epoch times and the server-corrected clock. These mirror core/schedule.py (stage_matches,
+// now_next); tests/js/schedule_test.js checks both give the same answers.
+// An item with no stage shows on every dashboard; a dashboard with no stage shows every item.
+SW.stageMatches = function (itemStage, dashStage) {
+  const a = String(itemStage || "").trim().toLowerCase();
+  const b = String(dashStage || "").trim().toLowerCase();
+  return !a || !b || a === b;
+};
+// This stage's items in running order: by planned start, then the order the server sent them in
+// (the server's own order breaks ties the same way).
+SW.scheduleOrder = function (items, stage) {
+  const list = [];
+  (items || []).forEach((it, i) => { if (SW.stageMatches(it.stage, stage)) list.push({ it: it, i: i }); });
+  list.sort((a, b) => (a.it.planned_start - b.it.planned_start) || (a.i - b.i));
+  return list.map((x) => x.it);
+};
+const _hasEnd = (it) => it.planned_end !== null && it.planned_end !== undefined;
+// {state, current, next, curfew, currentEnd, secondsToCurfew} at `now` (epoch s).
+// - current: the latest-starting non-curfew item with start <= now < its end. With no end it runs
+//   until the next later start, else until the curfew. Never past the curfew; curfews are never
+//   current. currentEnd is that end (null if open-ended).
+// - next: the first non-curfew item starting after now.
+// - curfew: the next curfew; once all have passed, the last one (secondsToCurfew goes negative).
+// - state: empty | before | running | between | over.
+SW.scheduleNowNext = function (items, now, stage) {
+  const mine = SW.scheduleOrder(items, stage);
+  const curfews = mine.filter((i) => i.kind === "curfew");
+  const acts = mine.filter((i) => i.kind !== "curfew");
+  let upcoming = null;
+  for (let k = 0; k < curfews.length; k++) if (curfews[k].planned_start > now) { upcoming = curfews[k]; break; }
+  const curfew = upcoming || (curfews.length ? curfews[curfews.length - 1] : null);
+  const pastCurfew = !upcoming && curfew !== null;
+  let current = null, currentEnd = null;
+  if (!pastCurfew) {
+    for (let idx = 0; idx < acts.length; idx++) {
+      const it = acts[idx];
+      const start = it.planned_start;
+      if (start > now) break;
+      let end = _hasEnd(it) ? it.planned_end : null;
+      if (end === null) {
+        for (let k = idx + 1; k < acts.length; k++) if (acts[k].planned_start > start) { end = acts[k].planned_start; break; }
+        if (end === null) end = upcoming ? upcoming.planned_start : Infinity;
+      }
+      if (now < end) { current = it; currentEnd = end; }   // keep looking: a later overlapping start wins
+    }
+  }
+  let next = null;
+  for (let k = 0; k < acts.length; k++) if (acts[k].planned_start > now) { next = acts[k]; break; }
+  let state;
+  if (!mine.length) state = "empty";
+  else if (current) state = "running";
+  else if (now < mine[0].planned_start) state = "before";
+  else if (!next && (pastCurfew || !upcoming)) state = "over";
+  else state = "between";
+  return { state: state, current: current, next: next, curfew: curfew,
+    currentEnd: currentEnd === Infinity ? null : currentEnd,
+    secondsToCurfew: curfew ? curfew.planned_start - now : null };
+};
+// When each item of an ordered list (SW.scheduleOrder) is over, for dimming past items: its end,
+// else the next later non-curfew start, else the first curfew after it; null = open-ended.
+// A curfew is "over" once it starts.
+SW.scheduleEnds = function (ordered) {
+  return ordered.map((it, idx) => {
+    if (it.kind === "curfew") return it.planned_start;
+    if (_hasEnd(it)) return it.planned_end;
+    for (let k = idx + 1; k < ordered.length; k++) {
+      const o = ordered[k];
+      if (o.kind !== "curfew" && o.planned_start > it.planned_start) return o.planned_start;
+    }
+    for (let k = idx + 1; k < ordered.length; k++) {
+      if (ordered[k].kind === "curfew" && ordered[k].planned_start > it.planned_start) return ordered[k].planned_start;
+    }
+    return null;
+  });
+};
+// Curfew colour level from the seconds left: "" (no curfew), "ok" above 15 min, "warn" at 15 min
+// or less, "alert" at 5 min or less, "past" once it has passed. Always shown with text too.
+SW.CURFEW_WARN_S = 15 * 60;
+SW.CURFEW_ALERT_S = 5 * 60;
+SW.curfewLevel = function (seconds) {
+  if (seconds === null || seconds === undefined) return "";
+  if (seconds <= 0) return "past";
+  if (seconds <= SW.CURFEW_ALERT_S) return "alert";
+  if (seconds <= SW.CURFEW_WARN_S) return "warn";
+  return "ok";
+};
+// A length of time for countdowns: "45 s", "4 min 05 s", "45 min", "1 h 05 min". Never "4:05",
+// which reads like a time of day. roundUp for time left (a countdown reaches "0 s" at the
+// moment, not a second early); otherwise rounded down (time since).
+SW.fmtDuration = function (seconds, roundUp) {
+  const pad = (n) => (n < 10 ? "0" : "") + n;
+  const x = Math.max(0, Number(seconds) || 0);
+  const s = roundUp ? Math.ceil(x - 1e-6) : Math.floor(x);
+  if (s < 60) return `${s} s`;
+  if (s < 600) return `${Math.floor(s / 60)} min ${pad(s % 60)} s`;
+  const m = roundUp ? Math.ceil(s / 60) : Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h ${pad(m % 60)} min`;
 };
 
 // Live feed with automatic reconnect (server restarts, Wi-Fi blips).

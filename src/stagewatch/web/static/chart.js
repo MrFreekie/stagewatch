@@ -28,8 +28,92 @@ class TimeChart {
   _click(ev) {
     if (!this.onMarkerClick) return;
     const p = this._pos(ev);
-    const hit = this._markerHits.find((m) => p.y < 22 && p.x >= m.x && p.x <= m.x + m.w);
+    // Per row (x and y). Compact tabs can overlap, so the one whose centre is nearest wins.
+    let hit = null, best = Infinity;
+    for (const m of this._markerHits) {
+      if (p.y < m.y || p.y > m.y + m.h || p.x < m.x || p.x > m.x + m.w) continue;
+      const d = Math.abs(p.x - (m.x + m.w / 2));
+      if (d < best) { best = d; hit = m; }
+    }
     if (hit) this.onMarkerClick(hit.marker);
+  }
+
+  // Marker tab sizes. Larger on the wall layout (bigger text) and on touch screens (24 px taps).
+  _markerMetrics() {
+    const wall = !!(document.body && document.body.classList && document.body.classList.contains("layout-wall"));
+    const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+    if (wall) return { font: 20, h: 30, pitch: 34, touch: true };
+    if (touch) return { font: 13, h: 24, pitch: 30, touch: true };
+    return { font: 12, h: 18, pitch: 20, touch: false };
+  }
+
+  // Lane assignment for marker tabs (pure, so it can be tested without a canvas).
+  // items: [{x, label, selected}] with x the line position in px, measure(label) the full tab
+  // width, width the right-hand limit, rows the number of label rows (3).
+  // Returns one {row, lx, w, compact, flipped} per item. Each label takes the first row where it
+  // clears the earlier ones by `gap` px. The selected marker is placed first, in row 0, and the
+  // rest are laid out around it. If no row has room the marker gets a compact tab (width
+  // compactW) in the extra row numbered `rows`. A label that would pass the right edge flips to
+  // the left of its line. Cost is O(n * rows) after sorting by x.
+  static layoutMarkers(items, measure, width, rows, opts) {
+    const gap = opts && opts.gap !== undefined ? opts.gap : 4;
+    const cw = opts && opts.compactW ? opts.compactW : 14;
+    const out = new Array(items.length);
+    const lastEnd = [];
+    for (let r = 0; r < rows; r++) lastEnd.push(-Infinity);
+    const place = (it) => {
+      const w = measure(it.label);
+      const flipped = it.x + w > width;
+      return { w, flipped, lx: Math.max(0, flipped ? it.x - w : it.x) };
+    };
+    let selIdx = -1, sel = null;
+    for (let i = 0; i < items.length; i++) if (items[i].selected) { selIdx = i; break; }
+    if (selIdx >= 0 && rows > 0) {
+      const p = place(items[selIdx]);
+      sel = p;
+      out[selIdx] = { row: 0, lx: p.lx, w: p.w, compact: false, flipped: p.flipped };
+    }
+    const order = [];
+    for (let i = 0; i < items.length; i++) if (i !== selIdx || rows <= 0) order.push(i);
+    order.sort((a, b) => items[a].x - items[b].x || a - b);
+    for (const i of order) {
+      const it = items[i], p = place(it);
+      let row = -1;
+      for (let k = 0; k < rows; k++) {
+        if (p.lx < lastEnd[k] + gap) continue;
+        if (k === 0 && sel && p.lx < sel.lx + sel.w + gap && p.lx + p.w + gap > sel.lx) continue;
+        row = k; break;
+      }
+      if (row >= 0) {
+        lastEnd[row] = Math.max(lastEnd[row], p.lx + p.w);
+        out[i] = { row, lx: p.lx, w: p.w, compact: false, flipped: p.flipped };
+      } else {
+        out[i] = { row: rows, lx: Math.min(Math.max(0, it.x - cw / 2), Math.max(0, width - cw)), w: cw, compact: true, flipped: false };
+      }
+    }
+    return out;
+  }
+
+  // Works out where the marker tabs go for this width and time range; returns the number of
+  // rows in use (0 when no marker is in view) so the plot can make room for exactly those.
+  _layoutVisible(ctx, w, t0, t1, padL, pw) {
+    const m = this._markerMetrics();
+    const vis = [];
+    for (const mk of this.markers) {
+      if (mk.ts < t0 || mk.ts > t1) continue;
+      const label = mk.label.length > 22 ? mk.label.slice(0, 21) + "…" : mk.label;
+      vis.push({ x: Math.round(padL + ((mk.ts - t0) / (t1 - t0)) * pw) + 0.5, label, selected: !!mk.selected, marker: mk });
+    }
+    this._ml = { m, items: vis, lanes: [], rowsUsed: 0 };
+    if (!vis.length) return 0;
+    ctx.font = `${m.font}px system-ui, sans-serif`;
+    const lead = m.font + 6;   // glyph and its spacing
+    const lanes = TimeChart.layoutMarkers(vis, (l) => ctx.measureText(l).width + lead + 6, w, 3, { compactW: m.touch ? 22 : 14 });
+    let used = 0;
+    for (const l of lanes) used = Math.max(used, l.row + 1);
+    this._ml.lanes = lanes; this._ml.rowsUsed = used;
+    ctx.font = "12px system-ui, sans-serif";
+    return used;
   }
 
   _css(name, fallback) {
@@ -90,11 +174,13 @@ class TimeChart {
     const fg = this._css("--muted", "#8a93a6");
     const grid = this._css("--grid", "#2a3040");
     const text = this._css("--text", "#e8ecf4");
-    const markerColor = this._css("--marker", "#f5b83d");
     ctx.font = "12px system-ui, sans-serif";
 
     const [t0, t1] = this.range;
     const pad = { l: 56, r: 12, t: 26, b: 24 };
+    // Marker rows sit above the plot; the plot only gives up room for the rows in use.
+    const rowsUsed = this._layoutVisible(ctx, w, t0, t1, pad.l, w - pad.l - pad.r);
+    if (rowsUsed) pad.t = 6 + rowsUsed * this._ml.m.pitch;
     const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
 
     let lo = Infinity, hi = -Infinity;
@@ -105,7 +191,7 @@ class TimeChart {
     if (!Number.isFinite(lo)) {
       ctx.fillStyle = fg;
       ctx.fillText("No data in this time range yet", pad.l + 10, pad.t + 20);
-      this._drawMarkers(ctx, t0, t1, pad, pw, ph, markerColor, text);
+      this._drawMarkers(ctx, pad, ph, text);
       return;
     }
     if (hi - lo < 1e-9) { lo -= 0.5; hi += 0.5; }
@@ -148,7 +234,7 @@ class TimeChart {
     }
     ctx.restore();
 
-    this._drawMarkers(ctx, t0, t1, pad, pw, ph, markerColor, text);
+    this._drawMarkers(ctx, pad, ph, text);
 
     // hover crosshair with values
     if (this._hover && this._hover.x > pad.l && this._hover.x < pad.l + pw) {
@@ -171,23 +257,55 @@ class TimeChart {
     }
   }
 
-  _drawMarkers(ctx, t0, t1, pad, pw, ph, color, text) {
+  // Draws the lines and tabs worked out by _layoutVisible. Colour and glyph come from SW.markerStyle.
+  _drawMarkers(ctx, pad, ph, text) {
     this._markerHits = [];
-    ctx.textAlign = "left"; ctx.textBaseline = "top";
-    for (const m of this.markers) {
-      if (m.ts < t0 || m.ts > t1) continue;
-      const xx = Math.round(pad.l + ((m.ts - t0) / (t1 - t0)) * pw) + 0.5;
-      ctx.strokeStyle = color; ctx.lineWidth = m.selected ? 2.5 : 1.2;
-      ctx.setLineDash(m.selected ? [] : [5, 4]);
-      ctx.beginPath(); ctx.moveTo(xx, pad.t - 4); ctx.lineTo(xx, pad.t + ph); ctx.stroke();
-      ctx.setLineDash([]);
-      const label = m.label.length > 22 ? m.label.slice(0, 21) + "…" : m.label;
-      const tw = ctx.measureText(label).width + 8;
-      const lx = xx + tw > pad.l + pw + pad.r ? xx - tw : xx;  // flip near the right edge
-      ctx.fillStyle = color; ctx.fillRect(lx, 2, tw, 18);
-      ctx.fillStyle = "#111"; ctx.fillText(label, lx + 4, 5);
-      this._markerHits.push({ x: lx, w: tw, marker: m });
+    const ml = this._ml;
+    if (!ml || !ml.items.length) { ctx.fillStyle = text; return; }
+    const m = ml.m, panel = this._css("--panel", "#161b26");
+    const looks = {};
+    const look = (src) => {
+      const st = SW.markerStyle(src);
+      if (!looks[st.key]) {
+        looks[st.key] = { st, color: this._css(`--marker-${st.key}`, st.fallback), ink: this._css(`--marker-${st.key}-ink`, st.ink) };
+      }
+      return looks[st.key];
+    };
+    const tabY = (row) => 2 + row * m.pitch;
+    // Selected marker last, so its solid line and label sit on top.
+    const order = [];
+    let selAt = -1;
+    for (let i = 0; i < ml.items.length; i++) { if (ml.items[i].selected && selAt < 0) selAt = i; else order.push(i); }
+    if (selAt >= 0) order.push(selAt);
+    // lines first, then tabs, so a line never crosses a label
+    for (const i of order) {
+      const it = ml.items[i], ln = ml.lanes[i], lk = look(it.marker.source);
+      ctx.strokeStyle = lk.color; ctx.lineWidth = it.selected ? 2.5 : 1.2;
+      ctx.setLineDash(it.selected ? [] : [5, 4]);
+      ctx.beginPath(); ctx.moveTo(it.x, tabY(ln.row) + m.h); ctx.lineTo(it.x, pad.t + ph); ctx.stroke();
     }
+    ctx.setLineDash([]);
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    for (const i of order) {
+      const it = ml.items[i], ln = ml.lanes[i], lk = look(it.marker.source), y = tabY(ln.row);
+      if (ln.compact) {
+        ctx.fillStyle = panel; ctx.fillRect(ln.lx, y, ln.w, m.h);
+        ctx.fillStyle = lk.color; ctx.font = `${m.font + 3}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText(lk.st.glyph, ln.lx + ln.w / 2, y + m.h / 2 + 1);
+        ctx.textAlign = "left";
+      } else {
+        ctx.fillStyle = lk.color; ctx.fillRect(ln.lx, y, ln.w, m.h);
+        ctx.fillStyle = lk.ink; ctx.font = `${m.font}px system-ui, sans-serif`;
+        ctx.fillText(lk.st.glyph, ln.lx + 4, y + m.h / 2 + 1);
+        ctx.fillText(it.label, ln.lx + m.font + 8, y + m.h / 2 + 1);
+        if (it.selected) { ctx.strokeStyle = text; ctx.lineWidth = 1.5; ctx.strokeRect(ln.lx + 0.5, y + 0.5, ln.w - 1, m.h - 1); }
+      }
+      // tap target: the whole row height, and at least 24 px wide on touch screens
+      const hw = ln.compact && m.touch ? Math.max(ln.w, 32) : ln.w;
+      this._markerHits.push({ x: ln.lx - (hw - ln.w) / 2, w: hw, y: y - 2, h: m.pitch, marker: it.marker });
+    }
+    ctx.font = "12px system-ui, sans-serif";
     ctx.fillStyle = text;
   }
 }
