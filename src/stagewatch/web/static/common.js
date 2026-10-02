@@ -59,8 +59,9 @@ SW.api = async function (method, url, body) {
 // and "1." lists, **bold**, *italic*, `code`, and [label](url) links. Everything else, including
 // any HTML, is shown as literal text. Built only with createElement/createTextNode (never
 // innerHTML), so input can never become markup. Only http:, https: and mailto: links become <a>;
-// any other scheme (javascript:, data:, vbscript:, relative) stays as plain text. Pass
-// {links: false} to show links as plain text too. Input, line length, nesting and element count are
+// any other scheme (javascript:, data:, vbscript:, relative) stays as plain text.
+// Links are off unless {links: true} is passed (policy documents opt in; setlists never do), so by
+// default [label](url) shows as plain text. Input, line length, nesting and element count are
 // capped so a huge or crafted document cannot hang a low-end tablet.
 SW.MD_LIMITS = { chars: 100000, lines: 2000, lineChars: 2000, depth: 3, nodes: 6000, label: 300, url: 2000 };
 
@@ -76,7 +77,7 @@ SW.mdSafeUrl = function (raw) {
 
 SW.renderMarkdown = function (text, opts) {
   const L = SW.MD_LIMITS;
-  const links = !(opts && opts.links === false);
+  const links = !!(opts && opts.links === true);
   const frag = document.createDocumentFragment();
   let src = typeof text === "string" ? text : (text === null || text === undefined ? "" : String(text));
   let truncated = false;

@@ -56,7 +56,7 @@ function all(n, out) {
   for (const c of n.childNodes) { if (c.nodeType === 1) { out.push(c); all(c, out); } }
   return out;
 }
-const render = (s, o) => SW.renderMarkdown(s, o);
+const render = (s, o) => SW.renderMarkdown(s, o || { links: true });
 const tags = (f) => all(f).map((e) => e.tagName.toLowerCase());
 const plain = (f) => {
   let out = "";
@@ -108,6 +108,8 @@ eq(tags(render("[[x]](https://example.org)")), ["p", "a"], "nested brackets in a
 eq(tags(render("[a [b](https://example.org)](https://example.org)")), ["p", "a"], "no links inside links");
 eq(tags(render("[x](https://example.org)", { links: false })), ["p"], "links: false shows text");
 eq(plain(render("[x](https://example.org)", { links: false })), "[x](https://example.org)", "links: false keeps source");
+eq(tags(SW.renderMarkdown("[x](https://example.org)")), ["p"], "links are off by default");
+eq(tags(SW.renderMarkdown("[x](https://example.org)", {})), ["p"], "links off unless links: true");
 
 // ---- safety: nothing here may ever become an element other than the allowed ones
 const ALLOWED = ["p", "br", "h3", "h4", "h5", "ul", "ol", "li", "strong", "em", "code", "a"];
