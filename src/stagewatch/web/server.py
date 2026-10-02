@@ -34,6 +34,7 @@ from .. import __version__
 from ..core.config import (
     Dashboard, EntitySettings, EsphomeDeviceConfig, OscOutConfig, SiteConfig, Threshold,
 )
+from ..core.calibration import set_calibration
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Marker, slugify
 from ..core.recorder import valid_day
@@ -123,9 +124,28 @@ class IgnoreBody(BaseModel):
     key: str = Field(min_length=1, max_length=80)
 
 
+_HOST_RE = re.compile(r"[A-Za-z0-9._:%\[\]-]{1,253}")  # host name, IPv4 or IPv6 (fullmatch)
+
+
 class DevicePatch(BaseModel):
+    """PATCH /api/admin/devices/{id}. A new host or port reconnects the node; its recorded MAC is
+    kept, so the same board at the new address keeps its calibration. The MAC itself can't be
+    set here (the hub records it from the board)."""
+
     name: str | None = None
     area: str | None = None
+    host: str | None = Field(None, max_length=253)
+    port: int | None = Field(None, ge=1, le=65535)
+
+    @field_validator("host")
+    @classmethod
+    def _host(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not _HOST_RE.fullmatch(v):
+            raise ValueError("The address must be a host name or IP address, with no spaces")
+        return v
 
 
 def _has_hidden_chars(text: str) -> bool:
@@ -527,6 +547,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         esp = hub.integrations.get("esphome")
         return {
             "config": cfg,
+            "hardware": hardware_state(esp),
             "integrations": [i.info() for i in hub.integrations.values()],
             "discovered": esp.discovered_list() if esp else [],
             "ignored": esp.ignored_list() if esp else [],
@@ -543,6 +564,21 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "cards": {"known": list(cards_mod.KNOWN_CARDS),
                       "defaults": {layout: cards_mod.default_cards(layout) for layout in cards_mod.LAYOUT_DEFAULTS}},
             "stages": known_stages(),
+        }
+
+    def hardware_state(esp) -> dict:
+        """Admin only (never in the public snapshot): which hardware each sensor and device is,
+        and devices held in FAULT because a different or duplicate board answered."""
+        conflicts = esp.hardware_conflicts() if esp is not None and hasattr(esp, "hardware_conflicts") else {}
+        sensors = [e for e in hub.entities.values() if not e.derived]
+        return {
+            "entities": {e.id: e.hw_key for e in sensors if e.hw_key},
+            # The calibration that applies to each sensor now (hardware record, else legacy entry,
+            # else defaults): the admin card shows these, so a moved offset is never shown as 0.
+            "settings": {e.id: {"offset": (c := hub.calibration_for(e)).offset,
+                                "include_in_average": c.include_in_average} for e in sensors},
+            "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id)}
+                        for d in hub.devices.values() if d.id != "site"},
         }
 
     def known_stages() -> list[str]:
@@ -601,7 +637,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def patch_device(device_id: str, body: DevicePatch):
         if device_id not in hub.devices or device_id == "site":
             raise HTTPException(404, "No such device")
-        await esphome().update(device_id, body.name, body.area)
+        esp = esphome()
+        if (body.host is not None or body.port is not None) and esp.config_of(device_id) is None:
+            raise HTTPException(409, "This device has no network address to change")
+        await esp.update(device_id, body.name, body.area, body.host, body.port)
         return {"ok": True}
 
     @app.delete("/api/admin/devices/{device_id}", dependencies=admin_deps)
@@ -615,9 +654,11 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def put_entity(entity_id: str, body: EntitySettings):
         if entity_id not in hub.entities:
             raise HTTPException(404, "No such entity")
-        hub.config.entities[entity_id] = body
-        hub.save_config()
         entity = hub.entities[entity_id]
+        # Hardware record when the sensor's board is known (a "manual" history entry when the
+        # offset changes), else the legacy entry keyed by entity id.
+        set_calibration(hub.config, entity_id, entity.hw_key, body.offset, body.include_in_average)
+        hub.save_config()
         if entity.raw_value is not None and not entity.derived:
             hub.update_state(entity_id, entity.raw_value, entity.updated)
         return body

@@ -18,7 +18,7 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 ## Environment and site
 | Integration | Brings | Protocol | Docs | Pri | Dir | Status |
 |---|---|---|---|---|---|---|
-| ESPHome DIY nodes | T/RH/P, wind, tilt, contacts, outputs | ESPHome native API | ✅ | ★★★ | ⬌ | **v0.1 (sensors)** |
+| ESPHome DIY nodes | T/RH/P, wind, tilt, contacts, outputs | ESPHome native API | ✅ | ★★★ | ⬌ | **v0.1 (sensors)**; calibration follows the board's MAC (0.3.0, hardware test pending) |
 | Shelly (Gen2 / Gen3) | Power, contacts, relays | Gen2+ RPC / MQTT; relay switching is never exposed (read-only) | ✅ | ★★★ | ⬅ | planned |
 | Shelly H&T Gen3 | Indoor temperature / humidity (rated 0–40 °C, so not for outdoor stages), battery %. It sleeps and reports on a 0.5 °C / 5 % change and every 2 h (every 5 min on USB power) | Outbound WebSocket push to Stagewatch (JSON-RPC), set in the device's own web page | ✅ | ★★ | ⬅ | planned |
 | Gill WindSonic / Vaisala WXT | Pro wind (+T/RH/P) | NMEA MWV / ASCII / Modbus | ✅ | ★★★ | ⬅ | planned |
