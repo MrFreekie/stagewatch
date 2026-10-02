@@ -15,6 +15,20 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+- ESPHome nodes: on a shared show network, other people's devices no longer clutter your
+  **Discovered node** list. Click **Ignore** next to a node to hide it. **Show ignored** lists the
+  hidden ones, and **Unignore** brings one back. You can ignore up to 200 nodes. Stagewatch only
+  connects to nodes you adopt, so ignoring changes nothing else.
+- Show history: Stagewatch now records when it starts and stops. After a crash, a power cut or
+  the PC switching off without shutting Stagewatch down, it adds a marker such as "Stagewatch
+  restarted after an unexpected stop (down about 4 min)", so the gap is easy to see on the chart.
+- Show history is written safely to disk every minute, so a power cut loses at most about the
+  last minute of readings.
+- Supported browsers are listed in the using guide: dashboards on iOS 12 or later and recent
+  Chrome, Edge, Firefox and Safari; the admin page on iOS 13 or later.
+- A message if JavaScript is turned off.
+
 ### Changed
 - Saved data: this update converts your settings and show history to a new format, ready for
   events, show days, running orders and the Wall Clock. Stagewatch takes a backup automatically
@@ -29,17 +43,11 @@ them into a dated release section and tags the commit.
 - Show history: all your existing shows are kept and grouped into one event called "Event 1".
 - Dashboards look the same as before after the update, and saving **User dashboards** in the admin
   page keeps what each dashboard shows.
-
-### Added
-- ESPHome nodes: on a shared show network, other people's devices no longer clutter your
-  **Discovered node** list. Click **Ignore** next to a node to hide it. **Show ignored** lists the
-  hidden ones, and **Unignore** brings one back. You can ignore up to 200 nodes. Stagewatch only
-  connects to nodes you adopt, so ignoring changes nothing else.
-- Show history: Stagewatch now records when it starts and stops. After a crash, a power cut or
-  the PC switching off without shutting Stagewatch down, it adds a marker such as "Stagewatch
-  restarted after an unexpected stop (down about 4 min)", so the gap is easy to see on the chart.
-- Show history is written safely to disk every minute, so a power cut loses at most about the
-  last minute of readings.
+- Install guides: the `-Ref main` step is no longer needed now that v0.2.0 is released.
+- Raspberry Pi / Linux: there is now only one way to install. `install.sh` always sets up the
+  protected, updatable install (own `stagewatch` user, program in `/opt/stagewatch`, data in
+  `/var/lib/stagewatch`). `--managed` is still accepted but does nothing. Tested on a Debian 13.7
+  virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
 - Software: after an update, a roll back and another update, **Roll back...** showed against two
@@ -66,18 +74,6 @@ them into a dated release section and tags the commit.
   **This browser is too old for Stagewatch** and what to use instead.
 - Dashboards now work on iPads with iOS 12 (iPad Air 1, mini 2 and 3): the history chart, alarm
   colours, the alarm sound button and the spacing in the top bar no longer break on old Safari.
-
-### Added
-- Supported browsers are listed in the using guide: dashboards on iOS 12 or later and recent
-  Chrome, Edge, Firefox and Safari; the admin page on iOS 13 or later.
-- A message if JavaScript is turned off.
-
-### Changed
-- Install guides: the `-Ref main` step is no longer needed now that v0.2.0 is released.
-- Raspberry Pi / Linux: there is now only one way to install. `install.sh` always sets up the
-  protected, updatable install (own `stagewatch` user, program in `/opt/stagewatch`, data in
-  `/var/lib/stagewatch`). `--managed` is still accepted but does nothing. Tested on a Debian 13.7
-  virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Removed
 - The older Linux install, where the service ran from your own downloaded folder as your own user
