@@ -100,7 +100,7 @@
       h("div", { class: "row", style: "margin-top:10px" },
         field("Time zone", tz), tzList,
         field("New show day starts at (HH:MM, 24-hour)", rollover)),
-      h("p", { class: "muted" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before."),
+      h("p", { class: "muted" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before. Use 03:00 or later for the new day, to stay clear of the hour when the clocks change."),
       tzNote,
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { class: "primary", onclick: () => save() }, "Save site")));

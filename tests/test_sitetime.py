@@ -10,7 +10,11 @@ Expected instants are written as plain UTC so they don't depend on the code unde
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
+import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -35,6 +39,8 @@ def site(tz: str = "Europe/London", rollover: str = "06:00") -> SiteConfig:
 
 LON = site("Europe/London")
 NYC = site("America/New_York")
+SYD = site("Australia/Sydney")
+LHI = site("Australia/Lord_Howe")
 
 
 # ------------------------------------------------------------ zone / offsets
@@ -58,6 +64,21 @@ def test_zone_none_when_unset():
     (NYC, utc(2026, 11, 1, 6, 0, 0), -5 * 3600),
     # half-hour zone, no DST
     (site("Asia/Kolkata"), utc(2026, 7, 1, 12, 0), 19800),
+    # 45-minute zone, no DST
+    (site("Asia/Kathmandu"), utc(2026, 7, 1, 12, 0), 20700),
+    (site("Asia/Kathmandu"), utc(2026, 1, 1, 12, 0), 20700),
+    # Sydney: DST ends 2026-04-04 16:00 UTC (03:00 AEDT -> 02:00 AEST),
+    # starts 2026-10-03 16:00 UTC (02:00 AEST -> 03:00 AEDT)
+    (SYD, utc(2026, 4, 4, 15, 59, 59), 11 * 3600),
+    (SYD, utc(2026, 4, 4, 16, 0, 0), 10 * 3600),
+    (SYD, utc(2026, 10, 3, 15, 59, 59), 10 * 3600),
+    (SYD, utc(2026, 10, 3, 16, 0, 0), 11 * 3600),
+    # Lord Howe: 30-minute shift. Ends 2026-04-04 15:00 UTC (02:00 -> 01:30),
+    # starts 2026-10-03 15:30 UTC (02:00 -> 02:30)
+    (LHI, utc(2026, 4, 4, 14, 59, 59), 11 * 3600),
+    (LHI, utc(2026, 4, 4, 15, 0, 0), 37800),
+    (LHI, utc(2026, 10, 3, 15, 29, 59), 37800),
+    (LHI, utc(2026, 10, 3, 15, 30, 0), 11 * 3600),
 ])
 def test_utc_offset_around_2026_transitions(s, ts, offset):
     assert sitetime.utc_offset_s(ts, s) == offset
@@ -111,6 +132,10 @@ def test_resolve_round_trips_through_show_day_and_local_hhmm():
     (LON, "2026-03-28", "01:30", utc(2026, 3, 29, 1, 30), "02:30"),
     # New York gap 02:00-03:00 on 8 Mar: 02:30 uses EST -> 07:30 UTC = 03:30 EDT
     (NYC, "2026-03-07", "02:30", utc(2026, 3, 8, 7, 30), "03:30"),
+    # Sydney gap 02:00-03:00 on 4 Oct: 02:30 uses AEST (+10) -> 16:30 UTC on 3 Oct = 03:30 AEDT
+    (SYD, "2026-10-03", "02:30", utc(2026, 10, 3, 16, 30), "03:30"),
+    # Lord Howe gap 02:00-02:30 on 4 Oct: 02:15 uses +10:30 -> 15:45 UTC on 3 Oct = 02:45 (+11)
+    (LHI, "2026-10-03", "02:15", utc(2026, 10, 3, 15, 45), "02:45"),
 ])
 def test_resolve_spring_forward_gap_fold0(s, day, hhmm, expected, shows_as):
     ts = sitetime.resolve(day, hhmm, s)
@@ -118,16 +143,51 @@ def test_resolve_spring_forward_gap_fold0(s, day, hhmm, expected, shows_as):
     assert sitetime.local_hhmm(ts, s) == shows_as
 
 
-@pytest.mark.parametrize("s, day, first, second", [
+@pytest.mark.parametrize("s, day, hhmm, first, second", [
     # London 01:00-02:00 happens twice on 25 Oct: first in BST (00:30 UTC), then GMT (01:30 UTC)
-    (LON, "2026-10-24", utc(2026, 10, 25, 0, 30), utc(2026, 10, 25, 1, 30)),
+    (LON, "2026-10-24", "01:30", utc(2026, 10, 25, 0, 30), utc(2026, 10, 25, 1, 30)),
     # New York 01:00-02:00 twice on 1 Nov: first EDT (05:30 UTC), then EST (06:30 UTC)
-    (NYC, "2026-10-31", utc(2026, 11, 1, 5, 30), utc(2026, 11, 1, 6, 30)),
+    (NYC, "2026-10-31", "01:30", utc(2026, 11, 1, 5, 30), utc(2026, 11, 1, 6, 30)),
+    # Sydney 02:00-03:00 twice on 5 Apr: first AEDT (+11, 15:30 UTC on 4 Apr), then AEST (16:30 UTC)
+    (SYD, "2026-04-04", "02:30", utc(2026, 4, 4, 15, 30), utc(2026, 4, 4, 16, 30)),
+    # Lord Howe 01:30-02:00 twice on 5 Apr: first +11 (14:45 UTC on 4 Apr), then +10:30 (15:15 UTC)
+    (LHI, "2026-04-04", "01:45", utc(2026, 4, 4, 14, 45), utc(2026, 4, 4, 15, 15)),
 ])
-def test_resolve_fall_back_overlap_first_occurrence(s, day, first, second):
-    ts = sitetime.resolve(day, "01:30", s)
+def test_resolve_fall_back_overlap_first_occurrence(s, day, hhmm, first, second):
+    ts = sitetime.resolve(day, hhmm, s)
     assert ts == first
-    assert sitetime.local_hhmm(first, s) == sitetime.local_hhmm(second, s) == "01:30"
+    assert sitetime.local_hhmm(first, s) == sitetime.local_hhmm(second, s) == hhmm
+
+
+def test_resolve_and_show_day_in_45_minute_zone():
+    ktm = site("Asia/Kathmandu")
+    assert sitetime.resolve("2026-07-01", "20:00", ktm) == utc(2026, 7, 1, 14, 15)
+    assert sitetime.resolve("2026-07-01", "00:30", ktm) == utc(2026, 7, 1, 18, 45)  # 2 Jul 00:30
+    assert sitetime.show_day(utc(2026, 7, 2, 0, 14, 59), ktm) == date(2026, 7, 1)    # 05:59:59
+    assert sitetime.show_day(utc(2026, 7, 2, 0, 15), ktm) == date(2026, 7, 2)        # 06:00
+
+
+@pytest.mark.parametrize("rollover, day, hhmm, expected", [
+    # 00:00: every time is on the calendar day itself
+    ("00:00", "2026-07-10", "00:00", utc(2026, 7, 9, 23, 0)),
+    ("00:00", "2026-07-10", "23:59", utc(2026, 7, 10, 22, 59)),
+    # 11:59 (the latest allowed): 11:58 is still the night before, 11:59 starts the day
+    ("11:59", "2026-07-10", "11:58", utc(2026, 7, 11, 10, 58)),
+    ("11:59", "2026-07-10", "11:59", utc(2026, 7, 10, 10, 59)),
+    ("11:59", "2026-07-10", "00:00", utc(2026, 7, 10, 23, 0)),
+])
+def test_resolve_rollover_edges(rollover, day, hhmm, expected):
+    assert sitetime.resolve(day, hhmm, site(rollover=rollover)) == expected
+
+
+@pytest.mark.parametrize("rollover, started, expected", [
+    ("00:00", utc(2026, 7, 9, 22, 59, 59), date(2026, 7, 9)),   # 23:59:59 BST
+    ("00:00", utc(2026, 7, 9, 23, 0, 0), date(2026, 7, 10)),    # 00:00 BST
+    ("11:59", utc(2026, 7, 11, 10, 58, 59), date(2026, 7, 10)),  # 11:58:59 BST
+    ("11:59", utc(2026, 7, 11, 10, 59, 0), date(2026, 7, 11)),   # 11:59 BST
+])
+def test_show_day_rollover_edges(rollover, started, expected):
+    assert sitetime.show_day(started, site(rollover=rollover)) == expected
 
 
 def test_resolve_with_midnight_rollover_uses_calendar_day():
@@ -164,6 +224,43 @@ def test_unset_zone_uses_os_local_time():
     assert sitetime.show_day(datetime(2026, 7, 11, 5, 59).timestamp(), s) == date(2026, 7, 10)
     block = sitetime.time_block(s, ts)
     assert block == {"timezone": "", "utc_offset_s": sitetime.utc_offset_s(ts, s), "day_rollover": "06:00"}
+
+
+@pytest.fixture
+def os_zone(monkeypatch):
+    """Set this process's OS zone to a POSIX TZ rule (needs time.tzset: Linux/macOS, not Windows)."""
+    if not hasattr(time, "tzset"):
+        pytest.skip("time.tzset is not available on this platform (Windows)")
+
+    def use(tz: str) -> None:
+        monkeypatch.setenv("TZ", tz)
+        time.tzset()
+
+    yield use
+    monkeypatch.undo()
+    time.tzset()
+
+
+@pytest.mark.parametrize("tz, s_tz", [("EST5EDT,M3.2.0,M11.1.0", "America/New_York"),
+                                      ("GMT0BST,M3.5.0/1,M10.5.0", "Europe/London")])
+def test_unset_zone_follows_os_zone_rules(os_zone, tz, s_tz):
+    """With no zone set, the OS zone gives the same answers as the named zone (gap, overlap,
+    rollover), using the same fixed UTC vectors."""
+    os_zone(tz)
+    unset = site("")
+    if s_tz == "America/New_York":
+        assert sitetime.resolve("2026-03-07", "02:30", unset) == utc(2026, 3, 8, 7, 30)   # gap
+        assert sitetime.resolve("2026-10-31", "01:30", unset) == utc(2026, 11, 1, 5, 30)  # overlap
+        assert sitetime.utc_offset_s(utc(2026, 3, 8, 7, 0), unset) == -4 * 3600
+        assert sitetime.utc_offset_s(utc(2026, 3, 8, 6, 59, 59), unset) == -5 * 3600
+    else:
+        assert sitetime.resolve("2026-03-28", "01:30", unset) == utc(2026, 3, 29, 1, 30)
+        assert sitetime.resolve("2026-10-24", "01:30", unset) == utc(2026, 10, 25, 0, 30)
+        assert sitetime.show_day(utc(2026, 7, 11, 4, 59, 59), unset) == date(2026, 7, 10)
+        assert sitetime.show_day(utc(2026, 7, 11, 5, 0), unset) == date(2026, 7, 11)
+        assert sitetime.local_hhmm(utc(2026, 3, 29, 1, 0), unset) == "02:00"
+    assert sitetime.time_block(unset, utc(2026, 7, 1, 12))["utc_offset_s"] == \
+        sitetime.utc_offset_s(utc(2026, 7, 1, 12), site(s_tz))
 
 
 def test_time_block_with_zone():
@@ -204,10 +301,9 @@ def test_put_site_rejects_bad_zones(client, bad):
     _admin(client)
     r = client.put("/api/admin/site", json=_site_body(client, timezone=bad))
     assert r.status_code == 422
-    # the message the admin page shows is fixed text (FastAPI's raw "input" echo is a separate,
-    # app-wide matter for the 422 handler)
-    msgs = [d["msg"] for d in r.json()["detail"]]
-    assert msgs and all(bad not in m for m in msgs)
+    assert r.json()["detail"]
+    if len(bad) > 2:   # ".." would match any JSON; the rest must not be echoed anywhere
+        assert bad.replace("\\", "\\\\") not in r.text
     assert client.hub.config.site.timezone == ""
 
 
@@ -267,3 +363,15 @@ def test_old_time_helpers_are_gone():
 def test_server_clock_offset_correction_kept():
     dash = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     assert "SW.fmtTime(serverNow()" in dash and "syncClock(msg.now)" in dash
+
+
+def test_frontend_site_time_in_node():
+    """SW.fmtTime and the chart's site-local ticks (tests/js/site_time_test.js), when node is
+    installed (it is on GitHub's Windows runners)."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    script = Path(__file__).resolve().parent / "js" / "site_time_test.js"
+    r = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=60,
+                       env={**os.environ, "TZ": "UTC"})
+    assert r.returncode == 0, r.stdout + r.stderr

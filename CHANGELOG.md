@@ -23,6 +23,9 @@ them into a dated release section and tags the commit.
   says so in amber, with a button to use the zone of the browser you are on.
 - Admin → Site: **New show day starts at** (06:00 unless you change it). A show day runs until
   that time next morning, so a reading or marker at 01:30 still counts as the night before.
+  Keep it at 03:00 or later, so it stays clear of the hour when the clocks change.
+- Dashboards: the chart's time labels stay on whole site hours when the clocks change during
+  the time shown.
 - ESPHome nodes: on a shared show network, other people's devices no longer clutter your
   **Discovered node** list. Click **Ignore** next to a node to hide it. **Show ignored** lists the
   hidden ones, and **Unignore** brings one back. You can ignore up to 200 nodes. Stagewatch only

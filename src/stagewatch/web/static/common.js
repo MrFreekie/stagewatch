@@ -102,10 +102,22 @@ SW.setSiteTime = function (t) {
   SW.site = { timezone: t.timezone || "", utc_offset_s: typeof t.utc_offset_s === "number" ? t.utc_offset_s : null,
     day_rollover: t.day_rollover || "06:00" };
 };
+// The browser's locale with Latin digits forced ("ar-EG" -> "ar-EG-u-nu-latn"). The Unicode
+// "-u-nu-" extension works in every Intl version (iOS 10+); the newer `numberingSystem`
+// option is passed too and is simply ignored by browsers that don't know it.
+SW._latnLocale = function () {
+  try {
+    const l = new Intl.DateTimeFormat().resolvedOptions().locale;
+    return l && l.indexOf("-u-") < 0 ? l + "-u-nu-latn" : l;
+  } catch (_) { return undefined; }
+};
 SW._formatter = function (key, opts) {
   if (!(key in SW._tf)) {
-    try { SW._tf[key] = new Intl.DateTimeFormat(key.indexOf("parts") === 0 ? "en-US" : undefined, opts); }
-    catch (_) { SW._tf[key] = null; }   // unknown zone in this browser, or no Intl
+    SW._tf[key] = null;   // stays null for an unknown zone in this browser, or no Intl
+    const locales = key.indexOf("parts") === 0 ? ["en-US"] : [SW._latnLocale(), undefined];
+    for (const loc of locales) {
+      try { SW._tf[key] = new Intl.DateTimeFormat(loc, opts); break; } catch (_) { /* try the next */ }
+    }
   }
   return SW._tf[key];
 };
@@ -149,7 +161,8 @@ SW.fmtTime = function (ts, opts) {
   if (o.seconds) s += `:${pad(p.s)}`;
   if (!o.date) return s;
   // Date part: formatted in UTC from the site's calendar date, so no zone maths happens twice.
-  const f = SW._formatter("date", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const f = SW._formatter("date", { timeZone: "UTC", numberingSystem: "latn", weekday: "short", day: "numeric",
+    month: "short", year: "numeric" });
   let ds = `${p.y}-${pad(p.mo)}-${pad(p.d)}`;
   if (f) { try { ds = f.format(new Date(Date.UTC(p.y, p.mo - 1, p.d, 12))); } catch (_) { /* keep ISO */ } }
   return `${ds}, ${s}`;

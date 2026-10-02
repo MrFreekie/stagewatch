@@ -48,6 +48,33 @@ class TimeChart {
     return steps.find((s) => span / s <= 7) || 86400;
   }
 
+  // Axis tick instants (UTC epoch s) in [t0, t1] that fall on site-local multiples of tstep
+  // (whole hours/minutes on the site clock: matters for +05:30-style zones and 2 h+ steps).
+  // offsetAt(ts) is the site's UTC offset in seconds. The offset is re-read at every tick, so
+  // the ticks stay on the site grid across a DST change inside the window:
+  // - local time L is tried with the current offset, then with the offset found there;
+  // - if L doesn't exist (spring-forward gap), the next boundary after the gap is used;
+  // - a repeated hour (fall-back) is labelled once.
+  static siteTicks(t0, t1, tstep, offsetAt) {
+    const toInstant = (L, o) => {
+      const n1 = L - o, o1 = offsetAt(n1);
+      if (o1 === o) return n1;
+      const n2 = L - o1;
+      if (offsetAt(n2) === o1) return n2;
+      return Math.ceil((n1 + o1) / tstep) * tstep - o1;   // L is in the gap
+    };
+    const ticks = [];
+    let o = offsetAt(t0);
+    let t = toInstant(Math.ceil((t0 + o) / tstep) * tstep, o);
+    let guard = 0;   // never hang a tablet on a bad offset
+    while (t <= t1 && ticks.length < 100 && guard++ < 1000) {
+      if (t >= t0 && (!ticks.length || t > ticks[ticks.length - 1])) ticks.push(t);
+      o = offsetAt(t);
+      t = toInstant((Math.floor((t + o) / tstep) + 1) * tstep, o);
+    }
+    return ticks;
+  }
+
   draw() {
     const dpr = window.devicePixelRatio || 1;
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
@@ -98,11 +125,8 @@ class TimeChart {
     }
     // x labels
     ctx.textAlign = "center"; ctx.textBaseline = "top";
-    // Ticks fall on site-local boundaries (whole hours/minutes on the site clock), so shift by
-    // the site's UTC offset before rounding (matters for +05:30-style zones and 2 h+ steps).
     const tstep = TimeChart.timeStep(t1 - t0);
-    const off = SW.siteOffset(t0);
-    for (let t = Math.ceil((t0 + off) / tstep) * tstep - off; t <= t1; t += tstep) {
+    for (const t of TimeChart.siteTicks(t0, t1, tstep, SW.siteOffset)) {
       const xx = Math.round(x(t)) + 0.5;
       ctx.beginPath(); ctx.moveTo(xx, pad.t); ctx.lineTo(xx, pad.t + ph); ctx.stroke();
       ctx.fillText(SW.fmtTime(t), xx, pad.t + ph + 6);

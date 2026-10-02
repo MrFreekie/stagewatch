@@ -221,7 +221,7 @@ on the page:
 
 | Card | What you do there |
 |---|---|
-| **Site** | Set the show name, **altitude** (used only if there is no pressure sensor), the **reference distance** for the "Δ ms" number (default 30 m), how quickly readings go **stale** (default 60 s), and the smoothing. **Save site**. |
+| **Site** | Set the show name, **altitude** (used only if there is no pressure sensor), the **reference distance** for the "Δ ms" number (default 30 m), how quickly readings go **stale** (default 60 s), and the smoothing. Set the **Time zone** of the show site (for example Europe/London): every dashboard then shows site time, 24-hour, even on a tablet set to another zone. **New show day starts at** (default 06:00) decides which day late-night times belong to: with 06:00, 01:30 still counts as the night before. Keep it at 03:00 or later, so it stays clear of the hour when the clocks change. **Save site**. |
 | **Shows** | Tap **Start new show** at the start of each show day. Give it a name. Dashboards then show only the new history and markers. Old shows stay listed. |
 | **Software** | Check for and install updates. See [Updating and backups](updating-and-backups.md). |
 | **ESPHome nodes** | Adopt new sensor nodes. See [First sensor node](first-sensor-node.md). Rename a node, change its area, or remove it. On a shared network the **Discovered node** list can fill up with other people's devices. Click **Ignore** next to one to hide it. Stagewatch never connects to a node you have not adopted, so ignoring only tidies the list. To bring one back, click **Show ignored** under the list, then **Unignore**. |
