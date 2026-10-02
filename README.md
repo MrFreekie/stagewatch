@@ -110,7 +110,11 @@ setup. It contains secrets, so keep backups private.
 allow-list: `config.yaml`, event logos, on-site contacts, and event documents and
 templates (contacts and documents can hold personal data). It never tracks `secret.key`,
 the database, logs, `config.yaml.bak`, `backups/`, `emulate/` or temp files, `push`
-rewrites the repo's `.gitignore` each time, and it refuses public remotes:
+rewrites the repo's `.gitignore` each time, and it refuses public remotes and any remote
+it cannot verify as a private GitHub repo (unless you pass `--allow-unverified-remote`).
+Only the paths listed in the script's header are tracked, and nested copies such as
+`sub/config.yaml` stay ignored. Untracking a file does not remove it from history that
+was already pushed.
 
 ```bash
 gh repo create YOUR_NAME/stagewatch-site --private
