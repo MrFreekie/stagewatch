@@ -71,23 +71,30 @@
     // The server checks the name either way.
     const zones = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
     const tzList = zones.length ? h("datalist", { id: "tz-list" }, zones.map((z) => h("option", { value: z }))) : null;
-    const tz = h("input", { value: s.timezone, list: tzList ? "tz-list" : null, placeholder: "e.g. Europe/London",
+    const tz = h("input", { class: "touch", value: s.timezone, list: tzList ? "tz-list" : null, placeholder: "e.g. Europe/London",
       maxlength: 64, autocomplete: "off", autocapitalize: "off", spellcheck: false });
-    const rollover = h("input", { class: "num", value: s.day_rollover, placeholder: "06:00", maxlength: 5,
-      inputmode: "numeric", pattern: "[0-1][0-9]:[0-5][0-9]" });
-    const save = (overrides) => run(() => api("PUT", "/api/admin/site", Object.assign({
+    const rollover = h("input", { class: "num touch", value: s.day_rollover, placeholder: "06:00", maxlength: 5,
+      inputmode: "numeric", pattern: "(0[0-9]|1[01]):[0-5][0-9]" });
+    // The server's 422 text is for developers; say it in crew words. Nothing typed is echoed back.
+    const siteError = (err) => {
+      const m = String(err.message || "");
+      if (err.status === 422 && m.indexOf("timezone:") === 0) return "That time zone isn't recognised. Pick one from the list, or type a name like Europe/London. Nothing has been changed.";
+      if (err.status === 422 && m.indexOf("day_rollover:") === 0) return "Type the new-day start as HH:MM between 00:00 and 11:59, for example 03:00. Nothing has been changed.";
+      return m;
+    };
+    const save = (overrides) => api("PUT", "/api/admin/site", Object.assign({
       name: val(name), altitude_m: Number(alt.value), reference_distance_m: Number(dist.value),
       stale_after_s: Number(stale.value), smoothing_tau_s: Number(tau.value), outlier_reject: outl.checked,
       timezone: val(tz), day_rollover: val(rollover),
-    }, overrides || {})), "Site saved").then(refresh);
+    }, overrides || {})).then(() => { toast("Site saved"); return refresh(); }, (err) => toast(siteError(err), true));
     let tzNote = null;
     if (!s.timezone) {
       const t = (snap.site && snap.site.time) || {};
       let browserZone = "";
       try { browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) { /* old browser */ }
       tzNote = h("p", { class: "warn-text", role: "status" },
-        `Time zone not set: using this computer's zone (${SW.fmtOffset(t.utc_offset_s || 0)} now). `,
-        browserZone ? h("button", { type: "button", onclick: () => save({ timezone: browserZone }) }, `Use ${browserZone} from this browser`) : null);
+        `Time zone not set. Dashboards use the clock of the computer running Stagewatch (${SW.fmtOffset(t.utc_offset_s || 0)} now). `,
+        browserZone ? h("button", { type: "button", class: "touch", onclick: () => save({ timezone: browserZone }) }, `Use ${browserZone} from this browser`) : null);
     }
     return card("Site",
       h("div", { class: "row" },
@@ -100,7 +107,7 @@
       h("div", { class: "row", style: "margin-top:10px" },
         field("Time zone", tz), tzList,
         field("New show day starts at (HH:MM, 24-hour)", rollover)),
-      h("p", { class: "muted" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before. Use 03:00 or later for the new day, to stay clear of the hour when the clocks change."),
+      h("p", { class: "muted hint" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before. Use 03:00 or later for the new day, to stay clear of the hour when the clocks change."),
       tzNote,
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { class: "primary", onclick: () => save() }, "Save site")));
