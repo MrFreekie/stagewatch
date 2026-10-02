@@ -30,9 +30,10 @@ them into a dated release section and tags the commit.
   running order, paste it (or open a CSV or text file) and click **Preview**. Any line Stagewatch
   can't read is listed by its line number, and you then add the rest in one click. **Load demo
   day** fills in an example running order around the current time. If someone else changes the
-  schedule while you're editing, Stagewatch tells you and keeps what you typed.
-- Day schedule (behind the scenes for now; the dashboard card and the admin editor come next):
-  Stagewatch can now store the running order for each show day, with doors, acts, changeovers
+  schedule while you're editing, Stagewatch tells you and keeps what you typed. Click **Reload**
+  to see their version: your own list is then kept as text in the Paste box, so you can copy
+  from it.
+- Day schedule (used by the Schedule cards above): Stagewatch can now store the running order for each show day, with doors, acts, changeovers
   and curfew, an optional stage per item, and a plain-text or Markdown setlist per act. Times
   are 24-hour site time. A time earlier than the day rollover (06:00 by default) counts as the
   next morning, so "23:00–00:30" works. You can paste a running order as lines such as
@@ -61,7 +62,7 @@ them into a dated release section and tags the commit.
   use ▲ and ▼ to order them, then click **Save dashboards**. Your existing dashboards keep
   exactly the cards they show today. A dashboard with no cards shows only alarms.
 - Dashboards: each dashboard can follow a **Stage** (for example "Main stage"), set in the same
-  panel. Cards that show one stage, such as the schedule, will use it.
+  panel. Cards that show one stage, such as the schedule, use it.
 - Dashboards: the **Open on a tablet** address and QR code is now a card. Wall screens keep it,
   and you can add it to any other dashboard too.
 - Dashboards: when the temperature is outside 0–30 °C, or the air pressure outside 75–102 kPa,

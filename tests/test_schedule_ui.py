@@ -163,3 +163,4 @@ def test_schedule_messages_are_known_server_texts():
     """The admin page maps pydantic's own messages to these; keep them in step with the server."""
     js = _js("admin.js")
     assert sched.MSG_TIME in js and sched.MSG_END_TIME in js
+    assert sched.MSG_CHANGED in js
