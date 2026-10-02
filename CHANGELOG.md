@@ -123,6 +123,10 @@ them into a dated release section and tags the commit.
   `/var/lib/stagewatch.pre-managed-<date>` that you can delete once you are happy.
 
 ### Security
+- The "Open on a tablet" footer now gives the address on the network the screen is using, never an
+  address from another network card (for example the venue internet or a VPN).
+- Dashboard titles (up to 80 characters) and stage names can no longer contain hidden or control
+  characters that could make them read misleadingly on screens.
 - When the admin page sent something invalid, the error reply repeated back what was sent,
   which could include a PIN typed into the wrong place. Error replies now say only which field was
   wrong and why.

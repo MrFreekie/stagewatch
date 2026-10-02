@@ -276,3 +276,31 @@ def test_dashboard_shows_the_quiet_range_note():
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     assert "Outside the formula's tested range (" in js and "): figures are approximate" in js
     assert "0–30 °C" in js and "75–102 kPa" in js
+
+
+def test_address_prefers_the_network_the_request_arrived_on(tmp_path):
+    # A PC with two network cards must hand out the address on the tablet's own network.
+    hub = Hub(tmp_path, emulate=True)
+    app = create_app(hub, lan_addresses=lambda: list(LAN))
+    app.state.port = 8123
+    with TestClient(app, base_url="http://198.51.100.7:8123") as c:
+        c.post("/api/admin/setup", json={"pin": PIN})
+        assert c.put("/api/admin/dashboards",
+                     json=[{"slug": "foh", "cards": ["env_tiles", "connect_footer"]}]).status_code == 200
+        c.cookies.clear()
+        assert c.get("/api/dashboard/foh/address").json() == {"url": "http://198.51.100.7:8123/d/foh"}
+
+
+@pytest.mark.parametrize("field,value", [
+    ("stage", "Main‮Stage"), ("stage", "Main\nStage"), ("stage", "Main​Stage"),
+    ("title", "FOH‮"), ("title", "x" * 81)])
+def test_dashboard_put_rejects_hidden_characters_and_long_titles(client, field, value):
+    _admin(client)
+    r = _put(client, [{"slug": "foh", "cards": ["env_tiles"], field: value}])
+    assert r.status_code == 422
+    assert value not in r.text
+
+
+def test_dashboard_put_refuses_unknown_fields(client):
+    _admin(client)
+    assert _put(client, [{"slug": "foh", "cards": ["env_tiles"], "surprise": 1}]).status_code == 422

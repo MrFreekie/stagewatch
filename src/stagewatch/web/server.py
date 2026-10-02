@@ -24,7 +24,9 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocke
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+import unicodedata
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .. import __version__
 from ..core.config import (
@@ -86,8 +88,31 @@ class DevicePatch(BaseModel):
     area: str | None = None
 
 
+def _has_hidden_chars(text: str) -> bool:
+    """Control or format characters (newlines, zero-width, bidi overrides such as U+202E)."""
+    return any(unicodedata.category(ch) in ("Cc", "Cf") for ch in text)
+
+
 class DashboardBody(Dashboard):
-    """PUT /api/admin/dashboards: strict card list (loading a saved config is lenient)."""
+    """PUT /api/admin/dashboards: strict card list, title and stage (loading a saved config is lenient)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    @field_validator("title")
+    @classmethod
+    def _title_strict(cls, v: str) -> str:
+        if len(v) > 80:
+            raise ValueError("Dashboard titles can be up to 80 characters")
+        if _has_hidden_chars(v):
+            raise ValueError("Dashboard titles can't contain hidden or control characters")
+        return v
+
+    @field_validator("stage")
+    @classmethod
+    def _stage_strict(cls, v: str) -> str:
+        if _has_hidden_chars(v):
+            raise ValueError("Stage names can't contain hidden or control characters")
+        return v
 
     @field_validator("cards", mode="before")
     @classmethod
@@ -573,7 +598,11 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if d is None or "connect_footer" not in d.cards:
             return {"url": ""}
         addrs = await asyncio.to_thread(lan_addresses)
-        return {"url": netinfo.connect_urls(addrs[:1], server_port(request), d.slug)["ip"][0] if addrs else ""}
+        # Prefer the address this request arrived on, so a PC with several network cards (or a
+        # VPN / virtual adapter) never hands out an address from another network.
+        here = (request.scope.get("server") or ("", 0))[0]
+        pick = [here] if here in addrs else addrs[:1]
+        return {"url": netinfo.connect_urls(pick, server_port(request), d.slug)["ip"][0] if pick else ""}
 
     # ------------------------------------------------------- diagnostics
     def _diag_sources() -> list[Path]:
