@@ -319,20 +319,23 @@
     if (!has("schedule") || !state.scheduleMeta) return;
     if (schedKey(state.scheduleMeta) === sched.loadedKey || sched.loading) return;
     sched.loading = true;
+    let ok = false;
     try {
       const stage = schedStage();
       const r = await SW.api("GET", `/api/schedule${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`);
       state.schedule = { show_id: r.show_id, day: r.day, revision: r.revision, items: r.items || [] };
       sched.loadedKey = schedKey(r);
+      ok = true;
     } catch (_) {
-      // Keep what is on screen; the next snapshot (reconnect) or schedule message tries again.
+      // Keep what is on screen. No retry here (a dropped network would loop): the next snapshot
+      // (reconnect) or schedule message tries again.
     } finally { sched.loading = false; }
     if (has("schedule")) {
       CARDS.schedule.el.hidden = CARDS.schedule.empty();
       renderSchedule();
     }
-    // Changed again while this request was in flight: fetch once more.
-    if (sched.loadedKey && schedKey(state.scheduleMeta) !== sched.loadedKey) syncSchedule();
+    // Changed again while a successful request was in flight: fetch once more.
+    if (ok && schedKey(state.scheduleMeta) !== sched.loadedKey) syncSchedule();
   }
 
   function stopScheduleTimer() { if (sched.timer) { clearInterval(sched.timer); sched.timer = null; } }

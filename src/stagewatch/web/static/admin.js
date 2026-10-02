@@ -574,7 +574,8 @@
   function schedMsg(msg, field) {
     const lim = admin.schedule_limits || {};
     const m = String(msg || "");
-    if (m.indexOf("Value error, ") === 0) return m.slice(13);
+    const ve = m.indexOf("Value error, ");   // may follow a "text: " style field prefix
+    if (ve >= 0) return m.slice(ve + 13);
     const ours = {
       title: `Titles must be 1 to ${lim.title_max || 120} characters`,
       stage: `Stage names can be up to ${lim.stage_max || 40} characters`,
@@ -1155,7 +1156,10 @@
       // unsaved edits there (then say so, and keep them).
       const meta = s.schedule || {};
       if (sd && (meta.show_id !== sd.showId || meta.revision !== sd.revision)) {
-        if (!sd.dirty) { await loadSchedule(); if (!isEditing()) rerenderSchedule(); }
+        // Always redraw after replacing sd: inputs still tied to the old rows would otherwise take
+        // edits that Save never sends. (Focus moving in during the fetch is rare; losing it is
+        // better than losing the edit.)
+        if (!sd.dirty && !isEditing()) { await loadSchedule(); rerenderSchedule(); }
         else if (!sd.changedElsewhere) { sd.changedElsewhere = true; rerenderSchedule(); }
       }
       // Software status changes on its own (history entry once a new build is confirmed healthy,

@@ -11,7 +11,16 @@ import re
 from pathlib import Path
 
 STATIC = Path(__file__).resolve().parents[1] / "src" / "stagewatch" / "web" / "static"
-SINKS = re.compile(r"\b(innerHTML|outerHTML|insertAdjacentHTML|document\s*\.\s*write(ln)?)\b")
+SINKS = re.compile(
+    r"\b(innerHTML|outerHTML|insertAdjacentHTML|document\s*\.\s*write(ln)?|srcdoc"
+    r"|createContextualFragment|DOMParser)\b"
+    r"|\beval\s*\(|\bnew\s+Function\b|setAttribute\(\s*[\"'`]on")
+
+# Reviewed exceptions, matched on the exact stripped line. compat.js feature-tests syntax on old
+# browsers by parsing fixed strings written in that file (never page or server text).
+ALLOWED = {
+    ("compat.js", "try { new Function(code); return true; } catch (e) { return !(e instanceof SyntaxError); }"),
+}
 
 
 def _code_only(src: str) -> str:
@@ -26,7 +35,7 @@ def test_no_html_parsing_sinks_in_our_scripts():
     hits = []
     for p in files:
         for i, line in enumerate(_code_only(p.read_text(encoding="utf-8")).splitlines(), 1):
-            if SINKS.search(line):
+            if SINKS.search(line) and (p.name, line.strip()) not in ALLOWED:
                 hits.append(f"{p.name}:{i}: {line.strip()[:80]}")
     assert not hits, "build elements with SW.h / textContent instead:\n" + "\n".join(hits)
 

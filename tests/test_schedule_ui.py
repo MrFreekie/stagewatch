@@ -156,7 +156,7 @@ def test_admin_schedule_editor_rules():
     assert "Visible to anyone on the show network." in js
     # the poll never rebuilds over typed text
     assert 'matches("input,select,textarea")' in js
-    assert "if (!sd.dirty) { await loadSchedule(); if (!isEditing()) rerenderSchedule(); }" in js
+    assert "if (!sd.dirty && !isEditing()) { await loadSchedule(); rerenderSchedule(); }" in js
 
 
 def test_schedule_messages_are_known_server_texts():
@@ -164,3 +164,11 @@ def test_schedule_messages_are_known_server_texts():
     js = _js("admin.js")
     assert sched.MSG_TIME in js and sched.MSG_END_TIME in js
     assert sched.MSG_CHANGED in js
+
+
+def test_failed_schedule_fetch_does_not_retry_in_a_loop():
+    # Security review: a failed fetch kept the old key and re-called syncSchedule() at once, so a
+    # dropped network made every dashboard hammer /api/schedule. Retry only after a success.
+    js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
+    assert "if (ok && schedKey(state.scheduleMeta) !== sched.loadedKey) syncSchedule();" in js
+    assert "if (sched.loadedKey && schedKey(state.scheduleMeta) !== sched.loadedKey)" not in js
