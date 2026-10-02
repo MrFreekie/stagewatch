@@ -62,6 +62,13 @@ eq(SW.fmtDate(2028, 2, 29), "Tue 29 Feb 2028", "leap day");
 eq(SW.fmtDay("2026-10-04"), "Sun 4 Oct 2026", "show day");
 eq(SW.fmtDay("2026-13-01"), "2026-13-01", "not a date");
 eq(SW.fmtDay(null), "—", "no day");
+eq(SW.parseDay("2026-10-02"), "2026-10-02", "picker value");
+eq(SW.parseDay("2/10/2026"), "2026-10-02", "typed UK day first");
+eq(SW.parseDay(" 02.10.2026 "), "2026-10-02", "dots");
+eq(SW.parseDay("31/02/2026"), "", "no 31 Feb");
+eq(SW.parseDay("29-02-2028"), "2028-02-29", "leap day typed");
+eq(SW.parseDay("10/2026"), "", "incomplete");
+eq(SW.parseDay(""), "", "empty");
 
 // ---- numbers: comma thousands, full-stop decimals
 eq(SW.num(1013.25, 1), "1,013.3", "thousands");

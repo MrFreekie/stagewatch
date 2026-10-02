@@ -183,6 +183,24 @@ SW.fmtTime = function (ts, opts) {
 // A show day ("YYYY-MM-DD", already in site time from the server) as "Fri 2 Oct 2026": always
 // day-month-year in English, whatever the browser's language. Anything that isn't a date comes
 // back unchanged.
+// A typed or picked date as "YYYY-MM-DD", or "" if it isn't a real date. Takes the date
+// picker's own "2026-10-02" or UK day-first typing: "2/10/2026", "02-10-2026", "2.10.2026"
+// (old browsers without a date picker show a plain text box).
+SW.parseDay = function (text) {
+  const s = String(text || "").trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+  let y, mo, d;
+  if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; } else {
+    m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s);
+    if (!m) return "";
+    d = +m[1]; mo = +m[2]; y = +m[3];
+  }
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return "";
+  const pad = (n) => (n < 10 ? "0" : "") + n;
+  return `${y}-${pad(mo)}-${pad(d)}`;
+};
+
 SW.fmtDay = function (day) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day || "");
   if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) return day || "—";

@@ -53,6 +53,16 @@ UPDATER_STATUS = {"rate_limited": 429, "history_not_found": 404, "bad_channel": 
 
 
 # ---------------------------------------------------------------- payloads
+class RevalidatingStaticFiles(StaticFiles):
+    """Static files the browser must re-check every time (cheap: ETag, 304 on a LAN). Without it,
+    after an update a tablet can run a new admin.js against a cached old common.js."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 class PinBody(BaseModel):
     pin: str = Field(min_length=MIN_PIN_LEN, max_length=64)
 
@@ -324,7 +334,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     app.state.hub = hub
     app.state.updater = updater
     app.add_middleware(BodySizeLimitMiddleware, default_limit=body_limit, overrides=body_limit_overrides)
-    app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    app.mount("/static", RevalidatingStaticFiles(directory=STATIC), name="static")
 
     # ---------------------------------------------------------- helpers
     def is_admin(request: Request) -> bool:
@@ -360,17 +370,17 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     # ------------------------------------------------------------ pages
     @app.get("/", include_in_schema=False)
     async def index():
-        return FileResponse(STATIC / "index.html")
+        return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
 
     @app.get("/d/{slug}", include_in_schema=False)
     async def dashboard_page(slug: str):
         if hub.config.dashboard(slug) is None:
             return RedirectResponse("/")
-        return FileResponse(STATIC / "dashboard.html")
+        return FileResponse(STATIC / "dashboard.html", headers={"Cache-Control": "no-cache"})
 
     @app.get("/admin", include_in_schema=False)
     async def admin_page():
-        return FileResponse(STATIC / "admin.html")
+        return FileResponse(STATIC / "admin.html", headers={"Cache-Control": "no-cache"})
 
     # -------------------------------------------------------- public API
     @app.get("/api/info")

@@ -107,6 +107,11 @@ them into a dated release section and tags the commit.
   virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
+- After an update, a tablet or browser could keep using some old page files and show a broken
+  admin page or dashboard until it was refreshed by hand. Browsers now check for new files each
+  time a page loads.
+- Old iPads and other browsers without a date picker show a plain box for dates. You can now
+  type the date there as dd/mm/yyyy, and the day is written out underneath so you can check it.
 - Software: after an update, a roll back and another update, **Roll back...** showed against two
   entries in the update history. It now shows only on the newest one.
 - Security: Stagewatch now refuses messages larger than 64 KB from a dashboard's live connection.

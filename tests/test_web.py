@@ -166,3 +166,11 @@ def test_validation_errors_never_echo_submitted_values(client):
         assert all(set(d) <= {"loc", "msg", "type"} for d in r.json()["detail"])
     r = client.post("/api/admin/setup", json={"pin": [secret]})
     assert r.status_code in (409, 422) and secret not in r.text
+
+
+def test_pages_and_static_files_are_rechecked_after_updates(client):
+    # Without this a tablet can mix a new admin.js with a cached old common.js after an update.
+    for path in ("/", "/admin", "/d/foh", "/static/common.js", "/static/admin.js", "/static/style.css"):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        assert r.headers.get("cache-control") == "no-cache", path

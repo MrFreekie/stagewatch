@@ -385,12 +385,25 @@
   let showPanel = "";   // "", "next" or "event": which start form is open
   let showBusy = false; // one start at a time from this page (the server refuses a second one too)
   const nameInput = (value, placeholder) => h("input", { value: value || "", placeholder, maxlength: 80, class: "touch", autocomplete: "off" });
-  const dateInput = (value) => h("input", { type: "date", value: value || "", class: "touch", required: true });
+  // A date picker where the browser has one; otherwise (old iPads) a text box that takes UK
+  // day-first typing. Read it with dayOf(), never .value.
+  const dateInput = (value) => {
+    const input = h("input", { type: "date", value: value || "", class: "touch", required: true });
+    if (input.type !== "date") {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+      input.value = m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+      input.placeholder = "dd/mm/yyyy";
+      input.inputMode = "numeric";
+    }
+    return input;
+  };
+  const dayOf = (input) => SW.parseDay(input.value);
   // The browser draws the date box in its own style, so the chosen day is also written out
   // underneath as "Fri 2 Oct 2026".
+  const dayEcho = (input) => (dayOf(input) ? SW.fmtDay(dayOf(input)) : (input.value.trim() ? "Not a date: use dd/mm/yyyy" : ""));
   const dateField = (label, input) => {
-    const echo = h("span", { class: "date-echo", "aria-live": "polite" }, SW.fmtDay(input.value));
-    const upd = () => { echo.textContent = SW.fmtDay(input.value); };
+    const echo = h("span", { class: "date-echo", "aria-live": "polite" }, dayEcho(input));
+    const upd = () => { echo.textContent = dayEcho(input); };
     input.addEventListener("input", upd);
     input.addEventListener("change", upd);
     return h("label", { class: "field" }, `${label} (dd/mm/yyyy)`, input, echo);
@@ -421,7 +434,7 @@
     };
     // Send a date only when it differs from what the start time gives, so an untouched day
     // keeps following the start time.
-    const dayOrNull = (input) => (input.value && input.value !== days.today ? input.value : null);
+    const dayOrNull = (input) => (dayOf(input) && dayOf(input) !== days.today ? dayOf(input) : null);
 
     // Start forms (each ends in a confirm).
     let panel = null;
@@ -430,8 +443,8 @@
       const date = dateInput(days.next);
       panel = h("form", { class: "card-inset", onsubmit: (e) => {
         e.preventDefault();
-        if (!val(name) || !date.value) return;
-        if (!confirm(`Start "${val(name)}" (${SW.fmtDay(date.value)}) as the next day of "${ev.name}"?\n\nDashboards switch to the new day: its history, markers and alarm log start empty. "${show.name}" is kept under Previous shows.`)) return;
+        if (!val(name) || !dayOf(date)) { toast("Type a name and a date (dd/mm/yyyy).", true); return; }
+        if (!confirm(`Start "${val(name)}" (${SW.fmtDay(dayOf(date))}) as the next day of "${ev.name}"?\n\nDashboards switch to the new day: its history, markers and alarm log start empty. "${show.name}" is kept under Previous shows.`)) return;
         startShow({ name: val(name), event: "current", day: dayOrNull(date) }, `Started ${val(name)}`);
       } },
       h("div", { class: "row" }, field("Day name", name), dateField("Date", date)),
@@ -445,8 +458,8 @@
       const date = dateInput(days.today);
       panel = h("form", { class: "card-inset", onsubmit: (e) => {
         e.preventDefault();
-        if (!val(evName) || !val(name) || !date.value) { toast("Type a name for the new event and its first day.", true); return; }
-        if (!confirm(`Start the new event "${val(evName)}"?\n\n"${ev.name}" ends. Dashboards switch to "${val(name)}" (${SW.fmtDay(date.value)}) of the new event: history, markers and alarm log start empty. Everything from "${ev.name}" is kept under Previous shows.`)) return;
+        if (!val(evName) || !val(name) || !dayOf(date)) { toast("Type a name for the new event and its first day, and a date (dd/mm/yyyy).", true); return; }
+        if (!confirm(`Start the new event "${val(evName)}"?\n\n"${ev.name}" ends. Dashboards switch to "${val(name)}" (${SW.fmtDay(dayOf(date))}) of the new event: history, markers and alarm log start empty. Everything from "${ev.name}" is kept under Previous shows.`)) return;
         startShow({ name: val(name), event: "new", event_name: val(evName), day: dayOrNull(date) }, `Started ${val(evName)}`);
       } },
       h("div", { class: "row" }, field("New event name", evName), field("First day name", name), dateField("Date", date)),
@@ -492,7 +505,7 @@
           } }, "Save day name")),
         h("div", { class: "row" }, dateField("Day date", dayDate),
           h("button", { class: "touch", type: "button", style: "align-self:flex-end", onclick: () => {
-            if (dayDate.value && dayDate.value !== show.day) saveDay({ day: dayDate.value });
+            if (!dayOf(dayDate)) toast("Type a date as dd/mm/yyyy.", true); else if (dayOf(dayDate) !== show.day) saveDay({ day: dayOf(dayDate) });
           } }, "Save date"),
           show.day_set ? h("button", { class: "touch", type: "button", style: "align-self:flex-end", onclick: () => saveDay({ day: null }) }, "Use the start date") : null),
         h("p", { class: "muted hint" }, show.day_set

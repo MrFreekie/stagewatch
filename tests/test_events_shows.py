@@ -358,6 +358,6 @@ def test_admin_card_has_next_day_and_new_event_with_confirms():
     for text in ('"Event & show"', '"Next day (same event)"', '"New event…"', "dateInput(",
                  "from_show_id", "/api/admin/events/current", "/api/admin/shows/current", "Previous shows"):
         assert text in body, text
-    assert 'const dateInput = (value) => h("input", { type: "date"' in js
+    assert 'h("input", { type: "date"' in js and "SW.parseDay(input.value)" in js
     assert body.count("confirm(") == 2
     assert "toLocale" not in body
