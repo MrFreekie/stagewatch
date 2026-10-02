@@ -152,6 +152,9 @@ HEARTBEAT_S = 30.0
 CHECKPOINT_S = 60.0
 MAX_PENDING_ROWS = 200_000  # ~1.5 h of 35 rows/s kept in memory while the DB refuses writes
 STOP_REASONS = ("stop", "update", "rollback")
+# Written on the NEXT start for a run that never stopped cleanly but ended before the computer
+# last started (restart or power loss), so it is not counted as a Stagewatch crash.
+REASON_POWER_OR_RESTART = "power_or_restart"
 NAME_MAX = 80
 _DAY_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
@@ -577,6 +580,16 @@ class Recorder:
             return {"id": prev[0], "started": prev[1], "last_seen": last_seen, "down_s": max(0.0, now - last_seen)}
         except (TypeError, ValueError):
             return None
+
+    def set_run_stop_reason(self, run_id: int, reason: str) -> None:
+        """Say why an earlier run that never stopped cleanly ended (``stopped`` stays empty: the
+        exact time is not known, ``last_seen`` is the last sign of life)."""
+        try:
+            self._db.execute("UPDATE hub_runs SET stop_reason = ? WHERE id = ? AND stopped IS NULL",
+                             (reason, run_id))
+            self._db.commit()
+        except sqlite3.Error as e:
+            log.error("Could not record why the previous run ended (%s)", type(e).__name__)
 
     def runs(self, limit: int = 50) -> list[dict]:
         rows = self._db.execute("SELECT id, started, last_seen, stopped, stop_reason, version, doc "

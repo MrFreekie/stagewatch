@@ -24,6 +24,19 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw "Run this from an elevated (Administrator) PowerShell."
 }
 
+# Ask the launcher to stop the server cleanly first (Stop-ScheduledTask just kills it, which
+# Stagewatch would later record as an unexpected stop). The state folder is admin-only.
+if (Get-ScheduledTask -TaskName "Stagewatch" -ErrorAction SilentlyContinue) {
+    $stopRequest = Join-Path ([IO.Path]::GetFullPath($InstallDir).TrimEnd('\')) ".git\stagewatch\stop-request"
+    if (Test-Path -LiteralPath (Split-Path $stopRequest)) {
+        New-Item -ItemType File -Force -Path $stopRequest | Out-Null
+        for ($i = 0; $i -lt 30; $i++) {   # up to ~15 s
+            if ((Get-ScheduledTask -TaskName "Stagewatch").State -ne "Running") { break }
+            Start-Sleep -Milliseconds 500
+        }
+        Remove-Item -LiteralPath $stopRequest -Force -ErrorAction SilentlyContinue
+    }
+}
 Stop-ScheduledTask -TaskName "Stagewatch" -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName "Stagewatch" -Confirm:$false -ErrorAction SilentlyContinue
 Get-NetFirewallRule -DisplayName "Stagewatch*" -ErrorAction SilentlyContinue | Remove-NetFirewallRule

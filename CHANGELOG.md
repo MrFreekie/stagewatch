@@ -38,6 +38,13 @@ them into a dated release section and tags the commit.
   last minute of readings.
 
 ### Fixed
+- Windows: stopping or reinstalling Stagewatch with the install, uninstall or reset-PIN scripts
+  was recorded as "Stagewatch restarted after an unexpected stop". The scripts now ask Stagewatch
+  to stop properly first, so it is recorded as a normal stop.
+- If the computer restarts or loses power, Stagewatch now says "Stagewatch was off for about 25 min
+  (the computer restarted or lost power)" on the chart, with no alarm. "Unexpected stop" is kept
+  for when Stagewatch itself stopped while the computer stayed on. On Windows with Fast Startup, a
+  normal shutdown can still show as "unexpected stop".
 - Readings are no longer lost if the history file is busy for a moment while Stagewatch saves
   them: Stagewatch keeps them and tries again.
 - Raspberry Pi / Linux: in-app updates were refused with "unsafe_permissions" on Debian 13, whose

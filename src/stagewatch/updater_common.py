@@ -245,6 +245,12 @@ def pending_path(sd: Path) -> Path:
     return Path(sd) / "pending.json"
 
 
+def stop_request_path(sd: Path) -> Path:
+    """Admin-only "please stop gracefully" file: the install/uninstall/reset scripts create it,
+    the launcher deletes it and stops the server cleanly (Task Scheduler can only kill)."""
+    return Path(sd) / "stop-request"
+
+
 def history_path(sd: Path) -> Path:
     return Path(sd) / "history.json"
 

@@ -56,6 +56,16 @@ if (-not (Test-Path -LiteralPath $DataDir)) {
 $task = Get-ScheduledTask -TaskName "Stagewatch" -ErrorAction SilentlyContinue
 if ($task) {
     Write-Host "Stopping Stagewatch ..."
+    # Ask the launcher to stop the server cleanly first; Stop-ScheduledTask only kills it.
+    $stopRequest = Join-Path $InstallDir ".git\stagewatch\stop-request"
+    if (Test-Path -LiteralPath (Split-Path $stopRequest)) {
+        New-Item -ItemType File -Force -Path $stopRequest | Out-Null
+        for ($i = 0; $i -lt 30; $i++) {   # up to ~15 s
+            if ((Get-ScheduledTask -TaskName "Stagewatch").State -ne "Running") { break }
+            Start-Sleep -Milliseconds 500
+        }
+        Remove-Item -LiteralPath $stopRequest -Force -ErrorAction SilentlyContinue
+    }
     Stop-ScheduledTask -TaskName "Stagewatch" -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 5   # let the server let go of its files
 } else {

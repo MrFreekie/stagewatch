@@ -465,6 +465,57 @@ def test_killed_process_leaves_an_open_run_and_the_next_start_marks_it(tmp_path)
     hub2.recorder.close()
 
 
+def _leave_open_run(tmp_path, last_seen):
+    Hub(tmp_path, boot_time_fn=lambda: None).recorder.close()  # create the db (clean run)
+    db = sqlite3.connect(str(tmp_path / "stagewatch.sqlite3"))
+    db.execute("INSERT INTO hub_runs (started, last_seen) VALUES (?, ?)", (last_seen - 600, last_seen))
+    db.commit()
+    db.close()
+
+
+def test_restart_after_boot_is_a_quiet_marker_not_an_alarm(tmp_path):
+    now = time.time()
+    _leave_open_run(tmp_path, now - 1500)  # last seen 25 min ago
+    hub = Hub(tmp_path, boot_time_fn=lambda: now - 300)  # the computer started 5 min ago
+    labels = [m.label for m in hub.recorder.markers() if m.source == "hub"]
+    assert labels == ["Stagewatch was off for about 25 min (the computer restarted or lost power)"]
+    assert not [a for a in hub.recorder.alarm_log() if a["event"] == "unclean_stop"]
+    assert hub.recorder.runs()[1]["stop_reason"] == "power_or_restart"
+    hub.recorder.close()
+
+
+@pytest.mark.parametrize("boot", [lambda now: None, lambda now: now - 7200])
+def test_unknown_or_older_boot_time_keeps_the_unexpected_stop_wording(tmp_path, boot):
+    now = time.time()
+    _leave_open_run(tmp_path, now - 1500)
+    hub = Hub(tmp_path, boot_time_fn=lambda: boot(now))
+    labels = [m.label for m in hub.recorder.markers() if m.source == "hub"]
+    assert len(labels) == 1 and labels[0].startswith("Stagewatch restarted after an unexpected stop (down ")
+    assert any(a["event"] == "unclean_stop" for a in hub.recorder.alarm_log())
+    assert hub.recorder.runs()[1]["stop_reason"] in (None, "")
+    hub.recorder.close()
+
+
+def test_failing_boot_time_lookup_never_blocks_start(tmp_path):
+    _leave_open_run(tmp_path, time.time() - 100)
+
+    def boom():
+        raise OSError("no")
+    hub = Hub(tmp_path, boot_time_fn=boom)
+    assert any(a["event"] == "unclean_stop" for a in hub.recorder.alarm_log())
+    hub.recorder.close()
+
+
+def test_boot_time_sources():
+    from stagewatch.boottime import parse_proc_stat_btime, system_boot_time
+    assert parse_proc_stat_btime("cpu 1 2 3\nbtime 1700000000\nprocesses 5\n") == 1700000000.0
+    assert parse_proc_stat_btime("cpu 1 2 3\n") is None
+    assert parse_proc_stat_btime("btime nope\n") is None
+    boot = system_boot_time()  # real host: Windows and Linux CI both know it
+    if sys.platform == "win32" or sys.platform.startswith("linux"):
+        assert boot is not None and 0 < boot < time.time()
+
+
 def test_damaged_run_row_never_blocks_start(tmp_path):
     Hub(tmp_path).recorder.close()
     db = sqlite3.connect(str(tmp_path / "stagewatch.sqlite3"))
