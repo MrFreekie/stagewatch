@@ -70,6 +70,34 @@ def speed_of_sound(temp_c: float, rh_pct: float = 50.0,
             + a[15] * xw * p * xc)
 
 
+CRAMER_TEMP_RANGE_C = (0.0, 30.0)
+CRAMER_PRESSURE_RANGE_PA = (75_000.0, 102_000.0)
+"""The ranges Cramer (1993) validated the speed-of-sound fit for (bounds included). The water
+vapour limit (xw <= 0.06) can't be exceeded inside them: saturated air at 30 degC and 75 kPa
+has xw of about 0.057."""
+
+
+def speed_of_sound_range_issues(temp_c: float, pressure_pa: float) -> list[str]:
+    """Which validated bounds of :func:`speed_of_sound` the inputs are outside of.
+
+    Returns ``[]`` inside the range, otherwise any of ``"temperature_low"``,
+    ``"temperature_high"``, ``"pressure_low"``, ``"pressure_high"``. The value is still
+    usable outside the range; only the accuracy guarantee is lost.
+    """
+    issues: list[str] = []
+    t_lo, t_hi = CRAMER_TEMP_RANGE_C
+    p_lo, p_hi = CRAMER_PRESSURE_RANGE_PA
+    if temp_c < t_lo:
+        issues.append("temperature_low")
+    elif temp_c > t_hi:
+        issues.append("temperature_high")
+    if pressure_pa < p_lo:
+        issues.append("pressure_low")
+    elif pressure_pa > p_hi:
+        issues.append("pressure_high")
+    return issues
+
+
 def dew_point_c(temp_c: float, rh_pct: float) -> float:
     """Dew point via the Magnus formula (Alduchov & Eskridge 1996 constants),
     within ~0.35 degC for -40..50 degC."""

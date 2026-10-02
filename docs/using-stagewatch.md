@@ -58,6 +58,12 @@ Stagewatch** instead of a blank page. Use another device or update the browser.
   the site average. Thin lines are single sensors. The vertical lines are **markers**.
 - **Markers:** add and read markers.
 - **Sensors:** each node, whether it is working, and its latest readings.
+- **Open on a tablet** (at the bottom, usually on wall screens): this dashboard's address and a
+  QR code. Scan it with your phone or tablet camera to open the same dashboard.
+
+Your tech chooses which of these cards each dashboard shows, and in what order. So your screen
+may show fewer cards, or show them in a different order. The alarm bar is always there. A
+dashboard with no cards shows only alarms.
 
 ---
 
@@ -81,6 +87,11 @@ Some notes you may see under a tile:
 - `no sensor: 50% assumed`: no humidity sensor is reporting, so Stagewatch assumed 50 %.
 - `no sensor: from site altitude`: no pressure sensor is reporting, so it used the
   venue's altitude.
+- `Outside the formula's tested range (0–30 °C): figures are approximate`, under **Speed of
+  sound**: the formula Stagewatch uses is tested from 0 to 30 °C and from 75 to 102 kPa (750 to
+  1020 hPa). Outside that, the speed of sound and the drift in ms are still shown and still
+  close, but treat them as a guide. It is not an alarm. You may see it on a hot afternoon, a
+  frosty night, or at a venue high in the mountains.
 
 ---
 
@@ -227,7 +238,7 @@ on the page:
 | **ESPHome nodes** | Adopt new sensor nodes. See [First sensor node](first-sensor-node.md). Rename a node, change its area, or remove it. On a shared network the **Discovered node** list can fill up with other people's devices. Click **Ignore** next to one to hide it. Stagewatch never connects to a node you have not adopted, so ignoring only tidies the list. To bring one back, click **Show ignored** under the list, then **Unignore**. |
 | **Sensors: calibration & averaging** | Correct a sensor with an **offset**. Untick **Average** to leave one out of the site average. |
 | **Threshold alarms** | Add limits. Pick the **Entity** (choose the "Site:" ones for the average), the **Above** or **Below** value, the **Level** (Advisory, Alert, Stop), **Hyst.** (how far back past the limit before it clears) and **Hold s** (how many seconds it must last before it alarms). Values are in the units shown on the dashboards, **except pressure, which is in pascals (Pa)**. Click **Save thresholds**. |
-| **User dashboards** | Add or remove dashboards. Each has a URL name, a title, a **Layout** (tablet, phone or wall), and ticks for whether people can **Add markers** and **Ack alarms**. Click **Save dashboards**. |
+| **User dashboards** | Add or remove dashboards. Each has a URL name, a title, a **Layout** (tablet, phone or wall), and ticks for whether people can **Add markers** and **Ack alarms**. Click **Edit cards** to choose what it shows (see [Choose the cards on a dashboard](#choose-the-cards-on-a-dashboard)). Click **Save dashboards**. |
 | **OSC output** | Send the site average and alarm state to other gear (the desk, for example). See the [main README](../README.md#osc-output). |
 | **Security** | Change the admin PIN. |
 | **Alarm log** | See what alarmed, and when, in this show. |
@@ -239,6 +250,39 @@ Changes only stick after you click that card's **Save** button.
 
 Only a person with the admin PIN can delete a marker (the **✕** appears next to markers
 when logged in).
+
+### Choose the cards on a dashboard
+
+Each dashboard shows a set of **cards**, such as the readings tiles, the history chart or the
+sensor list. You choose which ones, and their order, for each dashboard.
+
+1. Open **Admin** and find the **User dashboards** card.
+2. Click **Edit cards** on the dashboard's row. The number on the button is how many cards it
+   shows now. A list of all cards opens under the row.
+3. Tick the cards you want. Untick the ones you don't.
+4. Use **▲** and **▼** to move a card up or down. The top of the list is the top of the screen.
+5. Optional: type a **Stage**, for example **Main stage**. Pick from the suggestions to match
+   the names you already use. Cards that follow one stage (such as the schedule) then show only
+   that stage. Leave it empty for every stage.
+6. Click **Save dashboards**.
+
+**What you'll see:** "Dashboards saved". Open screens reload by themselves within a few seconds
+and show the new cards.
+
+Good to know:
+
+- A **new** dashboard starts with a sensible set for its layout. If you change its **Layout**
+  before saving, the ticks change to that layout's set.
+- **Wall Clock** is never switched on by default. Tick it if you want it.
+- **Schedule** stays hidden until the show has a schedule, even when it is ticked.
+- **Open on a tablet** is always at the bottom of the screen, wherever it is in the list. Tick
+  it on any dashboard, not only wall screens, to show its address and QR code.
+- With no cards ticked, the dashboard shows only alarms. That's useful for a screen that should
+  only shout when something is wrong.
+- Dashboards from before this version keep exactly the cards they showed before.
+
+**If it didn't work:** if the screen still shows the old cards, reload the page. See
+[Troubleshooting](troubleshooting.md).
 
 ---
 

@@ -1,6 +1,6 @@
-// User dashboard: live tiles, history chart with markers, marker deltas,
-// sensor table, alarm banner. Layout (tablet / phone / wall) and allowed
-// actions come from the dashboard's config on the server.
+// User dashboard: the alarm banner plus the cards this dashboard lists (live tiles, history
+// chart with markers, marker deltas, sensor table, ...). Cards, their order, the layout
+// (tablet / phone / wall) and allowed actions come from the dashboard's config on the server.
 "use strict";
 
 (() => {
@@ -50,6 +50,17 @@
   });
 
   // ------------------------------------------------------------ rendering
+  // The speed-of-sound formula (Cramer 1993) is tested for 0–30 °C and 75–102 kPa. Outside that
+  // the value is still shown and used, with this quiet note beside it. Not an alarm.
+  function rangeNote() {
+    if (!state.site.c_out_of_range) return null;
+    const bounds = state.site.c_out_of_range_bounds || [];
+    const parts = [];
+    if (bounds.some((b) => b.indexOf("temperature") === 0)) parts.push("0–30 °C");
+    if (bounds.some((b) => b.indexOf("pressure") === 0)) parts.push("75–102 kPa");
+    return `Outside the formula's tested range (${parts.length ? parts.join(", ") : "0–30 °C"}): figures are approximate`;
+  }
+
   function renderTiles() {
     const tiles = $("tiles");
     tiles.replaceChildren();
@@ -58,15 +69,20 @@
       if (!e) continue;
       const [num, ...unit] = fmt(e.kind, e.value).split(" ");
       let foot = "";
+      let note = null;
       const counts = state.site.sensors || {};
       if (id === "site.temperature") foot = `${counts.temperature || 0} sensor(s) averaged`;
       if (id === "site.humidity") foot = counts.humidity ? `${counts.humidity} sensor(s)` : "no sensor: 50% assumed";
       if (id === "site.pressure") foot = counts.pressure ? `${counts.pressure} sensor(s)` : "no sensor: from site altitude";
-      if (id === "site.speed_of_sound" && e.value) foot = `${(1000 / e.value).toFixed(3)} ms per metre`;
+      if (id === "site.speed_of_sound" && e.value) {
+        foot = `${(1000 / e.value).toFixed(3)} ms per metre`;
+        note = rangeNote();
+      }
       tiles.append(h("div", { class: "tile" + (e.value === null ? " stale" : "") },
         h("div", { class: "label" }, label),
         h("div", { class: "value" }, num, unit.length ? h("span", { class: "unit" }, unit.join(" ")) : null),
-        h("div", { class: "foot" }, foot)));
+        h("div", { class: "foot" }, foot),
+        note ? h("div", { class: "foot approx" }, note) : null));
     }
   }
 
@@ -146,6 +162,11 @@
   }
 
   function renderMarkers() {
+    if (has("chart")) {
+      chart.markers = state.markers.map((m) => ({ ...m, selected: m.id === state.selectedMarker }));
+      chart.draw();
+    }
+    if (!has("markers")) return;
     const canDelete = state.isAdmin;
     const items = [...state.markers].sort((a, b) => b.ts - a.ts).map((m) =>
       h("li", { class: m.id === state.selectedMarker ? "sel" : "", onclick: () => selectMarker(m.id) },
@@ -153,8 +174,6 @@
         h("span", { style: "flex:1" }, m.label),
         canDelete ? h("button", { class: "small danger", title: "Delete marker", onclick: (ev) => { ev.stopPropagation(); deleteMarker(m.id); } }, "✕") : null));
     $("marker-list").replaceChildren(...(items.length ? items : [h("li", { class: "muted" }, "No markers yet. Add one at soundcheck, e.g. \"Aligned\".")]));
-    chart.markers = state.markers.map((m) => ({ ...m, selected: m.id === state.selectedMarker }));
-    chart.draw();
   }
 
   function renderSegs() {
@@ -206,6 +225,7 @@
   async function selectMarker(id) {
     state.selectedMarker = id;
     renderMarkers();
+    if (!has("markers")) return;   // the drift panel lives in the Markers card
     const box = $("delta");
     box.hidden = false;
     box.replaceChildren(h("span", { class: "muted" }, "Loading…"));
@@ -221,6 +241,7 @@
         h("div", { class: "big" }, ms === null ? "—" : `${SW.signed(ms, 3)} ms`),
         h("div", { class: "muted", style: "font-size:12px;margin-bottom:6px" },
           `change in sound travel time over ${d.reference_distance_m} m (positive = sound now arrives later)`),
+        rangeNote() ? h("div", { class: "notice approx", style: "margin-bottom:6px" }, rangeNote()) : null,
         h("table", {}, h("tbody", {},
           row("Temp", "site.temperature", "temperature"),
           row("RH", "site.humidity", "humidity"),
@@ -250,6 +271,60 @@
     try { await SW.api("POST", "/api/alarms/ack", { dashboard: slug }); } catch (err) { toast(err.message); }
   });
 
+  // --------------------------------------------------------------- cards
+  // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists
+  // which cards it shows and in what order (dash.cards); ids this build doesn't know (from a
+  // newer release) are skipped. `wide` cards span the full width; the others flow two to a row
+  // on a tablet, as in 0.2.0. The alarm banner and the header are not cards: always shown.
+  // `empty()` true keeps an assigned card hidden (nothing to show yet).
+  const cardEl = (id) => document.querySelector(`[data-card="${id}"]`);
+  const nothing = () => {};
+  const CARDS = {
+    env_tiles: { el: cardEl("env_tiles"), wide: true, render: renderTiles },
+    // Filled in by the schedule feature; hidden while the show has no schedule.
+    schedule: { el: cardEl("schedule"), wide: true, render: nothing, empty: () => true },
+    // renderMarkers also puts the marker lines on the chart (with or without the Markers card).
+    chart: { el: cardEl("chart"), wide: true, render: () => { renderSegs(); renderMarkers(); loadHistory(); } },
+    markers: { el: cardEl("markers"), render: renderMarkers },
+    sensors: { el: cardEl("sensors"), render: renderSensors },
+    // Filled in by the Wall Clock feature; hidden until then.
+    wall_clock: { el: cardEl("wall_clock"), wide: true, render: nothing, empty: () => true },
+    // A footer below everything, wherever it is in the list; it shows itself once it has an address.
+    connect_footer: { el: cardEl("connect_footer"), footer: true, render: renderConnectFooter },
+  };
+  // Without a dashboard (an admin on an unknown slug) show the 0.2.0 set.
+  const FALLBACK_CARDS = ["env_tiles", "chart", "markers", "sensors"];
+
+  function assignedCards() {
+    const list = state.dash && Array.isArray(state.dash.cards) ? state.dash.cards : FALLBACK_CARDS;
+    return list.filter((id, i) => Object.prototype.hasOwnProperty.call(CARDS, id) && list.indexOf(id) === i);
+  }
+  function has(id) { return assignedCards().indexOf(id) >= 0; }
+
+  // Put the assigned cards into <main> in the dashboard's order (after the alarm banner) and
+  // show them; hide the rest. Consecutive half-width cards share a two-column row.
+  function layoutCards() {
+    const main = $("main");
+    const want = assignedCards();
+    const oldRows = Array.prototype.slice.call(main.querySelectorAll(".card-flow"));
+    let row = null;
+    for (const id of want) {
+      const c = CARDS[id];
+      if (c.footer) continue;
+      if (c.wide) { main.appendChild(c.el); row = null; continue; }
+      if (!row) { row = h("div", { class: "grid-2 card-flow" }); main.appendChild(row); }
+      row.appendChild(c.el);
+    }
+    for (const id of Object.keys(CARDS)) {
+      const c = CARDS[id];
+      const on = want.indexOf(id) >= 0;
+      if (!on && !c.footer) main.appendChild(c.el);   // parked at the end, hidden
+      if (!c.footer) c.el.hidden = !on || (c.empty ? c.empty() : false);
+      else if (!on) c.el.hidden = true;
+    }
+    for (const r of oldRows) r.remove();   // emptied by the moves above
+  }
+
   // ---------------------------------------------------------- live feed
   function applySnapshot(msg) {
     state.entities = Object.fromEntries(msg.entities.map((e) => [e.id, e]));
@@ -271,17 +346,18 @@
     $("title").textContent = msg.site.name;
     $("show").textContent = `${state.dash ? state.dash.title + " · " : ""}${msg.show.name}`;
     $("marker-form").hidden = !(state.isAdmin || (state.dash && state.dash.allow_marker));
-    renderTiles(); renderAlarms(); renderSensors(); renderMarkers(); renderSegs();
-    loadHistory();
-    loadWallAddress(layout);
+    layoutCards();
+    renderAlarms();
+    for (const id of assignedCards()) CARDS[id].render();
   }
 
-  // Wall (kiosk) footer: where tablets can reach this dashboard. Only the address and path; the
-  // server sends a single LAN address (nothing else) for this endpoint.
+  // "Open on a tablet" footer card: where tablets can reach this dashboard. Only the address and
+  // path; the server sends a single LAN address (nothing else), and only to dashboards that
+  // have this card.
   let wallAddressFor = null;
-  async function loadWallAddress(layout) {
+  async function renderConnectFooter() {
     const box = $("wall-address");
-    if (layout !== "wall") { box.hidden = true; return; }
+    if (!has("connect_footer")) { box.hidden = true; return; }
     if (wallAddressFor === slug && !box.hidden) return;
     try {
       const r = await SW.api("GET", `/api/dashboard/${encodeURIComponent(slug)}/address`);
@@ -301,7 +377,7 @@
         syncClock(msg.now);
         state.site = { ...state.site, ...msg.site };
         SW.setSiteTime(msg.site && msg.site.time);   // keeps the offset fresh across a DST change
-        const shown = new Set(chartEntities());
+        const shown = new Set(has("chart") ? chartEntities() : []);
         for (const e of msg.entities) {
           state.entities[e.id] = e;
           if (shown.has(e.id) && e.value !== null && e.updated) {
@@ -309,10 +385,15 @@
             if (!pts.length || e.updated > pts[pts.length - 1][0]) pts.push([e.updated, e.value]);
           }
         }
-        renderTiles(); renderSensors(); updateChartSeries();
+        if (has("env_tiles")) renderTiles();
+        if (has("sensors")) renderSensors();
+        if (has("chart")) updateChartSeries();
         break;
       }
-      case "device": state.devices[msg.device.id] = msg.device; renderSensors(); break;
+      case "device":
+        state.devices[msg.device.id] = msg.device;
+        if (has("sensors")) renderSensors();
+        break;
       case "marker": state.markers.push(msg.marker); renderMarkers(); break;
       case "marker_deleted":
         state.markers = state.markers.filter((m) => m.id !== msg.id);
@@ -347,6 +428,8 @@
   if (soundWanted()) sounder.enable(); // works in kiosk mode (autoplay allowed); otherwise tap the sound button
   renderSound();
   setInterval(() => { $("clock").textContent = SW.fmtTime(serverNow(), { seconds: true }); }, 1000);
-  setInterval(loadHistory, 60000); // re-bucket history so long views stay tidy
-  setInterval(() => { state.now = serverNow(); renderSensors(); }, 5000);
+  // Re-bucket history so long views stay tidy; refresh the sensors' "Updated" ages. Each only
+  // does work while its card is on this dashboard.
+  setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); }, 5000);
 })();
