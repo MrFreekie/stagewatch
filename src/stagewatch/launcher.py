@@ -497,8 +497,30 @@ class Launcher:
         return self._start()
 
     # ---- main loop ----
+    def _watch_stop_request(self, done: threading.Event) -> None:
+        """Polls for the stop-request file; seeing it (we delete it first) sets stop_event."""
+        path = uc.stop_request_path(self.sd)
+        while not done.wait(self.poll):
+            if path.exists():
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    continue  # could not delete it: try again rather than stop on every poll
+                log.info("Stop request file found; stopping")
+                self.stop_event.set()
+                return
+
     def run(self) -> int:
         self.reject_stale_pending("pending file present at launcher start (no exit 75 this session)")
+        try:  # a request left over from before this start must not stop the new session
+            uc.stop_request_path(self.sd).unlink()
+        except OSError:
+            pass
+        watcher_done = threading.Event()
+        threading.Thread(target=self._watch_stop_request, args=(watcher_done,), daemon=True,
+                         name="stop-request-watch").start()
         backoff = self.backoff_min
         try:
             child = self._start()
@@ -525,6 +547,7 @@ class Launcher:
                 self.current.stop(self.graceful_stop)
             return 0
         finally:
+            watcher_done.set()
             if self._out:
                 self._out.close()
 

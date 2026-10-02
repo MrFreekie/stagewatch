@@ -95,6 +95,17 @@ function Invoke-Git([string[]]$GitArgs, [switch]$AllowFail) {
 
 # ---- 0. stop any previous task so files are not locked ------------------------------------
 if (Get-ScheduledTask -TaskName "Stagewatch" -ErrorAction SilentlyContinue) {
+    # Ask the launcher to stop the server cleanly first (Stop-ScheduledTask just kills it, which
+    # Stagewatch would later record as an unexpected stop). The state folder is admin-only.
+    $stopRequest = Join-Path $InstallDir ".git\stagewatch\stop-request"
+    if (Test-Path -LiteralPath (Split-Path $stopRequest)) {
+        New-Item -ItemType File -Force -Path $stopRequest | Out-Null
+        for ($i = 0; $i -lt 30; $i++) {   # up to ~15 s
+            if ((Get-ScheduledTask -TaskName "Stagewatch").State -ne "Running") { break }
+            Start-Sleep -Milliseconds 500
+        }
+        Remove-Item -LiteralPath $stopRequest -Force -ErrorAction SilentlyContinue
+    }
     Stop-ScheduledTask -TaskName "Stagewatch" -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 3   # the launcher's Job Object takes the server down; let it release files
 }

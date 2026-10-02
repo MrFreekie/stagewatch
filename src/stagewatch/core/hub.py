@@ -9,15 +9,17 @@ import time
 import zoneinfo
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from .. import __version__, acoustics
+from ..boottime import system_boot_time
 from .alarms import AlarmChange, AlarmEngine
 from .bus import EventBus
 from .config import ConfigStore
 from .derived import OUTLIER_LIMITS, Ema, robust_mean
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
-from .recorder import Recorder
+from .recorder import REASON_POWER_OR_RESTART, Recorder
 
 log = logging.getLogger(__name__)
 
@@ -48,18 +50,23 @@ def time_doc(site, now: float | None = None) -> dict:
     return {"tz": site.timezone, "utc_offset_s": utc_offset_s, "day_rollover": site.day_rollover}
 
 
-def down_text(seconds: float) -> str:
+def duration_text(seconds: float) -> str:
     minutes = round(seconds / 60)
     if minutes < 1:
-        return "down less than a minute"
+        return "less than a minute"
     if minutes < 120:
-        return f"down about {minutes} min"
+        return f"about {minutes} min"
     hours = round(seconds / 3600)
-    return f"down about {hours} h" if hours < 48 else f"down about {round(seconds / 86400)} days"
+    return f"about {hours} h" if hours < 48 else f"about {round(seconds / 86400)} days"
+
+
+def down_text(seconds: float) -> str:
+    return f"down {duration_text(seconds)}"
 
 
 class Hub:
-    def __init__(self, data_dir: Path, emulate: bool = False) -> None:
+    def __init__(self, data_dir: Path, emulate: bool = False,
+                 boot_time_fn: Callable[[], float | None] = system_boot_time) -> None:
         self.data_dir = data_dir
         self.emulate = emulate
         self.bus = EventBus()
@@ -82,10 +89,23 @@ class Hub:
         self.bus.subscribe("device", lambda _topic, device: self._device_meta(device))
         self._register_site_device()
         if unclean is not None:
-            text = f"Stagewatch restarted after an unexpected stop ({down_text(unclean['down_s'])})"
-            log.warning("%s; the previous run did not stop cleanly", text)
-            self.recorder.log_alarm("hub", "unclean_stop", 0, text)
-            self.add_marker(text, "hub")
+            try:
+                boot = boot_time_fn()
+            except Exception:  # noqa: BLE001 - an unreadable boot time just means "unknown"
+                boot = None
+            if boot is not None and boot > unclean["last_seen"]:
+                # The computer started after Stagewatch was last seen: a restart or power loss,
+                # not a Stagewatch fault. A quiet marker only; no alarm-log entry.
+                text = (f"Stagewatch was off for {duration_text(unclean['down_s'])} "
+                        "(the computer restarted or lost power)")
+                log.info("%s", text)
+                self.recorder.set_run_stop_reason(unclean["id"], REASON_POWER_OR_RESTART)
+                self.add_marker(text, "hub")
+            else:
+                text = f"Stagewatch restarted after an unexpected stop ({down_text(unclean['down_s'])})"
+                log.warning("%s; the previous run did not stop cleanly", text)
+                self.recorder.log_alarm("hub", "unclean_stop", 0, text)
+                self.add_marker(text, "hub")
 
     # ------------------------------------------------------------ lifecycle
     def add_integration(self, integration: Integration) -> None:

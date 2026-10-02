@@ -437,3 +437,69 @@ def test_real_server_writes_handshake_only_when_supervised(tmp_path):
     assert run({}, expect=False) is None
     h = run({uc.ENV_SUPERVISED: "1", uc.ENV_STATE_DIR: str(sd), uc.ENV_NONCE: "abc"}, expect=True)
     assert h and h["nonce"] == "abc" and h["version"]
+
+
+# ---- graceful stop: stop-request file, CTRL_BREAK / SIGTERM -> Hub.stop -> hub_runs.stopped ----
+
+def test_stop_request_file_stops_the_child_and_is_consumed(h):
+    h.start()
+    h.wait_handshake()
+    child = h.launcher.current
+    uc.stop_request_path(h.sd).write_text("")
+    h.thread.join(30)
+    assert not h.thread.is_alive()
+    assert child.poll() is not None
+    assert not uc.stop_request_path(h.sd).exists()
+
+
+def test_stale_stop_request_from_before_start_is_ignored(h):
+    uc.stop_request_path(h.sd).write_text("")
+    h.start()
+    h.wait_handshake()
+    time.sleep(0.5)
+    assert h.thread.is_alive()
+
+
+def _real_server_stop_recorded(tmp_path, stop):
+    """Run the real server (emulate) under a Launcher, stop it with ``stop(launcher)``, and return
+    the hub_runs row it left behind."""
+    env = make_env(tmp_path)
+    port = _free_port()
+    data = tmp_path / "real-data"
+    data.mkdir()
+    cmd = [sys.executable, "-m", "stagewatch", "--emulate", "--no-mdns", "--host", "127.0.0.1",
+           "--port", str(port), "--data-dir", str(data)]
+    launcher = lc.Launcher(env.marker(), child_cmd=cmd, poll=0.05, graceful_stop=30.0,
+                           git_protocols=("file",), backoff_min=60, backoff_max=60)
+    src = str(Path(lc.__file__).resolve().parents[1])  # the code under test, not the fake repo
+    launcher._env = lambda: {**os.environ, "PYTHONPATH": src, uc.ENV_SUPERVISED: "1",
+                             uc.ENV_STATE_DIR: str(launcher.sd), uc.ENV_NONCE: "n"}
+    t = threading.Thread(target=launcher.run, daemon=True)
+    t.start()
+    try:
+        end = time.monotonic() + 60
+        while not uc.read_handshake(launcher.sd):
+            assert time.monotonic() < end and t.is_alive(), "server did not start"
+            time.sleep(0.2)
+        stop(launcher)
+        t.join(60)
+        assert not t.is_alive()
+    finally:
+        launcher.stop_event.set()
+        t.join(30)
+    db = sqlite3.connect(str(data / "emulate" / "stagewatch.sqlite3"))
+    try:
+        return db.execute("SELECT stopped, stop_reason FROM hub_runs ORDER BY id DESC LIMIT 1").fetchone()
+    finally:
+        db.close()
+
+
+def test_real_server_stop_request_records_a_clean_stop(tmp_path):
+    """Windows: the launcher sends CTRL_BREAK; POSIX: SIGTERM.  Either way the hub records the stop."""
+    row = _real_server_stop_recorded(tmp_path, lambda l: uc.stop_request_path(l.sd).write_text(""))
+    assert row is not None and row[0] is not None and row[1] == "stop"
+
+
+def test_real_server_launcher_signal_records_a_clean_stop(tmp_path):
+    row = _real_server_stop_recorded(tmp_path, lambda l: l.stop_event.set())
+    assert row is not None and row[0] is not None and row[1] == "stop"
