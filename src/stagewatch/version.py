@@ -23,8 +23,8 @@ from . import __version__
 from .updater_common import (ENV_SUPERVISED, GitContext, UpdaterError, read_head_file, run_git,
                              state_dir_for)
 
-CONFIG_SCHEMA_VERSION = 1
-DB_SCHEMA_VERSION = 1
+CONFIG_SCHEMA_VERSION = 2
+DB_SCHEMA_VERSION = 2
 
 _REPO = Path(__file__).resolve().parents[2]
 

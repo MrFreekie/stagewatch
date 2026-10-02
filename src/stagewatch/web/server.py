@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .. import __version__
 from ..core.config import (
@@ -31,6 +31,7 @@ from ..core.config import (
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Marker, slugify
 from .. import diagnostics, netinfo
+from ..core import cards as cards_mod
 from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
 from ..version import build_info
@@ -77,6 +78,18 @@ class AdoptBody(BaseModel):
 class DevicePatch(BaseModel):
     name: str | None = None
     area: str | None = None
+
+
+class DashboardBody(Dashboard):
+    """PUT /api/admin/dashboards: strict card list (loading a saved config is lenient)."""
+
+    @field_validator("cards", mode="before")
+    @classmethod
+    def _cards(cls, v):
+        problem = cards_mod.strict_cards_error(v)
+        if problem:
+            raise ValueError(problem)
+        return v
 
 
 class ShowBody(BaseModel):
@@ -406,10 +419,23 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         return body
 
     @app.put("/api/admin/dashboards", dependencies=admin_deps)
-    async def put_dashboards(body: list[Dashboard]):
+    async def put_dashboards(body: list[DashboardBody]):
         slugs = [d.slug for d in body]
         if not body or len(slugs) != len(set(slugs)):
             raise HTTPException(422, "Need at least one dashboard, with unique slugs")
+        saved = []
+        for d in body:
+            existing = hub.config.dashboard(d.slug)
+            data = d.model_dump()
+            # A save that doesn't send cards/stage (today's admin page) keeps what the dashboard
+            # has; only a new dashboard gets its layout's default cards.
+            for key in ("cards", "stage"):
+                if key not in d.model_fields_set and existing is not None:
+                    data[key] = getattr(existing, key)
+            if "cards" not in d.model_fields_set and existing is None:
+                data.pop("cards")
+            saved.append(Dashboard.model_validate(data))
+        body = saved
         hub.config.dashboards = body
         hub.save_config()
         return body

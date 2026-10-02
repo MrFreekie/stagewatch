@@ -3,3 +3,6 @@
 .githooks/* text eol=lf
 *.ps1 text eol=crlf
 *.py text eol=lf
+*.sqlite3 binary
+tests/fixtures/v[0-9]/config.yaml -text
+tests/fixtures/v[0-9][0-9]/config.yaml -text

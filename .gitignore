@@ -30,6 +30,11 @@ secret.key
 *.sqlite3-journal
 *.sqlite3-wal
 *.sqlite3-shm
+# Exception: made-up data fixtures from a previous release (tests/fixtures/v<N>/, for migration tests)
+!tests/fixtures/v[0-9]/config.yaml
+!tests/fixtures/v[0-9][0-9]/config.yaml
+!tests/fixtures/v[0-9]/stagewatch.sqlite3
+!tests/fixtures/v[0-9][0-9]/stagewatch.sqlite3
 # ESPHome build output and local secrets
 esphome/.esphome/
 esphome/secrets.yaml

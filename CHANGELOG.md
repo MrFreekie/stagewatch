@@ -15,7 +15,31 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Changed
+- Saved data: this update converts your settings and show history to a new format, ready for
+  events, show days, running orders and the Wall Clock. Stagewatch takes a backup automatically
+  before it updates. Going back to the older version (**Admin → Software → Roll back…**) restores
+  that backup, so your data is exactly as it was before the update. Anything recorded after the
+  update is set aside in the backups folder, not deleted. The conversion takes a few seconds, even
+  with a long history.
+- If you run Stagewatch from a downloaded copy (not installed), it saves a safety copy of your show
+  history as `stagewatch.sqlite3.pre-v2.bak` in your data folder before converting it. It keeps
+  only the two newest of these copies and deletes older ones. You can delete them once you are
+  happy with the new version.
+- Show history: all your existing shows are kept and grouped into one event called "Event 1".
+- Dashboards look the same as before after the update, and saving **User dashboards** in the admin
+  page keeps what each dashboard shows.
+
+### Added
+- Show history: Stagewatch now records when it starts and stops. After a crash, a power cut or
+  the PC switching off without shutting Stagewatch down, it adds a marker such as "Stagewatch
+  restarted after an unexpected stop (down about 4 min)", so the gap is easy to see on the chart.
+- Show history is written safely to disk every minute, so a power cut loses at most about the
+  last minute of readings.
+
 ### Fixed
+- Readings are no longer lost if the history file is busy for a moment while Stagewatch saves
+  them: Stagewatch keeps them and tries again.
 - Raspberry Pi / Linux: in-app updates were refused with "unsafe_permissions" on Debian 13, whose
   default settings make new folders group-writable. The installer now sets safe permissions itself
   and repairs an existing install. **Action needed** if you installed on Debian 13 before this fix:

@@ -3,8 +3,8 @@
     uv run python scripts/updater_sandbox.py [--dir DIR] [--port 8090] [--reset]
 
 Builds, under DIR (default: a folder in the system temp dir):
-  origin.git   a local bare "remote" seeded from this working tree: v0.1.0, then v0.2.0 (bumps
-               CONFIG_SCHEMA_VERSION so the update makes a data backup and has a changelog),
+  origin.git   a local bare "remote" seeded from this working tree: v0.1.0, then v0.2.0 (raises
+               CONFIG_SCHEMA_VERSION by one so the update makes a data backup and has a changelog),
                and a `nightly` branch one commit after v0.2.0
   clone/       a managed clone checked out (detached) at v0.1.0, with a managed marker
   data/        an empty data dir
@@ -65,7 +65,8 @@ def build(root: Path) -> Path:
     git(work, "commit", "-q", "-m", "sandbox v0.1.0")
     git(work, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
     edit("src/stagewatch/__init__.py", lambda t: re.sub(r'__version__ = "[^"]+"', '__version__ = "0.2.0"', t))
-    edit("src/stagewatch/version.py", lambda t: t.replace("CONFIG_SCHEMA_VERSION = 1", "CONFIG_SCHEMA_VERSION = 2"))
+    edit("src/stagewatch/version.py", lambda t: re.sub(  # one config schema step up: forces a data backup
+        r"^CONFIG_SCHEMA_VERSION = (\d+)$", lambda m: f"CONFIG_SCHEMA_VERSION = {int(m.group(1)) + 1}", t, flags=re.M))
     edit("CHANGELOG.md", lambda t: t.replace("## [Unreleased]", "## [Unreleased]\n\n## [0.2.0] - 2026-10-01\n\n"
                                              "### Added\n- Sandbox release: changes the config schema version.\n", 1))
     git(work, "commit", "-q", "-am", "sandbox v0.2.0")

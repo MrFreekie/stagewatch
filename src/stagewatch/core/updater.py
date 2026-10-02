@@ -576,9 +576,10 @@ class Updater:
         self.hub.recorder.log_alarm("software", kind, 0, text)
         self.hub.add_marker(f"{'Updating' if kind == 'update' else 'Rolling back'} software {text}", "updater")
 
-    def _shutdown_for_apply(self) -> None:
+    def _shutdown_for_apply(self, action: str = "update") -> None:
         self.restarting = True
         self.hub.exit_code = uc.EXIT_APPLY
+        self.hub.stop_reason = action  # recorded as how this run ended (hub_runs.stop_reason)
         request = self.hub.request_shutdown
         if request is None:
             return
@@ -645,7 +646,7 @@ class Updater:
             fv, tv = facts["from_version"], facts["to_version"]
             self._announce_start("rollback", _version_label(fv, facts["from_sha"], tv),
                                  _version_label(tv, facts["to_sha"], fv))
-            self._shutdown_for_apply()
+            self._shutdown_for_apply("rollback")
             return {"ok": True, "restarting": True, "from_version": fv, "to_version": tv}
 
     # ---- result of the previous run's update/rollback (called once at server start) ----
