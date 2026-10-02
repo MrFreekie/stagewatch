@@ -578,7 +578,20 @@ class Recorder:
             (now, now, version or "", json.dumps(doc, separators=(",", ":")) if doc is not None else None)).lastrowid
         self._db.commit()
         self._last_heartbeat = now
-        if prev is None or prev[3] is not None:
+        self.previous_clean_stop = None
+        if prev is not None and prev[3] is not None:
+            # The previous run stopped cleanly: say when and why, so the hub can tell a
+            # computer restart (e.g. systemd stopping Stagewatch on reboot) from a quiet stop.
+            row = self._db.execute("SELECT stopped, stop_reason FROM hub_runs WHERE id = ?", (prev[0],)).fetchone()
+            try:
+                stopped = float(row[0])
+                if stopped == stopped and stopped not in (float("inf"), float("-inf")):
+                    self.previous_clean_stop = {"id": prev[0], "stopped": stopped, "reason": row[1] or "",
+                                                "down_s": max(0.0, now - stopped)}
+            except (TypeError, ValueError):
+                pass
+            return None
+        if prev is None:
             return None
         try:  # a damaged or hand-edited row must never stop the hub starting
             last_seen = float(prev[2])

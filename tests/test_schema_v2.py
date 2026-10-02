@@ -851,3 +851,36 @@ def test_admin_state_masks_secrets_after_migration(v1_dir):
         assert r.json()["config"]["dashboards"][2]["cards"][-1] == "connect_footer"
         assert LEGACY_PASSWORD not in client.get("/api/snapshot").text
     hub.recorder.close()
+
+
+def _clean_stop(tmp_path, stopped, reason="stop"):
+    Hub(tmp_path, boot_time_fn=lambda: None).recorder.close(reason)
+    db = sqlite3.connect(str(tmp_path / "stagewatch.sqlite3"))
+    db.execute("UPDATE hub_runs SET stopped = ?, last_seen = ? WHERE id = (SELECT MAX(id) FROM hub_runs)",
+               (stopped, stopped))
+    db.commit()
+    db.close()
+
+
+def test_clean_stop_then_computer_restart_is_a_quiet_marker(tmp_path):
+    # Linux: systemd stops Stagewatch cleanly on the way down, then the computer starts again.
+    now = time.time()
+    _clean_stop(tmp_path, now - 1500)
+    hub = Hub(tmp_path, boot_time_fn=lambda: now - 300)
+    labels = [m.label for m in hub.recorder.markers() if m.source == "hub"]
+    assert labels == ["Stagewatch was off for about 25 min (the computer was restarted or shut down)"]
+    assert not [a for a in hub.recorder.alarm_log() if a["event"] == "unclean_stop"]
+    hub.recorder.close()
+
+
+@pytest.mark.parametrize("boot,reason", [
+    (lambda now: now - 7200, "stop"),    # stopped by hand, computer kept running
+    (lambda now: None, "stop"),          # boot time unknown
+    (lambda now: now - 300, "update"),   # an update restart is not a computer restart
+])
+def test_clean_stop_without_a_restart_adds_no_marker(tmp_path, boot, reason):
+    now = time.time()
+    _clean_stop(tmp_path, now - 1500, reason)
+    hub = Hub(tmp_path, boot_time_fn=lambda: boot(now))
+    assert not [m for m in hub.recorder.markers() if m.source == "hub"]
+    hub.recorder.close()
