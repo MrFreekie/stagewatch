@@ -1,6 +1,6 @@
 name: Nightly
 
-# Fast-forwards the `nightly` branch to a main commit whose tests passed on Windows.
+# Fast-forwards the `nightly` branch to a main commit whose tests passed on Windows and Linux.
 # Only this workflow may move `nightly` (protect the branch with a ruleset, GitHub Actions as
 # the bypass actor). Never push nightly by hand. No --force anywhere: a non-fast-forward fails.
 on:
@@ -46,8 +46,24 @@ jobs:
       - run: uv run pytest -q
       - run: uv run python scripts/check_secrets.py --all
 
+  test-linux:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run python scripts/check_secrets.py --all
+
   promote:
-    needs: [resolve, test]
+    needs: [resolve, test, test-linux]
     if: github.ref == 'refs/heads/main'   # a manual run from another branch must not move nightly
     runs-on: windows-latest
     timeout-minutes: 5

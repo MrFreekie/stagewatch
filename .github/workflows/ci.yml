@@ -28,3 +28,30 @@ jobs:
       - run: uv sync --frozen
       - run: uv run pytest -q
       - run: uv run python scripts/check_secrets.py --all
+
+  test-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run python scripts/check_secrets.py --all
+      - name: Syntax-check the Pi scripts
+        run: |
+          for f in deploy/pi/*.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+      - name: shellcheck the Pi scripts (non-blocking for now)
+        run: |
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck --version
+            shellcheck deploy/pi/*.sh || echo "::warning::shellcheck reported findings (non-blocking)"
+          else
+            echo "shellcheck not installed on this runner; skipped"
+          fi
