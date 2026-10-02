@@ -27,7 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from ..updater_common import atomic_write_bytes, fsync_dir, remove_stale_temps, replace_with_retry
 from ..version import CONFIG_SCHEMA_VERSION
 from .cards import CARD_ID_RE, MAX_CARDS, default_cards, legacy_cards
-from .model import slugify
+from .model import normalise_mac, slugify
 
 log = logging.getLogger(__name__)
 
@@ -125,7 +125,6 @@ class AdminConfig(_Model):
     pin_hash: str = ""
 
 
-_MAC_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
 class EsphomeDeviceConfig(_Model):
@@ -145,10 +144,12 @@ class EsphomeDeviceConfig(_Model):
     @field_validator("mac")
     @classmethod
     def _mac(cls, v: str) -> str:
-        v = (v or "").strip().lower().replace(":", "").replace("-", "")
-        if v and not _MAC_RE.fullmatch(v):
+        if not (v or "").strip():
+            return ""
+        mac = normalise_mac(v)
+        if mac is None:
             raise ValueError("MAC must be 12 hex characters")
-        return v
+        return mac
 
 
 class EntitySettings(_Model):

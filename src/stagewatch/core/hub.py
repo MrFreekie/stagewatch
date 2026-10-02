@@ -15,7 +15,8 @@ from ..boottime import system_boot_time
 from . import sitetime
 from .alarms import AlarmChange, AlarmEngine
 from .bus import EventBus
-from .config import ConfigStore
+from .calibration import calibration_for as _calibration_for
+from .config import Calibration, ConfigStore, EntitySettings
 from .derived import OUTLIER_LIMITS, Ema, robust_mean
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
@@ -240,6 +241,7 @@ class Hub:
                 device.name or existing.name, device.manufacturer, device.model)
             if device.area:
                 existing.area = device.area
+            existing.hw_id = device.hw_id  # as reported now; "" when the board gave no MAC
             device = existing
         else:
             self.devices[device.id] = device
@@ -275,6 +277,7 @@ class Hub:
         if existing:
             existing.name, existing.kind, existing.unit, existing.decimals = (
                 entity.name, entity.kind, entity.unit, entity.decimals)
+            existing.hw_key = entity.hw_key
             entity = existing
         else:
             self.entities[entity.id] = entity
@@ -289,7 +292,7 @@ class Hub:
         if entity is None:
             return
         ts = ts if ts is not None else time.time()
-        offset = self.config.entity_settings(entity_id).offset
+        offset = self.calibration_for(entity).offset
         entity.raw_value = raw_value
         entity.value = None if raw_value is None else raw_value + offset
         entity.updated = ts
@@ -308,7 +311,12 @@ class Hub:
         return [e for e in self.entities.values()
                 if e.kind == kind and not e.derived and e.value is not None
                 and not e.is_stale(now, stale_after)
-                and self.config.entity_settings(e.id).include_in_average]
+                and self.calibration_for(e).include_in_average]
+
+    def calibration_for(self, entity: Entity) -> Calibration | EntitySettings:
+        """The hardware record (by ``entity.hw_key``), else the legacy entry by entity id, else
+        the defaults. Read-only."""
+        return _calibration_for(self.config, entity.id, entity.hw_key)
 
     def compute_site(self, now: float | None = None) -> None:
         now = now if now is not None else time.time()

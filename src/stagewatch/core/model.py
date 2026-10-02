@@ -54,6 +54,20 @@ def slugify(text: str) -> str:
     return slug or "unnamed"
 
 
+_HEX12 = re.compile(r"[0-9a-f]{12}")
+_MAC_SEPARATORS = str.maketrans("", "", ":-. ")
+
+
+def normalise_mac(value: object) -> str | None:
+    """``AA:BB:CC:DD:EE:FF``, ``aa-bb-...``, ``aabb.ccdd.eeff`` or ``aabbccddeeff`` -> ``aabbccddeeff``.
+    None for anything that isn't exactly 12 hex digits (never guess). The one MAC check used
+    everywhere (config, integrations, API)."""
+    if not isinstance(value, str):
+        return None
+    mac = value.strip().lower().translate(_MAC_SEPARATORS)
+    return mac if _HEX12.fullmatch(mac) else None
+
+
 @dataclass
 class Device:
     id: str
@@ -64,6 +78,9 @@ class Device:
     area: str = ""
     status: Status = Status.INITIALIZING
     status_detail: str = ""
+    # Hardware key of the board ("mac:<12hex>"), set by the integration once known. Admin only:
+    # never in to_dict(), so it stays off the public snapshot.
+    hw_id: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -90,6 +107,9 @@ class Entity:
     value: float | None = None
     raw_value: float | None = None
     updated: float | None = None
+    # Hardware key of the measurement ("mac:<12hex>/<object_id>"), set by the integration in
+    # register_entity; calibration follows it (core/calibration.py). Admin only: never in to_dict().
+    hw_key: str = ""
 
     def to_dict(self, now: float, stale_after_s: float) -> dict:
         return {

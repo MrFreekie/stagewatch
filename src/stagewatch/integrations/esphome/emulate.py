@@ -2,25 +2,33 @@
 
 Values follow a slow evening temperature drift with a little sensor noise.
 One node periodically drops offline so status/stale handling can be seen.
+
+Each node has a fixed, locally administered MAC (02:5e:00:00:00:01 ...), so calibrations follow
+the "hardware" across restarts exactly as they do for real boards.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import random
 import time
 
+from ...core.calibration import move_legacy, node_key, sensor_key
 from ...core.model import Device, Entity, Kind, Status
+
+log = logging.getLogger(__name__)
 
 UPDATE_S = 5.0
 
 
 class EmulatedNode:
     def __init__(self, hub, device_id: str, name: str, area: str, temp_offset: float,
-                 has_pressure: bool = True, flaky: bool = False) -> None:
+                 has_pressure: bool = True, flaky: bool = False, mac: str = "") -> None:
         self.hub = hub
         self.device_id = device_id
+        self.mac = mac
         self.name = name
         self.area = area
         self.temp_offset = temp_offset
@@ -32,22 +40,35 @@ class EmulatedNode:
     @classmethod
     def defaults(cls, hub) -> list["EmulatedNode"]:
         return [
-            cls(hub, "sim_stage_l", "Stage L (sim)", "Stage L", 0.8),
-            cls(hub, "sim_foh", "FOH (sim)", "FOH", 0.0),
+            cls(hub, "sim_stage_l", "Stage L (sim)", "Stage L", 0.8, mac="02:5e:00:00:00:01"),
+            cls(hub, "sim_foh", "FOH (sim)", "FOH", 0.0, mac="02:5e:00:00:00:02"),
             cls(hub, "sim_delay_1", "Delay tower 1 (sim)", "Delay tower 1", -0.6,
-                has_pressure=False, flaky=True),
+                has_pressure=False, flaky=True, mac="02:5e:00:00:00:03"),
         ]
 
+    def _hw(self, object_id: str) -> str:
+        return sensor_key(node_key(self.mac), object_id) if self.mac else ""
+
     async def start(self) -> None:
+        node = node_key(self.mac) if self.mac else ""
+        if node and move_legacy(self.hub.config, self.device_id, node):
+            try:
+                self.hub.save_config()  # once per connect, only when something moved
+            except OSError:
+                log.exception("Could not save the moved calibrations of %s", self.device_id)
         self.hub.register_device(Device(self.device_id, self.name, "esphome",
-                                        "ESPHome (emulated)", "BME280", self.area, Status.OK))
+                                        "ESPHome (emulated)", "BME280", self.area, Status.OK,
+                                        hw_id=node))
         self.hub.register_entity(Entity(f"{self.device_id}.temperature", self.device_id,
-                                        "Temperature", Kind.TEMPERATURE, "°C", 1))
+                                        "Temperature", Kind.TEMPERATURE, "°C", 1,
+                                        hw_key=self._hw("temperature")))
         self.hub.register_entity(Entity(f"{self.device_id}.humidity", self.device_id,
-                                        "Humidity", Kind.HUMIDITY, "%", 0))
+                                        "Humidity", Kind.HUMIDITY, "%", 0,
+                                        hw_key=self._hw("humidity")))
         if self.has_pressure:
             self.hub.register_entity(Entity(f"{self.device_id}.pressure", self.device_id,
-                                            "Pressure", Kind.PRESSURE, "Pa", 0))
+                                            "Pressure", Kind.PRESSURE, "Pa", 0,
+                                            hw_key=self._hw("pressure")))
         self.publish()
         self._task = asyncio.create_task(self._run(), name=f"emulate-{self.device_id}")
 

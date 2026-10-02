@@ -189,7 +189,10 @@
     const ents = snap.entities.filter((e) => !e.derived);
     const devName = (id) => (snap.devices.find((d) => d.id === id) || {}).name || id;
     const rows = ents.map((e) => {
-      const s = admin.config.entities[e.id] || { offset: 0, include_in_average: true };
+      // The settings that apply now (hardware record, else legacy entry), so an offset kept only
+      // in a hardware record still shows.
+      const s = (admin.hardware && admin.hardware.settings[e.id]) || admin.config.entities[e.id]
+        || { offset: 0, include_in_average: true };
       const off = h("input", { class: "num", type: "number", step: "0.01", value: s.offset });
       const inc = h("input", { type: "checkbox", checked: s.include_in_average });
       return h("tr", {},

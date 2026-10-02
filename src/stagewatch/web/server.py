@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import platform
@@ -34,6 +35,7 @@ from .. import __version__
 from ..core.config import (
     Dashboard, EntitySettings, EsphomeDeviceConfig, OscOutConfig, SiteConfig, Threshold,
 )
+from ..core.calibration import set_calibration
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Marker, slugify
 from ..core.recorder import valid_day
@@ -119,7 +121,34 @@ class AckBody(BaseModel):
     dashboard: str = ""
 
 
+# A host name or IPv4 address: dot-separated labels of letters, digits, '-' and '_' (fullmatch).
+_HOSTNAME_RE = re.compile(r"[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?"
+                          r"(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?)*\.?")
+HOST_ERROR = "The address must be a host name or IP address, with no spaces"
+
+
+def clean_host(v: str) -> str:
+    """A node address: a host name, an IPv4 address or a bare IPv6 address. No brackets, no
+    ``%`` zone, no scheme (``http:``), no port, no spaces. Fixed error text, never the input."""
+    v = (v or "").strip()
+    if not v or len(v) > 253:
+        raise ValueError(HOST_ERROR)
+    if ":" in v:
+        if any(ch in v for ch in "[]%"):
+            raise ValueError(HOST_ERROR)
+        try:
+            ipaddress.IPv6Address(v)
+        except ValueError:
+            raise ValueError(HOST_ERROR) from None
+        return v
+    if not _HOSTNAME_RE.fullmatch(v):
+        raise ValueError(HOST_ERROR)
+    return v
+
+
 class AdoptBody(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)  # carries the encryption key
+
     host: str = Field(min_length=1, max_length=253)
     port: int = Field(6053, ge=1, le=65535)
     id: str = ""
@@ -127,14 +156,40 @@ class AdoptBody(BaseModel):
     area: str = ""
     noise_psk: str = ""
 
+    @field_validator("host")
+    @classmethod
+    def _host(cls, v: str) -> str:
+        return clean_host(v)
+
 
 class IgnoreBody(BaseModel):
     key: str = Field(min_length=1, max_length=80)
 
 
+class ResolveBody(BaseModel):
+    """POST /api/admin/esphome/{id}/resolve: settle a node held by the hardware check."""
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["new_hardware", "move_calibration", "forget_mac"]
+
+
+RESOLVE_REFUSED = "There is nothing to resolve this way for this node. Nothing has been changed."
+
+
 class DevicePatch(BaseModel):
+    """PATCH /api/admin/devices/{id}. A new host or port reconnects the node; its recorded MAC is
+    kept, so the same board at the new address keeps its calibration. The MAC itself can't be
+    set here (the hub records it from the board)."""
+
     name: str | None = None
     area: str | None = None
+    host: str | None = Field(None, max_length=253)
+    port: int | None = Field(None, ge=1, le=65535)
+
+    @field_validator("host")
+    @classmethod
+    def _host(cls, v: str | None) -> str | None:
+        return v if v is None else clean_host(v)
 
 
 def _has_hidden_chars(text: str) -> bool:
@@ -709,6 +764,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         esp = hub.integrations.get("esphome")
         return {
             "config": cfg,
+            "hardware": hardware_state(esp),
             "integrations": [i.info() for i in hub.integrations.values()],
             "discovered": esp.discovered_list() if esp else [],
             "ignored": esp.ignored_list() if esp else [],
@@ -734,6 +790,23 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 "import_max_bytes": sched.IMPORT_MAX_BYTES, "import_max_rows": sched.IMPORT_MAX_ROWS,
                 "demo_allowed": demo_allowed(),
             },
+        }
+
+    def hardware_state(esp) -> dict:
+        """Admin only (never in the public snapshot): which hardware each sensor and device is,
+        and devices held in FAULT by the hardware check (with the MACs and other device id that
+        the public status text leaves out)."""
+        conflicts = esp.hardware_conflicts() if esp is not None and hasattr(esp, "hardware_conflicts") else {}
+        sensors = [e for e in hub.entities.values() if not e.derived]
+        return {
+            "entities": {e.id: e.hw_key for e in sensors if e.hw_key},
+            # The calibration that applies to each sensor now (hardware record, else legacy entry,
+            # else defaults): the admin card shows these, so an offset kept only in a hardware
+            # record (no legacy mirror) is never shown as 0.
+            "settings": {e.id: {"offset": (c := hub.calibration_for(e)).offset,
+                                "include_in_average": c.include_in_average} for e in sensors},
+            "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id)}
+                        for d in hub.devices.values() if d.id != "site"},
         }
 
     def known_stages() -> list[str]:
@@ -765,10 +838,18 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                                   name=body.name.strip(), area=body.area.strip(),
                                   noise_psk=body.noise_psk.strip())
         try:
-            await esphome().adopt(cfg)
+            warning = await esphome().adopt(cfg)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
-        return {"id": cfg.id}
+        return {"id": cfg.id, "warning": warning} if warning else {"id": cfg.id}
+
+    @app.post("/api/admin/esphome/{device_id}/resolve", dependencies=admin_deps)
+    async def resolve_hardware(device_id: str, body: ResolveBody):
+        try:
+            await esphome().resolve_hardware(device_id, body.action)
+        except LookupError:
+            raise HTTPException(409, RESOLVE_REFUSED) from None
+        return {"ok": True}
 
     @app.post("/api/admin/esphome/ignore", dependencies=admin_deps)
     async def ignore_discovered(body: IgnoreBody):
@@ -790,7 +871,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def patch_device(device_id: str, body: DevicePatch):
         if device_id not in hub.devices or device_id == "site":
             raise HTTPException(404, "No such device")
-        await esphome().update(device_id, body.name, body.area)
+        esp = esphome()
+        if (body.host is not None or body.port is not None) and esp.config_of(device_id) is None:
+            raise HTTPException(409, "This device has no network address to change")
+        await esp.update(device_id, body.name, body.area, body.host, body.port)
         return {"ok": True}
 
     @app.delete("/api/admin/devices/{device_id}", dependencies=admin_deps)
@@ -804,9 +888,11 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def put_entity(entity_id: str, body: EntitySettings):
         if entity_id not in hub.entities:
             raise HTTPException(404, "No such entity")
-        hub.config.entities[entity_id] = body
-        hub.save_config()
         entity = hub.entities[entity_id]
+        # Hardware record when the sensor's board is known (a "manual" history entry when the
+        # offset changes), else the legacy entry keyed by entity id.
+        set_calibration(hub.config, entity_id, entity.hw_key, body.offset, body.include_in_average)
+        hub.save_config()
         if entity.raw_value is not None and not entity.derived:
             hub.update_state(entity_id, entity.raw_value, entity.updated)
         return body
