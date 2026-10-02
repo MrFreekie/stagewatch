@@ -63,10 +63,18 @@ SW.KIND_FMT = {
   contact: { unit: "", dec: 0, conv: (v) => v },
 };
 
+// Fixed-point with a comma every three digits and a full stop for decimals ("1,013.2"), whatever
+// the browser's locale.
+SW.num = function (v, dec) {
+  const s = Number(v).toFixed(dec);
+  const m = /^(-?)(\d+)(.*)$/.exec(s);
+  return m ? m[1] + m[2].replace(/\B(?=(\d{3})+(?!\d))/g, ",") + m[3] : s;
+};
+
 SW.fmt = function (kind, value, withUnit = true) {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   const f = SW.KIND_FMT[kind] || { unit: "", dec: 1, conv: (v) => v };
-  const s = f.conv(value).toFixed(f.dec);
+  const s = SW.num(f.conv(value), f.dec);
   return withUnit && f.unit ? `${s} ${f.unit}` : s;
 };
 
@@ -79,8 +87,8 @@ SW.fmtDelta = function (kind, delta) {
 
 // "+1.23" / "-1.23" / "0.00" (never "-0.00" from rounding noise)
 SW.signed = function (v, dec) {
-  const s = v.toFixed(dec);
-  if (Number(s) === 0) return (0).toFixed(dec);
+  const s = SW.num(v, dec);
+  if (Number(v.toFixed(dec)) === 0) return (0).toFixed(dec);
   return v > 0 ? `+${s}` : s;
 };
 
@@ -150,7 +158,16 @@ SW.fmtOffset = function (sec) {
   const pad = (n) => (n < 10 ? "0" : "") + n;
   return `UTC${sec < 0 ? "-" : "+"}${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 };
-// "14:05", {seconds: true} "14:05:09", {date: true} "Fri 2 Oct 2026, 14:05" (date order per locale).
+// "14:05", {seconds: true} "14:05:09", {date: true} "Fri 2 Oct 2026, 14:05".
+// Dates are always British (day month year), built here rather than by the browser, so a tablet
+// set to a US locale still shows "2 Oct", never "Oct 2".
+SW.DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];   // weeks start on Monday
+SW.MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// "Fri 2 Oct 2026" from a calendar date (month 1-12).
+SW.fmtDate = function (y, mo, d) {
+  const dow = (new Date(Date.UTC(y, mo - 1, d)).getUTCDay() + 6) % 7;   // 0 = Monday
+  return `${SW.DAYS[dow]} ${d} ${SW.MONTHS[mo - 1]} ${y}`;
+};
 SW.fmtTime = function (ts, opts) {
   if (ts === null || ts === undefined || !Number.isFinite(Number(ts))) return "—";
   ts = Number(ts);
@@ -160,12 +177,7 @@ SW.fmtTime = function (ts, opts) {
   let s = `${pad(p.h)}:${pad(p.mi)}`;
   if (o.seconds) s += `:${pad(p.s)}`;
   if (!o.date) return s;
-  // Date part: formatted in UTC from the site's calendar date, so no zone maths happens twice.
-  const f = SW._formatter("date", { timeZone: "UTC", numberingSystem: "latn", weekday: "short", day: "numeric",
-    month: "short", year: "numeric" });
-  let ds = `${p.y}-${pad(p.mo)}-${pad(p.d)}`;
-  if (f) { try { ds = f.format(new Date(Date.UTC(p.y, p.mo - 1, p.d, 12))); } catch (_) { /* keep ISO */ } }
-  return `${ds}, ${s}`;
+  return `${SW.fmtDate(p.y, p.mo, p.d)}, ${s}`;
 };
 
 SW.age = function (updated, now) {

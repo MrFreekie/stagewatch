@@ -59,6 +59,9 @@ them into a dated release section and tags the commit.
 - A message if JavaScript is turned off.
 
 ### Changed
+- Dates and numbers now always use UK style, whatever language the tablet or browser is set
+  to. Dates run day, month, year ("Fri 2 Oct 2026, 14:05"), and large numbers have a comma
+  for thousands ("1,013.2 hPa").
 - Dashboards: a dashboard with no cards now says so, and where to choose cards, instead of
   showing a blank screen. On wall screens the "approximate" note and the small lines under each
   tile are larger. In **Edit cards**, the ▲ and ▼ buttons have a clear outline in the light theme.

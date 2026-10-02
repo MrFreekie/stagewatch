@@ -50,16 +50,25 @@ eq(SW.fmtTime(utc(2026, 7, 1, 0, 30)), "23:30", "unknown zone falls back to the 
 eq(SW.fmtTime(null), "—", "missing time");
 eq(SW.fmtOffset(-16200), "UTC-04:30", "fmtOffset");
 
-// ---- dates use Latin digits whatever the locale
+// ---- dates are British (day month year) whatever the browser's locale
 zone("Europe/London", 3600);
-SW._latnLocale = () => "ar-EG-u-nu-latn";
+eq(SW.fmtTime(utc(2026, 10, 2, 13, 5), { date: true }), "Fri 2 Oct 2026, 14:05", "British date");
+SW._latnLocale = () => "en-US-u-nu-latn";
 SW._tf = {};
-const dated = SW.fmtTime(utc(2026, 10, 2, 13, 5), { date: true });
-eq(/^[^٠-٩۰-۹]*$/.test(dated) && /2026/.test(dated) && /14:05$/.test(dated), true,
-  `Arabic locale date has Latin digits (${dated})`);
-SW._latnLocale = () => "not a locale tag!";   // bad tag: falls back to the default locale
-SW._tf = {};
-eq(/14:05$/.test(SW.fmtTime(utc(2026, 10, 2, 13, 5), { date: true })), true, "bad locale tag falls back");
+eq(SW.fmtTime(utc(2026, 10, 2, 13, 5), { date: true }), "Fri 2 Oct 2026, 14:05", "US locale still British");
+eq(SW.fmtTime(utc(2026, 10, 4, 23, 30), { date: true }), "Mon 5 Oct 2026, 00:30", "site date, not UTC date");
+eq(SW.fmtDate(2026, 10, 5), "Mon 5 Oct 2026", "Monday");
+eq(SW.fmtDate(2028, 2, 29), "Tue 29 Feb 2028", "leap day");
+
+// ---- numbers: comma thousands, full-stop decimals
+eq(SW.num(1013.25, 1), "1,013.3", "thousands");
+eq(SW.num(1234567.891, 2), "1,234,567.89", "millions");
+eq(SW.num(-12345, 0), "-12,345", "negative");
+eq(SW.num(999.95, 1), "1,000.0", "rounds into thousands");
+eq(SW.num(343.2, 2), "343.20", "no separator under 1,000");
+eq(SW.fmt("pressure", 101325), "1,013.3 hPa", "pressure");
+eq(SW.signed(1234.5, 1), "+1,234.5", "signed thousands");
+eq(SW.signed(-0.001, 2), "0.00", "no -0.00");
 
 // ---- chart ticks stay on the site grid across a DST change in the window
 zone("America/New_York", -18000);
