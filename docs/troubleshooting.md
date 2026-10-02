@@ -94,6 +94,9 @@ Get-NetConnectionProfile
    If **NetworkCategory** says **Public**, change it in **Settings** > **Network & internet**
    > your connection > **Network profile type** > **Private network**
    ([Windows guide, Step 6](install-windows.md#step-6-set-the-network-to-private)).
+   **More than one network card?** Each network has its own setting: check the line for the
+   network the tablet is on. If it says **Unidentified network** and Settings won't change it, see
+   [PCs with more than one network](install-windows.md#pcs-with-more-than-one-network).
 5. **Windows only: is the firewall rule there?** Paste:
 
 ```powershell

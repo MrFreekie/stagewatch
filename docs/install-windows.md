@@ -207,6 +207,50 @@ network is set to **Public**, tablets will not get in.
 
 **Only do this on your own show network**, not on public Wi-Fi.
 
+### PCs with more than one network
+
+You don't need to choose a network in Stagewatch. It works on all of them at once: tablets can
+reach it on any network, it finds sensor nodes on any network, and **Admin > Connect a tablet**
+shows one address per network. Use the address on the same network as the tablet.
+
+But Windows sets **Private** or **Public** separately for each network. Tablets on a network left
+as **Public** can't get in, even if another network works. Set each network you use for Stagewatch
+to **Private**, and leave networks you don't trust (venue Wi-Fi, guest networks) as **Public**.
+
+**Check them all at once.** In an **Administrator PowerShell** window, paste this and press Enter:
+
+```powershell
+Get-NetConnectionProfile | Format-Table InterfaceAlias, Name, NetworkCategory
+```
+
+**What you'll see:** one line per connected network, for example `Ethernet 2  Unidentified network  Public`.
+
+**"Unidentified network" (common on show networks).** A show network with fixed IP addresses and
+no internet usually shows up as **Unidentified network**. Windows treats it as **Public**, and the
+Settings screen often won't let you change it. Fix it with this command, using the
+**InterfaceAlias** from the list above (here `Ethernet 2`):
+
+```powershell
+Set-NetConnectionProfile -InterfaceAlias "Ethernet 2" -NetworkCategory Private
+```
+
+Run the check again. That line should now say **Private**.
+
+**If it goes back to Public after a restart:**
+
+- **Windows Pro:** press **Windows + R**, type `secpol.msc`, press Enter. Click
+  **Network List Manager Policies**, double-click **Unidentified Networks**, set **Location type**
+  to **Private**, click **OK**. This is the lasting fix, but it applies to **every** unidentified
+  network the PC joins, so only do it on a dedicated show PC.
+- **Windows Home** (no `secpol.msc`): run the `Set-NetConnectionProfile` command again after each
+  restart, or give that network a **default gateway** address in its IP settings (any free address
+  on the same network, and a DNS server such as `1.1.1.1`) so Windows can recognise it.
+
+**Dante, AVB and other audio networks.** Stagewatch also listens there, and its node discovery adds
+a little mDNS traffic. That's harmless. Leaving that network as **Public** stops tablets and nodes
+reaching Stagewatch through it, but Stagewatch's own small discovery messages can still go out on
+it. A setting to choose exactly which networks Stagewatch uses is planned.
+
 ---
 
 ## Step 7. Open Stagewatch on a tablet or phone

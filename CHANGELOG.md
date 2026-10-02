@@ -30,6 +30,9 @@ them into a dated release section and tags the commit.
 - A message if JavaScript is turned off.
 
 ### Changed
+- Windows install guide: a new section for PCs with more than one network card. It covers
+  setting each network to Private and fixing "Unidentified network" show networks that Windows
+  keeps as Public.
 - Windows install guide: a new step suggests turning off Fast Startup on show PCs, so a normal
   shut down is recorded as "the computer restarted or lost power" rather than an unexpected stop.
 - Saved data: this update converts your settings and show history to a new format, ready for
