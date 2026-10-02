@@ -563,10 +563,11 @@ class Recorder:
         return [{"id": r[0], "sort": r[1], "stage": r[2], "kind": r[3], "title": r[4],
                  "planned_start": r[5], "planned_end": r[6], "setlist": r[7], "updated": r[8]} for r in rows]
 
-    def replace_schedule(self, show_id: int, rows: list[dict]) -> None:
+    def replace_schedule(self, show_id: int, rows: list[dict], now: float | None = None) -> None:
         """Replace a show's whole schedule in one transaction (all or nothing). A row keeps its
-        ``id`` only if that id already belongs to this show's schedule; others get a new id."""
-        now = time.time()
+        ``id`` only if that id already belongs to this show's schedule; others get a new id.
+        ``now`` is stored as every row's ``updated`` (the schedule's revision comes from it)."""
+        now = time.time() if now is None else now
         db = self._db
         try:
             own = {r[0] for r in db.execute("SELECT id FROM schedule_items WHERE show_id = ?", (show_id,))}
@@ -588,9 +589,10 @@ class Recorder:
             db.rollback()
             raise
 
-    def set_schedule_times(self, show_id: int, changes: list[tuple[int, float, float | None]]) -> None:
+    def set_schedule_times(self, show_id: int, changes: list[tuple[int, float, float | None]],
+                           now: float | None = None) -> None:
         """Move items (id, planned_start, planned_end) of one show, in one transaction."""
-        now = time.time()
+        now = time.time() if now is None else now
         try:
             self._db.executemany(
                 "UPDATE schedule_items SET planned_start = ?, planned_end = ?, updated = ? "
