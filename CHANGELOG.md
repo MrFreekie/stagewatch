@@ -16,6 +16,13 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Site time: set the show site's time zone under **Admin → Site → Time zone**. Every time on
+  dashboards and the admin page (the clock, the chart, markers, the alarm log, show start times)
+  then shows site time in 24-hour format, even on a tablet set to the wrong zone or country.
+  Until you set it, Stagewatch uses the time zone of the computer it runs on, and the Site card
+  says so in amber, with a button to use the zone of the browser you are on.
+- Admin → Site: **New show day starts at** (06:00 unless you change it). A show day runs until
+  that time next morning, so a reading or marker at 01:30 still counts as the night before.
 - ESPHome nodes: on a shared show network, other people's devices no longer clutter your
   **Discovered node** list. Click **Ignore** next to a node to hide it. **Show ignored** lists the
   hidden ones, and **Unignore** brings one back. You can ignore up to 200 nodes. Stagewatch only

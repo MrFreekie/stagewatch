@@ -98,11 +98,14 @@ class TimeChart {
     }
     // x labels
     ctx.textAlign = "center"; ctx.textBaseline = "top";
+    // Ticks fall on site-local boundaries (whole hours/minutes on the site clock), so shift by
+    // the site's UTC offset before rounding (matters for +05:30-style zones and 2 h+ steps).
     const tstep = TimeChart.timeStep(t1 - t0);
-    for (let t = Math.ceil(t0 / tstep) * tstep; t <= t1; t += tstep) {
+    const off = SW.siteOffset(t0);
+    for (let t = Math.ceil((t0 + off) / tstep) * tstep - off; t <= t1; t += tstep) {
       const xx = Math.round(x(t)) + 0.5;
       ctx.beginPath(); ctx.moveTo(xx, pad.t); ctx.lineTo(xx, pad.t + ph); ctx.stroke();
-      ctx.fillText(new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), xx, pad.t + ph + 6);
+      ctx.fillText(SW.fmtTime(t), xx, pad.t + ph + 6);
     }
 
     // series (break the line across gaps > 5 minutes: sensor offline)
@@ -129,7 +132,7 @@ class TimeChart {
       ctx.strokeStyle = fg; ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.moveTo(this._hover.x, pad.t); ctx.lineTo(this._hover.x, pad.t + ph); ctx.stroke();
       ctx.setLineDash([]);
-      const lines = [new Date(t * 1000).toLocaleTimeString()];
+      const lines = [SW.fmtTime(t, { seconds: true })];
       for (const s of this.series) {
         let best = null;
         for (const p of s.points) if (best === null || Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
