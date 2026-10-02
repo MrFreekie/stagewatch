@@ -370,7 +370,9 @@ def test_rename_event_and_set_day(tmp_path):
 def test_snapshot_show_carries_event_and_day(tmp_path):
     hub = Hub(tmp_path)
     show = hub.snapshot()["show"]
-    assert {"id", "name", "started", "event_id", "event_name", "day"} == set(show)
+    # WP6: `day` is resolved in site time (never null); `day_set` says whether the admin picked it.
+    assert {"id", "name", "started", "event_id", "event_name", "day", "day_set"} == set(show)
+    assert len(show["day"]) == 10 and show["day_set"] is False
     hub.recorder.close()
 
 

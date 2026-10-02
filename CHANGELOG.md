@@ -62,6 +62,16 @@ them into a dated release section and tags the commit.
 - Supported browsers are listed in the using guide: dashboards on iOS 12 or later and recent
   Chrome, Edge, Firefox and Safari; the admin page on iOS 13 or later.
 - A message if JavaScript is turned off.
+- Events and show days: the admin **Shows** card is now **Event & show**. An event (a festival,
+  a tour leg) is a group of show days. Click **Next day (same event)** to start Day 2, or
+  **New event…** to end the current event and start a new one. Both ask you to confirm first.
+  Markers, alarms and history belong to the current day, as before. Your existing shows are kept
+  in an event called "Event 1", which you can rename.
+- Events and show days: each day has a date. Stagewatch works it out from the site time and the
+  **New show day starts at** time, so a day started after midnight still gets the right date.
+  You can change it under **Rename or change the date**. Previous shows are listed by event.
+- Dashboards: the line under the site name now reads *Dashboard · Event · Day*, for example
+  "FOH · Summer Festival · Day 2".
 
 ### Changed
 - Dates and numbers now always use UK style, whatever language the tablet or browser is set
@@ -97,6 +107,11 @@ them into a dated release section and tags the commit.
   virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
+- After an update, a tablet or browser could keep using some old page files and show a broken
+  admin page or dashboard until it was refreshed by hand. Browsers now check for new files each
+  time a page loads.
+- Old iPads and other browsers without a date picker show a plain box for dates. You can now
+  type the date there as dd/mm/yyyy, and the day is written out underneath so you can check it.
 - Software: after an update, a roll back and another update, **Roll back...** showed against two
   entries in the update history. It now shows only on the newest one.
 - Security: Stagewatch now refuses messages larger than 64 KB from a dashboard's live connection.

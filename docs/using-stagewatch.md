@@ -45,7 +45,8 @@ Stagewatch** instead of a blank page. Use another device or update the browser.
 ---
 ## What is on the screen
 
-- **Top bar:** the site name, the show name, the time, and a small **dot**.
+- **Top bar:** the site name, then the dashboard, event and day (for example
+  "FOH · Summer Festival · Day 2"), the time, and a small **dot**.
   - **Green dot** = live. The screen is up to date.
   - **Red dot** = the tablet has lost contact. After a few seconds a red bar
     **Disconnected from Stagewatch - reconnecting...** covers the top and the numbers
@@ -233,7 +234,7 @@ on the page:
 | Card | What you do there |
 |---|---|
 | **Site** | Set the show name, **altitude** (used only if there is no pressure sensor), the **reference distance** for the "Δ ms" number (default 30 m), how quickly readings go **stale** (default 60 s), and the smoothing. Set the **Time zone** of the show site (for example Europe/London): every dashboard then shows site time, 24-hour, even on a tablet set to another zone. **New show day starts at** (default 06:00) decides which day late-night times belong to: with 06:00, 01:30 still counts as the night before. Keep it at 03:00 or later, so it stays clear of the hour when the clocks change. **Save site**. |
-| **Shows** | Tap **Start new show** at the start of each show day. Give it a name. Dashboards then show only the new history and markers. Old shows stay listed. |
+| **Event & show** | Shows the current event and day. Start each new show day here: see [Start a new day or a new event](#start-a-new-day-or-a-new-event). |
 | **Software** | Check for and install updates. See [Updating and backups](updating-and-backups.md). |
 | **ESPHome nodes** | Adopt new sensor nodes. See [First sensor node](first-sensor-node.md). Rename a node, change its area, or remove it. On a shared network the **Discovered node** list can fill up with other people's devices. Click **Ignore** next to one to hide it. Stagewatch never connects to a node you have not adopted, so ignoring only tidies the list. To bring one back, click **Show ignored** under the list, then **Unignore**. |
 | **Sensors: calibration & averaging** | Correct a sensor with an **offset**. Untick **Average** to leave one out of the site average. |
@@ -250,6 +251,42 @@ Changes only stick after you click that card's **Save** button.
 
 Only a person with the admin PIN can delete a marker (the **✕** appears next to markers
 when logged in).
+
+### Start a new day or a new event
+
+An **event** is a festival, a tour leg or a run of shows. Each **day** of it is one show.
+Markers, alarms and the history chart belong to the current day.
+
+**Start the next day of the same event** (for example Day 2 of a festival):
+
+1. In **Admin**, find the **Event & show** card.
+2. Click **Next day (same event)**. A small form opens.
+3. Check the **Day name** (Stagewatch suggests the next number, such as "Day 2") and the
+   **Date**. The day is written out under the date box, for example "Sat 3 Oct 2026".
+4. Click **Start next day**, then **OK** to confirm.
+
+You'll see the new day name on the card. Every dashboard reloads by itself and shows the new
+day in its top bar. Its chart, markers and alarm log start empty. The previous day is kept
+under **Previous shows**.
+
+You can do this late at night. After midnight, but before the **New show day starts at** time
+in the **Site** card, Stagewatch still suggests tomorrow's date, not the night you are
+finishing.
+
+**Start a new event** (a new festival or a new tour):
+
+1. Click **New event…** on the **Event & show** card.
+2. Type the **New event name**. Check the **First day name** and the **Date**.
+3. Click **Start new event**, then **OK** to confirm.
+
+The current event ends, and its days stay listed under **Previous shows**, grouped by event.
+
+**Fix a name or a date:** open **Rename or change the date** on the same card. Change the
+**Event name**, the **Day name** or the **Day date**, and click the **Save** button next to it.
+If you set the date by hand, **Use the start date** puts it back.
+
+If two people click start at the same moment, only one new day is started. The other gets a
+message that a new show was already started, and nothing more changes.
 
 ### Choose the cards on a dashboard
 

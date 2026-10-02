@@ -379,18 +379,139 @@
       info.last_error ? h("p", { class: "error" }, info.last_error) : null);
   }
 
-  function showsCard() {
-    const name = h("input", { placeholder: "e.g. Festival day 2" });
-    return card("Shows",
-      h("p", {}, "Current: ", h("strong", {}, snap.show.name), h("span", { class: "muted" }, ` (since ${SW.fmtTime(snap.show.started, { date: true })})`)),
-      h("form", { class: "row", onsubmit: (ev) => {
-        ev.preventDefault();
-        if (!val(name)) return;
-        if (!confirm(`Start new show "${val(name)}"? Dashboards will show only new history and markers.`)) return;
-        run(() => api("POST", "/api/admin/shows", { name: val(name) }), "New show started").then(refresh);
-      } }, name, h("button", { class: "primary", type: "submit" }, "Start new show")),
-      h("details", {}, h("summary", { class: "muted" }, `Previous shows (${admin.shows.length})`),
-        h("ul", {}, admin.shows.map((s) => h("li", {}, `${s.name}: ${SW.fmtTime(s.started, { date: true })}`)))));
+  // ------------------------------------------------------- event & show
+  // An event (a festival, a tour leg) is a group of show days. Markers, alarms and history
+  // belong to the current day. "Next day" keeps the event; "New event…" ends it.
+  let showPanel = "";   // "", "next" or "event": which start form is open
+  let showBusy = false; // one start at a time from this page (the server refuses a second one too)
+  const nameInput = (value, placeholder) => h("input", { value: value || "", placeholder, maxlength: 80, class: "touch", autocomplete: "off" });
+  // A date picker where the browser has one; otherwise (old iPads) a text box that takes UK
+  // day-first typing. Read it with dayOf(), never .value.
+  const dateInput = (value) => {
+    const input = h("input", { type: "date", value: value || "", class: "touch", required: true });
+    if (input.type !== "date") {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || "");
+      input.value = m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+      input.placeholder = "dd/mm/yyyy";
+      input.inputMode = "numeric";
+    }
+    return input;
+  };
+  const dayOf = (input) => SW.parseDay(input.value);
+  // The browser draws the date box in its own style, so the chosen day is also written out
+  // underneath as "Fri 2 Oct 2026".
+  const dayEcho = (input) => (dayOf(input) ? SW.fmtDay(dayOf(input)) : (input.value.trim() ? "Not a date: use dd/mm/yyyy" : ""));
+  const dateField = (label, input) => {
+    const echo = h("span", { class: "date-echo", "aria-live": "polite" }, dayEcho(input));
+    const upd = () => { echo.textContent = dayEcho(input); };
+    input.addEventListener("input", upd);
+    input.addEventListener("change", upd);
+    return h("label", { class: "field" }, `${label} (dd/mm/yyyy)`, input, echo);
+  };
+  // The server's 422 text is short and fixed; say it in crew words. Nothing typed is echoed back.
+  const showError = (err) => {
+    const m = String(err.message || "");
+    if (err.status === 422) {
+      const i = m.indexOf("Value error, ");
+      return `${i >= 0 ? m.slice(i + 13).split(";")[0] : "Check the names and the date"}. Nothing has been changed.`;
+    }
+    return m;
+  };
+  const showRun = (fn, okMsg) => fn().then((r) => { toast(okMsg); return r; }, (err) => { toast(showError(err), true); throw err; });
+
+  function eventShowCard() {
+    const ev = admin.event, show = admin.show, days = admin.show_days;
+    const thisEvent = admin.events.find((e) => e.id === ev.id) || { shows: [] };
+    const dayNo = thisEvent.shows.length + 1;
+
+    const startShow = (body, okMsg) => {
+      if (showBusy) return;
+      showBusy = true;
+      for (const b of document.querySelectorAll("[data-show-start]")) b.disabled = true;
+      showRun(() => api("POST", "/api/admin/shows", Object.assign({ from_show_id: show.id }, body)), okMsg)
+        .then(() => { showPanel = ""; }, () => {})
+        .then(() => { showBusy = false; return refresh(); });
+    };
+    // Send a date only when it differs from what the start time gives, so an untouched day
+    // keeps following the start time.
+    const dayOrNull = (input) => (dayOf(input) && dayOf(input) !== days.today ? dayOf(input) : null);
+
+    // Start forms (each ends in a confirm).
+    let panel = null;
+    if (showPanel === "next") {
+      const name = nameInput(`Day ${dayNo}`, "e.g. Day 2");
+      const date = dateInput(days.next);
+      panel = h("form", { class: "card-inset", onsubmit: (e) => {
+        e.preventDefault();
+        if (!val(name) || !dayOf(date)) { toast("Type a name and a date (dd/mm/yyyy).", true); return; }
+        if (!confirm(`Start "${val(name)}" (${SW.fmtDay(dayOf(date))}) as the next day of "${ev.name}"?\n\nDashboards switch to the new day: its history, markers and alarm log start empty. "${show.name}" is kept under Previous shows.`)) return;
+        startShow({ name: val(name), event: "current", day: dayOrNull(date) }, `Started ${val(name)}`);
+      } },
+      h("div", { class: "row" }, field("Day name", name), dateField("Date", date)),
+      h("p", { class: "muted hint" }, "The date is the show day this new day belongs to. After midnight it still suggests tomorrow's date, not the night you are finishing."),
+      h("div", { class: "row" },
+        h("button", { class: "primary touch", type: "submit", "data-show-start": "" }, "Start next day"),
+        h("button", { class: "touch", type: "button", onclick: () => { showPanel = ""; render(); } }, "Cancel")));
+    } else if (showPanel === "event") {
+      const evName = nameInput("", "e.g. Summer Festival 2027");
+      const name = nameInput("Day 1", "e.g. Day 1");
+      const date = dateInput(days.today);
+      panel = h("form", { class: "card-inset", onsubmit: (e) => {
+        e.preventDefault();
+        if (!val(evName) || !val(name) || !dayOf(date)) { toast("Type a name for the new event and its first day, and a date (dd/mm/yyyy).", true); return; }
+        if (!confirm(`Start the new event "${val(evName)}"?\n\n"${ev.name}" ends. Dashboards switch to "${val(name)}" (${SW.fmtDay(dayOf(date))}) of the new event: history, markers and alarm log start empty. Everything from "${ev.name}" is kept under Previous shows.`)) return;
+        startShow({ name: val(name), event: "new", event_name: val(evName), day: dayOrNull(date) }, `Started ${val(evName)}`);
+      } },
+      h("div", { class: "row" }, field("New event name", evName), field("First day name", name), dateField("Date", date)),
+      h("div", { class: "row" },
+        h("button", { class: "primary touch", type: "submit", "data-show-start": "" }, "Start new event"),
+        h("button", { class: "touch", type: "button", onclick: () => { showPanel = ""; render(); } }, "Cancel")));
+    }
+
+    // Rename the event / the day, and correct the day's date.
+    const evName = nameInput(ev.name, "e.g. Summer Festival");
+    const dayName = nameInput(show.name, "e.g. Day 2");
+    const dayDate = dateInput(show.day);
+    const saveEvent = () => {
+      if (!val(evName) || val(evName) === ev.name) return;
+      showRun(() => api("PATCH", "/api/admin/events/current", { name: val(evName), event_id: ev.id }), "Event renamed").then(refresh, () => {});
+    };
+    const saveDay = (body) => showRun(() => api("PATCH", "/api/admin/shows/current", Object.assign({ show_id: show.id }, body)), "Day saved").then(refresh, () => {});
+
+    // Previous shows, grouped by event (newest first).
+    const prevCount = admin.events.reduce((n, e) => n + e.shows.filter((s) => s.id !== show.id).length, 0);
+    const previous = h("details", {}, h("summary", { class: "muted" }, `Previous shows (${prevCount})`),
+      admin.events.filter((e) => e.shows.some((s) => s.id !== show.id)).map((e) => h("div", { class: "event-group" },
+        h("strong", {}, e.name), e.id === ev.id ? h("span", { class: "muted" }, " (this event)") : null,
+        h("ul", {}, e.shows.filter((s) => s.id !== show.id).map((s) => h("li", {},
+          `${s.name} · ${SW.fmtDay(s.day)}`,
+          h("span", { class: "muted" }, ` (started ${SW.fmtTime(s.started, { date: true })})`)))))));
+
+    return card("Event & show",
+      h("p", { class: "event-now" }, "Event: ", h("strong", {}, ev.name)),
+      h("p", { class: "event-now" }, "Day: ", h("strong", {}, show.name), ` · ${SW.fmtDay(show.day)}`,
+        h("span", { class: "muted" }, ` (started ${SW.fmtTime(show.started, { date: true })})`)),
+      h("p", { class: "muted hint" }, "Markers, alarms and history belong to the current day. Dashboards show the event and day under their title."),
+      h("div", { class: "row" },
+        h("button", { class: "primary touch", type: "button", "data-show-start": "", disabled: showBusy, onclick: () => { showPanel = showPanel === "next" ? "" : "next"; render(); } }, "Next day (same event)"),
+        h("button", { class: "touch", type: "button", "data-show-start": "", disabled: showBusy, onclick: () => { showPanel = showPanel === "event" ? "" : "event"; render(); } }, "New event…")),
+      panel,
+      h("details", {}, h("summary", { class: "muted" }, "Rename or change the date"),
+        h("div", { class: "row" }, field("Event name", evName),
+          h("button", { class: "touch", type: "button", style: "align-self:flex-end", onclick: saveEvent }, "Save event name")),
+        h("div", { class: "row" }, field("Day name", dayName),
+          h("button", { class: "touch", type: "button", style: "align-self:flex-end", onclick: () => {
+            if (val(dayName) && val(dayName) !== show.name) saveDay({ name: val(dayName) });
+          } }, "Save day name")),
+        h("div", { class: "row" }, dateField("Day date", dayDate),
+          h("button", { class: "touch", type: "button", style: "align-self:flex-end", onclick: () => {
+            if (!dayOf(dayDate)) toast("Type a date as dd/mm/yyyy.", true); else if (dayOf(dayDate) !== show.day) saveDay({ day: dayOf(dayDate) });
+          } }, "Save date"),
+          show.day_set ? h("button", { class: "touch", type: "button", style: "align-self:flex-end", onclick: () => saveDay({ day: null }) }, "Use the start date") : null),
+        h("p", { class: "muted hint" }, show.day_set
+          ? "You set this date by hand. Use the start date to go back to the date the day started on."
+          : "Set from when the day started (a new show day starts at the time in the Site card). Change it if the day was started early or late.")),
+      previous);
   }
 
   function securityCard() {
@@ -661,7 +782,7 @@
   function render() {
     entityIdsRendered = snap.entities.map((e) => e.id).join(",");
     app.replaceChildren(
-      h("div", { class: "grid-2" }, siteCard(), showsCard()),
+      h("div", { class: "grid-2" }, siteCard(), eventShowCard()),
       connectCard(),
       softwareCard(),
       devicesCard(), entitiesCard(), thresholdsCard(),
@@ -685,6 +806,9 @@
     try {
       const s = await api("GET", "/api/snapshot");
       if (s.entities.map((e) => e.id).join(",") !== entityIdsRendered) { await refresh(); return; }
+      // Another admin page started a day/event or renamed one: show it here too.
+      const showKey = (x) => (x && x.show ? `${x.show.id}|${x.show.name}|${x.show.event_name}|${x.show.day}` : "");
+      if (showKey(s) !== showKey(snap)) { await refresh(); return; }
       snap = s;
       SW.setSiteTime(s.site && s.site.time);
       for (const e of s.entities) {
