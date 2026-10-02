@@ -106,6 +106,21 @@ class Hub:
                 log.warning("%s; the previous run did not stop cleanly", text)
                 self.recorder.log_alarm("hub", "unclean_stop", 0, text)
                 self.add_marker(text, "hub")
+        elif getattr(self.recorder, "previous_clean_stop", None):
+            # Stopped cleanly, then the computer started again after that: a planned restart or
+            # shutdown (Linux stops the service properly on the way down; Windows usually doesn't,
+            # which is the unclean path above). Same quiet marker, so history gaps are explained
+            # the same way on both.
+            prev = self.recorder.previous_clean_stop
+            try:
+                boot = boot_time_fn()
+            except Exception:  # noqa: BLE001 - an unreadable boot time just means "unknown"
+                boot = None
+            if prev["reason"] == "stop" and boot is not None and boot > prev["stopped"]:
+                text = (f"Stagewatch was off for {duration_text(prev['down_s'])} "
+                        "(the computer was restarted or shut down)")
+                log.info("%s", text)
+                self.add_marker(text, "hub")
 
     # ------------------------------------------------------------ lifecycle
     def add_integration(self, integration: Integration) -> None:
