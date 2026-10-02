@@ -20,6 +20,7 @@ from .derived import OUTLIER_LIMITS, Ema, robust_mean
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
 from .recorder import REASON_POWER_OR_RESTART, Recorder
+from .schedule import DemoDoesNotFit, ScheduleService
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,8 @@ class Hub:
         self.recorder = Recorder(data_dir / "stagewatch.sqlite3")
         unclean = self.recorder.begin_run(__version__, time_doc(self.config.site))
         self.alarms = AlarmEngine()
+        self.schedule = ScheduleService(self)
+        self._site_before = None  # the site settings just replaced (set_site), for the rebase
         self.devices: dict[str, Device] = {}
         self.entities: dict[str, Entity] = {}
         self.integrations: dict[str, Integration] = {}
@@ -124,6 +127,8 @@ class Hub:
         self.integrations[integration.manifest.domain] = integration
 
     async def start(self) -> None:
+        if self.emulate:
+            self._emulate_demo_day()
         for integration in self.integrations.values():
             try:
                 await integration.start()
@@ -164,9 +169,38 @@ class Hub:
             log.exception("Site time block failed")
             return {"timezone": "", "utc_offset_s": 0, "day_rollover": "06:00"}
 
+    def set_site(self, site) -> None:
+        """Replace the site settings (the caller saves). A time-zone change re-bases the current
+        show's schedule (``site_time_changed``); a day-rollover change that moves the current
+        show to another day re-bases it too (``show_day_changed``)."""
+        old = self.config.site
+        old_day = self.show_info()["day"]
+        self.config.site = site
+        self._site_before = old
+        try:
+            if site.timezone != old.timezone:
+                self.site_time_changed(old.timezone, site.timezone)
+            else:
+                new_day = self.show_info()["day"]
+                if new_day != old_day:
+                    self.show_day_changed(old_day, new_day)
+        finally:
+            self._site_before = None
+
     def site_time_changed(self, old_timezone: str, new_timezone: str) -> None:
-        """Hook: the site's time zone changed. The current show's schedule is re-based here to
-        keep its local HH:MM (plan §2.1). A no-op until the schedule exists (WP7)."""
+        """Hook: the site's time zone changed (``config.site`` already holds the new one). The
+        current show's schedule is re-based to keep its local HH:MM and its place relative to the
+        show day (plan §2.1). Never raises: a failed re-base is logged and the items stay put."""
+        new_site = self.config.site
+        old_site = self._site_before
+        if old_site is None or old_site.timezone != old_timezone:
+            old_site = new_site.model_copy(update={"timezone": old_timezone})
+        try:
+            show = self.recorder.current_show()
+            old_day = sitetime.show_day(show["started"], old_site, show.get("day")).isoformat()
+            self.schedule.rebase(old_site, old_day, new_site, self.show_info()["day"])
+        except Exception:  # noqa: BLE001 - never fail a settings save over the schedule
+            log.exception("Could not re-base the schedule after a time zone change")
         return None
 
     def save_config(self) -> None:
@@ -443,9 +477,29 @@ class Hub:
         return show
 
     def show_day_changed(self, old_day: str, new_day: str) -> None:
-        """Hook: the current show's day changed. Its schedule is re-based here to keep local
-        HH:MM (plan §2.1). A no-op until the schedule exists (WP7)."""
+        """Hook: the current show's day changed. Its schedule moves to the new day keeping local
+        HH:MM (plan §2.1). Never raises: a failed re-base is logged and the items stay put."""
+        site = self.config.site
+        try:
+            self.schedule.rebase(site, old_day, site, new_day)
+        except Exception:  # noqa: BLE001 - never fail a show change over the schedule
+            log.exception("Could not re-base the schedule after a show day change")
         return None
+
+    def _emulate_demo_day(self) -> None:
+        """Emulate mode: a fresh database becomes "Demo Festival", "Day 1", and a show with no
+        schedule gets the demo day (relative to now), so the schedule card works offline."""
+        try:
+            rec = self.recorder
+            if [e["name"] for e in rec.events()] == ["Event 1"] and                     [s["name"] for s in rec.shows()] == ["First show"]:
+                rec.rename_event("Demo Festival")
+                rec.rename_show("Day 1")
+            if not self.schedule.items():
+                self.schedule.load_demo()
+        except DemoDoesNotFit:
+            log.info("No demo schedule this time: it would cross the day rollover")
+        except Exception:  # noqa: BLE001 - a demo must never stop the hub
+            log.exception("Could not set up the emulate demo day")
 
     def rename_event(self, name: str) -> dict:
         event = self.recorder.rename_event(name)
@@ -453,6 +507,14 @@ class Hub:
         return event
 
     # ------------------------------------------------------------- snapshot
+    def schedule_snapshot(self) -> dict:
+        """{show_id, day, revision}: no items (dashboards fetch GET /api/schedule)."""
+        try:
+            return self.schedule.summary()
+        except Exception:  # noqa: BLE001 - never break the snapshot over the schedule
+            log.exception("Schedule snapshot failed")
+            return {"show_id": self.recorder.show_id, "day": "", "revision": 0}
+
     def snapshot(self) -> dict:
         now = time.time()
         stale_after = self.config.site.stale_after_s
@@ -463,6 +525,7 @@ class Hub:
                      "stale_after_s": stale_after, **self.site_meta,
                      "time": self.site_time(now)},
             "show": self.show_info(),
+            "schedule": self.schedule_snapshot(),
             "devices": [d.to_dict() for d in self.devices.values()],
             "entities": [e.to_dict(now, stale_after) for e in self.entities.values()],
             "markers": [m.to_dict() for m in self.recorder.markers()],

@@ -90,11 +90,42 @@ def show_day(started_ts: float, site: _Site, override: str | date | None = None)
 
 def resolve(day: date | str, hhmm: str, site: _Site) -> float:
     """UTC epoch seconds for the wall-clock time ``hhmm`` on show day ``day`` (see module doc)."""
-    t = _parse_hhmm(hhmm)
+    return wall_ts(resolve_date(day, hhmm, site), _parse_hhmm(hhmm), site)
+
+
+def resolve_date(day: date | str, hhmm: str, site: _Site) -> date:
+    """The calendar date ``resolve`` puts ``hhmm`` on: ``day``, or ``day + 1`` before the rollover."""
     d = _as_date(day)
-    if t < _rollover(site):
-        d += timedelta(days=1)
-    naive = datetime.combine(d, t).replace(fold=0)
+    return d + timedelta(days=1) if _parse_hhmm(hhmm) < _rollover(site) else d
+
+
+def wall_exists(d: date | str, t: dtime, site: _Site) -> bool:
+    """False for a wall-clock time the clocks skip on that date (the spring-forward gap)."""
+    d = _as_date(d)
+    lt = local(wall_ts(d, t, site), site)
+    return lt.date() == d and (lt.hour, lt.minute, lt.second) == (t.hour, t.minute, t.second)
+
+
+def gap_end(d: date | str, t: dtime, site: _Site) -> dtime | None:
+    """The first wall-clock minute at or after ``t`` on date ``d`` that exists (None if ``t``
+    exists). Found from the zone's own rules, not assumed to be a whole hour."""
+    d = _as_date(d)
+    if wall_exists(d, t, site):
+        return None
+    start = datetime.combine(d, t.replace(tzinfo=None))
+    for minutes in range(1, 24 * 60):
+        cand = start + timedelta(minutes=minutes)
+        if cand.date() != d:
+            break
+        if wall_exists(d, cand.time(), site):
+            return cand.time()
+    return None
+
+
+def wall_ts(d: date | str, t: dtime, site: _Site) -> float:
+    """UTC epoch seconds for wall-clock time ``t`` on calendar date ``d`` (no day rollover).
+    Gap and overlap follow the same PEP 495 ``fold=0`` rules as ``resolve``."""
+    naive = datetime.combine(_as_date(d), t.replace(tzinfo=None)).replace(fold=0)
     tz = zone(site)
     if tz is None:
         return naive.timestamp()  # naive = OS local time; PEP 495 fold=0 rules apply
