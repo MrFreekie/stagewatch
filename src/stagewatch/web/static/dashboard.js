@@ -168,11 +168,14 @@
     }
     if (!has("markers")) return;
     const canDelete = state.isAdmin;
-    const items = [...state.markers].sort((a, b) => b.ts - a.ts).map((m) =>
-      h("li", { class: m.id === state.selectedMarker ? "sel" : "", onclick: () => selectMarker(m.id) },
+    const items = [...state.markers].sort((a, b) => b.ts - a.ts).map((m) => {
+      const ms = SW.markerStyle(m.source);
+      return h("li", { class: m.id === state.selectedMarker ? "sel" : "", onclick: () => selectMarker(m.id) },
+        h("span", { class: "mk", title: ms.name, style: `background:var(--marker-${ms.key},${ms.fallback});color:var(--marker-${ms.key}-ink,${ms.ink})` }, ms.glyph),
         h("span", { class: "t" }, SW.fmtTime(m.ts)),
         h("span", { style: "flex:1" }, m.label),
-        canDelete ? h("button", { class: "small danger", title: "Delete marker", onclick: (ev) => { ev.stopPropagation(); deleteMarker(m.id); } }, "✕") : null));
+        canDelete ? h("button", { class: "small danger", title: "Delete marker", onclick: (ev) => { ev.stopPropagation(); deleteMarker(m.id); } }, "✕") : null);
+    });
     $("marker-list").replaceChildren(...(items.length ? items : [h("li", { class: "muted" }, "No markers yet. Add one at soundcheck, e.g. \"Aligned\".")]));
   }
 

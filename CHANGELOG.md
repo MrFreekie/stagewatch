@@ -90,6 +90,12 @@ them into a dated release section and tags the commit.
   "FOH · Summer Festival · Day 2".
 
 ### Changed
+- Markers on the chart are easier to read. Labels now stack in up to three rows instead of
+  piling on top of each other, and when there is still no room a marker shrinks to a small
+  tab you can tap to select it. Markers are coloured by where they came from, and each also
+  has its own shape: amber ▼ for crew marks, grey ■ for Stagewatch's own notes, orange ▲ for
+  alarms (blue ◆ and purple ● are kept for the schedule and contacts). The marker list shows the
+  same shape and colour. The marker you select always keeps its full label.
 - Dates and numbers now always use UK style, whatever language the tablet or browser is set
   to. Dates run day, month, year ("Fri 2 Oct 2026, 14:05"), and large numbers have a comma
   for thousands ("1,013.2 hPa").

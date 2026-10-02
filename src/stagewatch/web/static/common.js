@@ -181,6 +181,23 @@ SW.renderMarkdown = function (text, opts) {
   return frag;
 };
 
+// Timeline marker look by origin, shared by the chart and the marker list. The origin is the
+// text before any ":" ("dashboard:foh" is a crew mark); unknown origins count as crew marks.
+// Colours are the --marker-<key> tokens in style.css (--marker-<key>-ink is the text on them).
+SW.MARKER_STYLES = {
+  crew: { key: "crew", glyph: "▼", name: "Crew mark", fallback: "#f5b83d", ink: "#111" },
+  system: { key: "system", glyph: "■", name: "Stagewatch note", fallback: "#9aa3b5", ink: "#111" },
+  alarm: { key: "alarm", glyph: "▲", name: "Alarm", fallback: "#ff8a3d", ink: "#111" },
+  schedule: { key: "schedule", glyph: "◆", name: "Schedule", fallback: "#4da3ff", ink: "#111" },
+  device: { key: "device", glyph: "●", name: "Contact or device", fallback: "#c38bff", ink: "#111" },
+};
+SW.MARKER_SOURCES = { hub: "system", updater: "system", alarm: "alarm", schedule: "schedule", contact: "device", device: "device" };
+SW.markerStyle = function (src) {
+  const base = String(src === null || src === undefined ? "" : src).split(":")[0].trim().toLowerCase();
+  const key = Object.prototype.hasOwnProperty.call(SW.MARKER_SOURCES, base) ? SW.MARKER_SOURCES[base] : "crew";
+  return SW.MARKER_STYLES[key];
+};
+
 // Display formatting. Values arrive in canonical units (degC, %, Pa, m/s).
 SW.KIND_FMT = {
   temperature: { unit: "°C", dec: 1, conv: (v) => v },
