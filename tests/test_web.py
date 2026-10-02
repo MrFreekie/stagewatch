@@ -190,3 +190,15 @@ def test_pages_load_scripts_by_content_hash(client):
             name, _, v = ref.partition("?v=")
             assert v == hashlib.sha256((STATIC / name).read_bytes()).hexdigest()[:10], ref
             assert client.get(f"/static/{ref}").status_code == 200, ref
+
+
+def test_bad_websocket_frame_is_ignored_not_fatal(client):
+    with client.websocket_connect("/ws?dashboard=foh") as ws:
+        ws.receive_json()  # snapshot
+        ws.send_text("not json {")
+        ws.send_json({"type": "ping"})
+        for _ in range(20):
+            if ws.receive_json().get("type") == "pong":
+                break
+        else:
+            raise AssertionError("connection did not survive a bad frame")
