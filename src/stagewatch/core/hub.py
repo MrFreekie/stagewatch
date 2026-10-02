@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -374,6 +375,68 @@ class Hub:
         return {"marker": marker.to_dict(), "values": rows,
                 "reference_distance_m": distance, "delta_travel_ms": delta_ms}
 
+    # ------------------------------------------------------- events & shows
+    def show_day(self, started: float, override: str | None) -> str:
+        """A show's day ('YYYY-MM-DD', site time): the admin's pick, or derived from its start
+        and the day rollover."""
+        try:
+            return sitetime.show_day(started, self.config.site, override).isoformat()
+        except Exception:  # noqa: BLE001 - never break the snapshot over a time zone
+            log.exception("Show day failed")
+            return override or ""
+
+    def show_info(self) -> dict:
+        """The current show for dashboards and the admin page: the Recorder's fields, with `day`
+        resolved in site time and `day_set` true when the admin picked the date."""
+        show = self.recorder.current_show()
+        override = show.get("day")
+        return {**show, "day": self.show_day(show["started"], override), "day_set": override is not None}
+
+    def show_days(self, now: float | None = None) -> dict:
+        """Suggested dates for the admin's buttons: `today` (the show day starting a show now
+        gets) and `next` (for Next day: never the current show's own day, so starting Day 2
+        after midnight but before the rollover still suggests the next date)."""
+        now = time.time() if now is None else now
+        today = self.show_day(now, None)
+        current = self.show_info()["day"]
+        try:
+            following = (date.fromisoformat(current) + timedelta(days=1)).isoformat()
+            nxt = max(today, following)
+        except ValueError:
+            nxt = today
+        return {"today": today, "next": nxt}
+
+    def start_show(self, name: str, *, new_event_name: str | None = None, day: str | None = None) -> dict:
+        """Next day of the current event, or (new_event_name) day one of a new event. Dashboards
+        reload; markers, alarms and history follow the new show."""
+        self.recorder.start_show(name, new_event_name=new_event_name, day=day)
+        show = self.show_info()
+        self.bus.publish("show", show)
+        return show
+
+    def update_show(self, *, name: str | None = None, day: str | None = None, set_day: bool = False) -> dict:
+        """Rename the current show and/or change its day (None = derive from its start)."""
+        old_day = self.show_info()["day"]
+        if name is not None:
+            self.recorder.rename_show(name)
+        if set_day:
+            self.recorder.set_show_day(day)
+        show = self.show_info()
+        if show["day"] != old_day:
+            self.show_day_changed(old_day, show["day"])
+        self.bus.publish("show", show)
+        return show
+
+    def show_day_changed(self, old_day: str, new_day: str) -> None:
+        """Hook: the current show's day changed. Its schedule is re-based here to keep local
+        HH:MM (plan §2.1). A no-op until the schedule exists (WP7)."""
+        return None
+
+    def rename_event(self, name: str) -> dict:
+        event = self.recorder.rename_event(name)
+        self.bus.publish("show", self.show_info())
+        return event
+
     # ------------------------------------------------------------- snapshot
     def snapshot(self) -> dict:
         now = time.time()
@@ -384,7 +447,7 @@ class Hub:
                      "reference_distance_m": self.config.site.reference_distance_m,
                      "stale_after_s": stale_after, **self.site_meta,
                      "time": self.site_time(now)},
-            "show": self.recorder.current_show(),
+            "show": self.show_info(),
             "devices": [d.to_dict() for d in self.devices.values()],
             "entities": [e.to_dict(now, stale_after) for e in self.entities.values()],
             "markers": [m.to_dict() for m in self.recorder.markers()],

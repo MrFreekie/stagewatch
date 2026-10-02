@@ -418,6 +418,13 @@ class Recorder:
         self._load_current_show()
         return self.current_show()
 
+    def rename_show(self, name: str) -> dict:
+        name = clean_name(name, "show name")
+        self._db.execute("UPDATE shows SET name = ? WHERE id = ?", (name, self.show_id))
+        self._db.commit()
+        self.show_name = name
+        return self.current_show()
+
     def set_show_day(self, day: str | None) -> dict:
         day = valid_day(day)
         self._db.execute("UPDATE shows SET day = ? WHERE id = ?", (day, self.show_id))

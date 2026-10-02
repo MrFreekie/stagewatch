@@ -347,7 +347,9 @@
     document.body.className = `layout-${layout}`;
     document.title = `${state.dash ? state.dash.title : "Dashboard"} · ${msg.site.name}`;
     $("title").textContent = msg.site.name;
-    $("show").textContent = `${state.dash ? state.dash.title + " · " : ""}${msg.show.name}`;
+    // Subtitle: Dashboard · Event · Day (the event and day the markers and history belong to).
+    const sub = [state.dash ? state.dash.title : "", msg.show.event_name, msg.show.name].filter((x) => x);
+    $("show").textContent = sub.join(" · ");
     $("marker-form").hidden = !(state.isAdmin || (state.dash && state.dash.allow_marker));
     layoutCards();
     renderAlarms();

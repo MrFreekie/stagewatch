@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 import unicodedata
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .. import __version__
 from ..core.config import (
@@ -34,6 +34,7 @@ from ..core.config import (
 )
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Marker, slugify
+from ..core.recorder import valid_day
 from .. import diagnostics, netinfo
 from ..core import cards as cards_mod
 from ..core.updater import RateLimited, Updater, message_for
@@ -123,8 +124,105 @@ class DashboardBody(Dashboard):
         return v
 
 
+NAME_MAX = 80  # event and show names (recorder.NAME_MAX)
+EVENTS_MAX = 100  # admin state: newest events listed
+SHOWS_MAX = 1000  # admin state: newest shows listed
+
+
+def _clean_label(v: str, what: str) -> str:
+    """Event and show names: trimmed, 1-80 characters, no hidden or control characters.
+    Fixed error text: the submitted value is never echoed."""
+    v = v.strip()
+    if not 1 <= len(v) <= NAME_MAX:
+        raise ValueError(f"{what} names must be 1 to {NAME_MAX} characters")
+    if _has_hidden_chars(v):
+        raise ValueError(f"{what} names can't contain hidden or control characters")
+    return v
+
+
+def _check_day(v: str | None) -> str | None:
+    try:
+        return valid_day(v)
+    except (ValueError, TypeError):
+        raise ValueError("The day must be a real date written YYYY-MM-DD") from None
+
+
 class ShowBody(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
+    """POST /api/admin/shows. `{name}` alone keeps the 0.2.0 behaviour: a new show (day) in the
+    current event. `from_show_id` (optional) is the show the page was looking at: if another
+    click or admin already started a new show, the request is refused (409) instead of
+    starting a second one."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    name: str = Field(max_length=400)
+    event: Literal["current", "new"] = "current"
+    event_name: str | None = Field(None, max_length=400)
+    day: str | None = Field(None, max_length=10)
+    from_show_id: int | None = Field(None, ge=1)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        return _clean_label(v, "Show")
+
+    @field_validator("event_name")
+    @classmethod
+    def _event_name(cls, v: str | None) -> str | None:
+        return None if v is None else _clean_label(v, "Event")
+
+    @field_validator("day")
+    @classmethod
+    def _day(cls, v: str | None) -> str | None:
+        return _check_day(v)
+
+    @model_validator(mode="after")
+    def _event_needs_name(self):
+        if self.event == "new" and self.event_name is None:
+            raise ValueError("A new event needs a name")
+        if self.event == "current" and self.event_name is not None:
+            raise ValueError("An event name is only used when starting a new event")
+        return self
+
+
+class ShowPatch(BaseModel):
+    """PATCH /api/admin/shows/current: rename the current show and/or change its day.
+    `day: null` goes back to the date it started on (after the day rollover)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    name: str | None = Field(None, max_length=400)
+    day: str | None = Field(None, max_length=10)
+    show_id: int | None = Field(None, ge=1)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str | None) -> str | None:
+        if v is None:
+            raise ValueError("Show names must be 1 to 80 characters")
+        return _clean_label(v, "Show")
+
+    @field_validator("day")
+    @classmethod
+    def _day(cls, v: str | None) -> str | None:
+        return _check_day(v)
+
+    @model_validator(mode="after")
+    def _something(self):
+        if not {"name", "day"} & self.model_fields_set:
+            raise ValueError("Nothing to change: send a name or a day")
+        return self
+
+
+class EventPatch(BaseModel):
+    """PATCH /api/admin/events/current: rename the current event."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    name: str = Field(max_length=400)
+    event_id: int | None = Field(None, ge=1)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        return _clean_label(v, "Event")
 
 
 class UpdateBody(BaseModel):
@@ -393,7 +491,13 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "integrations": [i.info() for i in hub.integrations.values()],
             "discovered": esp.discovered_list() if esp else [],
             "ignored": esp.ignored_list() if esp else [],
-            "shows": hub.recorder.shows(),
+            "shows": hub.recorder.shows()[:SHOWS_MAX],
+            # Event & show card: the current event and show (day resolved in site time), all
+            # events with their shows, and the dates the Next day / New event dialogs suggest.
+            "event": hub.recorder.current_event(),
+            "show": hub.show_info(),
+            "events": events_with_shows(),
+            "show_days": hub.show_days(),
             "alarm_log": hub.recorder.alarm_log(),
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
             # defaults a new dashboard gets for each layout.
@@ -516,11 +620,42 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         hub.save_config()
         return body
 
+    # Events and shows. These handlers never await, so two clicks can't interleave: the
+    # stale-id checks below make a double submit start exactly one show.
+    STALE_SHOW = ("A new show was already started (another click or another admin page). "
+                  "Nothing more has been changed. Reload to see it.")
+
     @app.post("/api/admin/shows", dependencies=admin_deps)
     async def new_show(body: ShowBody):
-        show = hub.recorder.start_show(body.name.strip())
-        hub.bus.publish("show", show)
-        return show
+        if body.from_show_id is not None and body.from_show_id != hub.recorder.show_id:
+            raise HTTPException(409, STALE_SHOW)
+        return hub.start_show(body.name, new_event_name=body.event_name if body.event == "new" else None,
+                              day=body.day)
+
+    @app.patch("/api/admin/shows/current", dependencies=admin_deps)
+    async def patch_show(body: ShowPatch):
+        if body.show_id is not None and body.show_id != hub.recorder.show_id:
+            raise HTTPException(409, STALE_SHOW)
+        return hub.update_show(name=body.name if "name" in body.model_fields_set else None,
+                               day=body.day, set_day="day" in body.model_fields_set)
+
+    @app.patch("/api/admin/events/current", dependencies=admin_deps)
+    async def patch_event(body: EventPatch):
+        if body.event_id is not None and body.event_id != hub.recorder.event_id:
+            raise HTTPException(409, "A new event was already started on another admin page. "
+                                     "Nothing has been changed. Reload to see it.")
+        return hub.rename_event(body.name)
+
+    def events_with_shows() -> list[dict]:
+        """Events, newest first, each with its shows (days) newest first. Bounded: the newest
+        EVENTS_MAX events and SHOWS_MAX shows."""
+        events = hub.recorder.events()[:EVENTS_MAX]
+        by_event: dict[int, list[dict]] = {e["id"]: [] for e in events}
+        for s in hub.recorder.shows()[:SHOWS_MAX]:
+            if s["event_id"] in by_event:
+                by_event[s["event_id"]].append({**s, "day": hub.show_day(s["started"], s["day"]),
+                                                "day_set": s["day"] is not None})
+        return [{**e, "shows": by_event[e["id"]]} for e in events]
 
     @app.delete("/api/markers/{marker_id}", dependencies=admin_deps)
     async def delete_marker(marker_id: int):
