@@ -46,7 +46,7 @@ label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; 
 header.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
   background: var(--panel); border-bottom: 1px solid var(--grid); flex-wrap: wrap; }
 header.top .title { font-weight: 700; font-size: 18px; }
-header.top .sub { color: var(--muted); font-size: 13px; }
+header.top .sub { color: var(--muted); font-size: 13px; min-width: 0; overflow-wrap: break-word; word-wrap: break-word; }
 header.top .spacer { flex: 1; }
 .conn { width: 10px; height: 10px; border-radius: 50%; background: var(--stop); display: inline-block; }
 .conn.on { background: var(--ok); }
@@ -161,6 +161,13 @@ body.layout-wall .only-interactive { display: none; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
 .warn-text { color: var(--warn); }
 .touch { min-height: 44px; }
+/* Admin "Event & show" card */
+.card-inset { background: var(--panel-2); border: 1px solid var(--grid); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+.card-inset .row + .row, .card details .row { margin-top: 8px; }
+p.event-now { margin: 4px 0; overflow-wrap: break-word; word-wrap: break-word; }
+.event-group { margin-top: 10px; overflow-wrap: break-word; word-wrap: break-word; }
+.event-group ul { margin: 4px 0 0; }
+.date-echo { color: var(--text); font-variant-numeric: tabular-nums; }
 p.hint { font-size: 13px; line-height: 1.4; margin: 8px 0; max-width: 60ch; }
 p.warn-text button { display: block; margin-top: 8px; max-width: 100%; text-align: left; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .warn-text { color: #8a5a0f; } }
