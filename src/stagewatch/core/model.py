@@ -54,6 +54,20 @@ def slugify(text: str) -> str:
     return slug or "unnamed"
 
 
+_HEX12 = re.compile(r"[0-9a-f]{12}")
+_MAC_SEPARATORS = str.maketrans("", "", ":-. ")
+
+
+def normalise_mac(value: object) -> str | None:
+    """``AA:BB:CC:DD:EE:FF``, ``aa-bb-...``, ``aabb.ccdd.eeff`` or ``aabbccddeeff`` -> ``aabbccddeeff``.
+    None for anything that isn't exactly 12 hex digits (never guess). The one MAC check used
+    everywhere (config, integrations, API)."""
+    if not isinstance(value, str):
+        return None
+    mac = value.strip().lower().translate(_MAC_SEPARATORS)
+    return mac if _HEX12.fullmatch(mac) else None
+
+
 @dataclass
 class Device:
     id: str

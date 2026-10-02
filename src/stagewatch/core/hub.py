@@ -207,8 +207,7 @@ class Hub:
                 device.name or existing.name, device.manufacturer, device.model)
             if device.area:
                 existing.area = device.area
-            if device.hw_id:
-                existing.hw_id = device.hw_id
+            existing.hw_id = device.hw_id  # as reported now; "" when the board gave no MAC
             device = existing
         else:
             self.devices[device.id] = device

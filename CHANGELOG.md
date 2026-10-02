@@ -73,16 +73,19 @@ them into a dated release section and tags the commit.
 - Dashboards: the line under the site name now reads *Dashboard · Event · Day*, for example
   "FOH · Summer Festival · Day 2".
 - ESPHome nodes: sensor calibration now follows the physical board, not the name you gave it.
-  Stagewatch reads each node's hardware address (its MAC) when it connects. If a board turns up
-  at a new address, or you delete it and add it again under another name, its offsets come back
-  by themselves. Your existing offsets move across the first time each node connects after the
-  update, and readings stay exactly the same. Nodes that haven't connected yet keep their
-  offsets as before.
-- ESPHome nodes: if a different board answers at a node's address, the node shows **fault**
-  ("different hardware at this address") and Stagewatch ignores its readings, so they never mix
-  into the old board's history. Adding the same board twice is refused with "already adopted";
-  change the existing node's address instead. The hardware address is shown on the admin page
-  only, never on dashboards.
+  Stagewatch reads each node's hardware address (its MAC) when it connects. If you change a
+  node's address in Admin, its offsets stay with it. Your existing offsets are copied across the
+  first time each node connects after the update, and readings stay exactly the same. If you go
+  back to 0.2.0, your offsets still apply there too.
+- ESPHome nodes: Stagewatch ignores a node's readings, and shows it as **fault**, when:
+  - a different board answers at its address ("different hardware at this address");
+  - the same board is added twice ("same board as another device");
+  - a board you calibrated before is added under a new name ("board needs checking in
+    Admin"), so old offsets are never used without you saying so.
+
+  Readings never mix into the wrong board's history. The hardware address is shown on the
+  admin page only, never on dashboards or in alarms. A MAC can be faked, so set an encryption
+  key on every node to stop other devices pretending to be yours.
 
 ### Changed
 - Dates and numbers now always use UK style, whatever language the tablet or browser is set

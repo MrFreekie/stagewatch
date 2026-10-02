@@ -28,7 +28,19 @@ from zeroconf import ServiceStateChange
 from zeroconf.asyncio import AsyncServiceBrowser, AsyncServiceInfo, AsyncZeroconf
 
 from ... import __version__
-from ...core.calibration import check_identity, copy_node, move_legacy, node_key, normalise_mac, sensor_key
+from ...core.calibration import (
+    DETAIL_KNOWN_BOARD,
+    check_identity,
+    copy_node,
+    drop_legacy,
+    drop_node,
+    known_board_needs_check,
+    move_legacy,
+    node_key,
+    normalise_mac,
+    records_of,
+    sensor_key,
+)
 from ...core.config import MAX_IGNORED, EsphomeDeviceConfig
 from ...core.model import Device, Entity, Kind, Status, slugify
 from ...core.plugin import Integration, Manifest
@@ -63,10 +75,10 @@ class _NodeConnection:
         self.cfg = cfg
         self.zc = zc
         self._keys: dict[int, tuple[str, Kind, str]] = {}
-        # The MAC a board reported when it didn't match this device's recorded one (or was
-        # already adopted as another device): kept so the admin can resolve the FAULT.
-        self.seen_mac = ""
-        self.conflict = ""  # "", "duplicate", "different" or "unreadable"
+        # Why the board was refused at its last connect, for the admin page only (it holds MACs
+        # and other device ids, which never go into public status or alarm text):
+        # {"reason": "different"|"duplicate"|"unreadable"|"known_board", "expected", "found", "other"}
+        self.conflict: dict | None = None
         self.client = APIClient(
             cfg.host, cfg.port, None,
             client_info=f"Stagewatch {__version__}",
@@ -99,15 +111,24 @@ class _NodeConnection:
         identity = check_identity(
             self.cfg.id, self.cfg.mac, info.mac_address,
             [(c.id, c.mac) for c in self.hub.config.esphome_devices])
-        if identity.action == "fault":
-            # Wrong or duplicate board: register nothing, subscribe to nothing, and keep what it
-            # reported so the admin can accept it as new hardware or move the calibration.
-            self.seen_mac, self.conflict = identity.mac, identity.reason
-            self.hub.set_device_status(self.cfg.id, Status.FAULT, identity.detail)
+        reason, detail = identity.reason, identity.detail
+        if identity.action == "first" and known_board_needs_check(
+                self.hub.config, self.cfg.id, node_key(identity.mac)):
+            # A board connecting for the first time under this name already has calibration
+            # records (e.g. re-adopted under a new name). Don't apply them silently: hold it
+            # until the admin chooses "use the records" or "start fresh".
+            reason, detail = "known_board", DETAIL_KNOWN_BOARD
+        if reason:
+            # Wrong, duplicate or unchecked board: register nothing, subscribe to nothing, and
+            # keep what it reported (admin only) so the admin can resolve it. Public text has
+            # no MAC and no other device id.
+            self.conflict = {"reason": reason, "expected": identity.expected,
+                             "found": identity.mac, "other": identity.other_id}
+            self.hub.set_device_status(self.cfg.id, Status.FAULT, detail)
             log.warning("ESPHome %s: %s; its readings are ignored until an admin resolves it",
-                        self.cfg.id, identity.detail)
+                        self.cfg.id, detail)
             return
-        self.seen_mac, self.conflict = "", ""
+        self.conflict = None
         changed = False
         if identity.action == "first":
             self.cfg.mac = identity.mac
@@ -175,15 +196,6 @@ class _NodeConnection:
             self.hub.update_state(entity_id, None if state.missing_state else float(state.state), now)
 
 
-class DuplicateHardware(ValueError):
-    """Adopt refused: the node is the same board as an already adopted device."""
-
-    def __init__(self, device_id: str) -> None:
-        super().__init__(f"This node is already adopted as '{device_id}'. "
-                         "Change that device's address instead.")
-        self.device_id = device_id
-
-
 def discovery_key(d: dict) -> str:
     """Stable key for hiding a discovered node: its MAC (lower-case hex, no separators) when the
     mDNS TXT record has one, otherwise its mDNS name.  Prefixed so the two can't clash."""
@@ -201,6 +213,12 @@ class EsphomeIntegration(Integration):
         self._nodes: dict[str, _NodeConnection | EmulatedNode] = {}
         self._browser: AsyncServiceBrowser | None = None
         self._pending: set[asyncio.Task] = set()
+        # One lock per device: address changes, resolves and removal never overlap, so a request
+        # can't leave a stray connection running or bring a deleted device back.
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    def _lock(self, device_id: str) -> asyncio.Lock:
+        return self._locks.setdefault(device_id, asyncio.Lock())
 
     async def start(self) -> None:
         if self.emulate:
@@ -264,10 +282,12 @@ class EsphomeIntegration(Integration):
     def discovered_list(self) -> list[dict]:
         """Discovered nodes the admin hasn't ignored, each with its ``key`` and ``adopted`` flag."""
         adopted_hosts = {c.host.lower() for c in self.hub.config.esphome_devices}
-        adopted_macs = {c.mac for c in self.hub.config.esphome_devices if c.mac}
+        by_mac = {c.mac: c.id for c in self.hub.config.esphome_devices if c.mac}
         ignored = set(self.hub.config.esphome_ignored)
         return [{**d, "key": discovery_key(d), "adopted": d["host"].lower() in adopted_hosts
-                 or d["address"] in adopted_hosts or normalise_mac(d.get("mac")) in adopted_macs}
+                 or d["address"] in adopted_hosts,
+                 # Its mDNS record carries the MAC of an adopted board (a hint, not proof).
+                 "maybe_adopted_as": by_mac.get(normalise_mac(d.get("mac")) or "", "")}
                 for d in sorted(self.discovered.values(), key=lambda d: d["name"])
                 if discovery_key(d) not in ignored]
 
@@ -313,18 +333,21 @@ class EsphomeIntegration(Integration):
                 return c.id
         return ""
 
-    async def adopt(self, cfg: EsphomeDeviceConfig) -> EsphomeDeviceConfig:
+    async def adopt(self, cfg: EsphomeDeviceConfig) -> str:
+        """Adopt a node. Returns a warning ("" if none) when its mDNS record says it is a board
+        that is already adopted; the adopt still goes ahead, and the connect-time check faults a
+        real duplicate (an mDNS record is only a hint)."""
         if any(c.id == cfg.id for c in self.hub.config.esphome_devices):
             raise ValueError(f"A device with id '{cfg.id}' already exists")
         existing = self.adopted_as(cfg.host)
-        if existing:
-            raise DuplicateHardware(existing)
         cfg.mac = ""  # only ever recorded by the hub, on the first connect
         self.hub.config.esphome_devices.append(cfg)
         self.hub.save_config()
         if not self.emulate:
-            await self._start_node(cfg)
-        return cfg
+            async with self._lock(cfg.id):
+                if self.config_of(cfg.id) is cfg:
+                    await self._start_node(cfg)
+        return f"This board looks like '{existing}', which is already adopted." if existing else ""
 
     def config_of(self, device_id: str) -> EsphomeDeviceConfig | None:
         return next((c for c in self.hub.config.esphome_devices if c.id == device_id), None)
@@ -333,6 +356,11 @@ class EsphomeIntegration(Integration):
                      host: str | None = None, port: int | None = None) -> None:
         """Rename or move a device. A new host or port restarts its connection; its recorded MAC
         stays, so the same board at the new address carries on with its calibration."""
+        async with self._lock(device_id):
+            await self._update_locked(device_id, name, area, host, port)
+
+    async def _update_locked(self, device_id: str, name: str | None, area: str | None,
+                             host: str | None, port: int | None) -> None:
         reconnect = None
         for cfg in self.hub.config.esphome_devices:
             if cfg.id == device_id:
@@ -356,58 +384,89 @@ class EsphomeIntegration(Integration):
             await self._restart_node(reconnect, "connecting at the new address")
 
     async def _restart_node(self, cfg: EsphomeDeviceConfig, detail: str) -> None:
+        """Stop the node's connection and start a new one. Call with ``self._lock(cfg.id)`` held."""
         node = self._nodes.pop(cfg.id, None)
         if node is not None:
             try:
                 await node.stop()
             except Exception:
                 log.exception("Could not stop ESPHome node %s", cfg.id)
-        if self.emulate:
+        if self.emulate or self.config_of(cfg.id) is not cfg:  # removed meanwhile: stay stopped
             return
         self.hub.set_device_status(cfg.id, Status.INITIALIZING, detail)
         await self._start_node(cfg)
 
     def hardware_conflicts(self) -> dict[str, dict]:
-        """Devices held in FAULT by an identity check: {device_id: {reason, expected, found}}."""
+        """Admin only. Devices held in FAULT by an identity check:
+        {device_id: {reason, expected, found, other, records}} (MACs as 12 hex, "" if none;
+        ``records`` = how many calibration records the found board already has)."""
         out = {}
         for device_id, node in self._nodes.items():
             if isinstance(node, _NodeConnection) and node.conflict:
-                out[device_id] = {"reason": node.conflict, "expected": node.cfg.mac,
-                                  "found": node.seen_mac}
+                found = node.conflict["found"]
+                out[device_id] = {**node.conflict, "records": len(records_of(
+                    self.hub.config, node_key(found))) if found else 0}
         return out
 
     async def resolve_hardware(self, device_id: str,
-                               action: Literal["new_hardware", "move_calibration"]) -> None:
-        """Resolve a "different hardware at this address" FAULT.
+                               action: Literal["new_hardware", "move_calibration", "forget_mac"]) -> None:
+        """Settle a device held by an identity check, then reconnect it.
 
-        ``new_hardware`` accepts the board now at the address; the old board's calibration stays
-        under its own key in case it comes back. ``move_calibration`` also copies the old board's
-        calibration to the new one (``method: moved``). The node then reconnects.
-        Raises LookupError when there is nothing to resolve.
+        - "different" (another board answers at the address):
+          ``new_hardware`` accepts it with no calibration (the device's old offsets, including
+          the rollback mirror, don't carry over; the old board's records stay under its own key
+          in case it returns). ``move_calibration`` also copies the old board's records to the
+          new one (``method: moved``).
+        - "known_board" (first connect of a board that already has records):
+          ``move_calibration`` uses those records; ``new_hardware`` starts afresh (the board's
+          old records are removed, and this device's own settings, if any, apply).
+        - "unreadable" (a MAC was recorded but the board sent none): ``forget_mac`` clears the
+          recorded MAC so the board is accepted again.
+        Anything else (including "duplicate": remove one of the two devices instead) raises
+        LookupError, and nothing is changed.
         """
-        node = self._nodes.get(device_id)
-        cfg = self.config_of(device_id)
-        if (cfg is None or not isinstance(node, _NodeConnection) or node.conflict != "different"
-                or not node.seen_mac):
-            raise LookupError("nothing to resolve")
-        new_mac = node.seen_mac
-        if any(c.mac == new_mac and c.id != device_id for c in self.hub.config.esphome_devices):
-            raise LookupError("that board is adopted as another device")
-        if action == "move_calibration" and cfg.mac:
-            copy_node(self.hub.config, node_key(cfg.mac), node_key(new_mac))
-        cfg.mac = new_mac
-        self.hub.save_config()
-        log.info("ESPHome %s: new hardware accepted (%s)", device_id, action)
-        await self._restart_node(cfg, "reconnecting")
+        async with self._lock(device_id):
+            node = self._nodes.get(device_id)
+            cfg = self.config_of(device_id)
+            conflict = node.conflict if isinstance(node, _NodeConnection) else None
+            reason = (conflict or {}).get("reason")
+            if cfg is None or reason is None:
+                raise LookupError("nothing to resolve")
+            if reason == "unreadable":
+                if action != "forget_mac":
+                    raise LookupError("not for this problem")
+                cfg.mac = ""
+            elif reason in ("different", "known_board") and action in ("new_hardware", "move_calibration"):
+                new_mac = conflict["found"]
+                if not new_mac or any(c.mac == new_mac and c.id != device_id
+                                      for c in self.hub.config.esphome_devices):
+                    raise LookupError("that board is in use as another device")
+                new_node = node_key(new_mac)
+                if reason == "different":
+                    if action == "move_calibration" and cfg.mac:
+                        copy_node(self.hub.config, node_key(cfg.mac), new_node)
+                    else:
+                        drop_legacy(self.hub.config, device_id)
+                elif action == "new_hardware":
+                    drop_node(self.hub.config, new_node)
+                # known_board + move_calibration: nothing to copy; on reconnect the board's records
+                # win and this device's legacy entries are brought in step as the rollback mirror.
+                cfg.mac = new_mac
+            else:
+                raise LookupError("not for this problem")
+            self.hub.save_config()
+            log.info("ESPHome %s: hardware check resolved (%s)", device_id, action)
+            await self._restart_node(cfg, "reconnecting")
 
     async def remove(self, device_id: str) -> None:
-        node = self._nodes.pop(device_id, None)
-        if node is not None:
-            await node.stop()
-        self.hub.config.esphome_devices = [
-            c for c in self.hub.config.esphome_devices if c.id != device_id]
-        self.hub.save_config()
-        self.hub.remove_device(device_id)
+        async with self._lock(device_id):
+            self.hub.config.esphome_devices = [
+                c for c in self.hub.config.esphome_devices if c.id != device_id]
+            node = self._nodes.pop(device_id, None)
+            if node is not None:
+                await node.stop()
+            self.hub.save_config()
+            self.hub.remove_device(device_id)
 
     def info(self) -> dict:
         return {**super().info(), "nodes": len(self._nodes),
