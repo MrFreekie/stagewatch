@@ -781,6 +781,7 @@
 
   function render() {
     entityIdsRendered = snap.entities.map((e) => e.id).join(",");
+    dirty = false;   // everything on screen now matches saved state
     app.replaceChildren(
       h("div", { class: "grid-2" }, siteCard(), eventShowCard()),
       connectCard(),
@@ -801,14 +802,24 @@
 
   // Light live refresh: update values in place; rebuild only when the set of
   // entities changes, so half-typed form fields are never wiped.
+  // A field counts as "being edited" while it has focus (checked before and after the request) or
+  // after anything in the page has been typed into since the last full render. A full rebuild would
+  // wipe that text, so the poll then only updates live values in place.
+  const isEditing = () => !!document.activeElement && document.activeElement.matches("input,select,textarea");
+  let dirty = false;
+  app.addEventListener("input", () => { dirty = true; });
+  app.addEventListener("change", () => { dirty = true; });
+
   async function poll() {
-    if (!admin || document.activeElement && document.activeElement.matches("input,select")) return;
+    if (!admin || isEditing()) return;
     try {
       const s = await api("GET", "/api/snapshot");
-      if (s.entities.map((e) => e.id).join(",") !== entityIdsRendered) { await refresh(); return; }
+      if (isEditing()) return;   // focus moved into a field while the request was in flight
+      const canRebuild = !dirty;
+      if (s.entities.map((e) => e.id).join(",") !== entityIdsRendered) { if (canRebuild) await refresh(); return; }
       // Another admin page started a day/event or renamed one: show it here too.
       const showKey = (x) => (x && x.show ? `${x.show.id}|${x.show.name}|${x.show.event_name}|${x.show.day}` : "");
-      if (showKey(s) !== showKey(snap)) { await refresh(); return; }
+      if (showKey(s) !== showKey(snap)) { if (canRebuild) await refresh(); return; }
       snap = s;
       SW.setSiteTime(s.site && s.site.time);
       for (const e of s.entities) {
@@ -817,7 +828,7 @@
       }
       // Software status changes on its own (history entry once a new build is confirmed healthy,
       // background check finds an update): re-render that card only when it actually changed.
-      if (++pollN % 3 === 0 && !document.querySelector("dialog[open]") && !watching) {
+      if (++pollN % 3 === 0 && canRebuild && !document.querySelector("dialog[open]") && !watching) {
         const before = JSON.stringify(sw);
         await loadSoftware();
         if (JSON.stringify(sw) !== before) rerenderSoftware();

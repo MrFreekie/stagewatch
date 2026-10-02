@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SW.renderMarkdown in a real browser</title>
+<!-- Open this file directly in a browser (file://) or from any static server at the repo root.
+     It renders hostile input into the live DOM and checks that nothing executes or becomes an
+     unexpected element. The same cases run headless in markdown_test.js. -->
+<body style="font: 14px sans-serif">
+<h1>SW.renderMarkdown</h1>
+<pre id="result">Running...</pre>
+<div id="out" style="border: 1px solid #888; padding: 8px"></div>
+<script src="../../src/stagewatch/web/static/common.js"></script>
+<script>
+"use strict";
+window.__fired = false;   // an injected handler or script would set this
+const ALLOWED = ["P", "BR", "H3", "H4", "H5", "UL", "OL", "LI", "STRONG", "EM", "CODE", "A"];
+const cases = [
+  "<script>window.__fired = true<\/script>",
+  "<img src=x onerror=\"window.__fired = true\">",
+  "[x](javascript:window.__fired=true)",
+  "[x](data:text/html,<script>window.__fired=true<\/script>)",
+  "[x](vbscript:msgbox(1))",
+  "[[x]](javascript:window.__fired=true)",
+  "# Heading\n\nSome **bold**, *italic* and `code`.\n\n- one\n- two\n\n1. first\n2. second\n\n[ok](https://example.org)",
+];
+const lines = [];
+let failed = false;
+const out = document.getElementById("out");
+for (const c of cases) {
+  out.replaceChildren(SW.renderMarkdown(c));
+  const bad = Array.from(out.querySelectorAll("*")).filter((e) => ALLOWED.indexOf(e.tagName) < 0);
+  const badLinks = Array.from(out.querySelectorAll("a")).filter((a) => !/^(https?:|mailto:)/.test(a.href));
+  const ok = !bad.length && !badLinks.length;
+  if (!ok) failed = true;
+  lines.push((ok ? "PASS " : "FAIL ") + JSON.stringify(c.slice(0, 50)));
+}
+setTimeout(() => {
+  if (window.__fired) { failed = true; lines.push("FAIL injected code ran"); }
+  document.getElementById("result").textContent = (failed ? "FAILED\n" : "ALL PASSED\n") + lines.join("\n");
+  document.title = failed ? "FAILED" : "PASSED";
+}, 300);
+</script>

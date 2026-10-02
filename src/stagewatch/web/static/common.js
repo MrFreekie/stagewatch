@@ -53,6 +53,133 @@ SW.api = async function (method, url, body) {
   return data;
 };
 
+// ---------------------------------------------------------------- safe Markdown
+// SW.renderMarkdown(text, {links: true}) -> DocumentFragment. A small, deliberately limited subset:
+// headings (# to ###, shown as h3 to h5), paragraphs (a single newline is a line break), "-", "*"
+// and "1." lists, **bold**, *italic*, `code`, and [label](url) links. Everything else, including
+// any HTML, is shown as literal text. Built only with createElement/createTextNode (never
+// innerHTML), so input can never become markup. Only http:, https: and mailto: links become <a>;
+// any other scheme (javascript:, data:, vbscript:, relative) stays as plain text. Pass
+// {links: false} to show links as plain text too. Input, line length, nesting and element count are
+// capped so a huge or crafted document cannot hang a low-end tablet.
+SW.MD_LIMITS = { chars: 100000, lines: 2000, lineChars: 2000, depth: 3, nodes: 6000, label: 300, url: 2000 };
+
+SW.mdSafeUrl = function (raw) {
+  const s = String(raw).trim();
+  if (!s || s.length > SW.MD_LIMITS.url || !/^(https?:\/\/|mailto:)/i.test(s)) return null;
+  let u;
+  try { u = new URL(s); } catch (_) { return null; }
+  if (u.protocol !== "http:" && u.protocol !== "https:" && u.protocol !== "mailto:") return null;
+  if (u.protocol !== "mailto:" && (u.username || u.password)) return null;
+  return u.href;
+};
+
+SW.renderMarkdown = function (text, opts) {
+  const L = SW.MD_LIMITS;
+  const links = !(opts && opts.links === false);
+  const frag = document.createDocumentFragment();
+  let src = typeof text === "string" ? text : (text === null || text === undefined ? "" : String(text));
+  let truncated = false;
+  if (src.length > L.chars) { src = src.slice(0, L.chars); truncated = true; }
+  const budget = { nodes: 0 };
+  const el = (tag, cls) => { budget.nodes++; const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+  const txt = (parent, s) => { if (s) { budget.nodes++; parent.appendChild(document.createTextNode(s)); } };
+
+  // Index of the bracket that closes the one at `open`, or -1. Nested brackets are allowed.
+  function closeBracket(s, open) {
+    let d = 0;
+    const end = Math.min(s.length, open + L.label);
+    for (let i = open; i < end; i++) {
+      const c = s.charAt(i);
+      if (c === "[") d++;
+      else if (c === "]") { d--; if (d === 0) return i; }
+    }
+    return -1;
+  }
+
+  function inline(parent, s, depth, allowLinks) {
+    if (depth > L.depth || budget.nodes > L.nodes || s.length > L.lineChars) { txt(parent, s); return; }
+    let buf = "";
+    const flush = () => { txt(parent, buf); buf = ""; };
+    let i = 0;
+    while (i < s.length) {
+      const c = s.charAt(i);
+      if (c === "`") {
+        const j = s.indexOf("`", i + 1);
+        if (j > i + 1) { flush(); const e = el("code"); e.textContent = s.slice(i + 1, j); parent.appendChild(e); i = j + 1; continue; }
+      } else if (c === "*" && s.charAt(i + 1) === "*") {
+        const j = s.indexOf("**", i + 2);
+        if (j > i + 2) { flush(); const e = el("strong"); inline(e, s.slice(i + 2, j), depth + 1, allowLinks); parent.appendChild(e); i = j + 2; continue; }
+      } else if (c === "*") {
+        let j = s.indexOf("*", i + 1);
+        while (j > 0 && s.charAt(j + 1) === "*" && s.charAt(j - 1) !== "*") j = s.indexOf("*", j + 2);
+        if (j > i + 1 && !/\s/.test(s.charAt(i + 1)) && !/\s/.test(s.charAt(j - 1))) {
+          flush(); const e = el("em"); inline(e, s.slice(i + 1, j), depth + 1, allowLinks); parent.appendChild(e); i = j + 1; continue;
+        }
+      } else if (c === "[") {
+        const close = closeBracket(s, i);
+        if (close > 0 && s.charAt(close + 1) === "(") {
+          const end = s.indexOf(")", close + 2);
+          if (end > 0) {
+            const label = s.slice(i + 1, close);
+            const href = allowLinks && links ? SW.mdSafeUrl(s.slice(close + 2, end)) : null;
+            flush();
+            if (href && label.trim()) {
+              const a = el("a");
+              a.href = href;
+              a.rel = "noopener noreferrer";
+              a.target = "_blank";
+              inline(a, label, depth + 1, false);
+              parent.appendChild(a);
+            } else {
+              txt(parent, s.slice(i, end + 1));   // unsafe or unsupported link: plain text
+            }
+            i = end + 1;
+            continue;
+          }
+        }
+      }
+      buf += c;
+      i++;
+    }
+    flush();
+  }
+
+  const lines = src.replace(/\r\n?/g, "\n").split("\n");
+  if (lines.length > L.lines) { lines.length = L.lines; truncated = true; }
+  const reHead = /^\s{0,3}(#{1,3})\s+(.*)$/;
+  const reBullet = /^\s{0,3}[-*+]\s+(.*)$/;
+  const reNumber = /^\s{0,3}\d{1,9}[.)]\s+(.*)$/;
+  let para = null, list = null, listTag = "";
+  const endPara = () => { para = null; };
+  const endList = () => { list = null; listTag = ""; };
+  for (let n = 0; n < lines.length && budget.nodes <= L.nodes; n++) {
+    const line = lines[n];
+    let m;
+    if (!line.trim()) { endPara(); endList(); continue; }
+    if ((m = reHead.exec(line))) {
+      endPara(); endList();
+      const e = el("h" + (m[1].length + 2), "md-h" + m[1].length);
+      inline(e, m[2].trim(), 0, true);
+      frag.appendChild(e);
+    } else if ((m = reBullet.exec(line)) || (m = reNumber.exec(line))) {
+      endPara();
+      const tag = reBullet.test(line) ? "ul" : "ol";
+      if (!list || listTag !== tag) { list = el(tag); listTag = tag; frag.appendChild(list); }
+      const li = el("li");
+      inline(li, m[1].trim(), 0, true);
+      list.appendChild(li);
+    } else {
+      endList();
+      if (!para) { para = el("p"); frag.appendChild(para); }
+      else { para.appendChild(el("br")); }
+      inline(para, line, 0, true);
+    }
+  }
+  if (truncated) { const p = el("p", "muted"); txt(p, "(Text shortened: it was too long to show in full.)"); frag.appendChild(p); }
+  return frag;
+};
+
 // Display formatting. Values arrive in canonical units (degC, %, Pa, m/s).
 SW.KIND_FMT = {
   temperature: { unit: "°C", dec: 1, conv: (v) => v },
