@@ -1,17 +1,28 @@
 # Stagewatch
 
-**A Home Assistant-style monitoring hub for live concert and festival audio.**
+**Stagewatch collects the data that helps run a production day to day, and puts it in
+front of the stage techs who need it: at a glance, in the dark, on the kit they already
+have.**
 
-Stagewatch gathers show-site data from DIY and commercial devices into one server.
-It shows the data on dashboards that anyone on the show network can open from a
-tablet, phone or wall display. It records history with markers, raises alarms, and
-sends values on to other gear over OSC.
+It's for system techs, FOH and monitor engineers, RF techs, stage managers, riggers,
+backline and production crew at concerts, festivals, tours and venues.
 
-Version 0.1 covers the environment: temperature, humidity and pressure from
-[ESPHome](https://esphome.io) sensor nodes, averaged across the site. From that it
-derives the **speed of sound** and shows **how far alignment has drifted since you
-set it**. See the [roadmap](#roadmap) for wind, tilt, load cells, power, consoles,
-RF and SPL.
+- **Collects:** readings and events from DIY [ESPHome](https://esphome.io) sensor nodes,
+  commercial devices and other show software, all on one timeline.
+- **Shows:** dashboards for each role, on any tablet, phone, laptop or wall screen on the
+  show network. No app to install and no account.
+- **Remembers:** everything is recorded against the event and day, with markers and notes,
+  so you can look back at what happened and when.
+- **Helps:** advisory figures and warnings, such as the **speed of sound** and **how far
+  alignment has drifted since you set it**, threshold alarms, and the day's schedule.
+
+What it isn't: a control system (it only reads from rigging, power and safety systems), a
+scheduling or tour-management app (where you already use one, Stagewatch reads from it
+rather than copying it), or a cloud service (it runs on your show network, offline).
+
+Today it covers the environment (temperature, humidity and pressure, averaged across the
+site), node health, markers, alarms, the schedule and role dashboards. See the
+[roadmap](#roadmap) for wind, lightning, power and racks, RF, SPL and more.
 
 > **Advisory tool.** Stagewatch is not a certified safety system. It does not replace
 > the monitoring, riggers, electricians or duty holders required by an event's
