@@ -388,7 +388,7 @@ SW.age = function (updated, now) {
   return `${(s / 3600).toFixed(1)}h ago`;
 };
 
-// ---- Schedule: NOW / NEXT / CURFEW --------------------------------------------
+// ---- Schedule: NOW / NEXT --------------------------------------------
 // Pure functions, no DOM: the dashboard counts down itself, every second, from the items' planned
 // epoch times and the server-corrected clock. These mirror core/schedule.py (stage_matches,
 // now_next); tests/js/schedule_test.js checks both give the same answers.
@@ -469,19 +469,17 @@ SW.scheduleEnds = function (ordered) {
     return null;
   });
 };
-// Curfew colour level from the seconds left: "" (no curfew), "ok" above 15 min, "warn" at 15 min
-// or less, "alert" at 5 min or less, "past" (red) for the first 30 min after it, then "done":
-// calm and neutral, no red. Always shown with text too.
-SW.CURFEW_WARN_S = 15 * 60;
-SW.CURFEW_ALERT_S = 5 * 60;
-SW.CURFEW_PAST_S = 30 * 60;
-SW.curfewLevel = function (seconds) {
-  if (seconds === null || seconds === undefined) return "";
-  if (seconds <= -SW.CURFEW_PAST_S) return "done";
-  if (seconds <= 0) return "past";
-  if (seconds <= SW.CURFEW_ALERT_S) return "alert";
-  if (seconds <= SW.CURFEW_WARN_S) return "warn";
-  return "ok";
+// Colour level of NOW's time left (only for an item with its own end time): "" above 15 min or
+// when there is no countdown, "warn" (amber) at 15 min or less, "alert" (orange) at 5 min or less.
+// At zero the item is no longer current, so there is nothing to colour. Never red. Always shown
+// with a text tag too.
+SW.NOW_WARN_S = 15 * 60;
+SW.NOW_ALERT_S = 5 * 60;
+SW.nowLevel = function (seconds) {
+  if (seconds === null || seconds === undefined || !(seconds > 0)) return "";
+  if (seconds <= SW.NOW_ALERT_S) return "alert";
+  if (seconds <= SW.NOW_WARN_S) return "warn";
+  return "";
 };
 // NEXT turns amber (and says so) from 5 min before the next item starts: "" or "warn".
 SW.NEXT_WARN_S = 5 * 60;
