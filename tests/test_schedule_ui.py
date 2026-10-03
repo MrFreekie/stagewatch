@@ -253,3 +253,10 @@ def test_editor_kinds_come_from_the_server_with_a_title_case_fallback():
         assert f"{k}:" in js, k
     assert 'split("_")' in js and "toUpperCase()" in js
     assert "10:00 Load In" in js and "23:15 Load Out" in js
+
+
+def test_now_shows_time_left_only_with_its_own_end_time():
+    # User: an item with no end time needs no "xx min left"; it shows how long it has been on.
+    js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
+    assert "const ownEnd = !!cur && cur.planned_end !== null && cur.planned_end !== undefined" in js
+    assert "(ownEnd ? `${SW.fmtDuration(nn.currentEnd - now, true)} left`" in js

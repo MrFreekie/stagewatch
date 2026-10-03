@@ -410,11 +410,13 @@
     const idle = { before: "Not started yet", between: "Nothing on now", over: "Show over", empty: "—" };
     if (nn.state === "over" && SW.curfewLevel(nn.secondsToCurfew) === "done") idle.over = "Finished";
 
-    // NOW: title, time since its planned start, and time left when its end is known.
+    // NOW: title and time left, but only when the item has its own end time. Without one (it
+    // simply runs until the next item) a countdown would be guesswork: say how long it has run.
+    const ownEnd = !!cur && cur.planned_end !== null && cur.planned_end !== undefined && nn.currentEnd !== null;
     setText(ui.now.title, cur ? cur.title : (idle[nn.state] || "—"));
-    setText(ui.now.count, cur ? (nn.currentEnd !== null ? `${SW.fmtDuration(nn.currentEnd - now, true)} left` : `on for ${SW.fmtDuration(now - cur.planned_start)}`) : "");
+    setText(ui.now.count, cur ? (ownEnd ? `${SW.fmtDuration(nn.currentEnd - now, true)} left` : `on for ${SW.fmtDuration(now - cur.planned_start)}`) : "");
     setText(ui.now.line, cur ? `Started ${SW.fmtTime(cur.planned_start)}, ${SW.fmtDuration(now - cur.planned_start)} ago`
-      + (nn.currentEnd !== null ? ` · ends ${SW.fmtTime(nn.currentEnd)}` : "") : "");
+      + (ownEnd ? ` · ends ${SW.fmtTime(nn.currentEnd)}` : "") : "");
     // NEXT: planned time and countdown; amber with a tag for the last 5 minutes.
     const nlvl = nxt ? SW.nextLevel(nxt.planned_start - now) : "";
     setClass(ui.next.el, `sched-block next${nlvl ? ` lvl-${nlvl}` : ""}`);
