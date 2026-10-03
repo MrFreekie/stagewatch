@@ -135,20 +135,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel-2);
   border: 1px solid var(--grid); padding: 10px 16px; border-radius: 8px; z-index: 20; }
 
-/* ---- dashboard: Schedule card (NOW / NEXT / CURFEW, running order, setlist) ----
-   Curfew levels: a thick coloured border plus a filled text tag ("15 MIN WARNING", "5 MIN
-   WARNING", "PAST CURFEW"), never colour alone. Red (--stop) only for the first 30 minutes after
-   the curfew; after that the block goes calm. NEXT is amber (--warn) with "STARTS IN 5 MIN" for
+/* ---- dashboard: Schedule card (NOW / NEXT, running order, setlist) ----
+   NOW counts down only for an item with its own end time: a thick coloured border plus a filled
+   text tag ("15 MIN" amber, "5 MIN" orange), never colour alone. No red on this card. NEXT is amber (--warn) with "STARTS IN 5 MIN" for
    its last 5 minutes. A schedule from a finished show day shows one muted note (tablet, phone)
    or hides the card (wall) until the next day is started. */
-.sched-now { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.sched-now { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .sched-block { background: var(--panel-2); border: 2px solid var(--grid); border-left-width: 8px; border-radius: 8px;
   padding: 10px 14px; min-width: 0; }
 .sched-block.now { border-left-color: var(--accent); }
 .sched-block.lvl-warn { border-color: var(--warn); }
 .sched-block.lvl-alert { border-color: var(--alert); }
-.sched-block.lvl-past { border-color: var(--stop); }
-.sched-block.lvl-done .sched-title { color: var(--muted); font-weight: 500; }
 .sched-stale-note { margin: 4px 0 0; font-size: 15px; }
 .sched-stale-note[hidden] { display: none; }
 #schedule-card.sched-stale .sched-body, #schedule-card.sched-stale .sched-strip { display: none !important; }
@@ -156,7 +153,6 @@ body.layout-wall #schedule-card.sched-stale { display: none !important; }
 .sched-label { color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sched-title { font-size: 24px; font-weight: 700; line-height: 1.2; margin-top: 2px; overflow-wrap: break-word; word-wrap: break-word; }
-.sched-block.none .sched-title { color: var(--muted); font-weight: 500; }
 .sched-count { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .sched-count:empty, .sched-line:empty { display: none; }
 .sched-line { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; margin-top: 2px; }
@@ -165,13 +161,10 @@ body.layout-wall #schedule-card.sched-stale { display: none !important; }
 .sched-tag[hidden] { display: none; }
 .sched-tag.lvl-warn { background: var(--warn); }
 .sched-tag.lvl-alert { background: var(--alert); }
-.sched-tag.lvl-past { background: var(--stop); }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) .sched-tag.lvl-warn, :root:not([data-theme="dark"]) .sched-tag.lvl-alert { color: var(--text); }
-  :root:not([data-theme="dark"]) .sched-tag.lvl-past { color: var(--panel); }
 }
 :root[data-theme="light"] .sched-tag.lvl-warn, :root[data-theme="light"] .sched-tag.lvl-alert { color: var(--text); }
-:root[data-theme="light"] .sched-tag.lvl-past { color: var(--panel); }
 .sched-more { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
 .sched-order h3, .sched-set-head { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; overflow-wrap: break-word; word-wrap: break-word; }
@@ -257,7 +250,7 @@ body.layout-wall .tile .foot.approx { font-size: 18px; }   /* the "approximate" 
 body.layout-wall .chart-wrap { height: 42vh; }
 body.layout-wall .only-interactive { display: none; }
 /* Schedule card per layout. Phone: the strip, expanding to the full card on tap. Wall: only the
-   NOW / NEXT / CURFEW strip, large enough to read at 5 m (no running order, no setlist). */
+   NOW / NEXT strip, large enough to read at 5 m (no running order, no setlist). */
 body.layout-phone #schedule-card > h2 { display: none; }
 body.layout-phone .sched-strip { display: flex; }
 body.layout-phone #schedule-card .sched-body { display: none; margin-top: 10px; }
@@ -267,7 +260,7 @@ body.layout-phone .sched-title { font-size: 20px; }
 body.layout-phone .sched-count { font-size: 24px; }
 body.layout-wall .sched-more { display: none; }
 body.layout-wall #schedule-card > h2 { font-size: 22px; }
-body.layout-wall .sched-now { gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr); }
+body.layout-wall .sched-now { gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 body.layout-wall .sched-block { padding: 14px 20px; border-width: 4px; border-left-width: 14px; }
 body.layout-wall .sched-label { font-size: 26px; }
 body.layout-wall .sched-title { font-size: 46px; }

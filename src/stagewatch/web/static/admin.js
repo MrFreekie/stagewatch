@@ -247,7 +247,7 @@
   // Card names and one-line hints for the "Edit cards" panel (ids: core/cards.py).
   const CARD_INFO = {
     env_tiles: ["Site readings", "Tiles for temperature, humidity, pressure, speed of sound and dew point."],
-    schedule: ["Schedule", "Now, next and curfew. Stays hidden until the show has a schedule."],
+    schedule: ["Schedule", "What is on now and next, and the running order. Stays hidden until the show has a schedule."],
     chart: ["History chart", "Readings over time, with markers."],
     markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],

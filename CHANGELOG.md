@@ -24,11 +24,10 @@ them into a dated release section and tags the commit.
   them, and neither is ever counted in the site averages.
 - ESPHome nodes: a new sensor node for the Adafruit ESP32-S3 TFT Feather with an MS8607 sensor. Its screen shows temperature, humidity and pressure, plus dots for Wi-Fi and Stagewatch. A new step-by-step guide covers building and adopting it. Not yet tested on real hardware. **Action needed:** add a `wifi_ap_password` line to your `secrets.yaml` (see `secrets.example.yaml`) before building this node.
 - Dashboards: a new Schedule card shows what's on NOW (and how long it has left), what's NEXT
-  (with a countdown) and the CURFEW (with a countdown). On a tablet it also shows the running
+  (with a countdown). On a tablet it also shows the running
   order, with finished items greyed out. Tap an act to see its setlist. On a phone it's a short
-  strip; tap it to see the rest. On a wall screen it's a large NOW / NEXT / CURFEW strip you can
-  read from across the room. The curfew turns amber at 15 minutes ("15 MIN WARNING"), orange at
-  5 minutes ("5 MIN WARNING") and red only once it has passed ("PAST CURFEW"). It never beeps.
+  strip; tap it to see the rest. On a wall screen it's a large NOW / NEXT strip you can
+  read from across the room. It never beeps.
   The card stays hidden until the show day has a schedule. If a dashboard has a Stage set, it
   shows only that stage's items, plus items with no stage.
 - Admin page: a new Schedule card for the current show day. Add, remove and reorder items, and
@@ -127,6 +126,9 @@ them into a dated release section and tags the commit.
   key on every node to stop other devices pretending to be yours.
 
 ### Changed
+- The schedule card no longer has a separate curfew timer. Instead, the act on now counts down to
+  its end time (if it has one), turning amber at 15 minutes ("15 MIN") and orange at 5 ("5 MIN").
+  NOW and NEXT now sit side by side, and the curfew is still listed in the running order.
 - The schedule editor now has its own page, so Admin is shorter. On Admin, the Schedule card
   shows the day, how many items there are, and what is on NOW and NEXT. Click **Open schedule
   editor** to change the running order. It uses the same admin PIN: if you open the page without
@@ -134,8 +136,7 @@ them into a dated release section and tags the commit.
   CSV** (a spreadsheet file of the running order, without setlists) and **Print** (a clean
   black-on-white running order with the setlists, which you can also save as a PDF). The kind
   list in the editor follows the server, so new kinds appear without any change here.
-- Schedule card after the show: the red "PAST CURFEW" now lasts 30 minutes, then the card goes
-  calm ("Finished", "Curfew was 23:00") instead of counting hours. Once the day changes over and
+- Schedule card after the show: the card goes calm ("Finished") instead of counting hours. Once the day changes over and
   nobody has pressed Next day, tablets and phones show a small note ("Yesterday's schedule ...
   Start the next day in Admin") and the wall screen hides the card. NEXT turns amber with
   "STARTS IN 5 MIN" for its last five minutes. An item with no end time no longer shows a countdown under NOW, just its
@@ -144,7 +145,7 @@ them into a dated release section and tags the commit.
   Changeover and Curfew, and an import picks them up from titles ("Video Load In", "Matt
   Soundcheck"). An item that starts after the curfew, such as Load Out, now shows as NOW while
   it runs instead of the card saying the show is over.
-- Wall screen: the CURFEW block is wider, so "1 h 24 min ago" no longer wraps, and chart marker
+- Wall screen: chart marker
   labels are larger. On touch screens marker tabs are taller and easier to tap. In the running
   order, finished items are easier to read.
 - Markers on the chart are easier to read. Labels now stack in up to three rows instead of

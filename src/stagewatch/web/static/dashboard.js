@@ -319,13 +319,13 @@
   });
 
   // ------------------------------------------------------------ schedule
-  // NOW / NEXT / CURFEW and the running order for this dashboard's stage (dash.stage; empty = all
+  // NOW / NEXT and the running order for this dashboard's stage (dash.stage; empty = all
   // stages). The DOM is built once per schedule change (snapshot or "schedule" message); a
   // one-second tick then only updates text and classes in place. The tick runs only while the
   // card is on this dashboard and has items, and stops itself otherwise. Countdowns come from the
   // server-corrected clock (serverNow); nothing here sounds or raises an alarm.
   // Layouts (style.css): tablet shows everything; phone shows a strip that expands on tap; wall
-  // shows only the large NOW / NEXT / CURFEW strip.
+  // shows only the large NOW / NEXT strip.
   const sched = { timer: null, ui: null, rows: [], items: [], selected: null, open: false, setlistKey: "",
     loadedKey: "", loading: false };
   const schedH2 = $("schedule-card").querySelector("h2");
@@ -343,7 +343,7 @@
     const k = KIND_NAMES[it.kind] || "";
     return k && it.title.toLowerCase().replace(/-/g, " ").indexOf(k.toLowerCase()) < 0 ? k : "";
   };
-  const CURFEW_TAGS ={ warn: "15 MIN WARNING", alert: "5 MIN WARNING", past: "PAST CURFEW" };
+  const NOW_TAGS = { warn: "15 MIN", alert: "5 MIN" };
   const NEXT_TAG = "STARTS IN 5 MIN";
   const until = (s) => `in ${SW.fmtDuration(s, true)}`;
   const scheduleDay = () => (state.schedule && state.schedule.day) || (state.scheduleMeta && state.scheduleMeta.day) || "";
@@ -399,7 +399,7 @@
     }
     if (sched.selected !== null && !sched.items.some((it) => it.id === sched.selected)) sched.selected = null;
     const ui = {
-      now: schedBlock("now", "Now"), next: schedBlock("next", "Next"), curfew: schedBlock("curfew", "Curfew"),
+      now: schedBlock("now", "Now"), next: schedBlock("next", "Next"),
       stripNow: h("span", { class: "sched-strip-now" }), stripRest: h("span", { class: "sched-strip-rest" }),
       stripTag: h("span", { class: "sched-tag", hidden: true }), stripNextTag: h("span", { class: "sched-tag", hidden: true }),
       stale: h("p", { class: "sched-stale-note muted", hidden: true }), stripMore: h("span", { class: "sched-strip-more", "aria-hidden": "true" }),
@@ -413,8 +413,8 @@
         card.classList.toggle("sched-open", sched.open);
         setText(ui.stripMore, sched.open ? "Less ▲" : "More ▼");
       } },
-    h("span", { class: "sched-strip-l1" }, h("span", { class: "sched-label" }, "Now"), ui.stripNow),
-    h("span", { class: "sched-strip-l2" }, ui.stripRest, ui.stripNextTag, ui.stripTag), ui.stripMore);
+    h("span", { class: "sched-strip-l1" }, h("span", { class: "sched-label" }, "Now"), ui.stripNow, ui.stripTag),
+    h("span", { class: "sched-strip-l2" }, ui.stripRest, ui.stripNextTag), ui.stripMore);
     ui.stripMore.textContent = sched.open ? "Less ▲" : "More ▼";
     const ends = SW.scheduleEnds(sched.items);
     sched.rows = sched.items.map((it, i) => {
@@ -434,7 +434,7 @@
     card.classList.toggle("sched-open", sched.open);
     card.replaceChildren(schedH2, ui.stale, ui.strip,
       h("div", { class: "sched-body" },
-        h("div", { class: "sched-now" }, ui.now.el, ui.next.el, ui.curfew.el),
+        h("div", { class: "sched-now" }, ui.now.el, ui.next.el),
         h("div", { class: "sched-more" },
           h("div", { class: "sched-order" }, h("h3", {}, "Running order"), h("ol", {}, sched.rows.map((r) => r.el))),
           h("div", { class: "sched-setlist" }, ui.setHead, ui.setBody, ui.setBack))));
@@ -448,15 +448,25 @@
     if (!ui || !has("schedule")) { stopScheduleTimer(); return; }
     const now = serverNow();
     const nn = SW.scheduleNowNext(sched.items, now, "");
-    const cur = nn.current, nxt = nn.next, cf = nn.curfew;
+    const cur = nn.current, nxt = nn.next;
     const idle = { before: "Not started yet", between: "Nothing on now", over: "Show over", empty: "—" };
-    if (nn.state === "over" && SW.curfewLevel(nn.secondsToCurfew) === "done") idle.over = "Finished";
+    if (nn.state === "over") idle.over = "Finished";
 
     // NOW: title and time left, but only when the item has its own end time. Without one (it
     // simply runs until the next item) there is no countdown at all: the "Started" line is enough.
     const ownEnd = !!cur && cur.planned_end !== null && cur.planned_end !== undefined && nn.currentEnd !== null;
+    // Time left: neutral above 15 min, amber (with a "15 MIN" tag) at 15, orange ("5 MIN") at 5.
+    const left = ownEnd ? nn.currentEnd - now : null;
+    const lvl = SW.nowLevel(left);
+    setClass(ui.now.el, `sched-block now${lvl ? ` lvl-${lvl}` : ""}`);
+    for (const tag of [ui.now.tag, ui.stripTag]) {
+      const text = NOW_TAGS[lvl] || "";
+      setText(tag, text);
+      setClass(tag, `sched-tag${lvl ? ` lvl-${lvl}` : ""}`);
+      tag.hidden = !text;
+    }
     setText(ui.now.title, cur ? cur.title : (idle[nn.state] || "—"));
-    setText(ui.now.count, cur ? (ownEnd ? `${SW.fmtDuration(nn.currentEnd - now, true)} left` : "") : "");
+    setText(ui.now.count, cur ? (ownEnd ? `${SW.fmtDuration(left, true)} left` : "") : "");
     setText(ui.now.line, cur ? `Started ${SW.fmtTime(cur.planned_start)}, ${SW.fmtDuration(now - cur.planned_start)} ago`
       + (ownEnd ? ` · ends ${SW.fmtTime(nn.currentEnd)}` : "") : "");
     // NEXT: planned time and countdown; amber with a tag for the last 5 minutes.
@@ -471,25 +481,10 @@
       setClass(tag, `sched-tag${nlvl ? ` lvl-${nlvl}` : ""}`);
       tag.hidden = !text;
     }
-    // CURFEW: neutral above 15 min, warn at 15, alert at 5, stop colour for the first 30 minutes
-    // after it, then calm and neutral. Always with text.
-    const s = nn.secondsToCurfew;
-    const lvl = SW.curfewLevel(s);
-    setClass(ui.curfew.el, `sched-block curfew${lvl ? ` lvl-${lvl}` : " none"}`);
-    setText(ui.curfew.title, cf ? (lvl === "done" ? `Curfew was ${SW.fmtTime(cf.planned_start)}` : SW.fmtTime(cf.planned_start)) : "No curfew set");
-    setText(ui.curfew.count, cf ? (s > 0 ? until(s) : (lvl === "done" ? "" : `${SW.fmtDuration(-s)} ago`)) : "");
-    setText(ui.curfew.line, cf && cf.title.trim().toLowerCase() !== "curfew" ? cf.title : "");
-    for (const tag of [ui.curfew.tag, ui.stripTag]) {
-      const text = CURFEW_TAGS[lvl] || "";
-      setText(tag, text);
-      setClass(tag, `sched-tag${lvl ? ` lvl-${lvl}` : ""}`);
-      tag.hidden = !text;
-    }
     // Phone strip: one glance line, tap for the rest.
     setText(ui.stripNow, cur ? cur.title : (idle[nn.state] || "—"));
     const rest = [];
     if (nxt) rest.push(`Next ${SW.fmtTime(nxt.planned_start)}, ${until(nxt.planned_start - now)}`);
-    if (cf) rest.push(s > 0 ? `Curfew ${until(s)}` : (lvl === "done" ? `Curfew was ${SW.fmtTime(cf.planned_start)}` : "Past curfew"));
 
     // The schedule belongs to a show day that has finished and the next day hasn't been started:
     // tablets and phones show one muted note, the wall hides the card (style.css).
