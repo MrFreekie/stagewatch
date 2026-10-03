@@ -6,6 +6,9 @@ This guide builds one from an Adafruit ESP32-S3 Feather and a plug-in sensor.
 
 Time needed: about 45 minutes the first time (most of it is waiting for the first build).
 
+Building the TFT Feather with the MS8607 sensor instead? Use the
+[Feather sensor node guide](feather-s3-tft-node.md).
+
 > Stagewatch is an advisory tool with no warranty. Check your node's readings against a
 > reference thermometer before you trust it. See the [main README](../README.md#stagewatch).
 

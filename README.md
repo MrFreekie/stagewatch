@@ -42,6 +42,7 @@ crew, with every step explained and what you should see after it. Start here:
 - **[Install on Windows](docs/install-windows.md)**: a FOH laptop or mini-PC that starts Stagewatch at boot.
 - **[Install on a Raspberry Pi](docs/install-raspberry-pi.md)**: a small always-on box, with an optional wall-screen kiosk.
 - **[Build your first sensor node](docs/first-sensor-node.md)**: an ESP32-S3 Feather and a plug-in sensor, no soldering.
+- **[Build a Feather sensor node with a screen](docs/feather-s3-tft-node.md)**: ESP32-S3 TFT Feather and an MS8607 sensor, no soldering.
 - **[Using Stagewatch on show day](docs/using-stagewatch.md)**: dashboards, markers, alarms.
 - More: [updating and backups](docs/updating-and-backups.md) (including a forgotten PIN),
   [troubleshooting](docs/troubleshooting.md) and a [glossary](docs/glossary.md).
@@ -134,6 +135,7 @@ Example configs are in [`esphome/`](esphome/):
 | `stagewatch-env-poe.yaml` | Olimex ESP32-POE(-ISO) + BME280, PoE Ethernet |
 | `stagewatch-feather-s3.yaml` | Adafruit ESP32-S3 Feather (STEMMA QT) + BME280 or SHT45, Wi-Fi |
 | `stagewatch-feather-s3-tft.yaml` | Adafruit ESP32-S3 TFT Feather + BME280 or SHT45, with on-board status display |
+| `stagewatch-s3-tft-ms8607.yaml` | Adafruit ESP32-S3 TFT Feather (5483) + MS8607, with screen. Guide: [Feather sensor node](docs/feather-s3-tft-node.md) |
 
 1. Copy `esphome/secrets.example.yaml` to `esphome/secrets.yaml` (gitignored) and fill it in.
 2. Flash the node: `esphome run esphome/stagewatch-env.yaml`

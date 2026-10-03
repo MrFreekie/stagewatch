@@ -1,0 +1,395 @@
+# Stagewatch environment node: Adafruit ESP32-S3 TFT Feather (Adafruit 5483,
+# 4MB flash, 2MB PSRAM, built-in 240x135 ST7789 colour TFT) + Adafruit TE MS8607
+# PHT sensor (temperature, humidity and pressure) over STEMMA QT. Wi-Fi.
+#
+# The screen (dark background) shows temperature, RH and pressure large enough
+# to read at arm's length, the node name, Wi-Fi and "hub connected" dots, and
+# the IP address. The NeoPixel is off unless Wi-Fi or the hub connection is lost.
+#
+# Hardware (no soldering):
+#   - Adafruit ESP32-S3 TFT Feather, product 5483 (not the Reverse TFT 5691)
+#   - Adafruit TE MS8607 PHT sensor (product 4716), STEMMA QT
+#   - STEMMA QT cable, 100 mm or longer (150-200 mm is better), plugged into the
+#     Feather's STEMMA QT port and the sensor. The plugs only fit one way round.
+#   - USB-C data cable and a stable 5 V supply. Optional: protected 3.7 V LiPo with
+#     JST-PH plug (correct polarity: check the +/- markings, many packs are reversed).
+#
+# Pins (Adafruit learn guide + Arduino/CircuitPython variant definitions):
+#   STEMMA QT: SDA = GPIO42, SCL = GPIO41, 3V3 and GND on the connector
+#   TFT_I2C_POWER = GPIO21: switches 3V3 to the STEMMA QT port AND the TFT. It must
+#     be HIGH or neither works; this config drives it HIGH at boot.
+#   TFT (ST7789, SPI): CS GPIO7, DC GPIO39, RST GPIO40, SCK GPIO36, MOSI GPIO35,
+#     backlight GPIO45 (TFT_BACKLITE, active high)
+#   NeoPixel: data GPIO33, power-enable GPIO34 (off unless showing an alert)
+#   Battery gauge: MAX17048 at 0x36 on the same I2C bus (boards from early 2023;
+#     older boards have an LC709203F at 0x0B: see the battery block below)
+#   BOOT button GPIO0 (active low): toggles the backlight; D1 (GPIO1) steps the
+#     backlight brightness (D1 is pulled down on this board: HIGH when pressed)
+#
+# Not for the Reverse TFT (5691): it uses different pins (I2C 3/4, TFT_I2C_POWER GPIO7).
+#
+# MS8607 addresses: the chip is two I2C devices, temperature/pressure at 0x76 and
+# humidity at 0x40. The i2c scan below should log both. Neither is selectable.
+# Sensor note: the MS8607 has no heater and is reasonably accurate (about +/-0.5 C,
+# +/-3 %RH, +/-2 hPa). Check it against a reference thermometer and use the
+# per-sensor offset in Stagewatch admin.
+#
+# Mounting: the Feather, its regulator, the backlight and any LiPo all make heat.
+# Put the sensor on its cable in free air, well away from the board (not lying on
+# or stuck to it), away from amps, lamps, dimmers, haze outlets and direct sun
+# (use a radiation shield outdoors). Hang the sensor where the air matches the air
+# the sound travels through. Weatherproof the board, and give the USB and battery
+# leads strain relief. Use a stable USB 5 V supply for show use; a LiPo is only a
+# short ride-through and the battery readings are informational. Never leave a
+# charging pack in a hot flight case or under lamps.
+#
+# First flash (USB): install ESPHome (uv tool install esphome), copy
+# secrets.example.yaml to secrets.yaml and fill it in, then plug in the board,
+# hold BOOT, tap RESET, release BOOT, and run
+#     esphome run stagewatch-s3-tft-ms8607.yaml
+# choosing the COM port. Tap RESET afterwards. web.esphome.io cannot build this
+# file; it can only flash a ready-made firmware, so use it only to test the cable.
+# This replaces Adafruit's UF2 bootloader (restore it with Adafruit's web
+# installer if needed). After that, updates go over Wi-Fi (OTA) with the same
+# command. The fonts are fetched from Google Fonts at compile time (needs internet).
+# Then adopt the node in Stagewatch admin using the key from api_encryption_key.
+#
+# Secrets used: wifi_ssid, wifi_password, ota_password, api_encryption_key (use a
+# different key per node) and wifi_ap_password (new: the fallback access point;
+# add it to your secrets.yaml, see secrets.example.yaml).
+#
+# Status: validated with `esphome config`; the screen layout and the MAX17048 gauge
+# are untested on hardware. If the picture is upside down change rotation to 270;
+# if colours look inverted flip invert_colors.
+
+substitutions:
+  node_name: stagewatch-s3-ms8607-1   # unique per node: becomes <name>.local
+  friendly_name: "Stagewatch S3 MS8607 1"
+  screen_title: "Stagewatch S3 1"     # top-left of the screen; keep to about 16 characters
+
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: -100
+    then:
+      - light.turn_on:                  # dark-friendly default brightness
+          id: backlight
+          brightness: 40%
+          transition_length: 0s
+
+esp32:
+  board: adafruit_feather_esp32s3_tft
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+# PSRAM (2MB quad) is fitted but not needed for a 240x135 screen. To enable:
+# psram:
+#   mode: quad
+#   speed: 80MHz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG        # native USB; drop if you see no logs
+
+# Native API: Stagewatch connects to this. Paste the same key into Stagewatch
+# when adopting the node. The reboot_timeout restarts the node if no client
+# has been connected for 15 minutes, which recovers it from a stuck Wi-Fi stack.
+api:
+  encryption:
+    key: !secret api_encryption_key
+  reboot_timeout: 15min
+  on_client_connected:
+    - script.execute:
+        id: neopixel_alert
+        r: 0.0
+        g: 0.0
+        b: 0.0
+  on_client_disconnected:
+    - script.execute:
+        id: neopixel_alert
+        r: 1.0
+        g: 0.5
+        b: 0.0
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Uncomment for a fixed address on the show control network:
+  # manual_ip:
+  #   static_ip: 192.168.1.50
+  #   gateway: 192.168.1.1
+  #   subnet: 255.255.255.0
+  # Fallback access point if the node cannot join Wi-Fi.
+  ap:
+    ssid: "${node_name}"
+    password: !secret wifi_ap_password
+  on_disconnect:
+    - script.execute:
+        id: neopixel_alert
+        r: 1.0
+        g: 0.0
+        b: 0.0
+
+captive_portal:
+
+# Power enables, applied at switch setup (before sensors and display).
+switch:
+  - platform: gpio
+    id: i2c_power
+    pin: GPIO21                         # TFT_I2C_POWER: STEMMA QT port + TFT 3V3
+    restore_mode: ALWAYS_ON
+    internal: true
+  - platform: gpio
+    id: neopixel_power
+    pin: GPIO34                         # NEOPIXEL_POWER (off unless alerting)
+    restore_mode: ALWAYS_OFF
+    internal: true
+
+i2c:
+  sda: GPIO42
+  scl: GPIO41
+  frequency: 100kHz                     # gentle on a long STEMMA QT cable
+  scan: true
+
+spi:
+  clk_pin: GPIO36
+  mosi_pin: GPIO35
+
+# Backlight (GPIO45). Dark by default (40%). BOOT toggles it; D1 steps brightness.
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO45
+
+light:
+  - platform: monochromatic
+    id: backlight
+    name: "Display Backlight"
+    output: backlight_pwm
+    restore_mode: ALWAYS_OFF            # on_boot above sets the default level
+    default_transition_length: 0s
+  # NeoPixel: off by default. Red = Wi-Fi lost, amber = Wi-Fi up but hub
+  # disconnected. Lit for 20 s per event, then switched off (and powered down).
+  - platform: esp32_rmt_led_strip
+    id: status_led
+    internal: true
+    pin: GPIO33
+    num_leds: 1
+    chipset: ws2812
+    channel_colors: GRB
+    restore_mode: ALWAYS_OFF
+
+script:
+  - id: neopixel_alert
+    mode: restart
+    parameters:
+      r: float
+      g: float
+      b: float
+    then:
+      - if:
+          condition:
+            lambda: 'return (r + g + b) <= 0.0f;'
+          then:
+            - light.turn_off: status_led
+            - switch.turn_off: neopixel_power
+          else:
+            - switch.turn_on: neopixel_power
+            - light.turn_on:
+                id: status_led
+                brightness: 10%
+                red: !lambda 'return r;'
+                green: !lambda 'return g;'
+                blue: !lambda 'return b;'
+            - delay: 20s
+            - light.turn_off: status_led
+            - switch.turn_off: neopixel_power
+
+globals:
+  - id: last_reading_ms                 # millis() of the last good temperature
+    type: uint32_t
+    initial_value: '0'
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 16
+    glyphs: "!\"%()+,-./0123456789:<>? ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+  - file: "gfonts://Roboto"
+    id: font_medium
+    size: 28
+    glyphs: "%,.0123456789 hPa"
+  - file: "gfonts://Roboto"
+    id: font_nosensor
+    size: 28
+    glyphs: " NOSER"
+  - file: "gfonts://Roboto"
+    id: font_big
+    size: 60
+    glyphs: "0123456789.-"
+  - file: "gfonts://Roboto"
+    id: font_unit
+    size: 28
+    glyphs: "°C"
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: ip_addr
+      name: "IP address"
+      internal: true                    # shown on screen only
+
+sensor:
+  # Temperature + pressure at 0x76, humidity at 0x40. Environment: 5 s.
+  - platform: ms8607
+    address: 0x76
+    update_interval: 5s
+    temperature:
+      name: "Temperature"
+      id: temp_c
+      device_class: temperature
+      unit_of_measurement: "°C"
+      accuracy_decimals: 1
+      on_value:
+        then:
+          - lambda: 'id(last_reading_ms) = millis();'
+    humidity:
+      name: "Humidity"
+      id: rh
+      address: 0x40
+      device_class: humidity
+      unit_of_measurement: "%"
+      accuracy_decimals: 0
+    pressure:
+      name: "Pressure"                  # hPa; Stagewatch converts to Pa
+      id: press_hpa
+      device_class: atmospheric_pressure
+      unit_of_measurement: "hPa"
+      accuracy_decimals: 1
+
+  # Battery gauge (informational). MAX17048 (0x36, boards from early 2023).
+  # There is no max17048 platform in ESPHome; max17043 uses the same registers
+  # (voltage and state of charge) at the same fixed address 0x36, but its docs list
+  # only the MAX17043, so check the values look sane (about 3.0-4.2 V). With no
+  # battery fitted the readings may be odd or absent: that is harmless.
+  # On an older board (LC709203F, 0x0B) replace with:
+  #   - platform: lc709203f
+  #     update_interval: 60s
+  #     size: 500          # pack capacity in mAh
+  #     voltage: 3.7
+  #     battery_voltage: {name: "Battery voltage"}
+  #     battery_level: {name: "Battery"}
+  - platform: max17043
+    update_interval: 60s
+    battery_voltage:
+      name: "Battery voltage"
+    battery_level:
+      name: "Battery"
+
+  # Optional ESP32-S3 die temperature. DISABLED on purpose: it has device_class
+  # temperature, so Stagewatch would treat it as a site temperature sensor and could
+  # pull the site average up. If you enable it, untick "Average" for it in
+  # Stagewatch admin (Sensors: calibration & averaging). It reads the chip, not the air.
+  # - platform: internal_temperature
+  #   name: "Chip temperature"
+  #   update_interval: 60s
+
+  - platform: wifi_signal
+    name: "WiFi signal"
+    id: wifi_dbm
+    update_interval: 30s
+
+binary_sensor:
+  # BOOT button (GPIO0, active low) toggles the backlight.
+  - platform: gpio
+    id: boot_button
+    internal: true
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 30ms
+    on_press:
+      - light.toggle: backlight
+  # D1 (GPIO1, pulled down on this board, HIGH when pressed) steps brightness.
+  - platform: gpio
+    id: dim_button
+    internal: true
+    pin:
+      number: GPIO1
+      mode: INPUT
+    filters:
+      - delayed_on: 30ms
+    on_press:
+      - lambda: |-
+          auto cur = id(backlight).current_values.get_brightness();
+          float next = cur < 0.15f ? 0.4f : (cur < 0.5f ? 1.0f : 0.1f);
+          auto call = id(backlight).turn_on();
+          call.set_brightness(next);
+          call.set_transition_length(0);
+          call.perform();
+
+display:
+  - platform: mipi_spi
+    id: tft
+    model: ST7789V
+    cs_pin: GPIO7
+    dc_pin: GPIO39
+    reset_pin: GPIO40
+    data_rate: 40MHz
+    dimensions:                         # native portrait panel; rotation below
+      height: 240
+      width: 135
+      offset_height: 52
+      offset_width: 40
+    rotation: 90°                        # landscape 240x135; 270° if upside down
+    invert_colors: true
+    update_interval: 2s
+    lambda: |-
+      const Color BG(0, 0, 0);
+      const Color WHITE(255, 255, 255);
+      const Color GREY(150, 150, 150);
+      const Color CYAN(90, 210, 255);
+      const Color RED(255, 70, 70);
+      const Color GREEN(60, 220, 90);
+      const Color AMBER(255, 160, 0);
+      it.fill(BG);
+
+      // Header: node name (left) and status dots (right): Wi-Fi, hub (API)
+      it.printf(4, 2, id(font_small), GREY, TextAlign::TOP_LEFT, "%s", "${screen_title}");
+      it.filled_circle(206, 10, 5, wifi::global_wifi_component->is_connected() ? GREEN : RED);
+      it.filled_circle(226, 10, 5, api::global_api_server->is_connected() ? GREEN : AMBER);
+
+      bool fresh = !std::isnan(id(temp_c).state) &&
+                   id(last_reading_ms) != 0 &&
+                   (millis() - id(last_reading_ms)) < 30000;
+
+      if (!fresh) {
+        it.print(120, 62, id(font_nosensor), RED, TextAlign::CENTER, "NO SENSOR");
+        it.print(120, 92, id(font_small), GREY, TextAlign::CENTER, "check STEMMA QT cable");
+      } else {
+        // Large temperature (1 decimal) with a smaller unit
+        it.printf(100, 20, id(font_big), WHITE, TextAlign::TOP_CENTER, "%.1f", id(temp_c).state);
+        it.print(186, 36, id(font_unit), WHITE, TextAlign::TOP_LEFT, "°C");
+        // RH (no decimals) left, pressure (1 decimal, thousands separator) right
+        if (!std::isnan(id(rh).state))
+          it.printf(4, 82, id(font_medium), CYAN, TextAlign::TOP_LEFT, "%.0f%%", id(rh).state);
+        if (!std::isnan(id(press_hpa).state)) {
+          int tenths = (int) roundf(id(press_hpa).state * 10.0f);
+          char pbuf[24];
+          snprintf(pbuf, sizeof(pbuf), "%d,%03d.%d hPa", tenths / 10000, (tenths / 10) % 1000, tenths % 10);
+          if (tenths < 10000) snprintf(pbuf, sizeof(pbuf), "%d.%d hPa", tenths / 10, tenths % 10);
+          it.printf(236, 82, id(font_medium), CYAN, TextAlign::TOP_RIGHT, "%s", pbuf);
+        }
+      }
+
+      // Footer: IP address (small), Wi-Fi signal on the right
+      it.printf(4, 116, id(font_small), GREY, TextAlign::TOP_LEFT, "%s", id(ip_addr).state.c_str());
+      if (id(wifi_dbm).has_state())
+        it.printf(236, 116, id(font_small), GREY, TextAlign::TOP_RIGHT, "%.0f dBm", id(wifi_dbm).state);

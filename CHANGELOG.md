@@ -16,6 +16,7 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- ESPHome nodes: a new sensor node for the Adafruit ESP32-S3 TFT Feather with an MS8607 sensor. Its screen shows temperature, humidity and pressure, plus dots for Wi-Fi and Stagewatch. A new step-by-step guide covers building and adopting it. Not yet tested on real hardware. **Action needed:** add a `wifi_ap_password` line to your `secrets.yaml` (see `secrets.example.yaml`) before building this node.
 - Dashboards: a new Schedule card shows what's on NOW (and how long it has left), what's NEXT
   (with a countdown) and the CURFEW (with a countdown). On a tablet it also shows the running
   order, with finished items greyed out. Tap an act to see its setlist. On a phone it's a short
