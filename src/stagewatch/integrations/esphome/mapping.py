@@ -10,6 +10,8 @@ _DEVICE_CLASS_KIND = {
     "humidity": Kind.HUMIDITY,
     "pressure": Kind.PRESSURE,
     "atmospheric_pressure": Kind.PRESSURE,
+    "battery": Kind.BATTERY,
+    "signal_strength": Kind.SIGNAL,
 }
 
 
@@ -23,6 +25,8 @@ def sensor_kind(device_class: str, unit: str) -> Kind:
         return Kind.TEMPERATURE
     if u in ("hpa", "pa", "kpa", "mbar", "inhg", "mmhg"):
         return Kind.PRESSURE
+    if u == "dbm":
+        return Kind.SIGNAL
     return Kind.GENERIC
 
 

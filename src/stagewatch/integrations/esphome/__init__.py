@@ -62,7 +62,7 @@ MANIFEST = Manifest(
     tier="experimental",
     direction="in",
     protocols=("ESPHome native API", "mDNS"),
-    entity_kinds=("temperature", "humidity", "pressure", "contact", "generic"),
+    entity_kinds=("temperature", "humidity", "pressure", "contact", "battery", "signal_strength", "generic"),
     vendors=("ESPHome",),
 )
 

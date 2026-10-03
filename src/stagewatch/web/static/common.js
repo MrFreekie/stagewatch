@@ -232,6 +232,8 @@ SW.KIND_FMT = {
   pressure: { unit: "hPa", dec: 1, conv: (v) => v / 100 },
   speed_of_sound: { unit: "m/s", dec: 2, conv: (v) => v },
   contact: { unit: "", dec: 0, conv: (v) => v },
+  battery: { unit: "%", dec: 0, conv: (v) => v },
+  signal_strength: { unit: "dBm", dec: 0, conv: (v) => v },
 };
 
 // Fixed-point with a comma every three digits and a full stop for decimals ("1,013.2"), whatever

@@ -34,6 +34,8 @@ class Kind(str, Enum):
     SPEED_OF_SOUND = "speed_of_sound"
     DEW_POINT = "dew_point"
     CONTACT = "contact"
+    BATTERY = "battery"          # node battery level, %; shown per node, never averaged
+    SIGNAL = "signal_strength"   # node Wi-Fi signal, dBm; shown per node, never averaged
     GENERIC = "generic"
 
 
@@ -44,6 +46,8 @@ UNITS = {
     Kind.SPEED_OF_SOUND: "m/s",
     Kind.DEW_POINT: "°C",
     Kind.CONTACT: "",
+    Kind.BATTERY: "%",
+    Kind.SIGNAL: "dBm",
 }
 
 ENV_KINDS = (Kind.TEMPERATURE, Kind.HUMIDITY, Kind.PRESSURE)

@@ -69,6 +69,13 @@ class EmulatedNode:
             self.hub.register_entity(Entity(f"{self.device_id}.pressure", self.device_id,
                                             "Pressure", Kind.PRESSURE, "Pa", 0,
                                             hw_key=self._hw("pressure")))
+        # Node health: every node reports Wi-Fi signal; the flaky delay-tower node also runs on a
+        # battery that slowly drains, so the Sensors card shows "weak" and "low" in emulate mode.
+        self.hub.register_entity(Entity(f"{self.device_id}.wifi_signal", self.device_id,
+                                        "WiFi signal", Kind.SIGNAL, "dBm", 0))
+        if self.flaky:
+            self.hub.register_entity(Entity(f"{self.device_id}.battery", self.device_id,
+                                            "Battery", Kind.BATTERY, "%", 0))
         self.publish()
         self._task = asyncio.create_task(self._run(), name=f"emulate-{self.device_id}")
 
@@ -96,6 +103,10 @@ class EmulatedNode:
         if self.has_pressure:
             p = 101325.0 - 180.0 * hours / 6.0 + random.gauss(0, 8)
             self.hub.update_state(f"{self.device_id}.pressure", round(p, 0), now)
+        base = {"sim_stage_l": -62.0, "sim_foh": -54.0}.get(self.device_id, -78.0)
+        self.hub.update_state(f"{self.device_id}.wifi_signal", round(base + random.gauss(0, 1.5)), now)
+        if self.flaky:
+            self.hub.update_state(f"{self.device_id}.battery", max(5.0, round(26.0 - 12.0 * hours)), now)
 
     async def _run(self) -> None:
         while True:

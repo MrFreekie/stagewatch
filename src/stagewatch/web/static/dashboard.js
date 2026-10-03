@@ -141,23 +141,41 @@
       .sort((a, b) => (a.area || a.name).localeCompare(b.area || b.name));
   }
 
+  // Node health: Wi-Fi signal (dBm) in words, and battery level. Amber when it needs attention.
+  SW.signalWord = (dbm) => (dbm >= -67 ? "good" : dbm >= -75 ? "fair" : "weak");
   function renderSensors() {
-    const rows = sensorDevices().map((d) => {
-      const ents = Object.values(state.entities).filter((e) => e.device_id === d.id);
-      const byKind = (k) => ents.find((e) => e.kind === k);
+    const devs = sensorDevices();
+    const ents = Object.values(state.entities);
+    const any = (k) => devs.some((d) => ents.some((e) => e.device_id === d.id && e.kind === k));
+    const showSignal = any("signal_strength"), showBattery = any("battery");
+    const rows = devs.map((d) => {
+      const mine = ents.filter((e) => e.device_id === d.id);
+      const byKind = (k) => mine.find((e) => e.kind === k);
       const cell = (k) => { const e = byKind(k); return h("td", { class: "num" + (e && e.stale ? " muted" : "") }, e ? fmt(k, e.value) : ""); };
-      const last = Math.max(0, ...ents.map((e) => e.updated || 0));
+      const health = (k, warn, text) => {
+        const e = byKind(k);
+        if (!e || e.value === null || e.value === undefined) return h("td", { class: "num muted" }, "");
+        const cls = "num" + (e.stale ? " muted" : warn(e.value) ? " warn-text" : "");
+        return h("td", { class: cls }, text(e.value));
+      };
+      const last = Math.max(0, ...mine.filter((e) => e.kind !== "signal_strength" && e.kind !== "battery").map((e) => e.updated || 0));
       return h("tr", {},
         h("td", {}, d.name, d.area ? h("div", { class: "muted", style: "font-size:12px" }, d.area) : null),
         h("td", {}, h("span", { class: `status ${d.status}`, title: d.status_detail || "" }, d.status)),
         cell("temperature"), cell("humidity"), cell("pressure"),
+        showSignal ? health("signal_strength", (v) => v < -75, (v) => `${fmt("signal_strength", v)} ${SW.signalWord(v)}`) : null,
+        showBattery ? health("battery", (v) => v < 20, (v) => (v < 20 ? `${fmt("battery", v)} low` : fmt("battery", v))) : null,
         h("td", { class: "num muted" }, SW.age(last || null, state.now)));
     });
+    const cols = 6 + (showSignal ? 1 : 0) + (showBattery ? 1 : 0);
     $("sensors").replaceChildren(
       h("thead", {}, h("tr", {}, h("th", {}, "Node"), h("th", {}, "Status"),
         h("th", { class: "num" }, "Temp"), h("th", { class: "num" }, "RH"),
-        h("th", { class: "num" }, "Pressure"), h("th", { class: "num" }, "Updated"))),
-      h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: 6, class: "muted" }, "No sensor nodes yet. An admin can adopt ESPHome nodes."))));
+        h("th", { class: "num" }, "Pressure"),
+        showSignal ? h("th", { class: "num" }, "Signal") : null,
+        showBattery ? h("th", { class: "num" }, "Battery") : null,
+        h("th", { class: "num" }, "Updated"))),
+      h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: cols, class: "muted" }, "No sensor nodes yet. An admin can adopt ESPHome nodes."))));
     $("site-note").textContent = `Readings older than ${Math.round(state.site.stale_after_s || 60)} s are treated as stale and left out of the average.`;
   }
 

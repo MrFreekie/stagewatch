@@ -16,6 +16,10 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Sensors card: new **Signal** and **Battery** columns for nodes that report them (for example
+  the Feather node). Signal shows in dBm with "good", "fair" or "weak", in amber when weak;
+  battery shows in %, in amber with "low" under 20 %. The columns only appear when a node has
+  them, and neither is ever counted in the site averages.
 - ESPHome nodes: a new sensor node for the Adafruit ESP32-S3 TFT Feather with an MS8607 sensor. Its screen shows temperature, humidity and pressure, plus dots for Wi-Fi and Stagewatch. A new step-by-step guide covers building and adopting it. Not yet tested on real hardware. **Action needed:** add a `wifi_ap_password` line to your `secrets.yaml` (see `secrets.example.yaml`) before building this node.
 - Dashboards: a new Schedule card shows what's on NOW (and how long it has left), what's NEXT
   (with a countdown) and the CURFEW (with a countdown). On a tablet it also shows the running
