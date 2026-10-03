@@ -224,6 +224,23 @@ SW.markerStyle = function (src) {
   return SW.MARKER_STYLES[key];
 };
 
+// Hidden markers stay in the history but are left off the chart and the marker list, unless the
+// list's "Show hidden" box is ticked. Returns a new array, oldest first as given.
+SW.visibleMarkers = function (markers, showHidden) {
+  return (markers || []).filter(function (m) { return !!showHidden || !m.hidden; });
+};
+SW.hiddenMarkerCount = function (markers) {
+  return (markers || []).filter(function (m) { return !!m.hidden; }).length;
+};
+SW.NOTE_MAX = 1000;   // characters in a marker note (the server checks too)
+
+// Schedule rows whose "Marker" box is ticked unless changed: soundcheck, doors and act. The list
+// comes from the server when it sends one (admin state: schedule_limits.marker_kinds).
+SW.SCHEDULE_MARKER_KINDS = ["soundcheck", "doors", "act"];
+SW.scheduleMarkerDefault = function (kind, kinds) {
+  return (Array.isArray(kinds) ? kinds : SW.SCHEDULE_MARKER_KINDS).indexOf(kind) >= 0;
+};
+
 // Display formatting. Values arrive in canonical units (degC, %, Pa, m/s).
 SW.KIND_FMT = {
   temperature: { unit: "°C", dec: 1, conv: (v) => v },

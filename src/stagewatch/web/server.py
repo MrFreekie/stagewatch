@@ -29,7 +29,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 import unicodedata
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from .. import __version__
 from ..core.config import (
@@ -38,7 +38,7 @@ from ..core.config import (
 from ..core.calibration import set_calibration
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Marker, slugify
-from ..core.recorder import valid_day
+from ..core.recorder import clean_note, valid_day
 from .. import diagnostics, netinfo
 from ..core import cards as cards_mod
 from ..core import schedule as sched
@@ -113,8 +113,43 @@ class ChangePinBody(BaseModel):
 
 
 class MarkerBody(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
     label: str = Field("Marker", max_length=120)
     dashboard: str = ""
+    note: str = Field("", max_length=4000)  # characters before trimming; clean_note checks the rest
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, v: str) -> str:
+        return clean_note(v)
+
+
+class MarkerPatch(BaseModel):
+    """PATCH /api/markers/{id}: change the note and/or hide or un-hide. ``dashboard`` is the
+    dashboard asking (its "Add markers" permission covers this); admins don't need it."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    note: str | None = Field(None, max_length=4000)
+    hidden: StrictBool | None = None
+    dashboard: str = Field("", max_length=64)
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, v: str | None) -> str | None:
+        if v is None:
+            raise ValueError("Send the note as text (an empty note clears it)")
+        return clean_note(v)
+
+    @model_validator(mode="after")
+    def _something(self):
+        if self.note is None and self.hidden is None:
+            raise ValueError("Nothing to change: send a note or hidden")
+        return self
+
+
+class ScheduleSettingsBody(BaseModel):
+    """PUT /api/admin/schedule/settings: the schedule-wide switches."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    auto_markers: StrictBool
 
 
 class AckBody(BaseModel):
@@ -348,6 +383,9 @@ class ScheduleItemBody(BaseModel):
     start: str = Field(max_length=5)
     end: str = Field("", max_length=5)
     setlist: str = Field("", max_length=sched.SETLIST_MAX_BYTES)  # characters; bytes checked below
+    # Timeline marker: true/false, or null for the kind's default (on for soundcheck, doors and
+    # act). Not sent: an existing item keeps its setting, a new one gets the default.
+    marker: StrictBool | None = None
 
     @field_validator("title")
     @classmethod
@@ -532,6 +570,8 @@ class LiveFeed:
             self._dirty[payload.id] = payload
         elif topic == "marker" and isinstance(payload, Marker):
             self._send_all({"type": "marker", "marker": payload.to_dict()})
+        elif topic == "marker_updated" and isinstance(payload, Marker):
+            self._send_all({"type": "marker_updated", "marker": payload.to_dict()})
         elif topic == "marker_deleted":
             self._send_all({"type": "marker_deleted", "id": payload})
         elif topic == "alarms":
@@ -704,7 +744,18 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if not admin and not dashboard_allows(body.dashboard, "marker"):
             raise HTTPException(403, "Markers are not enabled on this dashboard")
         source = "admin" if admin else f"dashboard:{body.dashboard}"
-        return hub.add_marker(body.label, source).to_dict()
+        return hub.add_marker(body.label, source, note=body.note).to_dict()
+
+    @app.patch("/api/markers/{marker_id}", dependencies=[Depends(require_same_origin)])
+    async def patch_marker(marker_id: int, body: MarkerPatch, request: Request):
+        """Edit a marker's note, or hide / un-hide it. Admin, or a dashboard allowed to add
+        markers (any marker of the current show, not only its own). Deleting stays admin-only."""
+        if not is_admin(request) and not dashboard_allows(body.dashboard, "marker"):
+            raise HTTPException(403, "Markers are not enabled on this dashboard")
+        marker = hub.update_marker(marker_id, note=body.note, hidden=body.hidden)
+        if marker is None:
+            raise HTTPException(404, "No such marker in the current show")
+        return marker.to_dict()
 
     @app.post("/api/alarms/ack", dependencies=[Depends(require_same_origin)])
     async def ack(body: AckBody, request: Request):
@@ -793,7 +844,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # For the Schedule card (WP8): the limits the server enforces, and whether
             # "Load demo day" is allowed right now.
             "schedule_limits": {
-                "kinds": list(sched.KINDS), "max_items": sched.MAX_ITEMS, "title_max": sched.TITLE_MAX,
+                "kinds": list(sched.KINDS), "marker_kinds": list(sched.MARKER_KINDS),
+                "max_items": sched.MAX_ITEMS, "title_max": sched.TITLE_MAX,
                 "stage_max": sched.STAGE_MAX, "setlist_max_bytes": sched.SETLIST_MAX_BYTES,
                 "setlist_total_max_bytes": sched.SETLIST_TOTAL_MAX_BYTES,
                 "import_max_bytes": sched.IMPORT_MAX_BYTES, "import_max_rows": sched.IMPORT_MAX_ROWS,
@@ -834,6 +886,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     @app.put("/api/admin/site", dependencies=admin_deps)
     async def put_site(body: SiteConfig):
+        if "schedule_auto_markers" not in body.model_fields_set:
+            # Set on the schedule page; the Site card doesn't send it, so keep it as it is.
+            body = body.model_copy(update={"schedule_auto_markers": hub.config.site.schedule_auto_markers})
         hub.set_site(body)  # a time zone (or show day) change re-bases the schedule
         hub.save_config()
         return body
@@ -992,7 +1047,19 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                                         hub.config.site)
         if errors:
             return schedule_422(errors)
+        # An item sent without "marker" (e.g. by a page loaded before this setting existed) keeps
+        # the setting it has.
+        stored = {i["id"]: i.get("marker") for i in hub.schedule.items()}
+        for item, row in zip(body.items, rows):
+            if "marker" not in item.model_fields_set and item.id in stored:
+                row["marker"] = stored[item.id]
         return hub.schedule.replace(body.show_id, rows, body.revision)
+
+    @app.put("/api/admin/schedule/settings", dependencies=admin_deps)
+    async def put_schedule_settings(body: ScheduleSettingsBody):
+        hub.config.site = hub.config.site.model_copy(update={"schedule_auto_markers": body.auto_markers})
+        hub.save_config()
+        return {"auto_markers": hub.config.site.schedule_auto_markers}
 
     @app.post("/api/admin/schedule/import", dependencies=admin_deps)
     async def import_schedule(body: ScheduleImportBody):
@@ -1219,8 +1286,12 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                     continue
                 kind = msg.get("type") if isinstance(msg, dict) else None
                 if kind == "add_marker" and (admin or dashboard_allows(dashboard, "marker")):
+                    try:  # the same note rules as POST /api/markers; a bad note adds nothing
+                        note = clean_note(msg.get("note", ""))
+                    except ValueError:
+                        continue
                     hub.add_marker(str(msg.get("label", "Marker")),
-                                   "admin" if admin else f"dashboard:{dashboard}")
+                                   "admin" if admin else f"dashboard:{dashboard}", note=note)
                 elif kind == "ack" and (admin or dashboard_allows(dashboard, "ack")):
                     hub.ack_alarms("admin" if admin else f"dashboard:{dashboard}")
                 elif kind == "ping":

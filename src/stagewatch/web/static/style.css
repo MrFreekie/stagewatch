@@ -125,6 +125,23 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .markers li.sel { background: var(--panel-2); }
 .markers li .t { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 48px; }
 .markers ul { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+/* Hidden markers (listed only with "Show hidden"): dimmed, with the word "Hidden" as well. */
+.markers li.hidden-marker > .t, .markers li.hidden-marker > .mk, .markers li.hidden-marker > .lbl { opacity: .5; }
+.markers li .lbl { flex: 1; overflow-wrap: break-word; word-wrap: break-word; min-width: 0; }
+.markers li .note-flag { color: var(--muted); font-size: 13px; margin-left: 6px; }
+.markers li .hid-tag { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
+.markers li { align-items: center; }
+.markers .mk-btn { min-height: 44px; min-width: 44px; padding: 4px 12px; font-size: 14px; flex: none; }
+.marker-hidden-toggle { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px;
+  color: var(--muted); cursor: pointer; margin-top: 4px; }
+.marker-hidden-toggle[hidden] { display: none; }
+.marker-hidden-toggle input { width: 22px; height: 22px; margin: 0; }
+.marker-note { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--grid); }
+.marker-note h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.marker-note-text { white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word; margin-bottom: 6px; }
+.marker-note textarea { width: 100%; box-sizing: border-box; min-height: 96px; margin-bottom: 4px; }
+.marker-note .row { margin-top: 6px; }
+.marker-note button { min-height: 44px; }
 .delta { margin-top: 10px; background: var(--panel-2); border-radius: 8px; padding: 10px 12px; }
 .delta .big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .delta table td { border: 0; padding: 3px 6px; }

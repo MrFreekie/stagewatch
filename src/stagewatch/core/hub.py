@@ -21,7 +21,7 @@ from .derived import OUTLIER_LIMITS, Ema, robust_mean
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
 from .recorder import REASON_POWER_OR_RESTART, Recorder
-from .schedule import DemoDoesNotFit, ScheduleService
+from .schedule import DemoDoesNotFit, ScheduleMarkers, ScheduleService
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +74,9 @@ class Hub:
         unclean = self.recorder.begin_run(__version__, time_doc(self.config.site))
         self.alarms = AlarmEngine()
         self.schedule = ScheduleService(self)
+        self.schedule_markers = ScheduleMarkers(self)
+        # Active alarm id -> the marker it added, hidden again if the alarm is acknowledged.
+        self._alarm_markers: dict[str, int] = {}
         self._site_before = None  # the site settings just replaced (set_site), for the rebase
         self.devices: dict[str, Device] = {}
         self.entities: dict[str, Entity] = {}
@@ -131,6 +134,7 @@ class Hub:
     async def start(self) -> None:
         if self.emulate:
             self._emulate_demo_day()
+        self.check_schedule_markers()  # catch-up: moments that passed while Stagewatch was off
         for integration in self.integrations.values():
             try:
                 await integration.start()
@@ -393,6 +397,15 @@ class Hub:
         changes = self.alarms.evaluate(self.config.thresholds, self.lookup, now)
         if changes:
             self._alarm_changed(changes)
+        self.check_schedule_markers(now)
+
+    def check_schedule_markers(self, now: float | None = None) -> list[Marker]:
+        """Add any schedule markers that are due (never raises: a failure is logged)."""
+        try:
+            return self.schedule_markers.check(now)
+        except Exception:  # noqa: BLE001 - never stop the tick over the schedule
+            log.exception("Could not add markers from the schedule")
+            return []
 
     # --------------------------------------------------------------- alarms
     def _alarm_changed(self, changes: list[AlarmChange]) -> None:
@@ -401,22 +414,47 @@ class Hub:
             self.recorder.log_alarm(a.id, change.event, a.level,
                                      a.message + (" (silent)" if a.silent else ""))
             if change.event == "raise" and a.level >= 2 and not a.silent:
-                self.add_marker(f"ALARM: {a.message}", "alarm")
+                marker = self.add_marker(f"ALARM: {a.message}", "alarm")
+                self._alarm_markers[a.id] = marker.id
+            elif change.event == "clear":
+                # Cleared without an acknowledge: its marker stays visible.
+                self._alarm_markers.pop(a.id, None)
         self.bus.publish("alarms", self.alarms.to_list())
 
     def ack_alarms(self, source: str) -> int:
+        """Acknowledge every sounding alarm. The marker each one added when it raised is hidden
+        (it stays in the history and reports); silent alarms are never acknowledged here and
+        add no markers."""
         acked = self.alarms.ack_all()
         for a in acked:
             self.recorder.log_alarm(a.id, f"ack ({source})", a.level, a.message)
+            marker_id = self._alarm_markers.pop(a.id, None)
+            if marker_id is not None:
+                try:
+                    self.update_marker(marker_id, hidden=True, current_show_only=False)
+                except Exception:  # noqa: BLE001 - an acknowledge must never fail over a marker
+                    log.exception("Could not hide the marker of an acknowledged alarm")
         if acked:
             self.bus.publish("alarms", self.alarms.to_list())
         return len(acked)
 
     # -------------------------------------------------------------- markers
-    def add_marker(self, label: str, source: str, ts: float | None = None) -> Marker:
+    def add_marker(self, label: str, source: str, ts: float | None = None, note: str = "") -> Marker:
+        """``note`` must already be clean (recorder.clean_note)."""
         label = label.strip()[:120] or "Marker"
-        marker = self.recorder.add_marker(label, source[:60], ts)
+        marker = self.recorder.add_marker(label, source[:60], ts, note)
         self.bus.publish("marker", marker)
+        return marker
+
+    def update_marker(self, marker_id: int, *, note: str | None = None, hidden: bool | None = None,
+                      current_show_only: bool = True) -> Marker | None:
+        """Change a marker's note (already clean) and/or hide or un-hide it, and tell every open
+        screen (bus ``marker_updated``). None if there is no such marker in the current show
+        (any show with ``current_show_only=False``)."""
+        marker = self.recorder.update_marker(marker_id, note=note, hidden=hidden,
+                                             show_id=self.recorder.show_id if current_show_only else None)
+        if marker is not None:
+            self.bus.publish("marker_updated", marker)
         return marker
 
     def delete_marker(self, marker_id: int) -> bool:

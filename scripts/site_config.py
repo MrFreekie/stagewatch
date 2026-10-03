@@ -12,7 +12,7 @@ Tracked (only these, anchored to the top of the data folder):
   contacts/*.yaml
   documents/<event>/index.json and documents/<event>/<doc>/r*.md
   documents/templates/**/index.json and documents/templates/**/r*.md
-Never tracked: config.yaml.bak and any *.bak (including *.pre-v2*.bak), *.tmp
+Never tracked: config.yaml.bak and any *.bak (including the *.pre-v*.bak safety copies), *.tmp
 and other temp files, *.invalid*.yaml, emulate/, backups/, logs/, secret.key, the
 history database with its -wal/-shm files, and updater state.
 `push` rewrites .gitignore from this list each time and stops tracking anything

@@ -28,8 +28,10 @@
     entities: {}, devices: {}, markers: [], alarms: [], sounding: false,
     site: {}, show: {}, schedule: { items: [] }, scheduleMeta: null, dash: null, isAdmin: false, now: Date.now() / 1000,
     mode: localGet("sw.mode", "temperature"), span: Number(localGet("sw.span", 3600)),
-    selectedMarker: null, history: {},
+    selectedMarker: null, history: {}, showHidden: false,
   };
+  // The marker whose note is being edited ({id, text}), or null.
+  let noteEdit = null;
   const sounder = new SW.Sounder();
   // Tablets' clocks drift; all times come from the server, so track the offset.
   let clockOffset = 0;
@@ -203,22 +205,108 @@
     $("site-note").textContent = `Readings older than ${Math.round(state.site.stale_after_s || 60)} s are treated as stale and left out of the average.`;
   }
 
+  // Notes, Hide and Un-hide: anyone on a dashboard allowed to add markers (any marker), and admins.
+  // Deleting stays admin-only.
+  const canEditMarkers = () => !!(state.isAdmin || (state.dash && state.dash.allow_marker));
+  const findMarker = (id) => state.markers.filter((m) => m.id === id)[0] || null;
+
   function renderMarkers() {
     if (has("chart")) {
-      chart.markers = state.markers.map((m) => ({ ...m, selected: m.id === state.selectedMarker }));
+      chart.markers = SW.visibleMarkers(state.markers, false).map((m) => ({ ...m, selected: m.id === state.selectedMarker }));
       chart.draw();
     }
     if (!has("markers")) return;
     const canDelete = state.isAdmin;
-    const items = [...state.markers].sort((a, b) => b.ts - a.ts).map((m) => {
+    const canEdit = canEditMarkers();
+    const hiddenN = SW.hiddenMarkerCount(state.markers);
+    if (!hiddenN) state.showHidden = false;
+    const shown = SW.visibleMarkers(state.markers, state.showHidden);
+    const items = shown.slice().sort((a, b) => b.ts - a.ts).map((m) => {
       const ms = SW.markerStyle(m.source);
-      return h("li", { class: m.id === state.selectedMarker ? "sel" : "", onclick: () => selectMarker(m.id) },
+      return h("li", { class: (m.id === state.selectedMarker ? "sel" : "") + (m.hidden ? " hidden-marker" : ""), onclick: () => selectMarker(m.id) },
         h("span", { class: "mk", title: ms.name, style: `background:var(--marker-${ms.key},${ms.fallback});color:var(--marker-${ms.key}-ink,${ms.ink})` }, ms.glyph),
         h("span", { class: "t" }, SW.fmtTime(m.ts)),
-        h("span", { style: "flex:1" }, m.label),
-        canDelete ? h("button", { class: "small danger", title: "Delete marker", onclick: (ev) => { ev.stopPropagation(); deleteMarker(m.id); } }, "✕") : null);
+        h("span", { class: "lbl" }, m.label,
+          m.note ? h("span", { class: "note-flag", title: "Has a note" }, "✎ note") : null,
+          m.hidden ? h("span", { class: "hid-tag" }, "Hidden") : null),
+        m.hidden && canEdit ? h("button", { type: "button", class: "mk-btn only-interactive", title: "Show this marker on the chart again",
+          onclick: (ev) => { ev.stopPropagation(); setHidden(m.id, false); } }, "Un-hide") : null,
+        canDelete ? h("button", { type: "button", class: "mk-btn danger", title: "Delete marker", "aria-label": "Delete marker", onclick: (ev) => { ev.stopPropagation(); deleteMarker(m.id); } }, "✕") : null);
     });
-    $("marker-list").replaceChildren(...(items.length ? items : [h("li", { class: "muted" }, "No markers yet. Add one at soundcheck, e.g. \"Aligned\".")]));
+    const empty = hiddenN && !state.showHidden ? `No markers on show. ${hiddenN} hidden.` : "No markers yet. Add one at soundcheck, e.g. \"Aligned\".";
+    $("marker-list").replaceChildren(...(items.length ? items : [h("li", { class: "muted" }, empty)]));
+    $("marker-hidden-toggle").hidden = !hiddenN;
+    $("marker-show-hidden").checked = state.showHidden;
+    $("marker-hidden-label").textContent = `Show hidden (${hiddenN})`;
+  }
+
+  $("marker-show-hidden").addEventListener("change", (ev) => {
+    state.showHidden = !!ev.target.checked;
+    renderMarkers();
+  });
+
+  // ---- The selected marker's note, under the drift panel. Plain text (line breaks kept), built
+  // with textContent only. Updated in place when the marker changes on another screen.
+  const noteEl = h("div", { class: "marker-note" });
+  // A 422 from the server reads "note: Value error, <crew text>": show only the crew text.
+  const crewText = (err) => {
+    const m = String((err && err.message) || "");
+    const i = m.indexOf("Value error, ");
+    return i >= 0 ? m.slice(i + 13) : m;
+  };
+
+  function renderMarkerNote() {
+    const m = state.selectedMarker === null ? null : findMarker(state.selectedMarker);
+    if (!m) { noteEl.replaceChildren(); return; }
+    const can = canEditMarkers();
+    if (noteEdit && noteEdit.id === m.id && can) {
+      const count = h("span", { class: "muted", style: "font-size:12px" });
+      const upd = () => { count.textContent = `${SW.num(noteEdit.text.length, 0)} of ${SW.num(SW.NOTE_MAX, 0)} characters`; };
+      const ta = h("textarea", { rows: 4, maxlength: SW.NOTE_MAX, "aria-label": `Note for ${m.label}`,
+        placeholder: "What happened, what was changed, who to ask", oninput: (ev) => { noteEdit.text = ev.target.value; upd(); } });
+      ta.value = noteEdit.text;
+      upd();
+      noteEl.replaceChildren(h("h3", {}, "Note"), ta, count,
+        h("div", { class: "row" },
+          h("button", { type: "button", class: "primary", onclick: () => saveNote(m.id, ta) }, "Save"),
+          h("button", { type: "button", onclick: () => { noteEdit = null; renderMarkerNote(); } }, "Cancel")));
+      return;
+    }
+    const kids = [h("h3", {}, "Note")];
+    kids.push(m.note ? h("div", { class: "marker-note-text" }, m.note) : h("div", { class: "muted", style: "margin-bottom:6px" }, "No note."));
+    if (m.hidden) kids.push(h("div", { class: "muted", style: "font-size:13px;margin-bottom:6px" }, "Hidden: not on the chart. Its readings still count for the drift above."));
+    if (can) {
+      kids.push(h("div", { class: "row only-interactive" },
+        h("button", { type: "button", onclick: () => { noteEdit = { id: m.id, text: m.note || "" }; renderMarkerNote(); } }, m.note ? "Edit note" : "Add note"),
+        h("button", { type: "button", onclick: () => setHidden(m.id, !m.hidden) }, m.hidden ? "Un-hide" : "Hide")));
+    }
+    noteEl.replaceChildren(...kids);
+  }
+
+  function applyMarker(updated) {
+    state.markers = state.markers.map((x) => (x.id === updated.id ? updated : x));
+    renderMarkers();
+    // An open note editor here is left alone (what is being typed is kept); Save sends it.
+    if (state.selectedMarker === updated.id && !(noteEdit && noteEdit.id === updated.id)) renderMarkerNote();
+  }
+
+  async function saveNote(id, ta) {
+    const text = ta.value;
+    if (text.length > SW.NOTE_MAX) { toast(`Notes can be up to ${SW.num(SW.NOTE_MAX, 0)} characters.`); return; }
+    try {
+      const m = await SW.api("PATCH", `/api/markers/${id}`, { note: text, dashboard: slug });
+      noteEdit = null;
+      applyMarker(m);
+      toast("Note saved");
+    } catch (err) { toast(`${crewText(err)} The note was not saved.`); }
+  }
+
+  async function setHidden(id, hidden) {
+    try {
+      const m = await SW.api("PATCH", `/api/markers/${id}`, { hidden, dashboard: slug });
+      applyMarker(m);
+      toast(hidden ? "Marker hidden. Tick Show hidden to find it again." : "Marker back on the chart");
+    } catch (err) { toast(crewText(err)); }
   }
 
   function renderSegs() {
@@ -268,12 +356,14 @@
 
   // ------------------------------------------------------------ markers
   async function selectMarker(id) {
+    if (state.selectedMarker !== id) noteEdit = null;
     state.selectedMarker = id;
     renderMarkers();
     if (!has("markers")) return;   // the drift panel lives in the Markers card
     const box = $("delta");
     box.hidden = false;
-    box.replaceChildren(h("span", { class: "muted" }, "Loading…"));
+    renderMarkerNote();
+    box.replaceChildren(h("span", { class: "muted" }, "Loading…"), noteEl);
     try {
       const d = await SW.api("GET", `/api/markers/${id}/delta`);
       const v = d.values;
@@ -293,9 +383,10 @@
           row("Temp", "site.temperature", "temperature"),
           row("RH", "site.humidity", "humidity"),
           row("Pressure", "site.pressure", "pressure"),
-          row("c", "site.speed_of_sound", "speed_of_sound")))].filter(Boolean));
+          row("c", "site.speed_of_sound", "speed_of_sound"))),
+        noteEl].filter(Boolean));
     } catch (err) {
-      box.replaceChildren(h("span", { class: "error" }, err.message));
+      box.replaceChildren(h("span", { class: "error" }, err.message), noteEl);
     }
   }
 
@@ -612,6 +703,10 @@
     layoutCards();
     renderAlarms();
     for (const id of assignedCards()) CARDS[id].render();
+    if (state.selectedMarker !== null) {   // after a reconnect: the marker may have changed or gone
+      if (!findMarker(state.selectedMarker)) { state.selectedMarker = null; noteEdit = null; $("delta").hidden = true; }
+      renderMarkerNote();
+    }
     if (!has("schedule")) stopScheduleTimer();
     syncSchedule();
   }
@@ -659,10 +754,13 @@
         state.devices[msg.device.id] = msg.device;
         if (has("sensors")) renderSensors();
         break;
-      case "marker": state.markers.push(msg.marker); renderMarkers(); break;
+      case "marker":
+        if (!findMarker(msg.marker.id)) state.markers.push(msg.marker);
+        renderMarkers(); break;
+      case "marker_updated": if (findMarker(msg.marker.id)) applyMarker(msg.marker); break;
       case "marker_deleted":
         state.markers = state.markers.filter((m) => m.id !== msg.id);
-        if (state.selectedMarker === msg.id) { state.selectedMarker = null; $("delta").hidden = true; }
+        if (state.selectedMarker === msg.id) { state.selectedMarker = null; noteEdit = null; $("delta").hidden = true; }
         renderMarkers(); break;
       case "schedule":   // only {show_id, revision}: fetch the items if they changed
         state.scheduleMeta = Object.assign({}, state.scheduleMeta || {}, { show_id: msg.show_id, revision: msg.revision });

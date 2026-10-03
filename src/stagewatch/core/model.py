@@ -140,9 +140,14 @@ class Marker:
     ts: float
     label: str
     source: str = ""
+    # Hidden markers stay in the history, delta maths and reports; dashboards leave them off the
+    # chart and list them only under "Show hidden".
+    hidden: bool = False
+    note: str = ""  # plain text, new lines allowed (recorder.clean_note)
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "ts": self.ts, "label": self.label, "source": self.source}
+        return {"id": self.id, "ts": self.ts, "label": self.label, "source": self.source,
+                "hidden": self.hidden, "note": self.note}
 
 
 @dataclass

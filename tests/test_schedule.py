@@ -29,7 +29,7 @@ LON = SiteConfig(timezone="Europe/London", day_rollover="06:00")
 NY = SiteConfig(timezone="America/New_York", day_rollover="06:00")
 DAY = "2026-10-02"  # Fri 2 Oct 2026, BST (UTC+1)
 PUBLIC_ITEM_KEYS = {"id", "stage", "kind", "title", "date", "start", "end", "planned_start", "planned_end",
-                    "setlist"}
+                    "setlist", "marker"}
 
 
 def utc(*args) -> float:

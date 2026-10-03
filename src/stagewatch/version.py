@@ -24,7 +24,7 @@ from .updater_common import (ENV_SUPERVISED, GitContext, UpdaterError, read_head
                              state_dir_for)
 
 CONFIG_SCHEMA_VERSION = 2
-DB_SCHEMA_VERSION = 2
+DB_SCHEMA_VERSION = 3
 
 _REPO = Path(__file__).resolve().parents[2]
 

@@ -100,7 +100,8 @@ def test_markers_and_alarm_log_follow_the_new_show(client):
     client.post("/api/admin/shows", json={"name": "Day 2"})
     assert client.get("/api/snapshot").json()["markers"] == []
     assert _state(client)["alarm_log"] == []  # the alarm log is per show
-    assert [m.label for m in client.hub.recorder.markers(old_id)] == ["Doors"]
+    # (the emulate demo day also put its own schedule markers on the old show)
+    assert [m.label for m in client.hub.recorder.markers(old_id) if m.source != "schedule"] == ["Doors"]
     client.post("/api/markers", json={"label": "Line check"})
     assert [m["label"] for m in client.get("/api/snapshot").json()["markers"]] == ["Line check"]
     client.post("/api/admin/shows", json={"name": "Day 1", "event": "new", "event_name": "Tour leg 2"})
