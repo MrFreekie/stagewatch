@@ -235,6 +235,7 @@ on the page:
 |---|---|
 | **Site** | Set the show name, **altitude** (used only if there is no pressure sensor), the **reference distance** for the "Δ ms" number (default 30 m), how quickly readings go **stale** (default 60 s), and the smoothing. Set the **Time zone** of the show site (for example Europe/London): every dashboard then shows site time, 24-hour, even on a tablet set to another zone. **New show day starts at** (default 06:00) decides which day late-night times belong to: with 06:00, 01:30 still counts as the night before. Keep it at 03:00 or later, so it stays clear of the hour when the clocks change. **Save site**. |
 | **Event & show** | Shows the current event and day. Start each new show day here: see [Start a new day or a new event](#start-a-new-day-or-a-new-event). |
+| **Schedule** | Shows the day, how many items there are, and what is on NOW and NEXT. To change the running order, go to **Admin → Schedule → Open schedule editor**. See [Edit the schedule](#edit-the-schedule). |
 | **Software** | Check for and install updates. See [Updating and backups](updating-and-backups.md). |
 | **ESPHome nodes** | Adopt new sensor nodes. See [First sensor node](first-sensor-node.md). Rename a node, change its area, or remove it. On a shared network the **Discovered node** list can fill up with other people's devices. Click **Ignore** next to one to hide it. Stagewatch never connects to a node you have not adopted, so ignoring only tidies the list. To bring one back, click **Show ignored** under the list, then **Unignore**. |
 | **Sensors: calibration & averaging** | Correct a sensor with an **offset**. Untick **Average** to leave one out of the site average. |
@@ -288,6 +289,34 @@ If you set the date by hand, **Use the start date** puts it back.
 If two people click start at the same moment, only one new day is started. The other gets a
 message that a new show was already started, and nothing more changes.
 
+### Edit the schedule
+
+The schedule has its own page, so Admin stays short. It uses the same admin PIN.
+
+1. Open **Admin → Schedule → Open schedule editor**. (You can also go straight to the address
+   plus `/schedule`. If you are not logged in, Stagewatch asks for the PIN and then brings you
+   back.)
+2. Click **Add item**. Set the start time (24-hour, for example 19:30), the end time if you
+   want one, the kind, the title and the stage. Leave **Stage** empty for items that apply to
+   every stage.
+3. Click **Setlist** to type a setlist. A preview shows how it will look on dashboards.
+4. Use **▲** and **▼** to put items that start at the same time in the order you want.
+5. Click **Save schedule**.
+
+To bring in a running order, open **Paste or import a running order**, paste it (or open a
+CSV or text file) and click **Preview**. Lines Stagewatch can't read are listed by line number.
+Then add the rest. **Load demo day** fills in an example around the current time.
+
+- **Export CSV** downloads the list as a file, named like `schedule-summer-festival-2026-10-02.csv`.
+  It opens in Excel and can be pasted or opened here again. It has no setlists.
+- **Print** opens your browser's print window with a clean black-on-white running order, with
+  each act's setlist underneath. Choose **Save as PDF** there if you want a file instead.
+- Export and Print use the list as it is on the page, including changes you have not saved.
+
+**If it didn't work:** if someone else changed the schedule while you were editing, Stagewatch
+says so and keeps what you typed. Click **Reload** to see their version. See
+[Troubleshooting](troubleshooting.md).
+
 ### Choose the cards on a dashboard
 
 Each dashboard shows a set of **cards**, such as the readings tiles, the history chart or the
@@ -311,7 +340,8 @@ Good to know:
 - A **new** dashboard starts with a sensible set for its layout. If you change its **Layout**
   before saving, the ticks change to that layout's set.
 - **Wall Clock** is never switched on by default. Tick it if you want it.
-- **Schedule** stays hidden until the show has a schedule, even when it is ticked.
+- **Schedule** stays hidden until the show has a schedule, even when it is ticked. Add the
+  schedule under **Admin → Schedule → Open schedule editor**.
 - **Open on a tablet** is always at the bottom of the screen, wherever it is in the list. Tick
   it on any dashboard, not only wall screens, to show its address and QR code.
 - With no cards ticked, the dashboard shows only alarms. That's useful for a screen that should

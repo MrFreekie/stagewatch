@@ -121,6 +121,13 @@ them into a dated release section and tags the commit.
   key on every node to stop other devices pretending to be yours.
 
 ### Changed
+- The schedule editor now has its own page, so Admin is shorter. On Admin, the Schedule card
+  shows the day, how many items there are, and what is on NOW and NEXT. Click **Open schedule
+  editor** to change the running order. It uses the same admin PIN: if you open the page without
+  logging in, Stagewatch asks for the PIN and brings you back. The new page also has **Export
+  CSV** (a spreadsheet file of the running order, without setlists) and **Print** (a clean
+  black-on-white running order with the setlists, which you can also save as a PDF). The kind
+  list in the editor follows the server, so new kinds appear without any change here.
 - Wall screen: the CURFEW block is wider, so "1 h 24 min ago" no longer wraps, and chart marker
   labels are larger. On touch screens marker tabs are taller and easier to tap. In the running
   order, finished items are easier to read.

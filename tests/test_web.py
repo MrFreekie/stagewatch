@@ -170,7 +170,8 @@ def test_validation_errors_never_echo_submitted_values(client):
 
 def test_pages_and_static_files_are_rechecked_after_updates(client):
     # Without this a tablet can mix a new admin.js with a cached old common.js after an update.
-    for path in ("/", "/admin", "/d/foh", "/static/common.js", "/static/admin.js", "/static/style.css"):
+    for path in ("/", "/admin", "/schedule", "/d/foh", "/static/common.js", "/static/admin.js",
+                 "/static/schedule-editor.js", "/static/style.css"):
         r = client.get(path)
         assert r.status_code == 200, path
         assert r.headers.get("cache-control") == "no-cache", path
@@ -182,7 +183,7 @@ def test_pages_load_scripts_by_content_hash(client):
     import hashlib
     import re
     from stagewatch.web.server import STATIC
-    for path in ("/", "/admin", "/d/foh"):
+    for path in ("/", "/admin", "/schedule", "/d/foh"):
         html = client.get(path).text
         refs = re.findall(r'(?:src|href)="/static/([^"]+)"', html)
         assert refs, path
