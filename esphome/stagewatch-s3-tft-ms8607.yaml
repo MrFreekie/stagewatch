@@ -342,13 +342,18 @@ display:
     cs_pin: GPIO7
     dc_pin: GPIO39
     reset_pin: GPIO40
-    data_rate: 40MHz
-    dimensions:                         # native portrait panel; rotation below
-      height: 240
+    data_rate: 20MHz
+    # Dimensions are the panel's native portrait frame (135x240); current ESPHome rotates
+    # to landscape itself. Offsets centre the 1.14" panel in the ST7789's 240x320 memory
+    # (Adafruit: column 52/53, row 40). Upside down? Use rotation: 270°.
+    # Older ESPHome (2025.5 and 2025.6 checked) used the rotated frame instead: width: 240,
+    # height: 135, offset_width: 40, offset_height: 52. Better: update ESPHome.
+    dimensions:
       width: 135
-      offset_height: 52
-      offset_width: 40
-    rotation: 90°                        # landscape 240x135; 270° if upside down
+      height: 240
+      offset_width: 52
+      offset_height: 40
+    rotation: 90°
     invert_colors: true
     update_interval: 2s
     lambda: |-
