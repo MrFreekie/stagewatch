@@ -164,7 +164,9 @@ spi:
 output:
   - platform: ledc
     id: backlight_pwm
-    pin: GPIO45
+    pin:
+      number: GPIO45
+      ignore_strapping_warning: true   # the board's own backlight pin
 
 light:
   - platform: monochromatic
@@ -312,6 +314,7 @@ binary_sensor:
     pin:
       number: GPIO0
       mode: INPUT_PULLUP
+      ignore_strapping_warning: true   # the board's own BOOT button
       inverted: true
     filters:
       - delayed_on: 30ms
