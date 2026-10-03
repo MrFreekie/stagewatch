@@ -135,18 +135,20 @@ def test_dashboard_schedule_updates_in_place():
     assert "setText(" in tick and "setClass(" in tick
 
 
-def test_curfew_levels_are_colour_and_text():
+def test_now_levels_are_colour_and_text():
     js = _js("dashboard.js")
-    assert '"15 MIN WARNING"' in js and '"5 MIN WARNING"' in js and '"PAST CURFEW"' in js
+    assert '"15 MIN"' in js and '"5 MIN"' in js
+    # the curfew timer is gone: no CURFEW block, tags or countdown code in the card
+    for gone in ("PAST CURFEW", "WARNING", "ui.curfew", "schedBlock(\"curfew\"", "curfewLevel", "secondsToCurfew"):
+        assert gone not in js, gone
+    assert "curfewLevel" not in _js("common.js")
     css = (STATIC / "style.css").read_text(encoding="utf-8")
     sched_css = "\n".join(line for line in css.splitlines() if ".sched" in line)
     assert ".sched-block.lvl-warn { border-color: var(--warn); }" in sched_css
     assert ".sched-block.lvl-alert { border-color: var(--alert); }" in sched_css
-    # red only for up to 30 minutes after the curfew (lvl-past); later it is calm (lvl-done)
-    for line in sched_css.splitlines():
-        if "var(--stop)" in line:
-            assert "lvl-past" in line, line
-    assert "lvl-done" not in "\n".join(ln for ln in sched_css.splitlines() if "var(--stop)" in ln)
+    # no red on the schedule card at all
+    assert "var(--stop)" not in sched_css and "lvl-past" not in sched_css and "lvl-past" not in js
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in sched_css
     # NEXT: amber with text for the last 5 minutes
     assert '"STARTS IN 5 MIN"' in js
     assert 'lvl-${nlvl}' in js
@@ -165,7 +167,7 @@ def test_old_schedule_note_and_wall_hiding():
     # wall: the whole card goes; tablet and phone: only the note stays
     assert "body.layout-wall #schedule-card.sched-stale { display: none !important; }" in css
     assert "#schedule-card.sched-stale .sched-body, #schedule-card.sched-stale .sched-strip { display: none !important; }" in css
-    assert '"Curfew was ' in js.replace("`Curfew was", '"Curfew was') and '"Finished"' in js
+    assert '"Finished"' in js and "Curfew was" not in js
 
 
 def test_admin_schedule_editor_rules():
@@ -259,7 +261,8 @@ def test_now_shows_time_left_only_with_its_own_end_time():
     # User: an item with no end time needs no "xx min left"; it shows how long it has been on.
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     assert "const ownEnd = !!cur && cur.planned_end !== null && cur.planned_end !== undefined" in js
-    assert "(ownEnd ? `${SW.fmtDuration(nn.currentEnd - now, true)} left`" in js
+    assert "(ownEnd ? `${SW.fmtDuration(left, true)} left`" in js
+    assert "const left = ownEnd ? nn.currentEnd - now : null;" in js
 
 
 def test_now_has_no_on_for_text():

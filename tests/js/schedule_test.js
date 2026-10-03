@@ -1,4 +1,4 @@
-// Node test for the dashboard's own NOW / NEXT / CURFEW maths (SW.scheduleNowNext and friends in
+// Node test for the dashboard's own NOW / NEXT maths (SW.scheduleNowNext and friends in
 // common.js). It must agree with core/schedule.py now_next: the same edge cases as
 // tests/test_schedule.py are checked here, and tests/test_schedule_ui.py also passes a file of
 // Python results (node schedule_test.js <cases.json>) to compare every case one by one.
@@ -100,19 +100,26 @@ eq(ends, [T + 60 * M, T + 105 * M, T + 135 * M, T + 225 * M, T + 270 * M], "item
 eq(SW.scheduleEnds([item(1, "Late", "act", T), item(2, "Curfew", "curfew", T + 9 * M)]), [T + 9 * M, T + 9 * M], "open item ends at the curfew");
 eq(SW.scheduleEnds([item(1, "Late", "act", T)]), [null], "open item without curfew never ends");
 
-// ---- curfew colour levels: neutral, warn at T-15, alert at T-5, past
-eq(SW.curfewLevel(null), "", "no curfew");
-eq(SW.curfewLevel(15 * M + 1), "ok", "just over 15 min");
-eq(SW.curfewLevel(15 * M), "warn", "T-15");
-eq(SW.curfewLevel(5 * M + 1), "warn", "just over 5 min");
-eq(SW.curfewLevel(5 * M), "alert", "T-5");
-eq(SW.curfewLevel(1), "alert", "last second");
-eq(SW.curfewLevel(0), "past", "curfew reached");
-eq(SW.curfewLevel(-29 * M), "past", "+29 min is still red");
-eq(SW.curfewLevel(-30 * M + 1), "past", "just under +30 min");
-eq(SW.curfewLevel(-31 * M), "done", "+31 min is calm");
-eq(SW.curfewLevel(-3600), "done", "an hour past is calm");
-
+// ---- NOW colour levels (item with its own end): neutral above 15 min, amber at T-15, orange at T-5
+eq(SW.nowLevel(null), "", "no countdown without an end time");
+eq(SW.nowLevel(undefined), "", "undefined is no countdown");
+eq(SW.nowLevel(15 * M + 1), "", "T-15:01 is neutral");
+eq(SW.nowLevel(15 * M), "warn", "T-15:00 is amber");
+eq(SW.nowLevel(5 * M + 1), "warn", "T-5:01 is still amber");
+eq(SW.nowLevel(5 * M), "alert", "T-5:00 is orange");
+eq(SW.nowLevel(1), "alert", "last second");
+eq(SW.nowLevel(0), "", "at the end it is no longer current: no level");
+eq(SW.nowLevel(-60), "", "never red after the end");
+eq(SW.curfewLevel, undefined, "the curfew countdown levels are gone");
+{
+  // a curfew cutting off an open-ended act: NOW counts to the curfew only if the act has its own end
+  const open = [item(1, "Act", "act", T), item(2, "Curfew", "curfew", T + 60 * M)];
+  const nnOpen = SW.scheduleNowNext(open, T + 50 * M, "");
+  eq([nnOpen.current.id, nnOpen.currentEnd], [1, T + 60 * M], "cut-off end is still reported");
+  eq(nnOpen.current.planned_end, null, "...but the item has no end of its own, so the card shows no countdown");
+  // at the cut-off moment the act is no longer current
+  eq(SW.scheduleNowNext(open, T + 60 * M, "").current, null, "reaching the end moves on");
+}
 // ---- a Load Out after the curfew keeps running (curfew 23:00, Load Out 23:15-01:00)
 {
   const c = T + 600 * M;
@@ -124,8 +131,7 @@ eq(SW.curfewLevel(-3600), "done", "an hour past is calm");
   eq(st(30), ["running", 3, null], "23:30 NOW Load Out");
   eq(st(90), ["running", 3, null], "00:30 NOW Load Out");
   eq(st(125), ["over", null, null], "01:05 over (the dashboard says Finished)");
-  eq(SW.curfewLevel(-30 * M), "done", "curfew calm while Load Out runs");
-  const open = [LO[0], LO[1], item(3, "Load Out", "load_out", c + 15 * M)];
+    const open = [LO[0], LO[1], item(3, "Load Out", "load_out", c + 15 * M)];
   eq(SW.scheduleNowNext(open, c + 600 * M, "").state, "running", "open-ended Load Out runs on");
 }
 
@@ -139,8 +145,6 @@ eq(SW.nextLevel(1), "warn", "last second");
 SW.setSiteTime({ timezone: "", utc_offset_s: 3600, day_rollover: "06:00" });
 const at = (y, mo, d, h, mi) => Date.UTC(y, mo - 1, d, h, mi) / 1000 - 3600;   // site wall clock -> epoch
 const cf = at(2026, 10, 2, 23, 0);
-eq(SW.curfewLevel(cf - at(2026, 10, 2, 23, 29)), "past", "23:29 red");
-eq(SW.curfewLevel(cf - at(2026, 10, 2, 23, 31)), "done", "23:31 calm");
 eq(SW.siteShowDay(at(2026, 10, 3, 5, 59)), "2026-10-02", "05:59 is still the previous show day");
 eq(SW.siteShowDay(at(2026, 10, 3, 6, 0)), "2026-10-03", "06:00 is the new show day");
 eq(SW.siteShowDay(at(2026, 10, 2, 23, 30)), "2026-10-02", "evening is today");
