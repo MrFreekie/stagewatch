@@ -43,7 +43,7 @@ def test_no_html_parsing_sinks_in_our_scripts():
 def test_setlists_render_without_links():
     """Schedule text is untrusted and public: setlists go through SW.renderMarkdown with links
     left off (the default), on the dashboard and in the admin preview."""
-    for name in ("dashboard.js", "admin.js"):
+    for name in ("dashboard.js", "schedule-editor.js"):
         code = _code_only((STATIC / name).read_text(encoding="utf-8"))
         assert "SW.renderMarkdown(" in code, name
         assert "links: true" not in code and "links:true" not in code, name

@@ -11,16 +11,12 @@
   let entityIdsRendered = "";
   let showIgnored = false;  // "Show ignored" toggle on the ESPHome nodes card
 
-  function toast(msg, isError) {
-    const el = h("div", { class: "toast" + (isError ? " error" : "") }, msg);
-    document.body.append(el);
-    setTimeout(() => el.remove(), 3500);
-  }
+  const toast = SW.toast;
   async function run(fn, okMsg) {
     try { const r = await fn(); if (okMsg) toast(okMsg); return r; }
     catch (err) { toast(err.message, true); throw err; }
   }
-  const card = (title, ...body) => h("section", { class: "card" }, h("h2", {}, title), ...body);
+  const card = SW.card;
   const field = (label, input) => h("label", { class: "field" }, label, input);
   const val = (el) => el.value.trim();
   const numOrNull = (el) => (el.value.trim() === "" ? null : Number(el.value));
@@ -36,6 +32,9 @@
       if (setup && pin.value !== pin2.value) { err.textContent = "PINs don't match"; return; }
       try {
         await api("POST", setup ? "/api/admin/setup" : "/api/admin/login", { pin: pin.value });
+        // Sent here by the Schedule page: go back to it (only the one allow-listed path, never a URL).
+        const next = SW.adminNext(location.search);
+        if (next) { location.assign(next); return; }
         start();
       } catch (e) { err.textContent = e.message; }
     } }, pin, pin2, h("button", { class: "primary", type: "submit" }, setup ? "Set admin PIN" : "Log in"));
@@ -529,324 +528,38 @@
   }
 
   // ------------------------------------------------------------ schedule
-  // The current show day's running order. The list being edited lives in `sd`, not in the page,
-  // so a full re-render or the 5-second poll never wipes what was typed. Saving replaces the whole
-  // list (PUT with the show and the revision this page loaded). If the schedule was changed
-  // elsewhere in the meantime the server refuses, and what was typed stays on screen.
-  let sd = null;            // {showId, revision, day, rows, dirty, errors: {rowKey: {field: msg}}, cardErrors, conflict, changedElsewhere}
-  let sdServer = null;      // the last GET /api/schedule
-  let sdKey = 0;
-  let sdBusy = false;
-  let sdStatus = null;      // the "Unsaved changes" line, updated without a re-render
-  let isEmulate = false;
-  const imp = { text: "", format: "auto", preview: null, error: "", open: false, busy: false };
-  const openSetlists = new Set();   // row keys whose setlist box is open
-  const SCHED_KINDS = [["act", "Act"], ["doors", "Doors"], ["changeover", "Changeover"], ["curfew", "Curfew"], ["other", "Other"]];
-  const KIND_LABEL = { act: "Act", doors: "Doors", changeover: "Changeover", curfew: "Curfew", other: "Other" };
-  const kb = (n) => `${SW.num(n / 1024, n % 1024 ? 1 : 0)} KB`;
-  const utf8 = (s) => (typeof TextEncoder === "function" ? new TextEncoder().encode(s).length : s.length);
-  // Existing items keep `id` and `date` (the calendar date of their start, which the server needs
-  // back unchanged so after-midnight items stay put). New rows have neither.
-  const sdRow = (it) => ({ key: ++sdKey, id: it.id || null, date: it.date || "", kind: it.kind || "act",
-    title: it.title || "", start: it.start || "", end: it.end || "", stage: it.stage || "", setlist: it.setlist || "" });
-  function sdFromServer(s) {
-    sd = { showId: s.show_id, revision: s.revision, day: s.day, rows: (s.items || []).map(sdRow), dirty: false,
-      errors: {}, cardErrors: [], conflict: "", changedElsewhere: false };
-    openSetlists.clear();
+  // A short summary only. The editor is its own page, /schedule (schedule-editor.js).
+  let schedData = null;     // the last GET /api/schedule
+  let schedSkew = 0;        // the server's clock minus this one, so NOW / NEXT follow the server's time
+  async function loadSchedule() {
+    schedData = await api("GET", "/api/schedule");
+    if (typeof schedData.now === "number") schedSkew = schedData.now - Date.now() / 1000;
   }
-  async function loadSchedule(force) {
-    sdServer = await api("GET", "/api/schedule");
-    if (force || !sd || !sd.dirty) sdFromServer(sdServer);
+  function scheduleCard() {
+    const c = card("Schedule");
+    c.id = "schedule-admin";
+    const items = schedData && Array.isArray(schedData.items) ? schedData.items : [];
+    const day = (schedData && schedData.day) || (admin.show && admin.show.day) || "";
+    const lines = [];
+    if (!schedData) lines.push(h("p", { class: "error" }, "Could not load the schedule. Reload this page to try again."));
+    else if (!items.length) lines.push(h("p", { class: "muted" }, "No schedule for this day yet."));
+    else {
+      const nn = SW.scheduleNowNext(items, Date.now() / 1000 + schedSkew, "");
+      const idle = { before: "Not started yet", between: "Nothing on now", over: "Show over" };
+      lines.push(h("p", {}, `${day ? `${SW.fmtDay(day)}: ` : ""}${items.length === 1 ? "1 item" : `${SW.num(items.length, 0)} items`}`));
+      lines.push(h("p", { class: "sched-sum-now" }, h("strong", {}, "NOW "), nn.current ? nn.current.title : (idle[nn.state] || "Nothing on now")));
+      lines.push(h("p", { class: "sched-sum-next" }, h("strong", {}, "NEXT "),
+        nn.next ? `${nn.next.title}, ${SW.fmtTime(nn.next.planned_start)}` : "Nothing more today"));
+    }
+    if (!schedData || !items.length) {
+      if (day) lines.unshift(h("p", { class: "muted" }, SW.fmtDay(day)));
+    }
+    c.append(...lines, h("div", { class: "row", style: "margin-top:10px" }, SW.linkButton("Open schedule editor", "/schedule", true)));
+    return c;
   }
-  function sdTouch() {
-    sd.dirty = true;
-    if (sdStatus) sdStatus.textContent = "Unsaved changes. Click Save schedule to keep them.";
-  }
-  function rerenderSchedule() {
+  function rerenderScheduleSummary() {
     const old = document.getElementById("schedule-admin");
     if (old) old.replaceWith(scheduleCard());
-  }
-  const csvCell = (v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  const rowsAsCsv = (rows) => ["start,end,title,kind,stage"].concat(rows.map((r) =>
-    [r.start, r.end, r.title, r.kind, r.stage].map((v) => csvCell(String(v || "").trim())).join(","))).join("\n");
-
-  // The server's messages are fixed crew text; pydantic's own ones are not, so use ours for those.
-  function schedMsg(msg, field) {
-    const lim = admin.schedule_limits || {};
-    const m = String(msg || "");
-    const ve = m.indexOf("Value error, ");   // may follow a "text: " style field prefix
-    if (ve >= 0) return m.slice(ve + 13);
-    const ours = {
-      title: `Titles must be 1 to ${lim.title_max || 120} characters`,
-      stage: `Stage names can be up to ${lim.stage_max || 40} characters`,
-      start: "Times must be 24-hour HH:MM, for example 19:30",
-      end: "End times must be 24-hour HH:MM, for example 21:15, or left empty",
-      kind: "Choose a kind from the list",
-      setlist: `Each setlist can be up to ${kb(lim.setlist_max_bytes || 8192)}`,
-    };
-    if (/^(String|Input|Field|Extra|Value should|List should)/.test(m)) return ours[field] || "Check this item";
-    return m;
-  }
-  const SCHED_CONFLICT = "The schedule was changed elsewhere. Reload to see it, then make your change again.";
-
-  async function saveSchedule(okMsg) {
-    if (sdBusy) return false;
-    const lim = admin.schedule_limits || {};
-    sd.errors = {}; sd.cardErrors = []; sd.conflict = "";
-    if (sd.rows.length > (lim.max_items || 300)) {
-      sd.cardErrors.push(`A schedule can have up to ${lim.max_items || 300} items. Nothing has been saved.`);
-      rerenderSchedule();
-      return false;
-    }
-    const body = { show_id: sd.showId, revision: sd.revision, items: sd.rows.map((r) => {
-      const o = { kind: r.kind, title: r.title.trim(), start: r.start.trim(), end: r.end.trim(), stage: r.stage.trim(), setlist: r.setlist };
-      if (r.id) o.id = r.id;
-      if (r.date) o.date = r.date;
-      return o;
-    }) };
-    sdBusy = true;
-    let ok = false;
-    try {
-      let res = await api("PUT", "/api/admin/schedule", body);
-      if (!res || res.revision === undefined || !Array.isArray(res.items)) res = await api("GET", "/api/schedule");
-      sdServer = res;
-      sdFromServer(res);
-      admin.schedule_limits = Object.assign({}, lim, { demo_allowed: isEmulate || !res.items.length });
-      toast(okMsg || "Schedule saved");
-      ok = true;
-    } catch (err) {
-      if (err.status === 409) {
-        sd.conflict = /show day/i.test(err.message) ? err.message : SCHED_CONFLICT;
-      } else if (err.status === 422 && Array.isArray(err.detail)) {
-        for (const d of err.detail) {
-          const loc = d.loc || [];
-          const i = loc[1] === "items" && typeof loc[2] === "number" ? loc[2] : -1;
-          const field = typeof loc[3] === "string" ? loc[3] : "";
-          if (i >= 0 && sd.rows[i]) {
-            const errs = sd.errors[sd.rows[i].key] || (sd.errors[sd.rows[i].key] = {});
-            if (!errs[field]) errs[field] = schedMsg(d.msg, field);
-          } else sd.cardErrors.push(schedMsg(d.msg, ""));
-        }
-        sd.cardErrors.unshift("Some items need fixing (marked in red below). Nothing has been saved.");
-      } else {
-        sd.cardErrors.push(`${err.status === 422 ? schedMsg(err.message, "") : err.message} Nothing has been saved.`);
-      }
-    } finally { sdBusy = false; }
-    rerenderSchedule();
-    return ok;
-  }
-
-  // After a conflict: load the saved schedule. Anything typed here goes into the Paste box as
-  // text, so it isn't lost.
-  async function reloadSchedule() {
-    const mine = sd && sd.dirty ? rowsAsCsv(sd.rows) : "";
-    try { await loadSchedule(true); } catch (err) { toast(err.message, true); return; }
-    if (mine) {
-      imp.text = mine; imp.preview = null; imp.error = ""; imp.open = true;
-      toast("Loaded the saved schedule. Your version is in the Paste box as text (without setlists).");
-    } else toast("Loaded the saved schedule.");
-    rerenderSchedule();
-  }
-
-  async function previewImport() {
-    imp.busy = true; imp.error = ""; imp.preview = null;
-    rerenderSchedule();
-    try {
-      imp.preview = await api("POST", "/api/admin/schedule/import", { text: imp.text, format: imp.format, dry_run: true });
-    } catch (err) {
-      imp.error = `${err.status === 422 ? schedMsg(typeof err.detail === "string" ? err.detail : err.message, "") : err.message}`;
-    } finally { imp.busy = false; }
-    rerenderSchedule();
-  }
-
-  // The previewed rows are added to the end of the list, then the whole list is saved.
-  async function addImported() {
-    const p = imp.preview;
-    if (!p || !p.rows.length) return;
-    if (sd.dirty && !confirm("You have unsaved changes in the list. Adding these items saves those changes too. Carry on?")) return;
-    sd.rows = sd.rows.concat(p.rows.map((r) => sdRow({ kind: r.kind, title: r.title, start: r.start, end: r.end, stage: r.stage, setlist: r.setlist || "" })));
-    sd.dirty = true;
-    const n = p.rows.length;
-    if (await saveSchedule(`Added ${n} item${n === 1 ? "" : "s"} to the schedule`)) {
-      imp.text = ""; imp.preview = null; imp.error = "";
-      rerenderSchedule();
-    }
-  }
-
-  async function loadDemo() {
-    const has = sd && sd.rows.length;
-    if (!confirm(has ? "Replace this day's whole schedule with the demo day (doors 40 minutes ago, curfew in about an hour and a half)?"
-      : "Load a demo running order around the current time (doors 40 minutes ago, curfew in about an hour and a half)?")) return;
-    try {
-      await api("POST", "/api/admin/schedule/demo", { show_id: sd.showId });
-      await loadSchedule(true);
-      admin.schedule_limits = Object.assign({}, admin.schedule_limits, { demo_allowed: isEmulate });
-      toast("Demo day loaded");
-    } catch (err) { toast(err.message, true); }
-    rerenderSchedule();
-  }
-
-  function scheduleRowEl(r, i, total, lim) {
-    const errs = sd.errors[r.key] || {};
-    const on = (field) => (ev) => { r[field] = ev.target.value; sdTouch(); };
-    const timeInput = (field, ph) => h("input", { class: "num touch" + (errs[field] ? " invalid" : ""), value: r[field], placeholder: ph,
-      maxlength: 5, inputmode: "numeric", autocomplete: "off", "aria-label": field === "start" ? "Start (HH:MM)" : "End (HH:MM, optional)", oninput: on(field) });
-    const kind = h("select", { class: "touch", "aria-label": "Kind", onchange: on("kind") }, SCHED_KINDS.map(([v, l]) => h("option", { value: v }, l)));
-    kind.value = r.kind;
-    const title = h("input", { class: "touch" + (errs.title ? " invalid" : ""), value: r.title, maxlength: lim.title_max || 120, placeholder: "e.g. Support: Band name",
-      "aria-label": "Title", oninput: on("title") });
-    const stage = h("input", { class: "touch" + (errs.stage ? " invalid" : ""), value: r.stage, maxlength: lim.stage_max || 40, list: "sched-stage-list",
-      placeholder: "All stages", "aria-label": "Stage (empty for all stages)", autocomplete: "off", oninput: on("stage") });
-    // Setlist: a text box with a live preview (the same safe Markdown dashboards use, links off).
-    const setOpen = openSetlists.has(r.key);
-    const setBtn = h("button", { type: "button", class: "touch", "aria-expanded": setOpen ? "true" : "false",
-      onclick: () => { if (openSetlists.has(r.key)) openSetlists.delete(r.key); else openSetlists.add(r.key); rerenderSchedule(); } },
-    r.setlist.trim() ? "Setlist ✓" : "Setlist");
-    let setPanel = null;
-    if (setOpen) {
-      const preview = h("div", { class: "sched-preview" }, SW.renderMarkdown(r.setlist));
-      const size = h("span", { class: "muted" });
-      const max = lim.setlist_max_bytes || 8192;
-      const upd = () => {
-        const n = utf8(r.setlist);
-        size.textContent = `${kb(n)} of ${kb(max)}`;
-        size.className = n > max ? "error" : "muted";
-      };
-      const ta = h("textarea", { class: "sched-setlist-input" + (errs.setlist ? " invalid" : ""), rows: 8, "aria-label": `Setlist for ${r.title || "this item"}`,
-        placeholder: "1. First song\n2. Second song\n\n## Encore\n- Last song", oninput: (ev) => {
-          r.setlist = ev.target.value; sdTouch(); upd(); preview.replaceChildren(SW.renderMarkdown(r.setlist));
-        } });
-      ta.value = r.setlist;
-      upd();
-      setPanel = h("div", { class: "sched-setlist-edit" },
-        h("label", { class: "field" }, "Setlist", ta, size),
-        h("div", {}, h("div", { class: "muted", style: "font-size:13px" }, "How it looks on dashboards"), preview),
-        h("p", { class: "muted hint" }, "One song per line. Optional: 1. for numbered lines, - for bullets, ## for a heading, **bold**, *italic*. Links are not shown as links."));
-    }
-    const nextDay = r.date && sd.day && r.date !== sd.day ? h("span", { class: "muted sched-date" }, `(${SW.fmtDay(r.date)})`) : null;
-    const errList = Object.keys(errs).map((f) => errs[f]).filter((m, k, a) => a.indexOf(m) === k);
-    return h("li", { class: "sched-edit-row" },
-      h("div", { class: "sched-edit-fields" },
-        h("span", { class: "sched-edit-n muted" }, String(i + 1)),
-        h("label", { class: "field" }, "Start", timeInput("start", "HH:MM"), nextDay),
-        h("label", { class: "field" }, "End", timeInput("end", "optional")),
-        h("label", { class: "field" }, "Kind", kind),
-        h("label", { class: "field sched-edit-title" }, "Title", title),
-        h("label", { class: "field" }, "Stage", stage),
-        h("div", { class: "row sched-edit-btns" }, setBtn,
-          h("button", { type: "button", class: "touch", "data-move": `${r.key}-up`, "aria-label": `Move item ${i + 1} up`, title: "Move up", disabled: i === 0, onclick: () => moveRow(i, -1) }, "▲"),
-          h("button", { type: "button", class: "touch", "data-move": `${r.key}-down`, "aria-label": `Move item ${i + 1} down`, title: "Move down", disabled: i === total - 1, onclick: () => moveRow(i, 1) }, "▼"),
-          h("button", { type: "button", class: "touch danger", "aria-label": `Remove item ${i + 1}`, title: "Remove", onclick: () => {
-            sd.rows.splice(i, 1); openSetlists.delete(r.key); delete sd.errors[r.key]; sdTouch(); rerenderSchedule();
-          } }, "✕"))),
-      errList.length ? h("p", { class: "error sched-edit-err", role: "alert" }, errList.join(". ")) : null,
-      setPanel);
-  }
-
-  function moveRow(i, dir) {
-    const j = i + dir;
-    if (j < 0 || j >= sd.rows.length) return;
-    const t = sd.rows[i]; sd.rows[i] = sd.rows[j]; sd.rows[j] = t;
-    sdTouch();
-    rerenderSchedule();
-    const btn = document.querySelector(`[data-move="${t.key}-${dir < 0 ? "up" : "down"}"]`);
-    if (btn && !btn.disabled) btn.focus();
-  }
-
-  function scheduleCard() {
-    const el = (...body) => { const c = card("Schedule", ...body); c.id = "schedule-admin"; return c; };
-    if (!sd) return el(h("p", { class: "error" }, "Could not load the schedule. Reload this page to try again."));
-    const lim = admin.schedule_limits || {};
-    const show = admin.show || {};
-    const rollover = (admin.config.site && admin.config.site.day_rollover) || "06:00";
-    const stale = sd.showId !== (show.id === undefined ? sd.showId : show.id);
-    const notices = [];
-    if (sd.conflict || sd.changedElsewhere || stale) {
-      notices.push(h("div", { class: "sched-conflict", role: "alert" },
-        h("p", {}, sd.conflict || (stale ? "A new show day has started since this list was loaded. Reload to see the current day's schedule."
-          : "The schedule was changed on another page. Reload to see it. Saving here would be refused.")),
-        h("button", { type: "button", class: "primary touch", onclick: reloadSchedule }, "Reload")));
-    }
-    for (const m of sd.cardErrors) notices.push(h("p", { class: "error", role: "alert" }, m));
-
-    const list = sd.rows.length
-      ? h("ol", { class: "sched-edit" }, sd.rows.map((r, i) => scheduleRowEl(r, i, sd.rows.length, lim)))
-      : h("p", { class: "muted" }, "No items yet. Click Add item, paste a running order below, or load the demo day.");
-    sdStatus = h("span", { class: "muted", role: "status" }, sd.dirty ? "Unsaved changes. Click Save schedule to keep them." : "");
-    const addItem = () => {
-      const r = sdRow({ kind: "act" });
-      sd.rows.push(r); sdTouch(); rerenderSchedule();
-      const first = document.querySelector("#schedule-admin .sched-edit-row:last-child input");
-      if (first) first.focus();
-    };
-
-    // Paste / import
-    const ta = h("textarea", { class: "sched-import-text", rows: 8, "aria-label": "Running order to import",
-      placeholder: "19:00 Doors\n19:30-20:15 Support: Band name\n20:15-20:45 Changeover\n20:45-22:15 Headliner\n23:00 Curfew",
-      oninput: (ev) => { imp.text = ev.target.value; } });
-    ta.value = imp.text;
-    const fmtSel = h("select", { class: "touch", "aria-label": "Format", onchange: (ev) => { imp.format = ev.target.value; } },
-      [["auto", "Work it out"], ["lines", "One item per line"], ["csv", "CSV (start, end, title, kind, stage)"],
-        ["tsv", "Copied from a spreadsheet (tab-separated)"]].map(([v, l]) => h("option", { value: v }, l)));
-    fmtSel.value = imp.format;
-    const file = h("input", { type: "file", accept: ".csv,.txt,.tsv,text/csv,text/plain", class: "touch", onchange: (ev) => {
-      const f = ev.target.files && ev.target.files[0];
-      if (!f) return;
-      if (f.size > (lim.import_max_bytes || 65536)) { toast(`That file is too big. The limit is ${kb(lim.import_max_bytes || 65536)}.`, true); return; }
-      const rd = new FileReader();
-      rd.onload = () => { imp.text = String(rd.result || ""); imp.preview = null; imp.error = ""; rerenderSchedule(); };
-      rd.onerror = () => toast("Could not read that file.", true);
-      rd.readAsText(f);
-    } });
-    const p = imp.preview;
-    let previewEl = null;
-    if (p) {
-      const errs = p.errors || [];
-      const more = (p.error_count || errs.length) - errs.length;
-      previewEl = h("div", { class: "card-inset" },
-        h("p", {}, h("strong", {}, p.rows.length === 1 ? "1 item found." : `${p.rows.length} items found.`),
-          errs.length ? ` ${p.error_count} line${p.error_count === 1 ? "" : "s"} could not be read:` : " Every line could be read."),
-        errs.length ? h("ul", { class: "sched-import-errors" }, errs.map((e) => h("li", {}, h("strong", {}, `Line ${e.line}: `), schedMsg(e.error, ""))),
-          more > 0 ? h("li", { class: "muted" }, `…and ${more} more.`) : null) : null,
-        p.rows.length ? h("div", { class: "table-scroll" }, h("table", {},
-          h("thead", {}, h("tr", {}, ["Start", "End", "Kind", "Title", "Stage"].map((x) => h("th", {}, x)))),
-          h("tbody", {}, p.rows.map((r) => h("tr", {}, h("td", { class: "num" }, r.start), h("td", { class: "num" }, r.end || ""),
-            h("td", {}, KIND_LABEL[r.kind] || r.kind), h("td", {}, r.title), h("td", {}, r.stage || "All")))))) : null,
-        h("div", { class: "row", style: "margin-top:8px" },
-          p.rows.length ? h("button", { type: "button", class: "primary touch", disabled: sdBusy, onclick: addImported },
-            errs.length ? `Add the ${p.rows.length} item${p.rows.length === 1 ? "" : "s"} that could be read` : `Add ${p.rows.length} item${p.rows.length === 1 ? "" : "s"} to the schedule`) : null,
-          h("button", { type: "button", class: "touch", onclick: () => { imp.preview = null; rerenderSchedule(); } }, "Close preview")),
-        errs.length && p.rows.length ? h("p", { class: "muted hint" }, "Lines that could not be read are left out. To include them, fix them in the box above and click Preview again.") : null);
-    }
-    const importBox = h("details", { open: imp.open, ontoggle: (ev) => { imp.open = ev.target.open; } },
-      h("summary", {}, "Paste or import a running order"),
-      h("p", { class: "muted hint" }, "One item per line, like 19:00 Doors or 19:30-20:15 Support: Band name. Or CSV with the columns start, end, title, kind, stage (end, kind and stage can be left empty). You can paste straight from a spreadsheet. New items go after the ones already in the list."),
-      ta,
-      h("div", { class: "row", style: "margin-top:8px" },
-        h("label", { class: "field" }, "Or open a file", file),
-        h("label", { class: "field" }, "Format", fmtSel),
-        h("button", { type: "button", class: "touch", style: "align-self:flex-end", disabled: imp.busy || sdBusy,
-          onclick: () => { if (!imp.text.trim()) { toast("Paste or open a running order first.", true); return; } previewImport(); } }, imp.busy ? "Reading…" : "Preview")),
-      imp.error ? h("p", { class: "error", role: "alert" }, imp.error) : null,
-      previewEl);
-
-    const stages = admin.stages || [];
-    return el(
-      h("p", { class: "muted hint" }, `The running order for ${show.name || "this show day"}${sd.day ? `, ${SW.fmtDay(sd.day)}` : ""}. Times are 24-hour, in site time. Times before ${rollover} count as the next morning, so 23:00 to 00:30 works. Leave Stage empty for items that apply to every stage.`),
-      h("p", { class: "muted hint" }, "Visible to anyone on the show network."),
-      h("p", { class: "muted hint" }, `${sd.rows.length} of ${lim.max_items || 300} items. Titles up to ${lim.title_max || 120} characters. Setlists up to ${kb(lim.setlist_max_bytes || 8192)} each, ${kb(lim.setlist_total_max_bytes || 262144)} in total. Dashboards list items by start time: ▲ and ▼ only matter for items that start at the same time.`),
-      h("datalist", { id: "sched-stage-list" }, stages.map((s) => h("option", { value: s }))),
-      notices,
-      list,
-      h("div", { class: "row", style: "margin-top:10px" },
-        h("button", { type: "button", class: "touch", onclick: addItem }, "Add item"),
-        h("button", { type: "button", class: "primary touch", disabled: sdBusy, onclick: () => saveSchedule() }, "Save schedule"),
-        sd.dirty ? h("button", { type: "button", class: "touch", onclick: () => {
-          if (confirm("Undo every change since the last save?")) { sdFromServer(sdServer); rerenderSchedule(); }
-        } }, "Undo changes") : null,
-        lim.demo_allowed ? h("button", { type: "button", class: "touch", onclick: loadDemo }, "Load demo day") : null,
-        sdStatus),
-      importBox);
   }
 
   function catalogCard() {
@@ -1108,7 +821,7 @@
     dirty = false;   // everything on screen now matches saved state
     app.replaceChildren(
       h("div", { class: "grid-2" }, siteCard(), eventShowCard()),
-      scheduleCard(),     // full width: one row per item
+      scheduleCard(),     // summary and a link to /schedule
       connectCard(),
       softwareCard(),
       devicesCard(), entitiesCard(), thresholdsCard(),
@@ -1121,7 +834,7 @@
 
   async function refresh() {
     [admin, snap] = await Promise.all([api("GET", "/api/admin/state"), api("GET", "/api/snapshot"), loadSoftware(),
-      loadSchedule().catch(() => {})]);   // the Schedule card says so if it couldn't load
+      loadSchedule().catch(() => { schedData = null; })]);   // the Schedule card says so if it couldn't load
     SW.setSiteTime(snap.site && snap.site.time);
     render();
   }
@@ -1152,16 +865,13 @@
         const td = document.querySelector(`[data-live="${CSS.escape(e.id)}"]`);
         if (td) td.textContent = fmt(e.kind, e.value);
       }
-      // The schedule changed on another page: reload the Schedule card, unless this page has
-      // unsaved edits there (then say so, and keep them).
+      // The Schedule summary: reload it when the schedule changed anywhere, and redraw it every
+      // poll so NOW / NEXT follow the clock. It has no fields, so a redraw wipes nothing.
       const meta = s.schedule || {};
-      if (sd && (meta.show_id !== sd.showId || meta.revision !== sd.revision)) {
-        // Always redraw after replacing sd: inputs still tied to the old rows would otherwise take
-        // edits that Save never sends. (Focus moving in during the fetch is rare; losing it is
-        // better than losing the edit.)
-        if (!sd.dirty && !isEditing()) { await loadSchedule(); rerenderSchedule(); }
-        else if (!sd.changedElsewhere) { sd.changedElsewhere = true; rerenderSchedule(); }
+      if (!schedData || meta.show_id !== schedData.show_id || meta.revision !== schedData.revision) {
+        try { await loadSchedule(); } catch (_) { /* keep the last summary */ }
       }
+      rerenderScheduleSummary();
       // Software status changes on its own (history entry once a new build is confirmed healthy,
       // background check finds an update): re-render that card only when it actually changed.
       if (++pollN % 3 === 0 && canRebuild && !document.querySelector("dialog[open]") && !watching) {
@@ -1175,7 +885,6 @@
 
   async function start() {
     const info = await api("GET", "/api/info");
-    isEmulate = !!info.emulate;
     const b = info.build || {};
     const commit = b.commit && b.commit !== "unknown" ? ` (${b.commit}${b.dirty ? "*" : ""})` : "";
     document.getElementById("version").textContent = `v${info.version}${commit}${info.emulate ? " · EMULATE" : ""}`;

@@ -145,8 +145,8 @@ def test_curfew_levels_are_colour_and_text():
 
 
 def test_admin_schedule_editor_rules():
-    js = _js("admin.js")
-    assert "function scheduleCard()" in js and "scheduleCard()," in js
+    js = _js("schedule-editor.js")
+    assert "function scheduleCard()" in js and "app.replaceChildren(scheduleCard())" in js
     # save sends the show and revision it loaded, and existing items' ids and dates unchanged
     assert "show_id: sd.showId, revision: sd.revision" in js
     assert "if (r.id) o.id = r.id;" in js and "if (r.date) o.date = r.date;" in js
@@ -161,7 +161,7 @@ def test_admin_schedule_editor_rules():
 
 def test_schedule_messages_are_known_server_texts():
     """The admin page maps pydantic's own messages to these; keep them in step with the server."""
-    js = _js("admin.js")
+    js = _js("schedule-editor.js")
     assert sched.MSG_TIME in js and sched.MSG_END_TIME in js
     assert sched.MSG_CHANGED in js
 
@@ -172,3 +172,60 @@ def test_failed_schedule_fetch_does_not_retry_in_a_loop():
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     assert "if (ok && schedKey(state.scheduleMeta) !== sched.loadedKey) syncSchedule();" in js
     assert "if (sched.loadedKey && schedKey(state.scheduleMeta) !== sched.loadedKey)" not in js
+
+
+# ------------------------------------------------- the Schedule page (moved out of Admin)
+def test_admin_next_allow_list_runs_in_node():
+    """tests/js/admin_next_test.js: ?next= is accepted only when it is exactly /schedule."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    r = subprocess.run([node, str(ROOT / "tests" / "js" / "admin_next_test.js")], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr
+
+
+def test_admin_login_uses_only_the_allow_listed_next():
+    admin = _js("admin.js")
+    assert "SW.adminNext(location.search)" in admin and "location.assign(next)" in admin
+    # the login code never reads the query string itself, so nothing bypasses the allow-list
+    assert "location.search" not in admin.replace("SW.adminNext(location.search)", "")
+    assert 'SW.ADMIN_NEXT = ["/schedule"];' in _js("common.js")
+    # the Schedule page sends a logged-out user to that exact URL
+    assert 'location.replace("/admin?next=/schedule")' in _js("schedule-editor.js")
+
+
+def test_admin_has_a_schedule_summary_and_no_editor():
+    admin = _js("admin.js")
+    body = admin[admin.index("function scheduleCard()"):admin.index("function catalogCard()")]
+    assert "SW.scheduleNowNext(" in body
+    assert "No schedule for this day yet." in body
+    assert 'SW.linkButton("Open schedule editor", "/schedule", true)' in body
+    for editor_only in ("saveSchedule", "scheduleRowEl", "dry_run", "/api/admin/schedule", "Save schedule", "sdRow"):
+        assert editor_only not in admin, editor_only
+    # the link is a real same-tab link at least 44 px tall
+    common = _js("common.js")
+    link = common[common.index("SW.linkButton = function"):common.index("// Where Admin sends you")]
+    assert 'SW.h("a", { href: href' in link and "min-height:44px" in link
+    assert "target" not in link
+
+
+def test_schedule_page_is_static_html_with_a_way_back():
+    html = (STATIC / "schedule.html").read_text(encoding="utf-8")
+    assert 'href="/admin"' in html and 'id="day"' in html
+    assert re.findall(r'<script[^>]*\ssrc="([^"]+)"', html) == [
+        "/static/compat.js", "/static/common.js", "/static/schedule-export.js", "/static/schedule-editor.js"]
+    # print view: built with SW.renderMarkdown (links off), shown only when printing
+    js = _js("schedule-editor.js")
+    assert "SW.renderMarkdown(r.setlist)" in js and "window.print()" in js and "SW.scheduleCsv(sd.rows)" in js
+    assert "@media print" in html and "#print-view { display: none; }" in html
+    assert "header.top, .site-footer, #app" in html
+    assert "SW.fmtDay(show.day)" in _js("schedule-editor.js")
+
+
+def test_editor_kinds_come_from_the_server_with_a_title_case_fallback():
+    js = _js("schedule-editor.js")
+    assert "admin.schedule_limits.kinds" in js and "schedKinds()" in js
+    for k in ("venue_access", "load_in", "crew_call", "soundcheck", "doors", "act", "changeover", "curfew", "load_out", "other"):
+        assert f"{k}:" in js, k
+    assert 'split("_")' in js and "toUpperCase()" in js
+    assert "10:00 Load In" in js and "23:15 Load Out" in js

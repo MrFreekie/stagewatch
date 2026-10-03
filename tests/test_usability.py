@@ -166,7 +166,7 @@ def test_vendored_qr_keeps_licence_and_source_note():
 
 
 def test_no_external_scripts_or_styles_in_pages():
-    for page in ("admin.html", "dashboard.html", "index.html"):
+    for page in ("admin.html", "schedule.html", "dashboard.html", "index.html"):
         html = (STATIC / page).read_text(encoding="utf-8")
         for src in re.findall(r'(?:src|href)="([^"]+)"', html):
             assert not re.match(r"(https?:)?//", src) or "buymeacoffee" in src, (page, src)

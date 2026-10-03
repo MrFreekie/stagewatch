@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stagewatch schedule</title>
+<script src="/static/compat.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  /* The editor uses the whole width: a stage manager's laptop or tablet. */
+  main#app { max-width: none; }
+  header.top .back { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
+  #schedule-editor .sched-edit-fields input.num { width: 84px; }
+  #schedule-editor .sched-edit-title { flex: 2 1 320px; }
+
+  /* Printing (or "Save as PDF"): only the running order, black on white. */
+  #print-view { display: none; }
+  @media print {
+    html, body { background: #fff !important; color: #000 !important; }
+    header.top, .site-footer, #app, .toast, #disconnect-banner, noscript { display: none !important; }
+    #print-view { display: block; font-size: 12pt; line-height: 1.35; }
+    #print-view, #print-view * { color: #000 !important; background: transparent !important; }
+    #print-view h1 { font-size: 20pt; margin: 0 0 2pt; }
+    #print-view .pv-day { margin: 0 0 12pt; font-size: 13pt; }
+    #print-view table { width: 100%; border-collapse: collapse; }
+    #print-view th { text-align: left; border-bottom: 2px solid #000; padding: 3pt 6pt; font-size: 10pt; }
+    #print-view td { padding: 4pt 6pt; vertical-align: top; border-bottom: 1px solid #999; }
+    #print-view .pv-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    #print-view .pv-title { font-weight: 700; }
+    #print-view .pv-item, #print-view .pv-set { page-break-inside: avoid; break-inside: avoid; }
+    #print-view .pv-set td { padding: 0 6pt 6pt 24pt; }
+    #print-view .pv-setlist { font-size: 11pt; }
+    #print-view .pv-setlist ol, #print-view .pv-setlist ul { margin: 2pt 0; padding-left: 20pt; }
+    #print-view .pv-setlist p { margin: 2pt 0; }
+    #print-view .pv-foot { margin-top: 14pt; font-size: 9pt; }
+  }
+</style>
+</head>
+<body>
+<noscript><p style="padding:16px;font-size:20px">Stagewatch needs JavaScript. Turn JavaScript on in your browser settings, then reload this page.</p></noscript>
+<header class="top">
+  <a class="title" href="/" style="color:inherit;text-decoration:none">Stagewatch</a>
+  <span class="sub">Schedule</span>
+  <span class="sub" id="day"></span>
+  <span class="spacer"></span>
+  <a class="back" href="/admin">Back to Admin</a>
+  <button class="small" id="logout" hidden>Log out</button>
+</header>
+<main id="app"></main>
+<footer class="site-footer">Stagewatch is free, open-source and 100% vibe coded. If it helps your shows: <a href="https://buymeacoffee.com/fohengineer" target="_blank" rel="noopener noreferrer">buy me a coffee ☕</a></footer>
+<script src="/static/common.js"></script>
+<script src="/static/schedule-export.js"></script>
+<script src="/static/schedule-editor.js"></script>
+</body>
+</html>

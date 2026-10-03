@@ -54,6 +54,31 @@ SW.api = async function (method, url, body) {
   return data;
 };
 
+// Small pieces the admin pages share (Admin and the Schedule editor).
+SW.toast = function (msg, isError) {
+  const el = SW.h("div", { class: "toast" + (isError ? " error" : "") }, msg);
+  document.body.append(el);
+  setTimeout(() => el.remove(), 3500);
+};
+SW.card = (title, ...body) => SW.h("section", { class: "card" }, SW.h("h2", {}, title), ...body);
+// A normal link that looks like a button, at least 44 px tall.
+SW.linkButton = function (text, href, primary) {
+  return SW.h("a", { href: href, class: "touch",
+    style: "display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:44px;padding:6px 16px;border-radius:8px;text-decoration:none;font-weight:600;"
+      + (primary ? "background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);" : "background:var(--panel-2);color:inherit;border:1px solid var(--grid);") }, text);
+};
+// Where Admin sends you after logging in. An allow-list of one fixed path: the value of ?next=
+// must equal "/schedule" exactly (after decoding), never any other path or URL, so the login page
+// can't be used to bounce someone to another site.
+SW.ADMIN_NEXT = ["/schedule"];
+SW.adminNext = function (search) {
+  const m = /^(?:\?)?(?:[^&]*&)*?next=([^&]*)/.exec(String(search || ""));
+  if (!m) return "";
+  let v;
+  try { v = decodeURIComponent(m[1]); } catch (_) { return ""; }
+  return SW.ADMIN_NEXT.indexOf(v) >= 0 ? v : "";
+};
+
 // ---------------------------------------------------------------- safe Markdown
 // SW.renderMarkdown(text, {links: true}) -> DocumentFragment. A small, deliberately limited subset:
 // headings (# to ###, shown as h3 to h5), paragraphs (a single newline is a line break), "-", "*"
