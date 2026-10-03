@@ -81,6 +81,7 @@ class Hub:
         self.site_meta: dict = {"sensors": {}, "pressure_source": "altitude",
                                 "c_out_of_range": False, "c_out_of_range_bounds": []}
         self._emas: dict[str, Ema] = {}
+        self._ema_sigs: dict[str, tuple] = {}
         self._tasks: list[asyncio.Task] = []
         # Set by the updater: process exit code (75 = launcher applies a pending update) and the
         # callback __main__ installs to stop uvicorn gracefully.
@@ -318,6 +319,15 @@ class Hub:
         the defaults. Read-only."""
         return _calibration_for(self.config, entity.id, entity.hw_key)
 
+    def _ema_settings(self, kind: Kind) -> tuple:
+        site = self.config.site
+        sensors = []
+        for e in self.entities.values():
+            if e.kind == kind and not e.derived:
+                cal = self.calibration_for(e)
+                sensors.append((e.id, float(cal.offset), bool(cal.include_in_average)))
+        return (float(site.smoothing_tau_s), bool(site.outlier_reject), tuple(sorted(sensors)))
+
     def compute_site(self, now: float | None = None) -> None:
         now = now if now is not None else time.time()
         site = self.config.site
@@ -329,6 +339,14 @@ class Hub:
             mean, used = robust_mean([e.value for e in inputs], limit)
             counts[kind.value] = used
             if mean is not None:
+                # Start the smoothing afresh when the settings behind it change (smoothing time,
+                # outlier rejection, which sensors count, their offsets), so a deliberate change
+                # shows at once instead of easing in over ~3x the smoothing time. Sensors going
+                # stale or coming back are readings, not settings, and stay smoothed.
+                sig = self._ema_settings(kind)
+                if self._ema_sigs.get(kind.value) != sig:
+                    self._emas.pop(kind.value, None)
+                    self._ema_sigs[kind.value] = sig
                 ema = self._emas.setdefault(kind.value, Ema(site.smoothing_tau_s))
                 ema.tau_s = site.smoothing_tau_s
                 mean = ema.update(mean, now)

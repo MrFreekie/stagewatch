@@ -130,6 +130,27 @@ def test_hub_calibration_offset_and_exclusion(hub):
     assert hub.entities["site.temperature"].value == pytest.approx(20.0)  # only b (20 after offset)
 
 
+def test_settings_change_restarts_smoothing_but_readings_stay_smoothed(hub):
+    from stagewatch.core.config import EntitySettings
+    hub.config.site.smoothing_tau_s = 300
+    t0 = time.time()
+    hub.compute_site(t0)
+    assert hub.entities["site.temperature"].value == pytest.approx(21.0)
+    # A reading change is smoothed: 10 s into a 300 s average barely moves.
+    hub.update_state("b.temperature", 32.0)
+    hub.compute_site(t0 + 10)
+    assert hub.entities["site.temperature"].value < 21.5
+    # A settings change (leave sensor a out) shows at once.
+    hub.config.entities["a.temperature"] = EntitySettings(include_in_average=False)
+    hub.compute_site(t0 + 11)
+    assert hub.entities["site.temperature"].value == pytest.approx(32.0)
+    # So does a new smoothing time.
+    hub.update_state("b.temperature", 20.0)
+    hub.config.site.smoothing_tau_s = 120
+    hub.compute_site(t0 + 12)
+    assert hub.entities["site.temperature"].value == pytest.approx(20.0)
+
+
 def test_hub_falls_back_to_altitude_without_pressure(tmp_path):
     h = Hub(tmp_path)
     h.config.site.smoothing_tau_s = 0
