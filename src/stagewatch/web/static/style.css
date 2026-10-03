@@ -30,6 +30,14 @@
     --marker-crew-ink: #111; --marker-system-ink: #fff; --marker-alarm-ink: #fff; --marker-schedule-ink: #fff; --marker-device-ink: #fff;
   }
 }
+/* Day mode chosen on this screen (Day/Night button): the same light tokens, whatever the OS says. */
+:root[data-theme="light"] {
+    --bg: #f3f5f9; --panel: #ffffff; --panel-2: #eef1f6; --text: #151a24; --muted: #5d6678;
+    --grid: #dde2ea; --accent: #1f6fd1; --on-accent: #fff; --ok: #16975c; --warn: #b7791f; --alert: #c75a12;
+    --stop: #cc2233; --marker: #d9950b; color-scheme: light;
+    --marker-crew: #d9950b; --marker-system: #6b7385; --marker-alarm: #b84e0c; --marker-schedule: #1f6fd1; --marker-device: #8a4fd6;
+    --marker-crew-ink: #111; --marker-system-ink: #fff; --marker-alarm-ink: #fff; --marker-schedule-ink: #fff; --marker-device-ink: #fff;
+  }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text);
   font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -162,6 +170,8 @@ body.layout-wall #schedule-card.sched-stale { display: none !important; }
   :root:not([data-theme="dark"]) .sched-tag.lvl-warn, :root:not([data-theme="dark"]) .sched-tag.lvl-alert { color: var(--text); }
   :root:not([data-theme="dark"]) .sched-tag.lvl-past { color: var(--panel); }
 }
+:root[data-theme="light"] .sched-tag.lvl-warn, :root[data-theme="light"] .sched-tag.lvl-alert { color: var(--text); }
+:root[data-theme="light"] .sched-tag.lvl-past { color: var(--panel); }
 .sched-more { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
 .sched-order h3, .sched-set-head { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; overflow-wrap: break-word; word-wrap: break-word; }
@@ -304,6 +314,8 @@ p.event-now { margin: 4px 0; overflow-wrap: break-word; word-wrap: break-word; }
 p.hint { font-size: 13px; line-height: 1.4; margin: 8px 0; max-width: 60ch; }
 p.warn-text button { display: block; margin-top: 8px; max-width: 100%; text-align: left; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .warn-text { color: #8a5a0f; } }
+:root[data-theme="light"] .warn-text { color: #8a5a0f; }
+button.theme-toggle { min-height: 44px; padding: 6px 12px; font-weight: 600; white-space: nowrap; }
 #software .sw-sub, dialog.sw-dialog h3.sw-sub { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; margin: 16px 0 6px; }
 #software .sw-sub:first-of-type { margin-top: 0; }
 #software button, #software select { min-height: 44px; }

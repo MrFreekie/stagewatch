@@ -122,6 +122,30 @@
     const layout = (state.dash && state.dash.layout) || "tablet";
     btn.hidden = layout === "wall" && on;
   }
+  // Day / Night: follows the device until tapped, then this screen remembers the choice.
+  const THEME_KEY = "stagewatch.theme";
+  const deviceIsLight = () => !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches);
+  const isDay = () => {
+    const t = document.documentElement.getAttribute("data-theme");
+    return t ? t === "light" : deviceIsLight();
+  };
+  function applyTheme(pick) {
+    if (pick === "day" || pick === "night") document.documentElement.setAttribute("data-theme", pick === "day" ? "light" : "dark");
+    else document.documentElement.removeAttribute("data-theme");
+    const day = isDay(), btn = $("theme-toggle");
+    btn.textContent = day ? "☾ Night" : "☀ Day";   // what a tap switches to
+    btn.setAttribute("aria-label", day ? "Switch to night mode (dark)" : "Switch to day mode (light)");
+    chart.draw();   // the chart reads its colours from the theme
+  }
+  $("theme-toggle").addEventListener("click", () => {
+    const pick = isDay() ? "night" : "day";
+    try { localStorage.setItem(THEME_KEY, pick); } catch (_) { /* not remembered; still switches */ }
+    applyTheme(pick);
+  });
+  let savedTheme = "";
+  try { savedTheme = localStorage.getItem(THEME_KEY) || ""; } catch (_) { /* private mode: follow the device */ }
+  applyTheme(savedTheme);
+
   $("sound-toggle").addEventListener("click", () => {
     if (soundWanted() && sounder.enabled) { localSet(SOUND_KEY, "off"); renderSound(); return; }
     localSet(SOUND_KEY, "on");
@@ -429,10 +453,10 @@
     if (nn.state === "over" && SW.curfewLevel(nn.secondsToCurfew) === "done") idle.over = "Finished";
 
     // NOW: title and time left, but only when the item has its own end time. Without one (it
-    // simply runs until the next item) a countdown would be guesswork: say how long it has run.
+    // simply runs until the next item) there is no countdown at all: the "Started" line is enough.
     const ownEnd = !!cur && cur.planned_end !== null && cur.planned_end !== undefined && nn.currentEnd !== null;
     setText(ui.now.title, cur ? cur.title : (idle[nn.state] || "—"));
-    setText(ui.now.count, cur ? (ownEnd ? `${SW.fmtDuration(nn.currentEnd - now, true)} left` : `on for ${SW.fmtDuration(now - cur.planned_start)}`) : "");
+    setText(ui.now.count, cur ? (ownEnd ? `${SW.fmtDuration(nn.currentEnd - now, true)} left` : "") : "");
     setText(ui.now.line, cur ? `Started ${SW.fmtTime(cur.planned_start)}, ${SW.fmtDuration(now - cur.planned_start)} ago`
       + (ownEnd ? ` · ends ${SW.fmtTime(nn.currentEnd)}` : "") : "");
     // NEXT: planned time and countdown; amber with a tag for the last 5 minutes.

@@ -260,3 +260,18 @@ def test_now_shows_time_left_only_with_its_own_end_time():
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     assert "const ownEnd = !!cur && cur.planned_end !== null && cur.planned_end !== undefined" in js
     assert "(ownEnd ? `${SW.fmtDuration(nn.currentEnd - now, true)} left`" in js
+
+
+def test_now_has_no_on_for_text():
+    # User: "on for 31 min" was too big and cluttered; without an own end time NOW shows no count.
+    js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
+    assert "on for ${" not in js
+
+
+def test_day_night_toggle_in_top_bar():
+    html = (STATIC / "dashboard.html").read_text(encoding="utf-8")
+    js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
+    css = (STATIC / "style.css").read_text(encoding="utf-8")
+    assert 'id="theme-toggle"' in html
+    assert 'const THEME_KEY = "stagewatch.theme";' in js and "localStorage.setItem(THEME_KEY" in js
+    assert ':root[data-theme="light"] {' in css   # day mode works on a device set to dark

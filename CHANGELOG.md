@@ -16,6 +16,8 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Dashboards: a **Day / Night** button in the top bar switches between the light and dark
+  look. Each screen remembers its choice; until you tap it, it follows the device's own setting.
 - Sensors card: new **Signal** and **Battery** columns for nodes that report them (for example
   the Feather node). Signal shows in dBm with "good", "fair" or "weak", in amber when weak;
   battery shows in %, in amber with "low" under 20 %. The columns only appear when a node has
@@ -136,8 +138,8 @@ them into a dated release section and tags the commit.
   calm ("Finished", "Curfew was 23:00") instead of counting hours. Once the day changes over and
   nobody has pressed Next day, tablets and phones show a small note ("Yesterday's schedule ...
   Start the next day in Admin") and the wall screen hides the card. NEXT turns amber with
-  "STARTS IN 5 MIN" for its last five minutes. An item with no end time no longer counts down "min left"; NOW
-  says how long it has been on instead.
+  "STARTS IN 5 MIN" for its last five minutes. An item with no end time no longer shows a countdown under NOW, just its
+  start time.
 - Schedule kinds: Venue Access, Load In, Crew Call, Soundcheck and Load Out join Doors, Act,
   Changeover and Curfew, and an import picks them up from titles ("Video Load In", "Matt
   Soundcheck"). An item that starts after the curfew, such as Load Out, now shows as NOW while
