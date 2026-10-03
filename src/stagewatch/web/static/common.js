@@ -382,8 +382,9 @@ SW.scheduleOrder = function (items, stage) {
 const _hasEnd = (it) => it.planned_end !== null && it.planned_end !== undefined;
 // {state, current, next, curfew, currentEnd, secondsToCurfew} at `now` (epoch s).
 // - current: the latest-starting non-curfew item with start <= now < its end. With no end it runs
-//   until the next later start, else until the curfew. Never past the curfew; curfews are never
-//   current. currentEnd is that end (null if open-ended).
+//   until the next later start, else open-ended. Cut off at the first curfew after its start; an
+//   item starting at or after a curfew (Load Out) runs normally. Curfews are never current.
+//   currentEnd is that end (null if open-ended).
 // - next: the first non-curfew item starting after now.
 // - curfew: the next curfew; once all have passed, the last one (secondsToCurfew goes negative).
 // - state: empty | before | running | between | over.
@@ -396,18 +397,21 @@ SW.scheduleNowNext = function (items, now, stage) {
   const curfew = upcoming || (curfews.length ? curfews[curfews.length - 1] : null);
   const pastCurfew = !upcoming && curfew !== null;
   let current = null, currentEnd = null;
-  if (!pastCurfew) {
-    for (let idx = 0; idx < acts.length; idx++) {
-      const it = acts[idx];
-      const start = it.planned_start;
-      if (start > now) break;
-      let end = _hasEnd(it) ? it.planned_end : null;
-      if (end === null) {
-        for (let k = idx + 1; k < acts.length; k++) if (acts[k].planned_start > start) { end = acts[k].planned_start; break; }
-        if (end === null) end = upcoming ? upcoming.planned_start : Infinity;
-      }
-      if (now < end) { current = it; currentEnd = end; }   // keep looking: a later overlapping start wins
+  for (let idx = 0; idx < acts.length; idx++) {
+    const it = acts[idx];
+    const start = it.planned_start;
+    if (start > now) break;
+    // Cut off at the first curfew after its start; an item starting at or after a curfew
+    // (typically Load Out) runs normally.
+    let cut = Infinity;
+    for (let k = 0; k < curfews.length; k++) if (curfews[k].planned_start > start) { cut = curfews[k].planned_start; break; }
+    let end = _hasEnd(it) ? it.planned_end : null;
+    if (end === null) {
+      for (let k = idx + 1; k < acts.length; k++) if (acts[k].planned_start > start) { end = acts[k].planned_start; break; }
+      if (end === null) end = Infinity;
     }
+    end = Math.min(end, cut);
+    if (now < end) { current = it; currentEnd = end; }   // keep looking: a later overlapping start wins
   }
   let next = null;
   for (let k = 0; k < acts.length; k++) if (acts[k].planned_start > now) { next = acts[k]; break; }
@@ -439,15 +443,41 @@ SW.scheduleEnds = function (ordered) {
   });
 };
 // Curfew colour level from the seconds left: "" (no curfew), "ok" above 15 min, "warn" at 15 min
-// or less, "alert" at 5 min or less, "past" once it has passed. Always shown with text too.
+// or less, "alert" at 5 min or less, "past" (red) for the first 30 min after it, then "done":
+// calm and neutral, no red. Always shown with text too.
 SW.CURFEW_WARN_S = 15 * 60;
 SW.CURFEW_ALERT_S = 5 * 60;
+SW.CURFEW_PAST_S = 30 * 60;
 SW.curfewLevel = function (seconds) {
   if (seconds === null || seconds === undefined) return "";
+  if (seconds <= -SW.CURFEW_PAST_S) return "done";
   if (seconds <= 0) return "past";
   if (seconds <= SW.CURFEW_ALERT_S) return "alert";
   if (seconds <= SW.CURFEW_WARN_S) return "warn";
   return "ok";
+};
+// NEXT turns amber (and says so) from 5 min before the next item starts: "" or "warn".
+SW.NEXT_WARN_S = 5 * 60;
+SW.nextLevel = function (seconds) {
+  if (seconds === null || seconds === undefined) return "";
+  return seconds > 0 && seconds <= SW.NEXT_WARN_S ? "warn" : "";
+};
+// The show day ("YYYY-MM-DD") that is current in site time at nowTs: before the site's
+// day_rollover you are still on the previous calendar day's show day.
+SW.siteShowDay = function (nowTs) {
+  const p = SW._siteParts(nowTs);
+  const rm = /^(\d{1,2}):(\d{2})/.exec(SW.site.day_rollover || "06:00");
+  const rollover = rm ? Number(rm[1]) * 60 + Number(rm[2]) : 360;
+  const d = new Date(Date.UTC(p.y, p.mo - 1, p.d));
+  if (p.h * 60 + p.mi < rollover) d.setUTCDate(d.getUTCDate() - 1);
+  const pad = (n) => (n < 10 ? "0" : "") + n;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+};
+// True when the schedule's day (YYYY-MM-DD) is before today's show day: the next day hasn't been
+// started. A missing or odd day is never old.
+SW.scheduleIsOld = function (day, nowTs) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || "")) return false;
+  return day < SW.siteShowDay(nowTs);
 };
 // A length of time for countdowns: "45 s", "4 min 05 s", "45 min", "1 h 05 min". Never "4:05",
 // which reads like a time of day. roundUp for time left (a countdown reaches "0 s" at the

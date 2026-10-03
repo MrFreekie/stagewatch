@@ -42,7 +42,8 @@ def _random_day(rng: random.Random, n: int) -> list[dict]:
     """Overlaps, open ends, equal starts, several curfews and stages: the awkward cases."""
     items = []
     for i in range(n):
-        kind = rng.choice(["act", "act", "act", "changeover", "doors", "other", "curfew"])
+        kind = rng.choice(["act", "act", "act", "changeover", "doors", "other", "curfew", "load_out", "load_out",
+                           "soundcheck", "venue_access", "load_in", "crew_call"])
         start = T + rng.randrange(0, 24) * 15 * M
         end = None if kind == "curfew" or rng.random() < 0.35 else start + rng.randrange(1, 8) * 15 * M
         items.append(_item(i + 1, kind, start, end, rng.choice(["", "", "Main", "main", "Second"])))
@@ -73,6 +74,14 @@ def _cases() -> list[dict]:
             if t is not None:
                 for d in (-1, 0, 1):
                     add(f"edge {it['id']} {d}", DAY_ITEMS, t + d, "Main")
+    # a Load Out after the curfew (23:00 curfew, Load Out 23:15-01:00, and an open-ended one)
+    for label, load_out_end in (("closed", T + 180 * M), ("open", None)):
+        items = [_item(1, "act", T, T + 60 * M), _item(2, "curfew", T + 120 * M),
+                 _item(3, "load_out", T + 135 * M, load_out_end)]
+        for minute in range(-10, 260, 5):
+            add(f"loadout {label} {minute}", items, T + minute * M, "")
+        for d in (-1, 0, 1):
+            add(f"loadout {label} edge {d}", items, T + 135 * M + d, "")
     rng = random.Random(20261002)
     for n in range(200):
         items = _random_day(rng, rng.randrange(1, 12))
@@ -133,15 +142,30 @@ def test_curfew_levels_are_colour_and_text():
     sched_css = "\n".join(line for line in css.splitlines() if ".sched" in line)
     assert ".sched-block.lvl-warn { border-color: var(--warn); }" in sched_css
     assert ".sched-block.lvl-alert { border-color: var(--alert); }" in sched_css
-    # red only once the curfew has passed
+    # red only for up to 30 minutes after the curfew (lvl-past); later it is calm (lvl-done)
     for line in sched_css.splitlines():
         if "var(--stop)" in line:
             assert "lvl-past" in line, line
+    assert "lvl-done" not in "\n".join(ln for ln in sched_css.splitlines() if "var(--stop)" in ln)
+    # NEXT: amber with text for the last 5 minutes
+    assert '"STARTS IN 5 MIN"' in js
+    assert 'lvl-${nlvl}' in js
     # wall: large enough for 5 m; phone: the strip expands
     assert "body.layout-wall .sched-count { font-size: 64px; }" in css
     assert "body.layout-wall .sched-more { display: none; }" in css
     assert "body.layout-phone #schedule-card.sched-open .sched-body { display: block; }" in css
     assert '"aria-expanded"' in js
+
+
+def test_old_schedule_note_and_wall_hiding():
+    js = _js("dashboard.js")
+    css = (STATIC / "style.css").read_text(encoding="utf-8")
+    assert "Yesterday's schedule (${SW.fmtDay(scheduleDay())}). Start the next day in Admin." in js
+    assert 'classList.toggle("sched-stale", old)' in js
+    # wall: the whole card goes; tablet and phone: only the note stays
+    assert "body.layout-wall #schedule-card.sched-stale { display: none !important; }" in css
+    assert "#schedule-card.sched-stale .sched-body, #schedule-card.sched-stale .sched-strip { display: none !important; }" in css
+    assert '"Curfew was ' in js.replace("`Curfew was", '"Curfew was') and '"Finished"' in js
 
 
 def test_admin_schedule_editor_rules():

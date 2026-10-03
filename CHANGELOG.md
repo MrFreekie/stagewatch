@@ -121,6 +121,15 @@ them into a dated release section and tags the commit.
   key on every node to stop other devices pretending to be yours.
 
 ### Changed
+- Schedule card after the show: the red "PAST CURFEW" now lasts 30 minutes, then the card goes
+  calm ("Finished", "Curfew was 23:00") instead of counting hours. Once the day changes over and
+  nobody has pressed Next day, tablets and phones show a small note ("Yesterday's schedule ...
+  Start the next day in Admin") and the wall screen hides the card. NEXT turns amber with
+  "STARTS IN 5 MIN" for its last five minutes.
+- Schedule kinds: Venue Access, Load In, Crew Call, Soundcheck and Load Out join Doors, Act,
+  Changeover and Curfew, and an import picks them up from titles ("Video Load In", "Matt
+  Soundcheck"). An item that starts after the curfew, such as Load Out, now shows as NOW while
+  it runs instead of the card saying the show is over.
 - Wall screen: the CURFEW block is wider, so "1 h 24 min ago" no longer wraps, and chart marker
   labels are larger. On touch screens marker tabs are taller and easier to tap. In the running
   order, finished items are easier to read.

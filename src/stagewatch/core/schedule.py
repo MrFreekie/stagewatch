@@ -55,7 +55,9 @@ from . import sitetime
 
 log = logging.getLogger(__name__)
 
-KINDS: tuple[str, ...] = ("doors", "act", "changeover", "curfew", "other")
+# In logical running order (the order the admin page lists them).
+KINDS: tuple[str, ...] = ("venue_access", "load_in", "crew_call", "soundcheck", "doors", "act",
+                          "changeover", "curfew", "load_out", "other")
 MAX_ITEMS = 300
 TITLE_MAX = 120                       # characters
 STAGE_MAX = 40                        # characters (same as Dashboard.stage)
@@ -76,7 +78,8 @@ MSG_TITLE_LEN = f"Titles must be 1 to {TITLE_MAX} characters"
 MSG_TITLE_HIDDEN = "Titles can't contain hidden or control characters, line breaks or stacked accent marks"
 MSG_STAGE_LEN = f"Stage names can be up to {STAGE_MAX} characters"
 MSG_STAGE_HIDDEN = "Stage names can't contain hidden or control characters, line breaks or stacked accent marks"
-MSG_KIND = "Kind must be doors, act, changeover, curfew or other"
+MSG_KIND = ("Kind must be venue access, load in, crew call, soundcheck, doors, act, changeover, "
+            "curfew, load out or other")
 MSG_SETLIST_LEN = "Each setlist can be up to 8 KB"
 MSG_SETLIST_HIDDEN = "Setlists can't contain hidden or control characters (new lines are fine)"
 MSG_SETLIST_TOTAL = "All the setlists together can be up to 256 KB"
@@ -186,7 +189,8 @@ def clean_date(v: Any) -> str | None:
 
 
 def infer_kind(title: str, default: str = "act") -> str:
-    """Doors / curfew / changeover from the title's first word, otherwise ``default``."""
+    """Changeover / doors / curfew from the title's first word, then venue access, load in, load
+    out, crew call and soundcheck as whole words anywhere in it, otherwise ``default``."""
     t = title.strip().casefold()
     if re.match(r"^(change[\s-]?over|c/o)\b", t):
         return "changeover"
@@ -195,7 +199,22 @@ def infer_kind(title: str, default: str = "act") -> str:
         return "doors"
     if first == "curfew":
         return "curfew"
+    for kind, pattern in _KIND_WORDS:
+        if pattern.search(t):
+            return kind
     return default
+
+
+# Whole-word phrases anywhere in a title (checked in this order; the first match wins).
+_KIND_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (kind, re.compile(rf"(?<![a-z0-9])(?:{words})(?![a-z0-9])"))
+    for kind, words in (
+        ("venue_access", r"venue[\s-]+access"),
+        ("load_in", r"load[\s-]+in|get[\s-]+in"),
+        ("load_out", r"load[\s-]+out|get[\s-]+out"),
+        ("crew_call", r"crew[\s-]+call"),
+        ("soundcheck", r"sound[\s-]?check"),
+    ))
 
 
 def stage_matches(item_stage: str, dash_stage: str | None) -> bool:
@@ -334,7 +353,8 @@ def now_next(items: list[dict], now: float, stage: str | None = None) -> dict:
     """NOW / NEXT / CURFEW for one dashboard at ``now``.
 
     * ``current``: the latest-starting non-curfew item with start <= now < its end (or, with no
-      end, the next later item's start, else the curfew). Never past the curfew.
+      end, the next later item's start, else open-ended). Cut off at the first curfew after its
+      start; an item starting at or after a curfew (Load Out) runs normally.
     * ``next``: the first non-curfew item starting after ``now``.
     * ``curfew``: the next curfew item; once all have passed, the last one (so the dashboard can
       say "past curfew"). ``seconds_to_curfew`` is negative after it.
@@ -348,17 +368,20 @@ def now_next(items: list[dict], now: float, stage: str | None = None) -> dict:
     past_curfew = upcoming_curfew is None and curfew is not None
 
     current = None
-    if not past_curfew:
-        for idx, it in enumerate(acts):
-            start = it["planned_start"]
-            if start > now:
-                break
-            end = it.get("planned_end")
-            if end is None:
-                later = next((a["planned_start"] for a in acts[idx + 1:] if a["planned_start"] > start), None)
-                end = later if later is not None else (upcoming_curfew["planned_start"] if upcoming_curfew else math.inf)
-            if now < end:
-                current = it  # keep looking: a later-starting overlapping item wins
+    for idx, it in enumerate(acts):
+        start = it["planned_start"]
+        if start > now:
+            break
+        # An item is cut off at the first curfew after its start; one that starts at or after a
+        # curfew (typically Load Out) runs normally.
+        cut = next((c["planned_start"] for c in curfews if c["planned_start"] > start), math.inf)
+        end = it.get("planned_end")
+        if end is None:
+            later = next((a["planned_start"] for a in acts[idx + 1:] if a["planned_start"] > start), None)
+            end = later if later is not None else math.inf
+        end = min(end, cut)
+        if now < end:
+            current = it  # keep looking: a later-starting overlapping item wins
     nxt = next((a for a in acts if a["planned_start"] > now), None)
 
     if not mine:
