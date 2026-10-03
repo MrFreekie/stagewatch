@@ -272,6 +272,43 @@ def test_now_next_edges():
     assert sched.stage_matches("", "Main") and sched.stage_matches("Main", "") and not sched.stage_matches("Main", "B")
 
 
+def test_load_out_after_the_curfew_runs_normally():
+    """Curfew 23:00, Load Out 23:15-01:00: NOW is the Load Out at 23:30 and 00:30; over at 01:05."""
+    c = T
+    items = [_item(1, "Headliner", "act", c - 90 * M, c - 10 * M), _item(2, "Curfew", "curfew", c),
+             _item(3, "Load Out", "load_out", c + 15 * M, c + 120 * M)]
+
+    def at(m):
+        nn = sched.now_next(items, c + m * M, "")
+        return nn["state"], nn["current"]["id"] if nn["current"] else None, nn["next"]["id"] if nn["next"] else None
+
+    assert at(-5) == ("between", None, 3)
+    assert at(10) == ("between", None, 3)
+    assert at(30) == ("running", 3, None)
+    assert at(90) == ("running", 3, None)
+    assert at(125) == ("over", None, None)
+    # open-ended: runs on; an act that starts before the curfew is still cut off at it
+    items[2]["planned_end"] = None
+    assert at(600)[:2] == ("running", 3)
+    assert sched.now_next(items, c - 5 * M, "")["current"] is None
+
+
+def test_new_kinds_and_inferring_them_from_titles():
+    assert sched.KINDS == ("venue_access", "load_in", "crew_call", "soundcheck", "doors", "act",
+                           "changeover", "curfew", "load_out", "other")
+    for k in ("venue access", "load in", "crew call", "soundcheck", "load out"):
+        assert k in sched.MSG_KIND
+    for title, kind in [
+        ("PA Load In - Rigger Call", "load_in"), ("Video Load In", "load_in"), ("Get-in", "load_in"),
+        ("LOAD-OUT", "load_out"), ("Get out", "load_out"), ("Matt Soundcheck", "soundcheck"),
+        ("Sound check", "soundcheck"), ("Crew Call", "crew_call"), ("Venue access for trucks", "venue_access"),
+        ("Pre-Roll", "act"), ("doors", "doors"), ("Doors 19:00", "doors"), ("Curfew", "curfew"),
+        ("Changeover", "changeover"), ("Changeover and load in", "changeover"),
+        ("Download", "act"), ("Upload in progress", "act"), ("Reload Intro", "act"),
+    ]:
+        assert sched.infer_kind(title) == kind, title
+
+
 # =================================================================== rebase
 def test_rebase_across_the_london_dst_change():
     """Fri 23 Oct -> Sat 24 Oct 2026: the night of 24/25 Oct has the clocks going back."""

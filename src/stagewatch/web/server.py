@@ -342,7 +342,8 @@ class ScheduleItemBody(BaseModel):
     id: int | None = Field(None, ge=1, le=2**53)
     date: str | None = Field(None, max_length=10)
     stage: str = Field("", max_length=400)
-    kind: Literal["doors", "act", "changeover", "curfew", "other"] = "other"
+    kind: Literal["venue_access", "load_in", "crew_call", "soundcheck", "doors", "act", "changeover",
+                  "curfew", "load_out", "other"] = "other"
     title: str = Field(max_length=1000)
     start: str = Field(max_length=5)
     end: str = Field("", max_length=5)

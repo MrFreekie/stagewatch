@@ -108,7 +108,53 @@ eq(SW.curfewLevel(5 * M + 1), "warn", "just over 5 min");
 eq(SW.curfewLevel(5 * M), "alert", "T-5");
 eq(SW.curfewLevel(1), "alert", "last second");
 eq(SW.curfewLevel(0), "past", "curfew reached");
-eq(SW.curfewLevel(-3600), "past", "an hour past");
+eq(SW.curfewLevel(-29 * M), "past", "+29 min is still red");
+eq(SW.curfewLevel(-30 * M + 1), "past", "just under +30 min");
+eq(SW.curfewLevel(-31 * M), "done", "+31 min is calm");
+eq(SW.curfewLevel(-3600), "done", "an hour past is calm");
+
+// ---- a Load Out after the curfew keeps running (curfew 23:00, Load Out 23:15-01:00)
+{
+  const c = T + 600 * M;
+  const LO = [item(1, "Headliner", "act", c - 90 * M, c - 10 * M), item(2, "Curfew", "curfew", c),
+    item(3, "Load Out", "load_out", c + 15 * M, c + 120 * M)];
+  const st = (m) => { const r = SW.scheduleNowNext(LO, c + m * M, ""); return [r.state, r.current ? r.current.id : null, r.next ? r.next.id : null]; };
+  eq(st(-5), ["between", null, 3], "before curfew, Load Out is next");
+  eq(st(10), ["between", null, 3], "after curfew, before Load Out");
+  eq(st(30), ["running", 3, null], "23:30 NOW Load Out");
+  eq(st(90), ["running", 3, null], "00:30 NOW Load Out");
+  eq(st(125), ["over", null, null], "01:05 over (the dashboard says Finished)");
+  eq(SW.curfewLevel(-30 * M), "done", "curfew calm while Load Out runs");
+  const open = [LO[0], LO[1], item(3, "Load Out", "load_out", c + 15 * M)];
+  eq(SW.scheduleNowNext(open, c + 600 * M, "").state, "running", "open-ended Load Out runs on");
+}
+
+// ---- NEXT amber in its last 5 minutes
+eq(SW.nextLevel(null), "", "no next");
+eq(SW.nextLevel(5 * M + 1), "", "T-5:01 neutral");
+eq(SW.nextLevel(5 * M), "warn", "T-5:00 amber");
+eq(SW.nextLevel(1), "warn", "last second");
+
+// ---- show day and the old-schedule check, 06:00 rollover, curfew 23:00 (site UTC+1, no zone name)
+SW.setSiteTime({ timezone: "", utc_offset_s: 3600, day_rollover: "06:00" });
+const at = (y, mo, d, h, mi) => Date.UTC(y, mo - 1, d, h, mi) / 1000 - 3600;   // site wall clock -> epoch
+const cf = at(2026, 10, 2, 23, 0);
+eq(SW.curfewLevel(cf - at(2026, 10, 2, 23, 29)), "past", "23:29 red");
+eq(SW.curfewLevel(cf - at(2026, 10, 2, 23, 31)), "done", "23:31 calm");
+eq(SW.siteShowDay(at(2026, 10, 3, 5, 59)), "2026-10-02", "05:59 is still the previous show day");
+eq(SW.siteShowDay(at(2026, 10, 3, 6, 0)), "2026-10-03", "06:00 is the new show day");
+eq(SW.siteShowDay(at(2026, 10, 2, 23, 30)), "2026-10-02", "evening is today");
+eq(SW.siteShowDay(at(2026, 3, 1, 2, 0)), "2026-02-28", "month boundary");
+eq(SW.scheduleIsOld("2026-10-02", at(2026, 10, 3, 5, 59)), false, "before the rollover: yesterday's day is current");
+eq(SW.scheduleIsOld("2026-10-02", at(2026, 10, 3, 6, 0)), true, "at the rollover: old");
+eq(SW.scheduleIsOld("2026-10-02", at(2026, 10, 3, 8, 45)), true, "08:45 the morning after");
+eq(SW.scheduleIsOld("2026-10-03", at(2026, 10, 3, 8, 45)), false, "today's schedule");
+eq(SW.scheduleIsOld("2026-10-04", at(2026, 10, 3, 8, 45)), false, "a future day is not old");
+eq(SW.scheduleIsOld("", at(2026, 10, 3, 8, 45)), false, "no day");
+SW.setSiteTime({ timezone: "", utc_offset_s: 3600, day_rollover: "04:30" });
+eq(SW.siteShowDay(at(2026, 10, 3, 4, 29)), "2026-10-02", "04:30 rollover, just before");
+eq(SW.siteShowDay(at(2026, 10, 3, 4, 30)), "2026-10-03", "04:30 rollover, at it");
+SW.setSiteTime({ timezone: "", utc_offset_s: null, day_rollover: "06:00" });
 
 // ---- countdown text: never "4:05" (reads like a time of day)
 eq(SW.fmtDuration(0, true), "0 s", "zero");
