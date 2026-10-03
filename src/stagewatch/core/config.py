@@ -106,6 +106,9 @@ class SiteConfig(_Model):
     outlier_reject: bool = True
     timezone: str = ""          # "" = not set: use this computer's zone
     day_rollover: str = "06:00"  # a show day runs from this time to the same time next morning
+    # "Add markers from the schedule" (schedule page): a marker at doors, soundchecks and act
+    # changes as they happen. Additive with a default: no config schema bump.
+    schedule_auto_markers: bool = True
 
     @field_validator("timezone")
     @classmethod

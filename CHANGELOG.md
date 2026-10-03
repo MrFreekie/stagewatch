@@ -16,6 +16,24 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Markers: you can add a **note** to any marker, to say what happened or what was changed.
+  Tap a marker, then **Add note** or **Edit note** under the drift panel. Notes are plain text,
+  new lines are fine, up to 1,000 characters. Every open screen shows the change straight away.
+- Markers: **Hide** takes a marker off the chart and out of the list. It stays in the history,
+  the drift numbers and reports. Tick **Show hidden (n)** under the marker list to see hidden
+  markers (dimmed), and tap **Un-hide** to put one back. Any dashboard allowed to add markers can
+  write notes and hide or un-hide any marker. Deleting a marker still needs the admin PIN.
+- Alarms: when someone taps **Acknowledge**, the alarm's **ALARM:** marker is hidden, so the
+  chart doesn't fill up with alarms already dealt with. An alarm that clears by itself keeps its
+  marker on the chart.
+- Schedule: Stagewatch now puts a blue ◆ marker on the chart at each soundcheck, at doors, and
+  when each act goes on stage and comes off ("Kestrel Road on stage"). Off stage only appears if
+  the act has an end time or the curfew cuts it off. Markers sit at the planned times. Each line
+  in the schedule editor has a **Marker** tick box (ticked for soundcheck, doors and act lines)
+  to leave a line out or add one, and **Add markers from the schedule** at the top of the page
+  switches them all off. Saving again or restarting never adds the same marker twice. If
+  Stagewatch was off when a moment passed, it adds the marker when it starts again (current day
+  only).
 - Dashboards: a **Day / Night** button in the top bar switches between the light and dark
   look. Each screen remembers its choice; until you tap it, it follows the device's own setting.
 - Sensors card: new **Signal** and **Battery** columns for nodes that report them (for example
@@ -168,13 +186,15 @@ them into a dated release section and tags the commit.
 - Windows install guide: a new step suggests turning off Fast Startup on show PCs, so a normal
   shut down is recorded as "the computer restarted or lost power" rather than an unexpected stop.
 - Saved data: this update converts your settings and show history to a new format, ready for
-  events, show days, running orders and the Wall Clock. Stagewatch takes a backup automatically
+  events, show days, running orders, the Wall Clock, marker notes, hidden markers and schedule
+  markers. If you already run a test build from before marker notes, its show history is
+  converted once more, the same safe way. Stagewatch takes a backup automatically
   before it updates. Going back to the older version (**Admin → Software → Roll back…**) restores
   that backup, so your data is exactly as it was before the update. Anything recorded after the
   update is set aside in the backups folder, not deleted. The conversion takes a few seconds, even
   with a long history.
 - If you run Stagewatch from a downloaded copy (not installed), it saves a safety copy of your show
-  history as `stagewatch.sqlite3.pre-v2.bak` in your data folder before converting it. It keeps
+  history as `stagewatch.sqlite3.pre-v3.bak` in your data folder before converting it. It keeps
   only the two newest of these copies and deletes older ones. You can delete them once you are
   happy with the new version.
 - Show history: all your existing shows are kept and grouped into one event called "Event 1".

@@ -36,6 +36,8 @@ def test_parse_schema_versions():
     assert up.parse_schema_versions(None) == (None, None)
     assert up.schema_changed((1, 1), (1, 1)) is False
     assert up.schema_changed((1, 1), (1, 2)) is True
+    assert up.schema_changed((2, 2), (2, 3)) is True  # 0.3.x -> DB v3 (marker notes): back up first
+    assert up.schema_changed((2, 3), (2, 3)) is False
     assert up.schema_changed((1, 1), (None, None)) is True  # cannot tell -> back up
     assert up.schema_changed((None, None), (None, None)) is False
 

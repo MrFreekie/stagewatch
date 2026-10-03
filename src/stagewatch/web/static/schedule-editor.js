@@ -33,10 +33,23 @@
   };
   const kb = (n) => `${SW.num(n / 1024, n % 1024 ? 1 : 0)} KB`;
   const utf8 = (s) => (typeof TextEncoder === "function" ? new TextEncoder().encode(s).length : s.length);
+  // Timeline markers: each row's "Marker" box starts ticked for the kinds the server names
+  // (soundcheck, doors, act). `markerSet` is true once the box differs from its kind's default or
+  // has been clicked; until then a kind change moves the box with it, and Save sends null ("the
+  // kind's default") rather than a fixed choice.
+  const markerKinds = () => (admin && admin.schedule_limits && Array.isArray(admin.schedule_limits.marker_kinds)
+    ? admin.schedule_limits.marker_kinds : SW.SCHEDULE_MARKER_KINDS);
+  const markerDefault = (kind) => SW.scheduleMarkerDefault(kind, markerKinds());
   // Existing items keep `id` and `date` (the calendar date of their start, which the server needs
   // back unchanged so after-midnight items stay put). New rows have neither.
-  const sdRow = (it) => ({ key: ++sdKey, id: it.id || null, date: it.date || "", kind: it.kind || "act",
-    title: it.title || "", start: it.start || "", end: it.end || "", stage: it.stage || "", setlist: it.setlist || "" });
+  const sdRow = (it) => {
+    const kind = it.kind || "act";
+    const def = markerDefault(kind);
+    const has = typeof it.marker === "boolean";
+    return { key: ++sdKey, id: it.id || null, date: it.date || "", kind: kind,
+      title: it.title || "", start: it.start || "", end: it.end || "", stage: it.stage || "", setlist: it.setlist || "",
+      marker: has ? it.marker : def, markerSet: has && it.marker !== def };
+  };
   function sdFromServer(s) {
     sd = { showId: s.show_id, revision: s.revision, day: s.day, rows: (s.items || []).map(sdRow), dirty: false,
       errors: {}, cardErrors: [], conflict: "", changedElsewhere: false };
@@ -87,7 +100,8 @@
       return false;
     }
     const body = { show_id: sd.showId, revision: sd.revision, items: sd.rows.map((r) => {
-      const o = { kind: r.kind, title: r.title.trim(), start: r.start.trim(), end: r.end.trim(), stage: r.stage.trim(), setlist: r.setlist };
+      const o = { kind: r.kind, title: r.title.trim(), start: r.start.trim(), end: r.end.trim(), stage: r.stage.trim(), setlist: r.setlist,
+        marker: r.markerSet ? !!r.marker : null };
       if (r.id) o.id = r.id;
       if (r.date) o.date = r.date;
       return o;
@@ -179,7 +193,14 @@
     const on = (field) => (ev) => { r[field] = ev.target.value; sdTouch(); };
     const timeInput = (field, ph) => h("input", { class: "num touch" + (errs[field] ? " invalid" : ""), value: r[field], placeholder: ph,
       maxlength: 5, inputmode: "numeric", autocomplete: "off", "aria-label": field === "start" ? "Start (HH:MM)" : "End (HH:MM, optional)", oninput: on(field) });
-    const kind = h("select", { class: "touch", "aria-label": "Kind", onchange: on("kind") }, schedKinds().map(([v, l]) => h("option", { value: v }, l)));
+    // Marker: a tick box, at least 44 px to tap. An untouched box follows the kind.
+    const mark = h("input", { type: "checkbox", checked: !!r.marker, "aria-label": `Add a timeline marker for item ${i + 1}`,
+      onchange: (ev) => { r.marker = !!ev.target.checked; r.markerSet = true; sdTouch(); } });
+    const kind = h("select", { class: "touch", "aria-label": "Kind", onchange: (ev) => {
+      r.kind = ev.target.value;
+      if (!r.markerSet) { r.marker = markerDefault(r.kind); mark.checked = r.marker; }
+      sdTouch();
+    } }, schedKinds().map(([v, l]) => h("option", { value: v }, l)));
     kind.value = r.kind;
     const title = h("input", { class: "touch" + (errs.title ? " invalid" : ""), value: r.title, maxlength: lim.title_max || 120, placeholder: "e.g. Support: Band name",
       "aria-label": "Title", oninput: on("title") });
@@ -221,6 +242,8 @@
         h("label", { class: "field" }, "Kind", kind),
         h("label", { class: "field sched-edit-title" }, "Title", title),
         h("label", { class: "field" }, "Stage", stage),
+        h("label", { class: "field sched-edit-marker", title: "Put a marker on the chart when this happens" }, "Marker",
+          h("span", { class: "sched-edit-marker-box" }, mark)),
         h("div", { class: "row sched-edit-btns" }, setBtn,
           h("button", { type: "button", class: "touch", "data-move": `${r.key}-up`, "aria-label": `Move item ${i + 1} up`, title: "Move up", disabled: i === 0, onclick: () => moveRow(i, -1) }, "▲"),
           h("button", { type: "button", class: "touch", "data-move": `${r.key}-down`, "aria-label": `Move item ${i + 1} down`, title: "Move down", disabled: i === total - 1, onclick: () => moveRow(i, 1) }, "▼"),
@@ -352,12 +375,31 @@
       imp.error ? h("p", { class: "error", role: "alert" }, imp.error) : null,
       previewEl);
 
+    // Schedule-wide switch for the timeline markers (saved at once, separately from the list).
+    const site = (admin.config && admin.config.site) || {};
+    const autoBox = h("input", { type: "checkbox", checked: site.schedule_auto_markers !== false, onchange: async (ev) => {
+      const on = !!ev.target.checked;
+      ev.target.disabled = true;
+      try {
+        const r = await api("PUT", "/api/admin/schedule/settings", { auto_markers: on });
+        if (admin.config && admin.config.site) admin.config.site.schedule_auto_markers = r.auto_markers;
+        toast(r.auto_markers ? "Markers from the schedule: on" : "Markers from the schedule: off. Nothing new is added to the chart.");
+      } catch (err) {
+        ev.target.checked = !on;
+        toast(`${err.message} Nothing has been changed.`, true);
+      } finally { ev.target.disabled = false; }
+    } });
+    const autoMarkers = h("div", { class: "sched-auto-markers" },
+      h("label", { class: "sched-auto-label" }, autoBox, h("span", {}, "Add markers from the schedule")),
+      h("p", { class: "muted hint" }, "Puts a marker on the chart at each soundcheck, at doors, and when each act goes on and comes off stage (off stage only if the act has an end time or a curfew cuts it off). Untick Marker on a line to leave it out, or tick it on any other line. Markers come at the planned times."));
+
     const stages = admin.stages || [];
     return el(
       h("p", { class: "muted hint" }, `The running order for ${show.name || "this show day"}${sd.day ? `, ${SW.fmtDay(sd.day)}` : ""}. Times are 24-hour, in site time. Times before ${rollover} count as the next morning, so 23:00 to 00:30 works. Leave Stage empty for items that apply to every stage.`),
       h("p", { class: "muted hint" }, "Visible to anyone on the show network."),
       h("p", { class: "muted hint" }, `${sd.rows.length} of ${lim.max_items || 300} items. Titles up to ${lim.title_max || 120} characters. Setlists up to ${kb(lim.setlist_max_bytes || 8192)} each, ${kb(lim.setlist_total_max_bytes || 262144)} in total. Dashboards list items by start time: ▲ and ▼ only matter for items that start at the same time.`),
       h("datalist", { id: "sched-stage-list" }, stages.map((s) => h("option", { value: s }))),
+      autoMarkers,
       notices,
       list,
       h("div", { class: "row", style: "margin-top:10px" },

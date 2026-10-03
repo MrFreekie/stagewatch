@@ -23,6 +23,9 @@ def test_build_info():
     info = build_info()
     assert info["version"] == stagewatch.__version__
     assert info["config_schema"] == CONFIG_SCHEMA_VERSION
+    # DB v3: marker notes and hiding, schedule markers. The config stays at 2 (new settings there
+    # are additive with defaults).
+    assert info["db_schema"] == DB_SCHEMA_VERSION == 3 and CONFIG_SCHEMA_VERSION == 2
 
 
 def test_schema_versions_written(tmp_path):

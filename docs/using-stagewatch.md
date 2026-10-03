@@ -145,6 +145,47 @@ Stagewatch does **not** change any of your processors. It only tells you.
 
 The **History** graph shows markers as vertical lines. Tap a line to select it.
 
+### Add a note to a marker
+
+A note says what happened at a marker, for example "Delays re-timed after the rain. Subs
+unchanged." Anyone on a dashboard that can add markers can write or change a note on **any**
+marker.
+
+1. Tap the marker in the list. The drift panel opens.
+2. Under it, find **Note**. Tap **Add note** (or **Edit note** if it already has one).
+3. Type the note. New lines are fine. It can be up to 1,000 characters.
+4. Tap **Save**. To leave it as it was, tap **Cancel**.
+
+**What you should see:** "Note saved", and the note under the drift panel. In the list, the
+marker shows **✎ note**. Every open screen shows the new note within a second or two.
+
+### Hide a marker
+
+Hiding takes a marker off the chart and out of the list, to keep a busy day readable. Nothing is
+lost: it stays in the history, the drift numbers still work from it, and reports still include
+it. Only a person with the admin PIN can delete a marker.
+
+1. Tap the marker in the list.
+2. Under **Note**, tap **Hide**.
+
+**To find it again:** under the marker list, tick **Show hidden (2)** (the number is how many
+are hidden). Hidden markers show dimmed, marked **Hidden**. Tap **Un-hide** to put one back on
+the chart.
+
+### Markers Stagewatch adds by itself
+
+Some markers appear without anyone adding them. Each kind has its own colour and shape on the
+chart and in the list:
+
+- **ALARM: …** (orange ▲): an **Alert** or **Stop** alarm started. When someone taps
+  **Acknowledge**, Stagewatch hides that alarm's marker, so the chart doesn't fill up with
+  alarms already dealt with. Tick **Show hidden** to see them. An alarm that clears by itself,
+  without anyone acknowledging it, keeps its marker on the chart.
+- **Schedule markers** (blue ◆): if the day has a schedule, Stagewatch adds a marker at each
+  soundcheck, at doors, and when each act goes on and comes off stage, for example
+  "Headliner: Kestrel Road on stage". See [Markers from the schedule](#markers-from-the-schedule).
+- **Stagewatch notes** (grey ■): for example "Stagewatch was off for about 25 min".
+
 ---
 
 ## What the alarm colours mean
@@ -173,6 +214,8 @@ An alarm shows up for two reasons:
   acknowledge (FOH by default). The alarm stays on screen, marked **(acknowledged)**, until
   the problem clears. Acknowledging does **not** fix anything.
 - **Alert** and **Stop** alarms also drop a marker on the timeline that starts with **ALARM:**.
+  **Acknowledge** hides that marker (it stays in the history: tick **Show hidden** under the
+  marker list to see it). If the alarm clears by itself, its marker stays on the chart.
 
 ### The sound button
 
@@ -251,7 +294,7 @@ There is only the "node offline" alarm.
 Changes only stick after you click that card's **Save** button.
 
 Only a person with the admin PIN can delete a marker (the **✕** appears next to markers
-when logged in).
+when logged in). Notes, **Hide** and **Un-hide** work on any dashboard that can add markers.
 
 ### Start a new day or a new event
 
@@ -316,6 +359,40 @@ Then add the rest. **Load demo day** fills in an example around the current time
 **If it didn't work:** if someone else changed the schedule while you were editing, Stagewatch
 says so and keeps what you typed. Click **Reload** to see their version. See
 [Troubleshooting](troubleshooting.md).
+
+### Markers from the schedule
+
+With **Add markers from the schedule** ticked (at the top of the schedule page, on by default),
+Stagewatch puts a blue ◆ marker on the chart as each moment of the running order arrives:
+
+| Line in the schedule | Marker | When |
+|---|---|---|
+| Soundcheck "Headliner" | **Soundcheck: Headliner** (just the title if it already says soundcheck) | its start |
+| Doors | **Doors** | its start |
+| Act "Kestrel Road" | **Kestrel Road on stage** | its start |
+| Act "Kestrel Road" | **Kestrel Road off stage** | its end, only if the act has an end time or the curfew cuts it off |
+
+If a line has a stage, the stage follows in brackets: "Doors (Main stage)". Markers are placed at
+the **planned** times, not when someone presses a button.
+
+**Choose which lines add markers:** each line has a **Marker** tick box. It starts ticked for
+soundcheck, doors and act lines, and unticked for everything else. Untick it to leave a line
+out, or tick it on any other line (a changeover, for example) to get a marker with that line's
+title at its start. If you haven't touched the box, changing the line's kind changes it too.
+Click **Save schedule** to keep your choices. To stop all schedule markers, untick **Add
+markers from the schedule**. That saves straight away.
+
+Good to know:
+
+- Each moment gets one marker, once. Saving the schedule again, or restarting Stagewatch, never
+  adds a second one.
+- If you move a line's time **before** it happens, the marker comes at the new time. Markers
+  already on the chart stay where they are.
+- If Stagewatch was off when a moment passed, it adds that marker when it starts again, at the
+  planned time. This only happens for the current day.
+- A moment that passes while its marker is switched off gets no marker, even if you switch it on
+  afterwards.
+- Schedule markers can be hidden, given notes or deleted like any other marker.
 
 ### Choose the cards on a dashboard
 
