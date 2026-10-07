@@ -22,6 +22,7 @@ from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
 from .recorder import REASON_POWER_OR_RESTART, Recorder
 from .schedule import DemoDoesNotFit, ScheduleMarkers, ScheduleService
+from .wallclock import WallClockService
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ class Hub:
         self.alarms = AlarmEngine()
         self.schedule = ScheduleService(self)
         self.schedule_markers = ScheduleMarkers(self)
+        self.wall_clock = WallClockService(self)  # runs a clock source only while a dashboard has the card
         # Active alarm id -> the marker it added, hidden again if the alarm is acknowledged.
         self._alarm_markers: dict[str, int] = {}
         self._site_before = None  # the site settings just replaced (set_site), for the rebase
@@ -140,6 +142,7 @@ class Hub:
                 await integration.start()
             except Exception:
                 log.exception("Integration %s failed to start", integration.manifest.domain)
+        await self.wall_clock.start()
         self._tasks = [
             asyncio.create_task(self._periodic(1.0, self.tick), name="hub-tick"),
             asyncio.create_task(self._periodic(2.0, self.recorder.flush), name="hub-flush"),
@@ -149,6 +152,7 @@ class Hub:
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
+        await self.wall_clock.stop()
         for integration in self.integrations.values():
             try:
                 await integration.stop()
@@ -597,6 +601,7 @@ class Hub:
                      "time": self.site_time(now)},
             "show": self.show_info(),
             "schedule": self.schedule_snapshot(),
+            "wall_clock": self.wall_clock.snapshot(),  # None while no dashboard has the card
             "devices": [d.to_dict() for d in self.devices.values()],
             "entities": [e.to_dict(now, stale_after) for e in self.entities.values()],
             "markers": [m.to_dict() for m in self.recorder.markers()],

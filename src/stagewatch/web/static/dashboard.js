@@ -163,7 +163,7 @@
   }
 
   function sensorDevices() {
-    return Object.values(state.devices).filter((d) => d.id !== "site")
+    return Object.values(state.devices).filter((d) => d.id !== "site" && d.category !== "service")
       .sort((a, b) => (a.area || a.name).localeCompare(b.area || b.name));
   }
 
@@ -617,6 +617,78 @@
     }
   }
 
+  // --------------------------------------------------------- wall clock
+  // The time of day from Ontime, shown as received (no zone conversion), with a note when it
+  // differs from Stagewatch's own time. The server sends a "wall_clock" message about once a
+  // second; the digits are advanced locally from the server-corrected clock between messages. A
+  // reading older than 3 s is shown dimmed and says so, never as if it were live. The timer runs
+  // only while the card is on this dashboard. Nothing here sounds or raises an alarm.
+  const wc = { timer: null, ui: null };
+  const WC_STALE_S = 3;
+  const pad2 = (n) => (n < 10 ? "0" : "") + n;
+  const clockText = (ms) => {
+    const s = Math.floor((((ms % 86400000) + 86400000) % 86400000) / 1000);
+    return `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor(s / 60) % 60)}:${pad2(s % 60)}`;
+  };
+  const wholeHours = (off) => Math.abs(off) >= 1800 && Math.abs(Math.abs(off) - Math.round(Math.abs(off) / 3600) * 3600) < 5;
+  // "+3.2 s", "+2 min 5 s", or (whole hours) "+1 h".
+  function wcOffsetText(off) {
+    const a = Math.abs(off);
+    if (a < 60) return `${SW.signed(off, 1)} s`;
+    const sign = off < 0 ? "-" : "+";
+    if (wholeHours(off)) return `${sign}${Math.round(a / 3600)} h`;
+    return `${sign}${Math.floor(a / 60)} min ${Math.round(a % 60)} s`;
+  }
+  function stopWallClockTimer() { if (wc.timer) { clearInterval(wc.timer); wc.timer = null; } }
+
+  function renderWallClock() {
+    const card = $("wall-clock-card");
+    const m = state.wallClock;
+    if (!has("wall_clock") || !m) {
+      stopWallClockTimer();
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    if (!wc.ui) {
+      wc.ui = { head: card.querySelector("h2"), time: h("div", { class: "wc-time", "data-live": "" }), note: h("p", { class: "wc-note", role: "status" }) };
+      card.replaceChildren(wc.ui.head, wc.ui.time, wc.ui.note);
+    }
+    wc.ui.head.textContent = `Wall Clock · ${m.label || "Ontime"}`;
+    tickWallClock();
+    if (!wc.timer) wc.timer = setInterval(tickWallClock, 1000);
+  }
+
+  function tickWallClock() {
+    const m = state.wallClock, ui = wc.ui;
+    if (!m || !ui || !has("wall_clock")) { stopWallClockTimer(); return; }
+    const card = $("wall-clock-card");
+    const name = m.label || "Ontime";
+    const live = m.status === "ok" && m.clock_ms !== null && m.clock_ms !== undefined;
+    const age = Math.max(0, serverNow() - m.received_at);
+    const stale = live && age > WC_STALE_S;
+    let note = "", level = "";
+    if (!live) {
+      setText(ui.time, "--:--:--");
+      note = m.status === "error" ? `${name} sent a time we can't read` : `${name} offline`;
+      level = "warn";
+    } else if (stale) {
+      setText(ui.time, clockText(m.clock_ms));   // frozen at the last reading
+      note = `Stale: no update for ${Math.round(age)} s`;
+      level = "warn";
+    } else {
+      setText(ui.time, clockText(m.clock_ms + age * 1000));
+      if (m.warn && m.offset_s !== null && m.offset_s !== undefined) {
+        note = `▲ Differs from Stagewatch by ${wcOffsetText(m.offset_s)}${wholeHours(m.offset_s) ? ". Check the time zones." : ""}`;
+        level = "warn";
+      } else {
+        note = "Matches Stagewatch";
+      }
+    }
+    setText(ui.note, note);
+    setClass(ui.note, `wc-note${level ? ` ${level}` : ""}`);
+    setClass(card, `card${!live ? " wc-off" : stale ? " wc-stale" : ""}`);
+  }
   // --------------------------------------------------------------- cards
   // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists
   // which cards it shows and in what order (dash.cards); ids this build doesn't know (from a
@@ -624,7 +696,6 @@
   // on a tablet, as in 0.2.0. The alarm banner and the header are not cards: always shown.
   // `empty()` true keeps an assigned card hidden (nothing to show yet).
   const cardEl = (id) => document.querySelector(`[data-card="${id}"]`);
-  const nothing = () => {};
   const CARDS = {
     env_tiles: { el: cardEl("env_tiles"), wide: true, render: renderTiles },
     // Hidden while the show has no schedule for this dashboard's stage.
@@ -633,8 +704,8 @@
     chart: { el: cardEl("chart"), wide: true, render: () => { renderSegs(); renderMarkers(); loadHistory(); } },
     markers: { el: cardEl("markers"), render: renderMarkers },
     sensors: { el: cardEl("sensors"), render: renderSensors },
-    // Filled in by the Wall Clock feature; hidden until then.
-    wall_clock: { el: cardEl("wall_clock"), wide: true, render: nothing, empty: () => true },
+    // The time from Ontime. Hidden until the first message arrives (the server sends one with the snapshot).
+    wall_clock: { el: cardEl("wall_clock"), wide: true, render: renderWallClock, empty: () => !state.wallClock },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
     connect_footer: { el: cardEl("connect_footer"), footer: true, render: renderConnectFooter },
   };
@@ -683,6 +754,7 @@
     SW.setSiteTime(msg.site.time);
     state.show = msg.show;
     state.scheduleMeta = msg.schedule || null;   // {show_id, day, revision}: the items are fetched
+    state.wallClock = msg.wall_clock || null;    // null until a dashboard has the card and the source is running
     state.isAdmin = msg.is_admin;
     state.dash = msg.dashboard;
     state.now = msg.now;
@@ -704,6 +776,7 @@
       renderMarkerNote();
     }
     if (!has("schedule")) stopScheduleTimer();
+    if (!has("wall_clock")) stopWallClockTimer();
     syncSchedule();
   }
 
@@ -762,6 +835,7 @@
         state.scheduleMeta = Object.assign({}, state.scheduleMeta || {}, { show_id: msg.show_id, revision: msg.revision });
         syncSchedule();
         break;
+      case "wall_clock": state.wallClock = msg; if (has("wall_clock")) renderWallClock(); break;
       case "alarms": state.alarms = msg.alarms; state.sounding = msg.sounding; renderAlarms(); break;
       case "reload": location.reload(); break;
     }

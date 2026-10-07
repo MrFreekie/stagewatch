@@ -106,6 +106,7 @@ async def serve(marker_path: Path, port: int) -> int:
     from stagewatch.core.hub import Hub
     from stagewatch.core.updater import Updater
     from stagewatch.integrations.esphome import EsphomeIntegration
+    from stagewatch.integrations.ontime import OntimeIntegration
     from stagewatch.integrations.osc_out import OscOutIntegration
     from stagewatch.web.server import create_app
 
@@ -113,6 +114,7 @@ async def serve(marker_path: Path, port: int) -> int:
     hub = Hub(marker.data_dir, emulate=True)
     hub.add_integration(EsphomeIntegration(hub, emulate=True))
     hub.add_integration(OscOutIntegration(hub))
+    hub.add_integration(OntimeIntegration(hub, emulate=True))
     updater = Updater(hub, marker, supervised=os.environ.get(uc.ENV_SUPERVISED) == "1",
                       git_protocols=("file",), check_interval_s=2)
     server = uvicorn.Server(uvicorn.Config(create_app(hub, updater=updater), host="127.0.0.1", port=port,

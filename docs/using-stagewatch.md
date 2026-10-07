@@ -417,7 +417,8 @@ Good to know:
 
 - A **new** dashboard starts with a sensible set for its layout. If you change its **Layout**
   before saving, the ticks change to that layout's set.
-- **Wall Clock** is never switched on by default. Tick it if you want it.
+- **Wall Clock** is never switched on by default. Tick it if you want it, then set the address in the
+  **Wall Clock** card (see below).
 - **Schedule** stays hidden until the show has a schedule, even when it is ticked. Add the
   schedule under **Admin → Schedule → Open schedule editor**.
 - **Open on a tablet** is always at the bottom of the screen, wherever it is in the list. Tick
@@ -428,6 +429,39 @@ Good to know:
 
 **If it didn't work:** if the screen still shows the old cards, reload the page. See
 [Troubleshooting](troubleshooting.md).
+
+### Show the Ontime clock (Wall Clock card)
+
+The **Wall Clock** card shows the time of day from [Ontime](https://github.com/cpvalente/ontime),
+the free rundown and show timer, so everyone can see the same clock as the stage manager.
+Stagewatch only listens to Ontime. It never sends anything to it, and it does not read your
+rundown, timers or messages.
+
+1. Open **Admin** and find the **Wall Clock** card.
+2. Type the **Ontime address**, for example `http://192.168.1.50:4001` (your Ontime computer's
+   address and port). If Ontime runs on this computer, leave `http://127.0.0.1:4001`.
+3. Click **Test connection**. **What you'll see:** "Ontime 4.14.0 answered." (your version number).
+4. Optional: change **Warn when different by**. The default is 2 seconds.
+5. Click **Save**.
+6. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Wall Clock** and click
+   **Save dashboards**.
+
+**What you'll see:** the time in large digits, as Ontime reports it, and "Matches Stagewatch" under it.
+
+What the card tells you:
+
+- **Differs from Stagewatch by +3.2 s**: Ontime is 3.2 seconds ahead of the Stagewatch computer
+  (a minus sign means behind). Check the two computers' clocks.
+- **Check the time zones**: the difference is whole hours, so one computer is set to a different
+  time zone. Ontime shows its own computer's time, so set **Time zone** under **Site** in Stagewatch
+  to match.
+- **Ontime offline**: Stagewatch can't hear Ontime. A quiet notice also appears in the alarm bar.
+  It never makes a sound. Check Ontime is running and the address is right.
+- **Stale**: nothing has arrived for 3 seconds. The digits are dimmed and are not live.
+
+Stagewatch only contacts Ontime while a dashboard has the Wall Clock card.
+
+**If it didn't work:** see [Troubleshooting](troubleshooting.md).
 
 ---
 
