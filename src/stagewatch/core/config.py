@@ -109,6 +109,23 @@ class SiteConfig(_Model):
     # "Add markers from the schedule" (schedule page): a marker at doors, soundchecks and act
     # changes as they happen. Additive with a default: no config schema bump.
     schedule_auto_markers: bool = True
+    # Schedule card warning steps, in minutes before an item ends (NOW) or starts (NEXT). The last
+    # (smallest) step is orange, earlier ones amber. One list for the whole site. Additive with a
+    # default that reproduces the old fixed 15 / 5: no config schema bump. Visual only.
+    schedule_warn_minutes: list[int] = Field(default_factory=lambda: [15, 5])
+    schedule_warn_flash: bool = False  # slow pulse on the last step (never on NEXT)
+
+    @field_validator("schedule_warn_minutes", mode="before")
+    @classmethod
+    def _warn_minutes(cls, v):
+        if not isinstance(v, list) or not 1 <= len(v) <= 8:
+            raise ValueError("warning times must be 1 to 8 whole minutes")
+        for n in v:
+            if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 240:
+                raise ValueError("warning times must be 1 to 8 whole minutes")
+        if len(set(v)) != len(v):
+            raise ValueError("warning times must be 1 to 8 whole minutes")
+        return sorted(v, reverse=True)
 
     @field_validator("timezone")
     @classmethod

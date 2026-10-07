@@ -16,6 +16,15 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Schedule card: you can now choose its **warning times**. In **Admin → Site**, type the minutes
+  before an item ends, for example `15, 10, 5` (up to 8 times, 1 to 240 minutes). The card goes
+  amber at each time and orange at the last one, with a tag such as "10 MIN". The next item turns
+  amber within the last time. One list applies to every dashboard, and the standard is still 15 and
+  5 minutes. There is also an optional **Flash the card in the last step** tick box (off as
+  standard): the left edge, the tag and the progress bar fade slowly about once a second, and stop
+  when the item ends. With "reduce motion" switched on in the device, they stay steady and stronger
+  instead. Visual only; no sound. Your saved settings are not changed. An older version of
+  Stagewatch ignores these two settings.
 - Dashboards: a **Wall Clock** card shows the time of day from your Ontime rundown (version 4.14 tested)
   in large HH:MM:SS, as Ontime sends it. If it differs from Stagewatch's own time by more than your
   limit (2 s unless you change it), the card says by how much, and tells you to check the time zones

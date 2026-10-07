@@ -179,6 +179,11 @@ class Hub:
             log.exception("Site time block failed")
             return {"timezone": "", "utc_offset_s": 0, "day_rollover": "06:00"}
 
+    def schedule_warn(self) -> dict:
+        """The public schedule warning steps: {minutes, flash}. Visual settings only."""
+        site = self.config.site
+        return {"minutes": list(site.schedule_warn_minutes), "flash": bool(site.schedule_warn_flash)}
+
     def set_site(self, site) -> None:
         """Replace the site settings (the caller saves). A time-zone change re-bases the current
         show's schedule (``site_time_changed``); a day-rollover change that moves the current
@@ -598,7 +603,7 @@ class Hub:
             "site": {"name": self.config.site.name,
                      "reference_distance_m": self.config.site.reference_distance_m,
                      "stale_after_s": stale_after, **self.site_meta,
-                     "time": self.site_time(now)},
+                     "time": self.site_time(now), "schedule_warn": self.schedule_warn()},
             "show": self.show_info(),
             "schedule": self.schedule_snapshot(),
             "wall_clock": self.wall_clock.snapshot(),  # None while no dashboard has the card

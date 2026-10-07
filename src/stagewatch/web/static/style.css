@@ -178,6 +178,18 @@ body.layout-wall #schedule-card.sched-stale { display: none !important; }
 .sched-bar.lvl-warn .sched-bar-fill { background: var(--warn); }
 .sched-bar.lvl-alert .sched-bar-fill { background: var(--alert); }
 @media (prefers-reduced-motion: reduce) { .sched-bar-fill { transition: none; } }
+/* Optional flash in the last warning step (Site card): a slow fade of the left edge, the tag and
+   the bar fill only, about once a second, never the whole card. The tag text stays. */
+@keyframes sched-flash-fade { from { opacity: 1; } to { opacity: .4; } }
+@keyframes sched-flash-edge { from { border-left-color: var(--alert); } to { border-left-color: var(--panel-2); } }
+.sched-block.now.flash { animation: sched-flash-edge .5s ease-in-out infinite alternate; }
+.sched-tag.flash, .sched-bar.flash .sched-bar-fill { animation: sched-flash-fade .5s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) {
+  /* No movement: a steady, stronger highlight instead. */
+  .sched-block.now.flash, .sched-tag.flash, .sched-bar.flash .sched-bar-fill { animation: none; }
+  .sched-block.now.flash { border-left-width: 14px; }
+  .sched-tag.flash { outline: 2px solid var(--text); outline-offset: 1px; }
+}
 .sched-line { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; margin-top: 2px; }
 .sched-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 800;
   letter-spacing: .03em; color: var(--bg); background: var(--muted); }

@@ -141,6 +141,24 @@ eq(SW.nextLevel(5 * M + 1), "", "T-5:01 neutral");
 eq(SW.nextLevel(5 * M), "warn", "T-5:00 amber");
 eq(SW.nextLevel(1), "warn", "last second");
 
+// ---- custom warning steps (site setting, shared by every dashboard)
+SW.setScheduleWarn({ minutes: [10, 15, 5], flash: true });
+eq(SW.scheduleWarn, { minutes: [15, 10, 5], flash: true }, "steps are sorted, flash kept");
+eq([SW.nowStep(15 * M + 1), SW.nowStep(15 * M), SW.nowStep(10 * M + 1), SW.nowStep(10 * M), SW.nowStep(5 * M + 1), SW.nowStep(5 * M), SW.nowStep(1)],
+  [0, 15, 15, 10, 10, 5, 5], "the smallest step passed is the current one");
+eq([SW.nowLevel(15 * M + 1), SW.nowLevel(15 * M), SW.nowLevel(10 * M), SW.nowLevel(6 * M), SW.nowLevel(5 * M), SW.nowLevel(0)],
+  ["", "warn", "warn", "warn", "alert", ""], "earlier steps amber, the last orange");
+eq([SW.nextLevel(5 * M + 1), SW.nextLevel(5 * M), SW.nextLevel(0), SW.nextStep()], ["", "warn", "", 5], "NEXT: within the smallest step only");
+SW.setScheduleWarn({ minutes: [10] });
+eq([SW.nowLevel(11 * M), SW.nowLevel(10 * M), SW.nowStep(9 * M), SW.nextLevel(10 * M), SW.nextLevel(10 * M + 1), SW.scheduleWarn.flash],
+  ["", "alert", 10, "warn", "", false], "a single step is the last one: orange; flash defaults off");
+SW.setScheduleWarn({ minutes: [] });
+SW.setScheduleWarn({ minutes: [0, 5] });
+SW.setScheduleWarn({ minutes: ["5"] });
+SW.setScheduleWarn(null);
+eq(SW.scheduleWarn.minutes, [10], "bad payloads are ignored");
+SW.setScheduleWarn({ minutes: [15, 5], flash: false });
+
 // ---- show day and the old-schedule check, 06:00 rollover, curfew 23:00 (site UTC+1, no zone name)
 SW.setSiteTime({ timezone: "", utc_offset_s: 3600, day_rollover: "06:00" });
 const at = (y, mo, d, h, mi) => Date.UTC(y, mo - 1, d, h, mi) / 1000 - 3600;   // site wall clock -> epoch

@@ -435,8 +435,7 @@
     const k = KIND_NAMES[it.kind] || "";
     return k && it.title.toLowerCase().replace(/-/g, " ").indexOf(k.toLowerCase()) < 0 ? k : "";
   };
-  const NOW_TAGS = { warn: "15 MIN", alert: "5 MIN" };
-  const NEXT_TAG = "STARTS IN 5 MIN";
+  // Tag text follows the site's warning steps: "10 MIN" for NOW, "STARTS IN 5 MIN" for NEXT.
   const until = (s) => `in ${SW.fmtDuration(s, true)}`;
   const scheduleDay = () => (state.schedule && state.schedule.day) || (state.scheduleMeta && state.scheduleMeta.day) || "";
 
@@ -552,11 +551,14 @@
     // Time left: neutral above 15 min, amber (with a "15 MIN" tag) at 15, orange ("5 MIN") at 5.
     const left = ownEnd ? nn.currentEnd - now : null;
     const lvl = SW.nowLevel(left);
-    setClass(ui.now.el, `sched-block now${lvl ? ` lvl-${lvl}` : ""}`);
+    const step = SW.nowStep(left);
+    // Optional slow pulse in the last (orange) step only; NEXT never flashes.
+    const fl = lvl === "alert" && SW.scheduleWarn.flash ? " flash" : "";
+    setClass(ui.now.el, `sched-block now${lvl ? ` lvl-${lvl}` : ""}${fl}`);
     for (const tag of [ui.now.tag, ui.stripTag]) {
-      const text = NOW_TAGS[lvl] || "";
+      const text = step ? `${step} MIN` : "";
       setText(tag, text);
-      setClass(tag, `sched-tag${lvl ? ` lvl-${lvl}` : ""}`);
+      setClass(tag, `sched-tag${lvl ? ` lvl-${lvl}` : ""}${fl}`);
       tag.hidden = !text;
     }
     setText(ui.now.title, cur ? cur.title : (idle[nn.state] || "—"));
@@ -572,7 +574,7 @@
       const fill = ui.now.bar.firstChild;
       const w = `${pct.toFixed(1)}%`;
       if (fill.style.width !== w) fill.style.width = w;
-      setClass(ui.now.bar, `sched-bar${lvl ? ` lvl-${lvl}` : ""}`);
+      setClass(ui.now.bar, `sched-bar${lvl ? ` lvl-${lvl}` : ""}${fl}`);
     }
     // NEXT: planned time and countdown; amber with a tag for the last 5 minutes. When it starts
     // as the current item ends, NOW's "left" is the same number, so NEXT shows only its start time.
@@ -583,7 +585,7 @@
     setText(ui.next.count, nxt && !sameMoment ? until(nxt.planned_start - now) : "");
     setText(ui.next.line, nxt ? `Starts ${SW.fmtTime(nxt.planned_start)}` : "");
     for (const tag of [ui.next.tag, ui.stripNextTag]) {
-      const text = nlvl ? NEXT_TAG : "";
+      const text = nlvl ? `STARTS IN ${SW.nextStep()} MIN` : "";
       setText(tag, text);
       setClass(tag, `sched-tag${nlvl ? ` lvl-${nlvl}` : ""}`);
       tag.hidden = !text;
@@ -770,6 +772,7 @@
     state.sounding = msg.sounding;
     state.site = msg.site;
     SW.setSiteTime(msg.site.time);
+    SW.setScheduleWarn(msg.site.schedule_warn);
     state.show = msg.show;
     state.scheduleMeta = msg.schedule || null;   // {show_id, day, revision}: the items are fetched
     state.wallClock = msg.wall_clock || null;    // null until a dashboard has the card and the source is running
@@ -824,6 +827,7 @@
         syncClock(msg.now);
         state.site = { ...state.site, ...msg.site };
         SW.setSiteTime(msg.site && msg.site.time);   // keeps the offset fresh across a DST change
+        SW.setScheduleWarn(msg.site && msg.site.schedule_warn);
         const shown = new Set(has("chart") ? chartEntities() : []);
         for (const e of msg.entities) {
           state.entities[e.id] = e;

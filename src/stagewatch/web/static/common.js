@@ -486,23 +486,47 @@ SW.scheduleEnds = function (ordered) {
     return null;
   });
 };
-// Colour level of NOW's time left (only for an item with its own end time): "" above 15 min or
-// when there is no countdown, "warn" (amber) at 15 min or less, "alert" (orange) at 5 min or less.
-// At zero the item is no longer current, so there is nothing to colour. Never red. Always shown
-// with a text tag too.
-SW.NOW_WARN_S = 15 * 60;
-SW.NOW_ALERT_S = 5 * 60;
-SW.nowLevel = function (seconds) {
-  if (seconds === null || seconds === undefined || !(seconds > 0)) return "";
-  if (seconds <= SW.NOW_ALERT_S) return "alert";
-  if (seconds <= SW.NOW_WARN_S) return "warn";
-  return "";
+// Schedule warning steps: minutes before NOW ends / NEXT starts, shared by every dashboard (the
+// server sends them as site.schedule_warn = {minutes, flash}). Default 15 and 5 minutes.
+// - NOW: the smallest step the item has passed is the current one. The last (smallest) step is
+//   "alert" (orange), earlier steps are "warn" (amber). Above the first step, or with no
+//   countdown, there is no level. At zero the item is no longer current. Never red. Always shown
+//   with a text tag too.
+// - NEXT: "warn" (amber) within the smallest step only.
+SW.scheduleWarn = { minutes: [15, 5], flash: false };
+SW.setScheduleWarn = function (w) {
+  if (!w || !Array.isArray(w.minutes) || !w.minutes.length || w.minutes.length > 8) return;
+  const m = [];
+  for (let i = 0; i < w.minutes.length; i++) {
+    const n = w.minutes[i];
+    if (typeof n !== "number" || !(n >= 1) || n > 240 || Math.floor(n) !== n) return;
+    m.push(n);
+  }
+  m.sort(function (a, b) { return b - a; });
+  SW.scheduleWarn = { minutes: m, flash: w.flash === true };
 };
-// NEXT turns amber (and says so) from 5 min before the next item starts: "" or "warn".
-SW.NEXT_WARN_S = 5 * 60;
+// The step (in minutes) NOW is in, or 0 when it is above the first step / has no countdown.
+SW.nowStep = function (seconds) {
+  if (seconds === null || seconds === undefined || !(seconds > 0)) return 0;
+  const m = SW.scheduleWarn.minutes;
+  let step = 0;
+  for (let i = 0; i < m.length; i++) if (seconds <= m[i] * 60) step = m[i];
+  return step;
+};
+SW.nowLevel = function (seconds) {
+  const step = SW.nowStep(seconds);
+  if (!step) return "";
+  const m = SW.scheduleWarn.minutes;
+  return step === m[m.length - 1] ? "alert" : "warn";
+};
+// NEXT turns amber (and says so) within the smallest step before the next item starts: "" or "warn".
+SW.nextStep = function () {
+  const m = SW.scheduleWarn.minutes;
+  return m[m.length - 1];
+};
 SW.nextLevel = function (seconds) {
   if (seconds === null || seconds === undefined) return "";
-  return seconds > 0 && seconds <= SW.NEXT_WARN_S ? "warn" : "";
+  return seconds > 0 && seconds <= SW.nextStep() * 60 ? "warn" : "";
 };
 // The show day ("YYYY-MM-DD") that is current in site time at nowTs: before the site's
 // day_rollover you are still on the previous calendar day's show day.
