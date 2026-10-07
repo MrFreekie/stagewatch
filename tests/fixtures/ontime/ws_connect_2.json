@@ -1,0 +1,382 @@
+{
+  "note": "Passive listen, nothing sent. t = seconds since connect.",
+  "messages": [
+    {
+      "t": 0.005,
+      "msg": {
+        "tag": "log",
+        "payload": {
+          "id": "166094",
+          "level": "INFO",
+          "origin": "http://127.0.0.1:4001",
+          "text": "N Connections with new: client-name",
+          "time": "16:23:26"
+        }
+      }
+    },
+    {
+      "t": 0.006,
+      "msg": {
+        "tag": "client-init",
+        "payload": {
+          "clientId": "a156a8",
+          "clientName": "client-name"
+        }
+      }
+    },
+    {
+      "t": 0.006,
+      "msg": {
+        "tag": "client-list",
+        "payload": {
+          "client1": {
+            "type": "ontime",
+            "identify": false,
+            "name": "client-name",
+            "origin": "http://127.0.0.1:4001",
+            "path": "/editor"
+          },
+          "client2": {
+            "type": "unknown",
+            "identify": false,
+            "name": "client-name",
+            "origin": "",
+            "path": ""
+          },
+          "client3": {
+            "type": "unknown",
+            "identify": false,
+            "name": "client-name",
+            "origin": "",
+            "path": ""
+          }
+        }
+      }
+    },
+    {
+      "t": 0.006,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "clock": 59005033,
+          "timer": {
+            "addedTime": 0,
+            "current": 394967,
+            "duration": 1800000,
+            "elapsed": 1405033,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "message": {
+            "timer": {
+              "text": "",
+              "visible": false,
+              "blink": false,
+              "blackout": false,
+              "secondarySource": null
+            },
+            "secondary": ""
+          },
+          "offset": {
+            "absolute": 0,
+            "relative": 0,
+            "mode": "absolute",
+            "expectedFlagStart": null,
+            "expectedGroupEnd": null,
+            "expectedRundownEnd": 81000000
+          },
+          "rundown": {
+            "selectedEventIndex": 8,
+            "numEvents": 16,
+            "plannedStart": 41400000,
+            "plannedEnd": 81000000,
+            "actualStart": 41400000,
+            "actualGroupStart": null,
+            "currentDay": 0
+          },
+          "eventNow": {
+            "id": "4234a8",
+            "type": "event",
+            "flag": false,
+            "title": "Event 1",
+            "timeStart": 57600000,
+            "timeEnd": 59400000,
+            "duration": 1800000,
+            "timeStrategy": "lock-duration",
+            "linkStart": true,
+            "endAction": "none",
+            "timerType": "count-down",
+            "countToEnd": false,
+            "skip": false,
+            "note": "",
+            "colour": "",
+            "delay": 0,
+            "dayOffset": 0,
+            "gap": 0,
+            "cue": "1",
+            "parent": null,
+            "revision": 0,
+            "timeWarning": 120000,
+            "timeDanger": 60000,
+            "custom": {},
+            "triggers": []
+          },
+          "eventNext": {
+            "id": "a85385",
+            "type": "event",
+            "flag": false,
+            "title": "Event 1",
+            "timeStart": 59400000,
+            "timeEnd": 62100000,
+            "duration": 2700000,
+            "timeStrategy": "lock-duration",
+            "linkStart": true,
+            "endAction": "none",
+            "timerType": "count-down",
+            "countToEnd": false,
+            "skip": false,
+            "note": "",
+            "colour": "",
+            "delay": 0,
+            "dayOffset": 0,
+            "gap": 0,
+            "cue": "1",
+            "parent": null,
+            "revision": 0,
+            "timeWarning": 120000,
+            "timeDanger": 60000,
+            "custom": {},
+            "triggers": []
+          },
+          "eventFlag": null,
+          "groupNow": null,
+          "auxtimer1": {
+            "duration": 300000,
+            "current": 300000,
+            "playback": "stop",
+            "direction": "count-down",
+            "name": ""
+          },
+          "auxtimer2": {
+            "duration": 300000,
+            "current": 300000,
+            "playback": "stop",
+            "direction": "count-down",
+            "name": ""
+          },
+          "auxtimer3": {
+            "duration": 300000,
+            "current": 300000,
+            "playback": "stop",
+            "direction": "count-down",
+            "name": ""
+          },
+          "ping": 1
+        }
+      }
+    },
+    {
+      "t": 0.051,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 393997,
+            "duration": 1800000,
+            "elapsed": 1406003,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59006003
+        }
+      }
+    },
+    {
+      "t": 1.095,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 392952,
+            "duration": 1800000,
+            "elapsed": 1407048,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59007048
+        }
+      }
+    },
+    {
+      "t": 2.07,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 391978,
+            "duration": 1800000,
+            "elapsed": 1408022,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59008022
+        }
+      }
+    },
+    {
+      "t": 3.051,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 390997,
+            "duration": 1800000,
+            "elapsed": 1409003,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59009003
+        }
+      }
+    },
+    {
+      "t": 4.078,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 389969,
+            "duration": 1800000,
+            "elapsed": 1410031,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59010031
+        }
+      }
+    },
+    {
+      "t": 5.052,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 388996,
+            "duration": 1800000,
+            "elapsed": 1411004,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59011004
+        }
+      }
+    },
+    {
+      "t": 6.084,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 387964,
+            "duration": 1800000,
+            "elapsed": 1412036,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59012036
+        }
+      }
+    },
+    {
+      "t": 7.071,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 386977,
+            "duration": 1800000,
+            "elapsed": 1413023,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59013023
+        }
+      }
+    },
+    {
+      "t": 8.053,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 385995,
+            "duration": 1800000,
+            "elapsed": 1414005,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59014005
+        }
+      }
+    },
+    {
+      "t": 9.085,
+      "msg": {
+        "tag": "runtime-data",
+        "payload": {
+          "timer": {
+            "addedTime": 0,
+            "current": 384962,
+            "duration": 1800000,
+            "elapsed": 1415038,
+            "expectedFinish": 59400000,
+            "phase": "default",
+            "playback": "roll",
+            "secondaryTimer": null,
+            "startedAt": 57600000
+          },
+          "clock": 59015038
+        }
+      }
+    }
+  ]
+}

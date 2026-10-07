@@ -16,6 +16,18 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Dashboards: a **Wall Clock** card shows the time of day from your Ontime rundown (version 4.14 tested)
+  in large HH:MM:SS, as Ontime sends it. If it differs from Stagewatch's own time by more than your
+  limit (2 s unless you change it), the card says by how much, and tells you to check the time zones
+  when the difference is whole hours. It says "Ontime offline" when it can't hear Ontime, and "Stale"
+  if nothing has arrived for 3 s. Stagewatch only listens to Ontime: it never sends it anything and
+  does not read your rundown. Switch it on under **Admin → User dashboards → Edit cards**, then set the
+  Ontime address in the new **Wall Clock** card (**Test connection** checks it). It is not on any
+  dashboard by default, and Stagewatch does not contact Ontime until a dashboard has the card.
+  If Ontime can't be reached you get a quiet on-screen notice, never a sound. Experimental until
+  tested with a real show. `--emulate` shows a clock with an occasional short dropout.
+- Admin: services such as Ontime are listed under **Integrations**, not in the ESPHome nodes table
+  or on the Sensors card.
 - Markers: you can add a **note** to any marker, to say what happened or what was changed.
   Tap a marker, then **Add note** or **Edit note** under the drift panel. Notes are plain text,
   new lines are fine, up to 1,000 characters. Every open screen shows the change straight away.

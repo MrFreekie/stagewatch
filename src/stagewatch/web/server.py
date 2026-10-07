@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 
 from .. import __version__
 from ..core.config import (
-    Dashboard, EntitySettings, EsphomeDeviceConfig, OscOutConfig, SiteConfig, Threshold,
+    Dashboard, EntitySettings, EsphomeDeviceConfig, OscOutConfig, SiteConfig, Threshold, WallClockConfig,
 )
 from ..core.calibration import set_calibration
 from ..core.hub import Hub
@@ -42,6 +42,7 @@ from ..core.recorder import clean_note, valid_day
 from .. import diagnostics, netinfo
 from ..core import cards as cards_mod
 from ..core import schedule as sched
+from ..integrations.ontime.client import check_connection
 from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
 from ..version import build_info
@@ -208,6 +209,7 @@ class ResolveBody(BaseModel):
     action: Literal["new_hardware", "move_calibration", "forget_mac"]
 
 
+SERVICE_DEVICE = "This device is managed by its integration. Nothing has been changed."
 RESOLVE_REFUSED = "There is nothing to resolve this way for this node. Nothing has been changed."
 
 
@@ -227,6 +229,23 @@ class DevicePatch(BaseModel):
     @classmethod
     def _host(cls, v: str | None) -> str | None:
         return v if v is None else clean_host(v)
+
+
+class WallClockTestBody(BaseModel):
+    """POST /api/admin/wall-clock/test. ``ontime_url`` tries an address that is not saved yet;
+    left out, the saved one is used."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    ontime_url: str | None = Field(None, max_length=300)
+
+
+WALL_CLOCK_TEST_TEXT = {
+    "unreachable": "Can't reach Ontime at that address.",
+    "timeout": "Ontime did not answer in time.",
+    "not_ontime": "Something answered, but not like Ontime.",
+    "too_large": "Something answered, but not like Ontime.",
+}
 
 
 def _has_hidden_chars(text: str) -> bool:
@@ -579,6 +598,8 @@ class LiveFeed:
                             "sounding": self.hub.alarms.sounding})
         elif topic == "device" and isinstance(payload, Device):
             self._send_all({"type": "device", "device": payload.to_dict()})
+        elif topic == "wall_clock" and isinstance(payload, dict):
+            self._send_all({"type": "wall_clock", **payload})
         elif topic == "schedule" and isinstance(payload, dict):
             # Small on purpose: clients fetch GET /api/schedule?stage= for the list itself.
             self._send_all({"type": "schedule", "show_id": payload.get("show_id"),
@@ -839,6 +860,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "events": events_with_shows(),
             "show_days": hub.show_days(),
             "alarm_log": hub.recorder.alarm_log(),
+            # Wall Clock card: is the source running, and what is it saying (no addresses).
+            "wall_clock": hub.wall_clock.admin_status(),
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
             # defaults a new dashboard gets for each layout.
             "cards": {"known": list(cards_mod.KNOWN_CARDS),
@@ -938,6 +961,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def patch_device(device_id: str, body: DevicePatch):
         if device_id not in hub.devices or device_id == "site":
             raise HTTPException(404, "No such device")
+        if hub.devices[device_id].category == "service":
+            raise HTTPException(409, SERVICE_DEVICE)
         esp = esphome()
         if (body.host is not None or body.port is not None) and esp.config_of(device_id) is None:
             raise HTTPException(409, "This device has no network address to change")
@@ -948,6 +973,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def delete_device(device_id: str):
         if device_id not in hub.devices or device_id == "site":
             raise HTTPException(404, "No such device")
+        if hub.devices[device_id].category == "service":
+            raise HTTPException(409, SERVICE_DEVICE)
         await esphome().remove(device_id)
         return {"ok": True}
 
@@ -1000,6 +1027,37 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         hub.config.osc_out = body
         hub.save_config()
         return body
+
+    # Wall Clock (Ontime). Saving re-checks the source: the config topic reaches the Wall Clock
+    # service, which restarts it if the address changed. Read-only toward Ontime.
+    @app.put("/api/admin/wall-clock", dependencies=admin_deps)
+    async def put_wall_clock(body: WallClockConfig):
+        hub.config.wall_clock = body
+        hub.save_config()
+        return body
+
+    test_lock = asyncio.Lock()
+
+    @app.post("/api/admin/wall-clock/test", dependencies=admin_deps)
+    async def test_wall_clock(body: WallClockTestBody):
+        """One ``GET /api/version`` to the saved (or given) address. Answers {ok, version} or
+        {ok: false, category, message}; never the address or any text from the other end."""
+        if hub.emulate:
+            return {"ok": True, "version": "emulated"}   # no network in emulate mode
+        url = hub.config.wall_clock.ontime_url
+        if body.ontime_url is not None:
+            try:
+                url = WallClockConfig(ontime_url=body.ontime_url).ontime_url
+            except ValueError:
+                raise HTTPException(422, "The address must look like http://host:4001") from None
+        if test_lock.locked():
+            raise HTTPException(409, "A test is already running. Wait a few seconds and try again.")
+        async with test_lock:
+            result = await asyncio.to_thread(check_connection, url)
+        if result["ok"]:
+            return result
+        category = result["category"]
+        return {"ok": False, "category": category, "message": WALL_CLOCK_TEST_TEXT.get(category, WALL_CLOCK_TEST_TEXT["unreachable"])}
 
     # Events and shows. These handlers never await, so two clicks can't interleave: the
     # stale-id checks below make a double submit start exactly one show.

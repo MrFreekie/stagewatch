@@ -159,7 +159,7 @@
             onclick: () => run(() => api("POST", "/api/admin/esphome/unignore", { key: g.key }), "Node unignored").then(refresh) }, "Unignore")))))))
         : null) : null;
 
-    const devices = snap.devices.filter((d) => d.id !== "site");
+    const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");   // services (Ontime) are listed under Integrations
     const devTable = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Model"), h("th", {}, ""))),
       h("tbody", {}, devices.map((d) => {
@@ -251,7 +251,7 @@
     chart: ["History chart", "Readings over time, with markers."],
     markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
-    wall_clock: ["Wall Clock", "The show clock from Ontime. Stays hidden until Ontime is connected."],
+    wall_clock: ["Wall Clock", "The time of day from Ontime, with a warning if it differs from Stagewatch. Set the address in the Wall Clock settings."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
   const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
@@ -381,6 +381,44 @@
       info.last_error ? h("p", { class: "error" }, info.last_error) : null);
   }
 
+  // ------------------------------------------------------------ wall clock
+  // Where the Wall Clock card gets its time (Ontime). Read-only: Stagewatch only listens.
+  // Ontime is only contacted while a dashboard has the Wall Clock card.
+  function wallClockCard() {
+    const w = admin.config.wall_clock, st = admin.wall_clock || {};
+    const url = h("input", { value: w.ontime_url, placeholder: "http://127.0.0.1:4001", autocomplete: "off", spellcheck: "false", style: "min-width:260px" });
+    const warn = h("input", { class: "num", type: "number", step: "0.5", min: "1", max: "60", value: w.warn_offset_s });
+    const source = h("select", {}, h("option", { value: "ontime" }, "Ontime"));
+    const result = h("p", { class: "muted", role: "status" });
+    const lines = [];
+    if (!st.active) {
+      lines.push(st.card_assigned ? "Starting…"
+        : "Not running. It starts when a dashboard has the Wall Clock card (User dashboards → Edit cards).");
+    } else if (st.status === "ok") {
+      lines.push(`Connected${st.transport ? ` (${st.transport})` : ""}`);
+      if (st.last_message) lines.push(`Last message ${SW.fmtTime(st.last_message, { seconds: true })}`);
+      if (st.version) lines.push(`Ontime version ${st.version}`);
+    } else {
+      lines.push(`▲ Not connected${st.detail ? `: ${st.detail}` : ""}`);
+      if (st.version) lines.push(`Ontime version ${st.version}`);
+    }
+    return card("Wall Clock",
+      h("p", { class: "muted" }, "Shows the time from Ontime on dashboards that have the Wall Clock card, and warns if it differs from Stagewatch. Stagewatch only listens: it never sends anything to Ontime."),
+      h("div", { class: "row" }, field("Source", source), field("Ontime address", url), field("Warn if more than this many seconds out", warn),
+        h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/wall-clock", {
+          source: "ontime", ontime_url: val(url), warn_offset_s: Number(warn.value) || 2,
+        }), "Wall Clock saved").then(refresh, () => {}) }, "Save"),
+        h("button", { style: "align-self:flex-end", onclick: async (ev) => {
+          const btn = ev.target; btn.disabled = true; result.textContent = "Testing…";
+          try {
+            const r = await api("POST", "/api/admin/wall-clock/test", { ontime_url: val(url) });
+            result.textContent = r.ok ? `Ontime ${r.version} answered.` : r.message;
+          } catch (err) { result.textContent = err.message; }
+          finally { btn.disabled = false; }
+        } }, "Test connection")),
+      result,
+      h("p", { class: "muted" }, lines.join(" · ")));
+  }
   // ------------------------------------------------------- event & show
   // An event (a festival, a tour leg) is a group of show days. Markers, alarms and history
   // belong to the current day. "Next day" keeps the event; "New event…" ends it.
@@ -827,6 +865,7 @@
       devicesCard(), entitiesCard(), thresholdsCard(),
       dashboardsCard(),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, oscCard(), securityCard()),
+      wallClockCard(),
       alarmLogCard(),
       supportCard(),
       catalogCard());

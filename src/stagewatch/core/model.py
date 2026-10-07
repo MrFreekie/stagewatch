@@ -85,12 +85,16 @@ class Device:
     # Hardware key of the board ("mac:<12hex>"), set by the integration once known. Admin only:
     # never in to_dict(), so it stays off the public snapshot.
     hw_id: str = ""
+    # "sensor" (measures the site; listed on the Sensors card and the chart) or "service" (a
+    # software source such as Ontime; no readings, listed under Integrations in the admin page).
+    category: str = "sensor"
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
             "integration": self.integration,
+            "category": self.category,
             "manufacturer": self.manufacturer,
             "model": self.model,
             "area": self.area,

@@ -18,6 +18,7 @@ from zeroconf.asyncio import AsyncZeroconf
 from . import __version__, updater_common
 from .core.hub import Hub
 from .integrations.esphome import EsphomeIntegration
+from .integrations.ontime import OntimeIntegration
 from .integrations.osc_out import OscOutIntegration
 from .netinfo import local_ipv4  # noqa: F401  (also used by tests)
 from .version import build_info, version_string
@@ -83,6 +84,7 @@ async def run(args: argparse.Namespace) -> int:
     hub = Hub(data_dir, emulate=args.emulate)
     hub.add_integration(EsphomeIntegration(hub, emulate=args.emulate, zeroconf=zc))
     hub.add_integration(OscOutIntegration(hub))
+    hub.add_integration(OntimeIntegration(hub, emulate=args.emulate))  # runs only while a dashboard has the Wall Clock card
     app = create_app(hub)
     app.state.port = args.port  # for the "Connect a tablet" addresses
 

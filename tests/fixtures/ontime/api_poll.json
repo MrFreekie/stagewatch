@@ -1,0 +1,124 @@
+{
+  "status": 202,
+  "body": {
+    "payload": {
+      "clock": 58994023,
+      "timer": {
+        "addedTime": 0,
+        "current": 405977,
+        "duration": 1800000,
+        "elapsed": 1394023,
+        "expectedFinish": 59400000,
+        "phase": "default",
+        "playback": "roll",
+        "secondaryTimer": null,
+        "startedAt": 57600000
+      },
+      "message": {
+        "timer": {
+          "text": "",
+          "visible": false,
+          "blink": false,
+          "blackout": false,
+          "secondarySource": null
+        },
+        "secondary": ""
+      },
+      "offset": {
+        "absolute": 0,
+        "relative": 0,
+        "mode": "absolute",
+        "expectedFlagStart": null,
+        "expectedGroupEnd": null,
+        "expectedRundownEnd": 81000000
+      },
+      "rundown": {
+        "selectedEventIndex": 8,
+        "numEvents": 16,
+        "plannedStart": 41400000,
+        "plannedEnd": 81000000,
+        "actualStart": 41400000,
+        "actualGroupStart": null,
+        "currentDay": 0
+      },
+      "eventNow": {
+        "id": "4234a8",
+        "type": "event",
+        "flag": false,
+        "title": "Event 1",
+        "timeStart": 57600000,
+        "timeEnd": 59400000,
+        "duration": 1800000,
+        "timeStrategy": "lock-duration",
+        "linkStart": true,
+        "endAction": "none",
+        "timerType": "count-down",
+        "countToEnd": false,
+        "skip": false,
+        "note": "",
+        "colour": "",
+        "delay": 0,
+        "dayOffset": 0,
+        "gap": 0,
+        "cue": "1",
+        "parent": null,
+        "revision": 0,
+        "timeWarning": 120000,
+        "timeDanger": 60000,
+        "custom": {},
+        "triggers": []
+      },
+      "eventNext": {
+        "id": "a85385",
+        "type": "event",
+        "flag": false,
+        "title": "Event 1",
+        "timeStart": 59400000,
+        "timeEnd": 62100000,
+        "duration": 2700000,
+        "timeStrategy": "lock-duration",
+        "linkStart": true,
+        "endAction": "none",
+        "timerType": "count-down",
+        "countToEnd": false,
+        "skip": false,
+        "note": "",
+        "colour": "",
+        "delay": 0,
+        "dayOffset": 0,
+        "gap": 0,
+        "cue": "1",
+        "parent": null,
+        "revision": 0,
+        "timeWarning": 120000,
+        "timeDanger": 60000,
+        "custom": {},
+        "triggers": []
+      },
+      "eventFlag": null,
+      "groupNow": null,
+      "auxtimer1": {
+        "duration": 300000,
+        "current": 300000,
+        "playback": "stop",
+        "direction": "count-down",
+        "name": ""
+      },
+      "auxtimer2": {
+        "duration": 300000,
+        "current": 300000,
+        "playback": "stop",
+        "direction": "count-down",
+        "name": ""
+      },
+      "auxtimer3": {
+        "duration": 300000,
+        "current": 300000,
+        "playback": "stop",
+        "direction": "count-down",
+        "name": ""
+      },
+      "ping": 1
+    }
+  }
+}

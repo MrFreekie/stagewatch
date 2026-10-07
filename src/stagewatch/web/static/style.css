@@ -400,3 +400,16 @@ body.disconnected .chart-wrap, body.disconnected [data-live] { opacity: .4; filt
 .wall-address { display: flex; gap: 14px; align-items: center; justify-content: center; padding: 8px 16px 16px; color: var(--muted); font-size: 18px; }
 .wall-address[hidden] { display: none; }
 .wall-address strong { color: var(--text); user-select: all; }
+
+/* Wall Clock card: the time as received from Ontime. Colour always comes with a text note. */
+.wc-time { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.wc-note { margin: 6px 0 0; font-size: 15px; color: var(--muted); }
+.wc-note.warn { color: var(--warn); font-weight: 600; }
+#wall-clock-card.wc-off .wc-time, #wall-clock-card.wc-stale .wc-time { color: var(--muted); }
+body.layout-phone .wc-time { font-size: 40px; }
+/* A coloured edge as well as the note, so a warning is seen from across the room. */
+#wall-clock-card.wc-off, #wall-clock-card.wc-stale, #wall-clock-card.wc-differs { border-left: 6px solid var(--warn); }
+#wall-clock-card.wc-stale .wc-time { text-decoration: line-through; text-decoration-thickness: 3px; }
+body.layout-wall .wc-time { font-size: 150px; }
+body.layout-wall .wc-note { font-size: 32px; }
+body.layout-wall #wall-clock-card > h2 { font-size: 24px; }
