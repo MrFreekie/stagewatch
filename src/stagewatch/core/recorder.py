@@ -659,6 +659,7 @@ class Recorder:
 
     def delete_marker(self, marker_id: int) -> bool:
         cur = self._db.execute("DELETE FROM markers WHERE id = ?", (marker_id,))
+        self._db.execute("UPDATE schedule_marks SET marker_id = NULL WHERE marker_id = ?", (marker_id,))
         self._db.commit()
         return cur.rowcount > 0
 

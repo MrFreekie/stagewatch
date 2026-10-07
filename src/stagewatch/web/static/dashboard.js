@@ -263,10 +263,11 @@
       const count = h("span", { class: "muted", style: "font-size:12px" });
       const upd = () => { count.textContent = `${SW.num(noteEdit.text.length, 0)} of ${SW.num(SW.NOTE_MAX, 0)} characters`; };
       const ta = h("textarea", { rows: 4, maxlength: SW.NOTE_MAX, "aria-label": `Note for ${m.label}`,
-        placeholder: "What happened, what was changed, who to ask", oninput: (ev) => { noteEdit.text = ev.target.value; upd(); } });
+        placeholder: "What happened, what was changed", oninput: (ev) => { noteEdit.text = ev.target.value; upd(); } });
       ta.value = noteEdit.text;
       upd();
       noteEl.replaceChildren(h("h3", {}, "Note"), ta, count,
+        h("p", { class: "hint" }, "Visible to anyone on the show network. No names or phone numbers."),
         h("div", { class: "row" },
           h("button", { type: "button", class: "primary", onclick: () => saveNote(m.id, ta) }, "Save"),
           h("button", { type: "button", onclick: () => { noteEdit = null; renderMarkerNote(); } }, "Cancel")));

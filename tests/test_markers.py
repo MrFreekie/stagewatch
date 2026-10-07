@@ -227,3 +227,20 @@ def test_silent_alarms_add_no_marker_and_are_not_acknowledged(tmp_path):
     hub._alarm_changed([change])
     assert _alarm_markers(hub) == [] and hub.ack_alarms("admin") == 0
     hub.recorder.close()
+
+
+def test_active_alarm_marker_cannot_be_changed_by_patch(tmp_path):
+    hub = _hot_hub(tmp_path)
+    with TestClient(create_app(hub, manage_hub=False)) as client:
+        hub.update_state("foh.temperature", 35.0)
+        hub.tick()
+        (m,) = _alarm_markers(hub)
+        r = client.patch(f"/api/markers/{m.id}", json={"hidden": True, "dashboard": "foh"})
+        assert r.status_code == 409
+        assert _alarm_markers(hub)[0].hidden is False
+    hub.recorder.close()
+
+
+def test_marker_dashboard_name_is_length_limited(client):
+    r = client.post("/api/markers", json={"label": "x", "dashboard": "d" * 65})
+    assert r.status_code == 422

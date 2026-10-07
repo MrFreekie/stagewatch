@@ -115,7 +115,7 @@ class ChangePinBody(BaseModel):
 class MarkerBody(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True)
     label: str = Field("Marker", max_length=120)
-    dashboard: str = ""
+    dashboard: str = Field("", max_length=64)
     note: str = Field("", max_length=4000)  # characters before trimming; clean_note checks the rest
 
     @field_validator("note")
@@ -752,7 +752,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         markers (any marker of the current show, not only its own). Deleting stays admin-only."""
         if not is_admin(request) and not dashboard_allows(body.dashboard, "marker"):
             raise HTTPException(403, "Markers are not enabled on this dashboard")
-        marker = hub.update_marker(marker_id, note=body.note, hidden=body.hidden)
+        if hub.marker_alarm_active(marker_id):
+            raise HTTPException(409, "This marker belongs to an alarm that is still active")
+        who = "admin" if is_admin(request) else f"dashboard:{body.dashboard}"
+        marker = hub.update_marker(marker_id, note=body.note, hidden=body.hidden, source=who)
         if marker is None:
             raise HTTPException(404, "No such marker in the current show")
         return marker.to_dict()

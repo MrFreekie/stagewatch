@@ -1,6 +1,6 @@
 """Schedule auto-markers: a marker (source "schedule") at doors, soundcheck and act start/end as
 each planned moment arrives. Driven by a fake clock (check(now)); covers per-row overrides,
-catch-up after a restart, no duplicates across restarts and re-saves, and edits."""
+no catch-up after a restart (nothing assumed), no duplicates across restarts and re-saves, and edits."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -38,6 +38,12 @@ def labels(hub, show_id=None):
 def load(hub, rows):
     hub.schedule.replace(None, [dict(r) for r in rows])
     return hub.schedule.items()
+
+
+def run_clock(hub, first, last, step=5):
+    """Check once every `step` minutes from `first` to `last` (minutes from T0): Stagewatch running."""
+    for minute in range(first, last + 1, step):
+        hub.check_schedule_markers(T0 + minute * MIN)
 
 
 @pytest.fixture
@@ -100,12 +106,13 @@ def test_markers_arrive_with_their_moments(hub):
     assert [m.label for m in hub.check_schedule_markers(T0 - 301 * MIN)] == []
     hub.check_schedule_markers(T0 - 240 * MIN)
     assert labels(hub) == [("Soundcheck: Headliner", T0 - 240 * MIN)]   # crew call: off by default
+    run_clock(hub, -235, -5)
     hub.check_schedule_markers(T0 - 1)
     hub.check_schedule_markers(T0)
     assert labels(hub)[-1] == ("Doors", T0)
     hub.check_schedule_markers(T0 + 30 * MIN + 5)  # five seconds late: placed at the planned time
     assert labels(hub)[-1] == ("Support: The Harbour Lights on stage", T0 + 30 * MIN)
-    hub.check_schedule_markers(T0 + 6 * 3600)
+    run_clock(hub, 35, 360)  # running throughout
     assert labels(hub) == [
         ("Soundcheck: Headliner", T0 - 240 * MIN), ("Support soundcheck", T0 - 170 * MIN), ("Doors", T0),
         ("Support: The Harbour Lights on stage", T0 + 30 * MIN),
@@ -120,7 +127,7 @@ def test_markers_arrive_with_their_moments(hub):
 
 def test_act_without_end_or_curfew_gets_no_off_stage_marker(hub):
     load(hub, [row("act", "Open mic", 0), row("act", "Closing band", 60)])
-    hub.check_schedule_markers(T0 + 86400)
+    run_clock(hub, 0, 60)
     assert [label for label, _ in labels(hub)] == ["Open mic on stage", "Closing band on stage"]
 
 
@@ -128,42 +135,70 @@ def test_per_row_overrides(hub):
     load(hub, [row("act", "Secret set", 0, 30, marker=0), row("changeover", "Changeover", 30, 45, marker=1),
                row("curfew", "Curfew", 60), row("doors", "Doors", -30, marker=None),
                row("load_in", "Load in", -600, marker=1)])
-    hub.check_schedule_markers(T0 + 86400)
+    run_clock(hub, -600, 60)
     assert labels(hub) == [("Load in", T0 - 600 * MIN), ("Doors", T0 - 30 * MIN), ("Changeover", T0 + 30 * MIN)]
 
 
 def test_schedule_wide_switch(hub):
     load(hub, DAY)
     hub.config.site.schedule_auto_markers = False
-    hub.check_schedule_markers(T0 + 1)
+    run_clock(hub, -300, 25)
     assert labels(hub) == []
     hub.config.site.schedule_auto_markers = True
-    hub.check_schedule_markers(T0 + 31 * MIN)  # what passed while it was off is not filled in
+    hub.check_schedule_markers(T0 + 30 * MIN + 2)  # what passed while it was off is not filled in
     assert labels(hub) == [("Support: The Harbour Lights on stage", T0 + 30 * MIN)]
 
 
 # ------------------------------------------------------------------ restarts and re-saves
-def test_catch_up_after_a_restart_and_no_duplicates(tmp_path):
+def test_no_marker_for_moments_passed_while_off(tmp_path):
     hub = Hub(tmp_path)
     load(hub, DAY)
-    hub.check_schedule_markers(T0 - 200 * MIN)  # running: the first soundcheck is marked
+    hub.check_schedule_markers(T0 - 240 * MIN)  # running: the first soundcheck is marked
     hub.recorder.close()                        # Stagewatch is off through doors and the support act
     hub = Hub(tmp_path)
-    hub.check_schedule_markers(T0 + 75 * MIN)   # start-up catch-up
-    assert labels(hub) == [
-        ("Soundcheck: Headliner", T0 - 240 * MIN), ("Support soundcheck", T0 - 170 * MIN), ("Doors", T0),
-        ("Support: The Harbour Lights on stage", T0 + 30 * MIN),
-        ("Support: The Harbour Lights off stage", T0 + 70 * MIN)]
+    hub.check_schedule_markers(T0 + 75 * MIN)   # first check after the restart: no catch-up
+    assert labels(hub) == [("Soundcheck: Headliner", T0 - 240 * MIN)]
+    hub.check_schedule_markers(T0 + 85 * MIN)   # running again: the next moment is marked on time
+    assert labels(hub)[-1] == ("Headliner: Kestrel Road on stage", T0 + 85 * MIN)
     before = labels(hub)
     hub.recorder.close()
-    for _ in range(2):  # restart twice more: nothing is added again
+    for _ in range(2):  # restart twice more: nothing is added later for the missed moments
         hub = Hub(tmp_path)
-        hub.check_schedule_markers(T0 + 75 * MIN)
+        hub.check_schedule_markers(T0 + 86 * MIN)
         assert labels(hub) == before
         hub.recorder.close()
 
 
-def test_start_up_runs_the_catch_up(tmp_path):
+def test_a_few_seconds_of_jitter_is_allowed_but_no_more(hub):
+    load(hub, [row("doors", "Doors", 0), row("act", "Band", 30, 90)])
+    hub.check_schedule_markers(T0 + 5)
+    assert labels(hub) == [("Doors", T0)]
+    hub.check_schedule_markers(T0 + 30 * MIN + sched.LATE_GRACE + 1)  # too late: missed, never fires
+    assert labels(hub) == [("Doors", T0)]
+    hub.check_schedule_markers(T0 + 31 * MIN)
+    assert labels(hub) == [("Doors", T0)]
+
+
+def test_item_added_in_the_past_while_running_gets_no_marker(hub):
+    load(hub, [row("doors", "Doors", 0)])
+    hub.check_schedule_markers(T0 + 30 * MIN)  # Doors was settled long ago
+    hub.schedule.replace(None, [dict(r) for r in [row("doors", "Doors", 0), row("act", "Support", 10, 25)]])
+    hub.check_schedule_markers(T0 + 30 * MIN + 1)  # added at +30 min for +10 min: back-dating
+    assert [lbl for lbl, _ in labels(hub) if lbl.startswith("Support")] == []
+
+
+def test_deleting_a_marker_clears_its_schedule_link(hub):
+    load(hub, [row("doors", "Doors", 0)])
+    (m,) = hub.check_schedule_markers(T0)
+    db = hub.recorder._db
+    assert db.execute("SELECT marker_id FROM schedule_marks").fetchone()[0] == m.id
+    hub.delete_marker(m.id)
+    assert db.execute("SELECT marker_id FROM schedule_marks").fetchone()[0] is None
+    hub.check_schedule_markers(T0 + 60)
+    assert labels(hub) == []
+
+
+def test_start_up_marks_nothing_for_the_past(tmp_path):
     import asyncio
     hub = Hub(tmp_path)
     past = [{**row("doors", "Doors", 0), "planned_start": 1_000_000.0}]  # long ago (a fixed instant)
@@ -177,13 +212,14 @@ def test_start_up_runs_the_catch_up(tmp_path):
     asyncio.run(run())
     from stagewatch.core.recorder import Recorder
     rec = Recorder(tmp_path / "stagewatch.sqlite3")
-    assert [(m.label, m.ts, m.source) for m in rec.markers()] == [("Doors", 1_000_000.0, "schedule")]
+    assert rec.markers() == [] or all(m.source != "schedule" for m in rec.markers())
+    assert (rec.schedule_marks(rec.show_id) or set())  # recorded as missed
     rec.close()
 
 
 def test_resaving_the_schedule_never_duplicates(hub):
     items = load(hub, DAY)
-    hub.check_schedule_markers(T0 + 75 * MIN)
+    run_clock(hub, -300, 75)
     before = labels(hub)
     assert len(before) == 5
     hub.schedule.replace(None, [dict(i) for i in items])          # re-save: same ids

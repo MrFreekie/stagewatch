@@ -388,8 +388,9 @@ Good to know:
   adds a second one.
 - If you move a line's time **before** it happens, the marker comes at the new time. Markers
   already on the chart stay where they are.
-- If Stagewatch was off when a moment passed, it adds that marker when it starts again, at the
-  planned time. This only happens for the current day.
+- Markers are placed as time passes, nothing is assumed. If Stagewatch was off when a moment
+  passed, that moment gets no marker, now or later. The gap in the chart and the "Stagewatch
+  was off" marker show it.
 - A moment that passes while its marker is switched off gets no marker, even if you switch it on
   afterwards.
 - Schedule markers can be hidden, given notes or deleted like any other marker.

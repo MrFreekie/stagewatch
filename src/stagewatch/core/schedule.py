@@ -867,6 +867,9 @@ class ScheduleService:
         return len(changes)
 
 
+LATE_GRACE = 5.0  # seconds: timer jitter allowed; later than this the moment is missed, not marked
+
+
 class ScheduleMarkers:
     """Puts the current show's schedule on the timeline: a marker (source "schedule") at each
     planned moment (``marker_moments``) as it arrives, for items whose marker setting is on, while
@@ -874,8 +877,11 @@ class ScheduleMarkers:
 
     Each moment is settled exactly once, keyed by (show, item id, start|end) in the database, so a
     restart or a re-save never adds it twice. A moment that passes while its marker is switched
-    off is settled without a marker (switching on later doesn't fill in the past). If Stagewatch
-    was off when a moment passed, the first check after start-up adds it at its planned time.
+    off is settled without a marker (switching on later doesn't fill in the past). Nothing is
+    assumed: a moment gets a marker only if Stagewatch was running as it passed (within
+    ``LATE_GRACE`` seconds of timer jitter). One that passed while Stagewatch was off is settled
+    as missed, with no marker, so it never fires later; the gap in the data and the hub's
+    "Stagewatch was off" marker explain it.
     Only the current show is ever looked at. An item moved before its moment gets its marker at
     the new time; markers already placed stay where they are. ``check(now)`` is called once a
     second by the hub (and takes ``now`` so tests can drive the clock)."""
@@ -903,15 +909,18 @@ class ScheduleMarkers:
         if not moments or moments[0].ts > now:
             return []
         on = bool(getattr(self.hub.config.site, "schedule_auto_markers", True))
-        items = {i["id"]: i for i in self.hub.schedule.items()}
+        items: dict | None = None  # built only when a moment is actually due
         added = []
         for m in moments:
             if m.ts > now:
                 break
             if (m.item_id, m.edge) in done:
                 continue
+            if items is None:
+                items = {i["id"]: i for i in self.hub.schedule.items()}
             item = items.get(m.item_id)
-            label = m.label if on and item is not None and marker_on(item) else None
+            on_time = now - m.ts <= LATE_GRACE
+            label = m.label if on and on_time and item is not None and marker_on(item) else None
             marker = rec.settle_schedule_moment(m.item_id, m.edge, m.ts, label, MARKER_SOURCE, now)
             done.add((m.item_id, m.edge))
             if marker is not None:

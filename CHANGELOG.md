@@ -23,6 +23,11 @@ them into a dated release section and tags the commit.
   the drift numbers and reports. Tick **Show hidden (n)** under the marker list to see hidden
   markers (dimmed), and tap **Un-hide** to put one back. Any dashboard allowed to add markers can
   write notes and hide or un-hide any marker. Deleting a marker still needs the admin PIN.
+- Markers: notes are shown on every screen on the show network, so the note box now says so and
+  asks you not to put names or phone numbers in. Changes to a marker's note or hidden state are
+  written to the log (who and what, never the text). An alarm's marker can't be changed while
+  that alarm is still active. Adding an item to the schedule after its time has passed never
+  puts a marker in the past.
 - Alarms: when someone taps **Acknowledge**, the alarm's **ALARM:** marker is hidden, so the
   chart doesn't fill up with alarms already dealt with. An alarm that clears by itself keeps its
   marker on the chart.
@@ -31,9 +36,10 @@ them into a dated release section and tags the commit.
   the act has an end time or the curfew cuts it off. Markers sit at the planned times. Each line
   in the schedule editor has a **Marker** tick box (ticked for soundcheck, doors and act lines)
   to leave a line out or add one, and **Add markers from the schedule** at the top of the page
-  switches them all off. Saving again or restarting never adds the same marker twice. If
-  Stagewatch was off when a moment passed, it adds the marker when it starts again (current day
-  only).
+  switches them all off. Saving again or restarting never adds the same marker twice. A
+  marker is only placed if Stagewatch is running as the moment passes. If it was off, that
+  moment gets no marker and is never added later; the gap in the data and the "Stagewatch was
+  off" marker show why.
 - Dashboards: a **Day / Night** button in the top bar switches between the light and dark
   look. Each screen remembers its choice; until you tap it, it follows the device's own setting.
 - Sensors card: new **Signal** and **Battery** columns for nodes that report them (for example

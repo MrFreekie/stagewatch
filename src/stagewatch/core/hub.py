@@ -134,7 +134,7 @@ class Hub:
     async def start(self) -> None:
         if self.emulate:
             self._emulate_demo_day()
-        self.check_schedule_markers()  # catch-up: moments that passed while Stagewatch was off
+        self.check_schedule_markers()  # moments that passed while Stagewatch was off are recorded as missed (no marker)
         for integration in self.integrations.values():
             try:
                 await integration.start()
@@ -447,15 +447,22 @@ class Hub:
         return marker
 
     def update_marker(self, marker_id: int, *, note: str | None = None, hidden: bool | None = None,
-                      current_show_only: bool = True) -> Marker | None:
+                      current_show_only: bool = True, source: str = "") -> Marker | None:
         """Change a marker's note (already clean) and/or hide or un-hide it, and tell every open
         screen (bus ``marker_updated``). None if there is no such marker in the current show
         (any show with ``current_show_only=False``)."""
         marker = self.recorder.update_marker(marker_id, note=note, hidden=hidden,
                                              show_id=self.recorder.show_id if current_show_only else None)
         if marker is not None:
+            if source:  # who changed what, never the text itself
+                fields = [n for n, v in (("note", note), ("hidden", hidden)) if v is not None]
+                log.info("Marker %d changed (%s) by %s", marker_id, ", ".join(fields), source)
             self.bus.publish("marker_updated", marker)
         return marker
+
+    def marker_alarm_active(self, marker_id: int) -> bool:
+        """True while the alarm that raised this marker is still active."""
+        return marker_id in self._alarm_markers.values()
 
     def delete_marker(self, marker_id: int) -> bool:
         ok = self.recorder.delete_marker(marker_id)
