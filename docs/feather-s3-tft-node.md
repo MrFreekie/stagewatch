@@ -6,8 +6,8 @@ Stagewatch, which uses them to work out the **speed of sound**. **No soldering.*
 
 Time needed: about 30 minutes the first time. Most of that is waiting for the first build.
 
-> **Test status:** tested with ESPHome's config check; first real-hardware test pending.
-> The screen layout and the battery readings have not been seen on a real board yet.
+> **Test status:** tested on real hardware (Adafruit 5483 with an MS8607) with ESPHome 2026.x,
+> and the screen works. The battery readings have not been seen on a real board yet.
 
 > Stagewatch is an advisory tool with no warranty. Check your node's readings against a
 > reference thermometer before you trust it. See the [main README](../README.md#stagewatch).

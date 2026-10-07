@@ -95,6 +95,8 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | Wisycom, Lectrosonics, Sony DWX | Battery / RF | Vendor | ❓ | ★ | ⬅ |
 | **RF Explorer** spectrum analysers | RF noise floor and interference on chosen bands over time, on the same timeline as dropouts | USB serial API | ✅ | ★★ | ⬅ |
 | Riedel, Clear-Com, Green-GO intercom | Hold / show stop → marker; alarm → call light | GPIO | ✅ | ★★ | ⬌ |
+| **Green-GO** (OSC over UDP) | Device online state, GPIO inputs and call/talk state, read-only. Stagewatch never sends talk, call or level changes | OSC (UDP) device script | ✅ | ★★ | ⬅ |
+| Riedel Artist (RRCS), Clear-Com Eclipse HX (HCI API) | Panel and port status. The specifications are only given on request | Vendor API | 🔒 | ★ | ⬅ |
 
 ## Measurement, SPL, noise
 | Integration | Brings | Protocol | Docs | Pri | Dir |
@@ -122,6 +124,11 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 | [Ontime](https://github.com/cpvalente/ontime) (open-source rundown / show timer) | **Wall Clock source** (time of day, in planning); later: running order, current/next item, timers, and cue markers | WebSocket `runtime-data` (~1 Hz, `clock` = ms since local midnight) and HTTP `GET /api/poll`, **verified on v4.14.0** | ✅ | ★★★ | ⬅ |
 | Local NTP server | **Wall Clock source** and clock-health check (offset, stratum) for the show network | SNTP (UDP 123) | ✅ | ★★ | ⬅ |
 | Internet time (public NTP: pool.ntp.org, time.cloudflare.com, NIST) | **Wall Clock source** when the hub has internet; reference for checking the other clocks | SNTP (UDP 123); NTS optional later | ✅ | ★★ | ⬅ |
+| **Starlink dish** (local interface) | Internet health for crews on Starlink: obstruction, alignment, alerts, ping and throughput. **Experimental**: the local interface is unofficial. Read-only, never sends dish commands | gRPC on the dish's local address (community-documented) | ❓ | ★★ | ⬅ |
+| **UniFi hotspot vouchers** | Hand out pre-made Wi-Fi vouchers from a permitted dashboard. Reads vouchers by default; creating them is an opt-in admin action | UniFi Network integration API (REST, API key) | ✅ / ❓ | ★★ | ⬅ |
+| **Now playing** (walk-in and interval music) | Track and time left from Windows or Linux players (a small read-only helper), VLC, foobar2000 (beefweb) and QLab | OS media sessions, HTTP, OSC | ✅ / ❓ | ★★ | ⬅ |
+| **MQTT bridge to Home Assistant** | Optional, outbound and read-only: publishes chosen sensors with Home Assistant discovery topics. No command topics | MQTT | ✅ | ★ | ➡ |
+| **Master Tour** (itinerary) | Read the day's venue and schedule instead of retyping it. Needs approval from the vendor for API access; the calendar subscription is the fallback | API / iCal | 🔒 / ❓ | ★★ | ⬅ |
 | USB serial GPS receiver | **Wall Clock source** (UTC from GPS; independent of the network) with fix status | NMEA 0183 `$GPRMC` / `$GPZDA` over serial (PPS later) | ✅ | ★★ | ⬅ |
 
 ## Node hardware (DIY boards)
@@ -167,7 +174,7 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
 ### Advice for FOH (uses data Stagewatch already has)
 - **Alignment drift warning**: "Temperature is up 6 °C since the *Aligned* marker: the delay towers at 60 m have drifted about 1.8 ms." Shows a suggested delay per path (distances entered by the admin) and alerts when the drift passes a threshold you set. Advisory: Stagewatch never changes delays itself.
 - **High-frequency air loss** (ISO 9613-1 air absorption): how much more (or less) high-frequency loss there is at 8 and 16 kHz over each throw distance now, compared with soundcheck. Explains why the top end can change as temperature and humidity change through the day; the direction depends on the conditions, so it's shown as + or − dB.
-- **Temperature inversion**: two sensors at different heights (deck and PA height) show whether the air gets warmer or cooler with height, which bends sound down towards or up away from the crowd and neighbours.
+- **Temperature inversion**: two sensors at different heights (deck and PA height) show whether the air gets warmer or cooler with height, which bends sound down towards or up away from the crowd and neighbours. Advisory only: it shows the measured difference, not a prediction of level off site. Needs each node's height and shielded sensors, with a wide enough gap between them. Research done.
 - **Wind relative to the PA**: wind direction shown against the PA's aim and the delay towers, and towards noise-sensitive neighbours (bearings set by the admin).
 - **Curfew SPL budget**: predicts from the current level and trend whether the LAeq15 will go over the limit before the 15 minutes are up ("At this level you'll exceed the 15-min limit in about 4 min"), not only after.
 
@@ -180,6 +187,7 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
 - **End-of-day show report**: an HTML page (printable to PDF) with the day's temperature / humidity / wind ranges, alarms and acknowledgements, markers, SPL against the limit, and device faults. Built from the recorded history, so it can be made at any time, including after a crash or power cut; a partial day is marked as such, and gaps where the hub was down are shown rather than hidden.
 - **Import vendor logs after the event**: load a Lake Controller or L-Acoustics LA Network Manager XML event log into a show day, with clock and time-zone alignment, a preview, duplicate checks and undo, so the show report includes amp and processor faults, input failovers and mutes, even with no live connection on the night.
 - **Tour history / venue profiles**: "Last time at this venue: 14 °C, 71 % RH, delays set to X." Venue conditions and notes kept across a tour.
+- **Health and safety card**: admin-entered site information for the crew: emergency and first-aid points, defibrillators, welfare (toilets, drinking water, rest areas), site rules and PPE, hazards and documents, each with who updated it and when. Advisory only; it never claims a site is compliant or safe. Research done.
 
 ### Dashboards
 - **Floor-plan view**: upload a site plan and place sensors on it, coloured by their current value.
