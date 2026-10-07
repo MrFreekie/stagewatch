@@ -239,11 +239,25 @@ class Calibration(_Model):
         return kept
 
 
+CLOCK_STYLES = ("digits", "ring", "segments")   # Dashboard.clock_style
 _ONTIME_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 
 
+class WallClockDisplay(_Model):
+    """Cosmetic options for the Wall Clock card, the same on every dashboard.  The look itself
+    (``digits``, ``ring``, ``segments``) is per dashboard: ``Dashboard.clock_style``."""
+    hour12: bool = False          # 12-hour clock with am/pm; default 24-hour
+    show_date: bool = False       # the date under the time (Stagewatch's site date)
+    ring: Literal["sweep", "fill"] = "sweep"   # ring style: one moving LED, or LEDs filling up to :59
+    colon_blink: bool = False     # the colons blink once a second (never under reduced motion)
+
+
 class WallClockConfig(_Model):
-    source: Literal["ontime"] = "ontime"
+    # One time source for the whole installation.  "pc" (this computer's clock) is the default for
+    # new installs; a saved config keeps whatever it stored, so an installation already using
+    # Ontime stays on Ontime.  No automatic fallback from one source to the other.
+    source: Literal["pc", "ontime"] = "pc"
+    display: WallClockDisplay = Field(default_factory=WallClockDisplay)
     ontime_url: str = Field("http://127.0.0.1:4001", max_length=300)
     warn_offset_s: float = Field(2.0, ge=1.0, le=60)   # 1.0 absorbs the source's 1 s granularity
 
@@ -296,6 +310,8 @@ class Dashboard(_Model):
     # Ordered card ids (core/cards.py).  Not given -> the layout's default (new dashboards).
     cards: list[str] = Field(default_factory=list)
     stage: str = Field("", max_length=40)  # which stage this screen follows ("" = all)
+    # The Wall Clock card's look on this screen.  Loading is lenient (unknown -> "digits"); the API is strict.
+    clock_style: str = "digits"
 
     @field_validator("slug")
     @classmethod
@@ -321,6 +337,11 @@ class Dashboard(_Model):
     @classmethod
     def _stage(cls, v):
         return v.strip() if isinstance(v, str) else v
+
+    @field_validator("clock_style", mode="before")
+    @classmethod
+    def _clock_style(cls, v):
+        return v if isinstance(v, str) and v in CLOCK_STYLES else "digits"
 
     @model_validator(mode="after")
     def _default_cards(self):
@@ -375,10 +396,17 @@ class Config(_Model):
     @classmethod
     def _wall_clock_floor(cls, v):
         """On load only (the API validates WallClockConfig itself and refuses): a saved warning
-        limit below the 1.0 s minimum (older builds allowed 0.5) is raised to it. No schema bump."""
+        limit below the 1.0 s minimum (older builds allowed 0.5) is raised to it, and a display
+        option this build does not know (from a newer release) is left out.  No schema bump."""
         if isinstance(v, dict) and isinstance(v.get("warn_offset_s"), (int, float)) \
                 and not isinstance(v["warn_offset_s"], bool) and v["warn_offset_s"] < 1.0:
             v = {**v, "warn_offset_s": 1.0}
+        if isinstance(v, dict) and "display" in v:
+            disp = v["display"]
+            if not isinstance(disp, dict):
+                v = {k: x for k, x in v.items() if k != "display"}
+            elif disp.get("ring") not in (None, "sweep", "fill"):
+                v = {**v, "display": {k: x for k, x in disp.items() if k != "ring"}}
         return v
 
     @field_validator("calibrations")

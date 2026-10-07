@@ -182,6 +182,7 @@ def test_emulated_clock_is_site_time_plus_half_a_second_with_a_dropout():
 # ------------------------------------------------------------------ hub, service, device
 def make_hub(tmp_path, **kw):
     hub = Hub(tmp_path, emulate=True)
+    hub.config.wall_clock.source = "ontime"   # a new install defaults to the PC clock
     integ = OntimeIntegration(hub, emulate=True, **kw)
     hub.add_integration(integ)
     return hub, integ
@@ -227,13 +228,14 @@ async def test_changing_the_address_restarts_the_source(tmp_path):
             await super().start()
 
     hub = Hub(tmp_path, emulate=True)
+    hub.config.wall_clock.source = "ontime"
     inner = Probe(lambda: hub.config.site)
     hub.add_integration(OntimeIntegration(hub, emulate=True, inner=inner))
     assign_card(hub)
     await hub.start()
     try:
         assert Probe.starts == 1
-        hub.config.wall_clock = WallClockConfig(ontime_url="http://10.1.2.3:4001")
+        hub.config.wall_clock = WallClockConfig(source="ontime", ontime_url="http://10.1.2.3:4001")
         hub.save_config()
         await until(lambda: Probe.starts == 2)
     finally:
@@ -242,6 +244,7 @@ async def test_changing_the_address_restarts_the_source(tmp_path):
 
 async def test_emulated_dropout_is_a_silent_missing_alarm(tmp_path):
     hub = Hub(tmp_path, emulate=True)
+    hub.config.wall_clock.source = "ontime"
     now = [utc_ts(12, 0, 0)]
     inner = EmulatedClock(lambda: UTC, clock=lambda: now[0])
     hub.add_integration(OntimeIntegration(hub, emulate=True, inner=inner))
@@ -265,7 +268,7 @@ async def test_emulated_dropout_is_a_silent_missing_alarm(tmp_path):
 async def test_unreachable_ontime_goes_missing_with_a_silent_alarm(tmp_path):
     hub = Hub(tmp_path)   # not emulate
     url = f"http://127.0.0.1:{free_port()}"
-    hub.config.wall_clock = WallClockConfig(ontime_url=url)
+    hub.config.wall_clock = WallClockConfig(source="ontime", ontime_url=url)
     inner = OntimeSource(lambda: hub.config.wall_clock.ontime_url, poll_every_s=0.05, backoff_min_s=0.05,
                          backoff_max_s=0.1)
     hub.add_integration(OntimeIntegration(hub, inner=inner))
@@ -466,6 +469,7 @@ async def test_check_connection_categories():
 @pytest.fixture
 def client(tmp_path):
     hub = Hub(tmp_path, emulate=True)
+    hub.config.wall_clock.source = "ontime"
     hub.add_integration(OntimeIntegration(hub, emulate=True))
     with TestClient(create_app(hub)) as c:
         c.hub = hub

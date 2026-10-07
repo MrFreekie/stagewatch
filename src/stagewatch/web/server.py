@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 
 from .. import __version__
 from ..core.config import (
-    Dashboard, EntitySettings, EsphomeDeviceConfig, OscOutConfig, SiteConfig, Threshold, WallClockConfig,
+    CLOCK_STYLES, Dashboard, EntitySettings, EsphomeDeviceConfig, OscOutConfig, SiteConfig, Threshold, WallClockConfig,
 )
 from ..core.calibration import set_calibration
 from ..core.hub import Hub
@@ -272,6 +272,14 @@ class DashboardBody(Dashboard):
     def _stage_strict(cls, v: str) -> str:
         if _has_hidden_chars(v):
             raise ValueError("Stage names can't contain hidden or control characters")
+        return v
+
+    @field_validator("clock_style", mode="before")
+    @classmethod
+    def _clock_style(cls, v):
+        """Overrides the lenient loader: only a style this build knows can be saved."""
+        if v not in CLOCK_STYLES:
+            raise ValueError("Clock style must be digits, ring or segments")
         return v
 
     @field_validator("cards", mode="before")
@@ -1016,9 +1024,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         for d in body:
             existing = hub.config.dashboard(d.slug)
             data = d.model_dump()
-            # A save that doesn't send cards/stage (today's admin page) keeps what the dashboard
-            # has; only a new dashboard gets its layout's default cards.
-            for key in ("cards", "stage"):
+            # A save that doesn't send cards/stage/clock_style (today's admin page) keeps what the
+            # dashboard has; only a new dashboard gets its layout's default cards.
+            for key in ("cards", "stage", "clock_style"):
                 if key not in d.model_fields_set and existing is not None:
                     data[key] = getattr(existing, key)
             if "cards" not in d.model_fields_set and existing is None:

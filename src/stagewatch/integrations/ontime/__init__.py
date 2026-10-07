@@ -67,7 +67,7 @@ class OntimeIntegration(Integration):
         super().__init__(hub, emulate)
         if inner is None:
             if emulate:
-                inner = EmulatedClock(lambda: hub.config.site, on_change=self._on_reading)
+                inner = EmulatedClock(lambda: hub.config.site, on_change=self._on_reading, cycle=True)
             else:
                 inner = OntimeSource(lambda: hub.config.wall_clock.ontime_url, on_change=self._on_reading)
         else:

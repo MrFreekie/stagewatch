@@ -268,7 +268,7 @@
     chart: ["History chart", "Readings over time, with markers."],
     markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
-    wall_clock: ["Wall Clock", "The time of day from Ontime, with a warning if it differs from Stagewatch. Set the address in the Wall Clock settings."],
+    wall_clock: ["Wall Clock", "The time of day, as plain digits, an LED ring or 7-segment digits. Choose the source in the Wall Clock settings."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
   const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
@@ -305,6 +305,8 @@
       onChange();
     };
     const stage = h("input", { class: "touch", value: d.stage || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off" });
+    const clockStyle = h("select", { class: "touch" }, h("option", { value: "digits" }, "Plain digits"), h("option", { value: "ring" }, "LED ring"), h("option", { value: "segments" }, "7-segment digits"));
+    clockStyle.value = ["ring", "segments"].indexOf(d.clock_style) >= 0 ? d.clock_style : "digits";
     // Ids from a newer Stagewatch (kept in the settings after a downgrade) can't be saved by this one.
     const newer = (d.cards || []).filter((id) => known.indexOf(id) < 0);
     fill(d.cards || (admin.cards && admin.cards.defaults.tablet) || []);
@@ -313,11 +315,11 @@
       newer.length ? h("p", { class: "warn-text hint" }, `This dashboard also lists cards from a newer version of Stagewatch (${newer.join(", ")}). This version can't show them, and saving here removes them.`) : null,
       ul,
       h("div", { class: "row", style: "margin-top:10px" },
-        field("Stage", stage)),
-      h("p", { class: "muted hint" }, "Which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage."));
+        field("Stage", stage), field("Wall Clock look", clockStyle)),
+      h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. Wall Clock look: how the Wall Clock card is drawn on this screen. The ring and 7-segment looks are always red on black."));
     return {
       el,
-      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage) }),
+      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value }),
       setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
       count: () => items.filter((it) => it.on).length,
     };
@@ -399,18 +401,43 @@
   }
 
   // ------------------------------------------------------------ wall clock
-  // Where the Wall Clock card gets its time (Ontime). Read-only: Stagewatch only listens.
-  // Ontime is only contacted while a dashboard has the Wall Clock card.
+  // Where the Wall Clock card gets its time: this computer, or Ontime. One source for the whole
+  // installation; Stagewatch never switches by itself. Read-only: it only listens. Ontime is only
+  // contacted while a dashboard has the Wall Clock card. The look (digits, ring, segments) is
+  // chosen per dashboard under User dashboards → Edit cards.
   function wallClockCard() {
     const w = admin.config.wall_clock, st = admin.wall_clock || {};
+    const d = w.display || {};
     const url = h("input", { value: w.ontime_url, placeholder: "http://127.0.0.1:4001", autocomplete: "off", spellcheck: "false", style: "min-width:260px" });
     const warn = h("input", { class: "num", type: "number", step: "0.5", min: "1", max: "60", value: w.warn_offset_s });
-    const source = h("select", {}, h("option", { value: "ontime" }, "Ontime"));
+    const source = h("select", {}, h("option", { value: "pc" }, "Stagewatch PC"), h("option", { value: "ontime" }, "Ontime"));
+    source.value = w.source === "ontime" ? "ontime" : "pc";
+    const hour12 = h("select", {}, h("option", { value: "24" }, "24-hour"), h("option", { value: "12" }, "12-hour (am/pm)"));
+    hour12.value = d.hour12 ? "12" : "24";
+    const showDate = h("input", { type: "checkbox", checked: !!d.show_date });
+    const ring = h("select", {}, h("option", { value: "sweep" }, "One moving light"), h("option", { value: "fill" }, "Fills up each minute"));
+    ring.value = d.ring === "fill" ? "fill" : "sweep";
+    const blink = h("input", { type: "checkbox", checked: !!d.colon_blink });
+    const ontimeOnly = [field("Ontime address", url), field("Warn if more than this many seconds out", warn)];
     const result = h("p", { class: "muted", role: "status" });
+    const testBtn = h("button", { style: "align-self:flex-end", onclick: async (ev) => {
+      const btn = ev.target; btn.disabled = true; result.textContent = "Testing…";
+      try {
+        const r = await api("POST", "/api/admin/wall-clock/test", { ontime_url: val(url) });
+        result.textContent = r.ok ? `Ontime ${r.version} answered.` : r.message;
+      } catch (err) { result.textContent = err.message; }
+      finally { btn.disabled = false; }
+    } }, "Test connection");
+    // Only Ontime has an address to set and test (display:none, because label.field would override [hidden]).
+    const showOntime = () => [...ontimeOnly, testBtn].forEach((f) => { f.style.display = source.value === "ontime" ? "" : "none"; });
+    source.onchange = showOntime;
+    showOntime();
     const lines = [];
     if (!st.active) {
       lines.push(st.card_assigned ? "Starting…"
         : "Not running. It starts when a dashboard has the Wall Clock card (User dashboards → Edit cards).");
+    } else if (st.source === "pc") {
+      lines.push("Using this computer's clock");
     } else if (st.status === "ok") {
       lines.push(`Connected${st.transport ? ` (${st.transport})` : ""}`);
       if (st.last_message) lines.push(`Last message ${SW.fmtTime(st.last_message, { seconds: true })}`);
@@ -420,19 +447,15 @@
       if (st.version) lines.push(`Ontime version ${st.version}`);
     }
     return card("Wall Clock",
-      h("p", { class: "muted" }, "Shows the time from Ontime on dashboards that have the Wall Clock card, and warns if it differs from Stagewatch. Stagewatch only listens: it never sends anything to Ontime."),
-      h("div", { class: "row" }, field("Source", source), field("Ontime address", url), field("Warn if more than this many seconds out", warn),
+      h("p", { class: "muted" }, "Shows the time on dashboards that have the Wall Clock card. Choose where the time comes from: this computer, or Ontime (then it warns if Ontime differs from Stagewatch). Stagewatch only listens: it never sends anything to Ontime. If the source stops, the clock says so. It never switches to another source by itself."),
+      h("div", { class: "row" }, field("Time source", source), ...ontimeOnly,
         h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/wall-clock", {
-          source: "ontime", ontime_url: val(url), warn_offset_s: Number(warn.value) || 2,
+          source: source.value, ontime_url: val(url), warn_offset_s: Number(warn.value) || 2,
+          display: { hour12: hour12.value === "12", show_date: showDate.checked, ring: ring.value, colon_blink: blink.checked },
         }), "Wall Clock saved").then(refresh, () => {}) }, "Save"),
-        h("button", { style: "align-self:flex-end", onclick: async (ev) => {
-          const btn = ev.target; btn.disabled = true; result.textContent = "Testing…";
-          try {
-            const r = await api("POST", "/api/admin/wall-clock/test", { ontime_url: val(url) });
-            result.textContent = r.ok ? `Ontime ${r.version} answered.` : r.message;
-          } catch (err) { result.textContent = err.message; }
-          finally { btn.disabled = false; }
-        } }, "Test connection")),
+        testBtn),
+      h("div", { class: "row", style: "margin-top:10px" }, field("Clock", hour12), field("Show the date", showDate), field("Ring style", ring), field("Colons blink", blink)),
+      h("p", { class: "muted hint" }, "These apply to every dashboard. The look (plain digits, LED ring or 7-segment) is set for each dashboard under User dashboards → Edit cards. Ring and 7-segment are always red on black."),
       result,
       h("p", { class: "muted" }, lines.join(" · ")));
   }

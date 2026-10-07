@@ -1,8 +1,10 @@
-"""Wall Clock: the show's time of day from an outside source (Ontime), compared with ours.
+"""Wall Clock: the show's time of day from one source (this computer, or Ontime), compared with ours.
 
 A *clock source* reports "milliseconds since midnight on the source's own wall clock" (what
 Ontime calls ``clock``). The service here compares that with Stagewatch's site time and tells
 dashboards, so a card can show the source's time as received and warn when the two differ.
+One source serves the whole installation (``WallClockConfig.source``). A source that drops out
+shows as stale, then offline; Stagewatch never switches to another source by itself.
 
 Pure functions (``wrap_offset_s``, ``compute_offset_s``, ``reading_message``) and a small
 ``WallClockService`` the hub owns. The service:
@@ -19,8 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Callable, Literal, Protocol
 
 from . import sitetime
 
@@ -93,6 +96,66 @@ def card_assigned(config) -> bool:
     return any("wall_clock" in d.cards for d in config.dashboards)
 
 
+class PcClock:
+    """The Stagewatch computer's own clock, as site time of day. Always "ok" and never differs
+    from Stagewatch (it *is* Stagewatch's time), so there is no warning, no device and no alarm.
+    It makes no network call. Tablets show it on the server-corrected clock, so a wrong tablet
+    clock doesn't matter."""
+
+    name = "pc"
+    label = "Stagewatch PC"
+
+    def __init__(self, site_fn: Callable[[], object], clock: Callable[[], float] = time.time) -> None:
+        self._site_fn = site_fn
+        self._time = clock
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        return None
+
+    def latest(self) -> ClockReading:
+        now = self._time()
+        return ClockReading(sitetime.ms_since_local_midnight(now, self._site_fn()), now, "ok", "")
+
+    def details(self) -> dict:
+        return {"transport": "local clock"}
+
+
+def _pc_source(hub: "Hub") -> ClockSource | None:
+    return PcClock(lambda: hub.config.site)
+
+
+def _ontime_source(hub: "Hub") -> ClockSource | None:
+    """The clock source an integration offers under the name "ontime" (the real one or its emulated stand-in)."""
+    for integration in hub.integrations.values():
+        source = getattr(integration, "clock_source", None)
+        if source is not None and getattr(source, "name", "") == "ontime":
+            return source
+    return None
+
+
+# name -> factory. The name is WallClockConfig.source. NTP and GPS sources would be added here.
+SOURCES: dict[str, Callable[["Hub"], ClockSource | None]] = {"pc": _pc_source, "ontime": _ontime_source}
+
+
+def seed_emulate_demo(config) -> bool:
+    """Emulate mode only (called from __main__, never by the hub): a fresh emulate config with the
+    three stock dashboards gets the Wall Clock card on each, one in each style, and the emulated
+    Ontime as the source, so every style and every state (live, differs, stale, offline) can be
+    seen offline. Does nothing once any dashboard has the card or the dashboards were changed.
+    Returns True if it changed the config."""
+    stock = {"foh": "segments", "phone": "digits", "wall": "ring"}
+    if card_assigned(config) or {d.slug for d in config.dashboards} != set(stock):
+        return False
+    for d in config.dashboards:
+        d.cards = [*d.cards[:1], "wall_clock", *d.cards[1:]]
+        d.clock_style = stock[d.slug]
+    config.wall_clock.source = "ontime"
+    return True
+
+
 class WallClockService:
     """Owned by the hub. ``source_for(hub)`` finds the source: an integration that offers a
     ``clock_source`` (the Ontime one, or its emulated stand-in)."""
@@ -110,11 +173,14 @@ class WallClockService:
 
     # ------------------------------------------------------------ source
     def _find_source(self) -> ClockSource | None:
-        for integration in self.hub.integrations.values():
-            source = getattr(integration, "clock_source", None)
-            if source is not None:
-                return source
-        return None
+        """The one source for the whole installation, as chosen in the config. Never another one."""
+        factory = SOURCES.get(self.hub.config.wall_clock.source)
+        return factory(self.hub) if factory else None
+
+    def _key(self) -> tuple:
+        """What the running source depends on; a change restarts it."""
+        w = self.hub.config.wall_clock
+        return (w.source, w.ontime_url if w.source == "ontime" else "")
 
     @property
     def active(self) -> bool:
@@ -153,7 +219,7 @@ class WallClockService:
         async with self._lock:
             try:
                 wanted = card_assigned(self.hub.config)
-                key = (self.hub.config.wall_clock.source, self.hub.config.wall_clock.ontime_url)
+                key = self._key()
                 if self._source is not None and (not wanted or key != self._source_key):
                     await self._stop_source()
                 if wanted and self._source is None:
@@ -182,8 +248,10 @@ class WallClockService:
         if source is None:
             return None
         try:
-            return reading_message(source, source.latest(), self.hub.config.site,
-                                   self.hub.config.wall_clock.warn_offset_s)
+            w = self.hub.config.wall_clock
+            # "display" is only on/off and enum choices (no addresses): the cosmetic options.
+            return {**reading_message(source, source.latest(), self.hub.config.site, w.warn_offset_s),
+                    "display": w.display.model_dump()}
         except Exception:  # noqa: BLE001 - never break the snapshot over the clock
             log.exception("Wall clock reading failed")
             return None
@@ -191,7 +259,8 @@ class WallClockService:
     def admin_status(self) -> dict:
         """For the admin card: is it running, and what is the source saying."""
         source = self._source
-        out: dict = {"active": source is not None, "card_assigned": card_assigned(self.hub.config)}
+        out: dict = {"active": source is not None, "card_assigned": card_assigned(self.hub.config),
+                     "source": source.name if source is not None else None}
         if source is not None:
             reading = source.latest()
             out.update(status=reading.status, detail=reading.detail, last_message=(

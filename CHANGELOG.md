@@ -16,6 +16,25 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Wall Clock: the card now has **three looks**, chosen for each dashboard: plain digits (as
+  before), an **LED ring** (60 lights round a circle with a brighter light for each hour, and
+  the time in the middle) and **7-segment digits** like a studio clock. The ring and 7-segment looks
+  are always red on black, by day and by night. Choose the look under **Admin → User dashboards →
+  Edit cards → Wall Clock look**. Under **Admin → Wall Clock** you can also choose 24-hour or
+  12-hour (am/pm), show the date, choose how the ring moves (one moving light, or lights that fill
+  up each minute) and make the colons blink (they stay steady if the device asks for reduced
+  motion). A ring on a card narrower than about 280 pixels shows plain digits. "Differs",
+  "stale" and "offline" are shown with words and a ▲ as well as a dashed outline or a line through
+  the time, never colour alone. `--emulate` gives the three stock dashboards one look each, and the
+  clock cycles through live, differs, stale and offline every two minutes.
+- Wall Clock: a new time source, **Stagewatch PC**, the clock of the computer running Stagewatch.
+  It is the standard for **new** installations. An installation already set to Ontime stays on
+  Ontime. One source serves the whole installation, and Stagewatch never switches to another
+  by itself: if Ontime stops, the card shows "Stale" and then "offline". Choose the source under
+  **Admin → Wall Clock → Time source**. Action needed: none. If you go back to an older version
+  of Stagewatch after choosing Stagewatch PC, the older version sets the Wall Clock settings back to
+  Ontime and keeps a copy of your old settings file next to it (`config.invalid.yaml`); your PIN and
+  other settings are kept. It also forgets the looks you chose, so you would choose them again.
 - Schedule card: you can now choose its **warning times**. In **Admin → Site**, type the minutes
   before an item ends, for example `15, 10, 5` (up to 8 times, 1 to 240 minutes). The card goes
   amber at each time and orange at the last one, with a tag such as "10 MIN". The next item turns

@@ -17,6 +17,7 @@ from zeroconf.asyncio import AsyncZeroconf
 
 from . import __version__, updater_common
 from .core.hub import Hub
+from .core.wallclock import seed_emulate_demo
 from .integrations.esphome import EsphomeIntegration
 from .integrations.ontime import OntimeIntegration
 from .integrations.osc_out import OscOutIntegration
@@ -85,6 +86,8 @@ async def run(args: argparse.Namespace) -> int:
     hub.add_integration(EsphomeIntegration(hub, emulate=args.emulate, zeroconf=zc))
     hub.add_integration(OscOutIntegration(hub))
     hub.add_integration(OntimeIntegration(hub, emulate=args.emulate))  # runs only while a dashboard has the Wall Clock card
+    if args.emulate and seed_emulate_demo(hub.config):  # a fresh emulate folder shows every clock style
+        hub.save_config()
     app = create_app(hub)
     app.state.port = args.port  # for the "Connect a tablet" addresses
 
