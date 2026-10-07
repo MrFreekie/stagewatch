@@ -172,6 +172,12 @@ body.layout-wall #schedule-card.sched-stale { display: none !important; }
 .sched-title { font-size: 24px; font-weight: 700; line-height: 1.2; margin-top: 2px; overflow-wrap: break-word; word-wrap: break-word; }
 .sched-count { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .sched-count:empty, .sched-line:empty { display: none; }
+.sched-bar { height: 10px; margin: 8px 0 4px; border-radius: 999px; background: var(--grid); overflow: hidden; }
+.sched-bar[hidden] { display: none; }
+.sched-bar-fill { height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width 1s linear; }
+.sched-bar.lvl-warn .sched-bar-fill { background: var(--warn); }
+.sched-bar.lvl-alert .sched-bar-fill { background: var(--alert); }
+@media (prefers-reduced-motion: reduce) { .sched-bar-fill { transition: none; } }
 .sched-line { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; margin-top: 2px; }
 .sched-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 800;
   letter-spacing: .03em; color: var(--bg); background: var(--muted); }
@@ -283,6 +289,7 @@ body.layout-wall .sched-label { font-size: 26px; }
 body.layout-wall .sched-title { font-size: 46px; }
 body.layout-wall .sched-count { font-size: 64px; }
 body.layout-wall .sched-line { font-size: 26px; }
+body.layout-wall .sched-bar { height: 20px; margin: 12px 0 8px; }
 body.layout-wall .sched-tag { font-size: 24px; padding: 2px 14px; }
 
 /* Safari before 14.1 ignores `gap` on flex containers. compat.js adds html.no-flex-gap there,

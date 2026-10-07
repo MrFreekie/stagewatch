@@ -443,8 +443,10 @@
   function schedBlock(kind, label) {
     const b = { kind, title: h("div", { class: "sched-title" }), count: h("div", { class: "sched-count" }),
       line: h("div", { class: "sched-line" }), tag: h("span", { class: "sched-tag", hidden: true }) };
+    // NOW also gets a progress bar (time used of the item's own planned length).
+    if (kind === "now") b.bar = h("div", { class: "sched-bar", hidden: true, "aria-hidden": "true" }, h("div", { class: "sched-bar-fill" }));
     b.el = h("div", { class: `sched-block ${kind}` },
-      h("div", { class: "sched-label" }, h("span", {}, label), b.tag), b.title, b.count, b.line);
+      h("div", { class: "sched-label" }, h("span", {}, label), b.tag), b.title, b.count, b.bar || null, b.line);
     return b;
   }
 
@@ -561,11 +563,24 @@
     setText(ui.now.count, cur ? (ownEnd ? `${SW.fmtDuration(left, true)} left` : "") : "");
     setText(ui.now.line, cur ? `Started ${SW.fmtTime(cur.planned_start)}, ${SW.fmtDuration(now - cur.planned_start)} ago`
       + (ownEnd ? ` · ends ${SW.fmtTime(nn.currentEnd)}` : "") : "");
-    // NEXT: planned time and countdown; amber with a tag for the last 5 minutes.
-    const nlvl = nxt ? SW.nextLevel(nxt.planned_start - now) : "";
+    // Progress bar: how much of the item's own planned time has gone. Hidden without an end time.
+    const total = ownEnd ? nn.currentEnd - cur.planned_start : 0;
+    const showBar = ownEnd && total > 0;
+    ui.now.bar.hidden = !showBar;
+    if (showBar) {
+      const pct = Math.max(0, Math.min(100, ((now - cur.planned_start) / total) * 100));
+      const fill = ui.now.bar.firstChild;
+      const w = `${pct.toFixed(1)}%`;
+      if (fill.style.width !== w) fill.style.width = w;
+      setClass(ui.now.bar, `sched-bar${lvl ? ` lvl-${lvl}` : ""}`);
+    }
+    // NEXT: planned time and countdown; amber with a tag for the last 5 minutes. When it starts
+    // as the current item ends, NOW's "left" is the same number, so NEXT shows only its start time.
+    const sameMoment = ownEnd && !!nxt && Math.abs(nxt.planned_start - nn.currentEnd) <= 60;
+    const nlvl = nxt && !sameMoment ? SW.nextLevel(nxt.planned_start - now) : "";
     setClass(ui.next.el, `sched-block next${nlvl ? ` lvl-${nlvl}` : ""}`);
     setText(ui.next.title, nxt ? nxt.title : "Nothing more today");
-    setText(ui.next.count, nxt ? until(nxt.planned_start - now) : "");
+    setText(ui.next.count, nxt && !sameMoment ? until(nxt.planned_start - now) : "");
     setText(ui.next.line, nxt ? `Starts ${SW.fmtTime(nxt.planned_start)}` : "");
     for (const tag of [ui.next.tag, ui.stripNextTag]) {
       const text = nlvl ? NEXT_TAG : "";
@@ -576,7 +591,7 @@
     // Phone strip: one glance line, tap for the rest.
     setText(ui.stripNow, cur ? cur.title : (idle[nn.state] || "—"));
     const rest = [];
-    if (nxt) rest.push(`Next ${SW.fmtTime(nxt.planned_start)}, ${until(nxt.planned_start - now)}`);
+    if (nxt) rest.push(sameMoment ? `Next ${SW.fmtTime(nxt.planned_start)}` : `Next ${SW.fmtTime(nxt.planned_start)}, ${until(nxt.planned_start - now)}`);
 
     // The schedule belongs to a show day that has finished and the next day hasn't been started:
     // tablets and phones show one muted note, the wall hides the card (style.css).

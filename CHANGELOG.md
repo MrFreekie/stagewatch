@@ -43,6 +43,9 @@ them into a dated release section and tags the commit.
 - Alarms: when someone taps **Acknowledge**, the alarm's **ALARM:** marker is hidden, so the
   chart doesn't fill up with alarms already dealt with. An alarm that clears by itself keeps its
   marker on the chart.
+- Schedule card: NOW now has a progress bar showing how much of the item's planned time has gone
+  (it turns amber and orange with the last 15 and 5 minutes). When the next item starts as this one
+  ends, NEXT shows only its start time, not the same countdown twice.
 - Schedule: Stagewatch now puts a blue ◆ marker on the chart at each soundcheck, at doors, and
   when each act goes on stage and comes off ("Kestrel Road on stage"). Off stage only appears if
   the act has an end time or the curfew cuts it off. Markers sit at the planned times. Each line
