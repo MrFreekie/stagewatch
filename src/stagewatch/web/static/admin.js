@@ -74,18 +74,31 @@
       maxlength: 64, autocomplete: "off", autocapitalize: "off", spellcheck: false });
     const rollover = h("input", { class: "num touch", value: s.day_rollover, placeholder: "06:00", maxlength: 5,
       inputmode: "numeric", pattern: "(0[0-9]|1[01]):[0-5][0-9]" });
+    // Warning steps for the Schedule card: one list for every dashboard.
+    const warn = h("input", { class: "touch", value: (s.schedule_warn_minutes || [15, 5]).join(", "), placeholder: "15, 10, 5",
+      maxlength: 40, inputmode: "numeric", autocomplete: "off", spellcheck: false });
+    const flash = h("input", { type: "checkbox", checked: !!s.schedule_warn_flash });
+    const WARN_ERROR = "Type 1 to 8 different whole numbers of minutes between 1 and 240, separated by commas, for example 15, 10, 5. Nothing has been changed.";
+    const parseWarn = () => {
+      const parts = String(warn.value).split(",").map((x) => x.trim()).filter((x) => x !== "");
+      const nums = parts.map((x) => (/^\d{1,3}$/.test(x) ? Number(x) : NaN));
+      if (!nums.length || nums.length > 8 || nums.some((n) => !(n >= 1 && n <= 240)) || new Set(nums).size !== nums.length) return null;
+      return nums.sort((x, y) => y - x);
+    };
     // The server's 422 text is for developers; say it in crew words. Nothing typed is echoed back.
     const siteError = (err) => {
       const m = String(err.message || "");
       if (err.status === 422 && m.indexOf("timezone:") === 0) return "That time zone isn't recognised. Pick one from the list, or type a name like Europe/London. Nothing has been changed.";
+      if (err.status === 422 && m.indexOf("schedule_warn_minutes:") === 0) return WARN_ERROR;
       if (err.status === 422 && m.indexOf("day_rollover:") === 0) return "Type the new-day start as HH:MM between 00:00 and 11:59, for example 03:00. Nothing has been changed.";
       return m;
     };
-    const save = (overrides) => api("PUT", "/api/admin/site", Object.assign({
+    const save = (overrides) => { const wm = parseWarn(); if (!wm) { toast(WARN_ERROR, true); return Promise.resolve(); }
+      return api("PUT", "/api/admin/site", Object.assign({
       name: val(name), altitude_m: Number(alt.value), reference_distance_m: Number(dist.value),
       stale_after_s: Number(stale.value), smoothing_tau_s: Number(tau.value), outlier_reject: outl.checked,
-      timezone: val(tz), day_rollover: val(rollover),
-    }, overrides || {})).then(() => { toast("Site saved"); return refresh(); }, (err) => toast(siteError(err), true));
+      timezone: val(tz), day_rollover: val(rollover), schedule_warn_minutes: wm, schedule_warn_flash: flash.checked,
+    }, overrides || {})).then(() => { toast("Site saved"); return refresh(); }, (err) => toast(siteError(err), true)); };
     let tzNote = null;
     if (!s.timezone) {
       const t = (snap.site && snap.site.time) || {};
@@ -107,6 +120,10 @@
         field("Time zone", tz), tzList,
         field("New show day starts at (HH:MM, 24-hour)", rollover)),
       h("p", { class: "muted hint" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before. Use 03:00 or later for the new day, to stay clear of the hour when the clocks change."),
+      h("div", { class: "row", style: "margin-top:10px" },
+        field("Schedule warning times (minutes, separated by commas)", warn),
+        field("Flash the card in the last step", flash)),
+      h("p", { class: "muted hint" }, "Applies to every dashboard. The schedule card goes amber at each time before an item ends, and orange at the last one. The next item turns amber within the last time. Flashing is a slow pulse, off unless you tick it."),
       tzNote,
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { class: "primary", onclick: () => save() }, "Save site")));

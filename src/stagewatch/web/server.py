@@ -618,7 +618,8 @@ class LiveFeed:
             entities = [e.to_dict(now, stale_after) for e in self._dirty.values()]
             self._dirty.clear()
             self._send_all({"type": "states", "now": now, "entities": entities,
-                            "site": {**self.hub.site_meta, "time": self.hub.site_time(now)}})
+                            "site": {**self.hub.site_meta, "time": self.hub.site_time(now),
+                                     "schedule_warn": self.hub.schedule_warn()}})
 
 
 # -------------------------------------------------------------------- app
@@ -714,6 +715,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                       "managed": updater.managed, "supervised": updater.supervised},
             "site": hub.config.site.name,
             "time": hub.site_time(),
+            "schedule_warn": hub.schedule_warn(),
             "emulate": hub.emulate,
             "admin_setup_required": not hub.config.admin.pin_hash and not hub.store.recovery_required,
             "recovery_required": hub.store.recovery_required,
@@ -915,6 +917,11 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if "schedule_auto_markers" not in body.model_fields_set:
             # Set on the schedule page; the Site card doesn't send it, so keep it as it is.
             body = body.model_copy(update={"schedule_auto_markers": hub.config.site.schedule_auto_markers})
+        # Callers that don't send the warning times keep what is set.
+        keep = {k: getattr(hub.config.site, k) for k in ("schedule_warn_minutes", "schedule_warn_flash")
+                if k not in body.model_fields_set}
+        if keep:
+            body = body.model_copy(update=keep)
         hub.set_site(body)  # a time zone (or show day) change re-bases the schedule
         hub.save_config()
         return body
