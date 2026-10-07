@@ -58,6 +58,10 @@ log = logging.getLogger(__name__)
 # In logical running order (the order the admin page lists them).
 KINDS: tuple[str, ...] = ("venue_access", "load_in", "crew_call", "soundcheck", "doors", "act",
                           "changeover", "curfew", "load_out", "other")
+# Kinds that put a marker on the timeline unless the item says otherwise (schedule_items.marker).
+MARKER_KINDS: tuple[str, ...] = ("soundcheck", "doors", "act")
+MARKER_SOURCE = "schedule"
+MARKER_LABEL_MAX = 120                # the hub's marker label limit
 MAX_ITEMS = 300
 TITLE_MAX = 120                       # characters
 STAGE_MAX = 40                        # characters (same as Dashboard.stage)
@@ -311,6 +315,8 @@ def build_rows(items: Iterable[dict], day: date | str, site) -> tuple[list[dict]
             errors.append(FieldError(i, "kind", MSG_KIND))
             bad = True
         row["kind"] = kind
+        marker = it.get("marker")
+        row["marker"] = None if marker is None else int(bool(marker))
         try:
             on_date = clean_date(it.get("date"))
             row["planned_start"], row["planned_end"] = resolve_times(
@@ -345,7 +351,73 @@ def public_item(item: dict, site) -> dict:
         "date": sitetime.local(ps, site).date().isoformat(),
         "start": sitetime.local_hhmm(ps, site), "end": sitetime.local_hhmm(pe, site) if pe is not None else "",
         "planned_start": ps, "planned_end": pe, "setlist": item["setlist"],
+        "marker": marker_on(item),
     }
+
+
+# ------------------------------------------------------------------ timeline markers
+def marker_on(item: dict) -> bool:
+    """Whether the item puts markers on the timeline: its own setting, else its kind's default."""
+    m = item.get("marker")
+    return item.get("kind") in MARKER_KINDS if m is None else bool(m)
+
+
+def _with_stage(text: str, stage: str) -> str:
+    stage = (stage or "").strip()
+    return (f"{text} ({stage})" if stage else text)[:MARKER_LABEL_MAX]
+
+
+_SOUNDCHECK_RE = re.compile(r"sound[\s-]?check", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class Moment:
+    item_id: int
+    edge: str      # "start" | "end"
+    ts: float      # the planned instant (UTC epoch seconds)
+    label: str
+
+
+def act_end(item: dict, items: list[dict]) -> float | None:
+    """When an act comes off stage: its own planned end, or the first curfew after its start (for
+    its stage) if that is earlier. None when it has neither (it just runs into the next item)."""
+    start = item["planned_start"]
+    cut = min((c["planned_start"] for c in items if c["kind"] == "curfew" and c["planned_start"] > start
+               and stage_matches(c.get("stage", ""), item.get("stage", ""))), default=None)
+    ends = [t for t in (item.get("planned_end"), cut) if t is not None]
+    return min(ends) if ends else None
+
+
+def marker_moments(items: list[dict]) -> list[Moment]:
+    """Every moment of the schedule that could put a marker on the timeline, in time order,
+    whether or not the item's marker setting is on (the caller decides). Labels:
+
+    * soundcheck start: "Soundcheck: <title>", or just the title if it already says soundcheck;
+    * doors: "Doors";
+    * act start "<title> on stage"; act end "<title> off stage", only when the act has its own
+      end or a curfew cuts it off;
+    * any other kind (only if its marker is switched on): the title, at its start.
+
+    The stage, if the item has one, follows in brackets: "Doors (Main stage)"."""
+    out: list[Moment] = []
+    for it in items:
+        if not isinstance(it.get("id"), int):
+            continue
+        kind, title, stage = it["kind"], it["title"], it.get("stage", "")
+        if kind == "soundcheck":
+            label = title if _SOUNDCHECK_RE.search(title) else f"Soundcheck: {title}"
+        elif kind == "doors":
+            label = "Doors"
+        elif kind == "act":
+            label = f"{title} on stage"
+            end = act_end(it, items)
+            if end is not None:
+                out.append(Moment(it["id"], "end", end, _with_stage(f"{title} off stage", stage)))
+        else:
+            label = title
+        out.append(Moment(it["id"], "start", it["planned_start"], _with_stage(label, stage)))
+    out.sort(key=lambda m: (m.ts, m.item_id, m.edge))
+    return out
 
 
 # ------------------------------------------------------------------ now / next
@@ -793,3 +865,67 @@ class ScheduleService:
             log.info("Schedule re-based to keep its local times (%d items moved)", len(changes))
         self._publish()
         return len(changes)
+
+
+LATE_GRACE = 5.0  # seconds: timer jitter allowed; later than this the moment is missed, not marked
+
+
+class ScheduleMarkers:
+    """Puts the current show's schedule on the timeline: a marker (source "schedule") at each
+    planned moment (``marker_moments``) as it arrives, for items whose marker setting is on, while
+    the site's "Add markers from the schedule" switch is on.
+
+    Each moment is settled exactly once, keyed by (show, item id, start|end) in the database, so a
+    restart or a re-save never adds it twice. A moment that passes while its marker is switched
+    off is settled without a marker (switching on later doesn't fill in the past). Nothing is
+    assumed: a moment gets a marker only if Stagewatch was running as it passed (within
+    ``LATE_GRACE`` seconds of timer jitter). One that passed while Stagewatch was off is settled
+    as missed, with no marker, so it never fires later; the gap in the data and the hub's
+    "Stagewatch was off" marker explain it.
+    Only the current show is ever looked at. An item moved before its moment gets its marker at
+    the new time; markers already placed stay where they are. ``check(now)`` is called once a
+    second by the hub (and takes ``now`` so tests can drive the clock)."""
+
+    def __init__(self, hub) -> None:
+        self.hub = hub
+        self._moments: tuple[tuple[int, int], list[Moment]] | None = None
+        self._done: tuple[int, set[tuple[int, str]]] | None = None
+
+    def invalidate(self) -> None:
+        self._moments = None
+        self._done = None
+
+    def check(self, now: float | None = None) -> list:
+        now = time.time() if now is None else now
+        rec = self.hub.recorder
+        show_id = rec.show_id
+        key = (show_id, self.hub.schedule.revision())
+        if self._moments is None or self._moments[0] != key:
+            self._moments = (key, marker_moments(self.hub.schedule.items()))
+        if self._done is None or self._done[0] != show_id:
+            self._done = (show_id, rec.schedule_marks(show_id))
+        done = self._done[1]
+        moments = self._moments[1]
+        if not moments or moments[0].ts > now:
+            return []
+        on = bool(getattr(self.hub.config.site, "schedule_auto_markers", True))
+        items: dict | None = None  # built only when a moment is actually due
+        added = []
+        for m in moments:
+            if m.ts > now:
+                break
+            if (m.item_id, m.edge) in done:
+                continue
+            if items is None:
+                items = {i["id"]: i for i in self.hub.schedule.items()}
+            item = items.get(m.item_id)
+            on_time = now - m.ts <= LATE_GRACE
+            label = m.label if on and on_time and item is not None and marker_on(item) else None
+            marker = rec.settle_schedule_moment(m.item_id, m.edge, m.ts, label, MARKER_SOURCE, now)
+            done.add((m.item_id, m.edge))
+            if marker is not None:
+                added.append(marker)
+                self.hub.bus.publish("marker", marker)
+        if added:
+            log.info("Added %d marker%s from the schedule", len(added), "" if len(added) == 1 else "s")
+        return added

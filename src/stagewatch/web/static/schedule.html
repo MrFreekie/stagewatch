@@ -12,6 +12,15 @@
   header.top .back { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
   #schedule-editor .sched-edit-fields input.num { width: 84px; }
   #schedule-editor .sched-edit-title { flex: 2 1 320px; }
+  /* Marker tick boxes: the whole box area is at least 44 px to tap. */
+  #schedule-editor .sched-edit-marker { align-items: center; }
+  #schedule-editor .sched-edit-marker-box { display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; min-width: 44px; }
+  #schedule-editor .sched-edit-marker-box input { width: 24px; height: 24px; margin: 0; }
+  #schedule-editor .sched-auto-markers { margin: 8px 0 4px; }
+  #schedule-editor .sched-auto-label { display: inline-flex; align-items: center; gap: 10px; min-height: 44px;
+    font-weight: 600; cursor: pointer; }
+  #schedule-editor .sched-auto-label input { width: 24px; height: 24px; margin: 0; }
 
   /* Printing (or "Save as PDF"): only the running order, black on white. */
   #print-view { display: none; }

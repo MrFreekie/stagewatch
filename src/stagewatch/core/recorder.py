@@ -14,6 +14,7 @@ import os
 import re
 import sqlite3
 import time
+import unicodedata
 from datetime import date
 from pathlib import Path
 
@@ -145,8 +146,34 @@ _V2_SHOW_COLUMNS = [
     ("day", "ALTER TABLE shows ADD COLUMN day TEXT"),  # 'YYYY-MM-DD' site-local; NULL = derive from started
 ]
 
-SAFETY_COPY_SUFFIX = ".pre-v2.bak"
+# ---- DB v3: marker notes and hiding, the per-item schedule marker setting, and the record of
+# which schedule moments have been settled (so a restart or a re-save never marks one twice).
+_V3_COLUMNS = [
+    ("markers", "hidden", "ALTER TABLE markers ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"),
+    ("markers", "note", "ALTER TABLE markers ADD COLUMN note TEXT NOT NULL DEFAULT ''"),
+    # NULL = the default for the item's kind (schedule.MARKER_KINDS); 0 or 1 = the admin's choice.
+    ("schedule_items", "marker", "ALTER TABLE schedule_items ADD COLUMN marker INTEGER"),
+]
+_V3_TABLES = [
+    # One row per schedule moment (item start or end) once it has been settled: marker_id is the
+    # marker added for it, or NULL when none was (switched off when the moment came).
+    """CREATE TABLE IF NOT EXISTS schedule_marks (
+    show_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    edge TEXT NOT NULL,
+    ts REAL NOT NULL,
+    marker_id INTEGER,
+    settled REAL NOT NULL,
+    PRIMARY KEY (show_id, item_id, edge)
+)""",
+]
+
+# The copy is named for the version this build upgrades to ("pre-v3": the database as it was before
+# it became v3). Older copies ("pre-v2...") count towards the same limit.
+SAFETY_COPY_SUFFIX = f".pre-v{DB_SCHEMA_VERSION}.bak"
+SAFETY_COPY_GLOB = ".pre-v*.bak"
 SAFETY_COPY_KEEP = 2  # outside the updater's backup retention, so bounded here
+NOTE_MAX = 1000  # characters in a marker note
 UPDATER_BACKUP_MAX_AGE_S = 3600.0
 HEARTBEAT_S = 30.0
 CHECKPOINT_S = 60.0
@@ -180,9 +207,10 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def updater_backup_covers(db_path: Path, env=None, now: float | None = None) -> bool:
+def updater_backup_covers(db_path: Path, env=None, now: float | None = None,
+                          version: int | None = None) -> bool:
     """True only when the updater has just taken a backup of exactly this database for the code
-    now running, so the v1 -> v2 safety copy can be skipped (it costs time and disk inside the
+    now running, so the pre-upgrade safety copy can be skipped (it costs time and disk inside the
     launcher's health window).  Anything unsure means "make the safety copy".  All of:
 
     - a supervised start (the launcher's state dir is in the environment);
@@ -193,7 +221,8 @@ def updater_backup_covers(db_path: Path, env=None, now: float | None = None) -> 
       belongs to an update that already ran, e.g. update, roll back, then check out again);
     - the backup is in this database's own data folder (the emulate subfolder is never backed
       up), passes ``backup.verify_backup`` (sha256 against the admin-only record, no symlinks)
-      and is a v1 database."""
+      and is at the same schema version as the database about to be upgraded (``version``; by
+      default read from the database itself), which must be older than this build's."""
     from .. import updater_common as uc
     env = os.environ if env is None else env
     sd = env.get(uc.ENV_STATE_DIR)
@@ -217,15 +246,37 @@ def updater_backup_covers(db_path: Path, env=None, now: float | None = None) -> 
             if not isinstance(ts, str) or calendar.timegm(time.strptime(ts, fmt)) >= created:
                 return False
         data_dir = Path(db_path).parent
+        if version is None:
+            version = _read_user_version(Path(db_path))
+        if not 1 <= version < DB_SCHEMA_VERSION:
+            return False
         verify_backup(data_dir, sd, m["id"])
         copy = data_dir / "backups" / m["id"] / DB_NAME
-        ro = sqlite3.connect(copy.resolve().as_uri() + "?mode=ro", uri=True)
-        try:
-            return ro.execute("PRAGMA user_version").fetchone()[0] == 1
-        finally:
-            ro.close()
+        return _read_user_version(copy) == version
     except Exception:  # noqa: BLE001 - unsure means "make the safety copy"
         return False
+
+
+def _read_user_version(path: Path) -> int:
+    ro = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        return ro.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        ro.close()
+
+
+def clean_note(note: object) -> str:
+    """A marker note: plain text, at most NOTE_MAX characters after trimming. New lines are kept
+    (\\r\\n and \\r become \\n); other control or format characters are refused. Fixed-text
+    errors, never the input."""
+    if not isinstance(note, str):
+        raise ValueError("A note must be text")
+    note = note.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if len(note) > NOTE_MAX:
+        raise ValueError(f"Notes can be up to {NOTE_MAX:,} characters")
+    if any(ch != "\n" and unicodedata.category(ch) in ("Cc", "Cf") for ch in note):
+        raise ValueError("Notes can't contain hidden or control characters (new lines are fine)")
+    return note
 
 
 class Recorder:
@@ -257,18 +308,24 @@ class Recorder:
         if version > DB_SCHEMA_VERSION:
             raise RuntimeError(f"Database schema {version} is newer than this build "
                                f"({DB_SCHEMA_VERSION}); upgrade Stagewatch")
+        # One safety copy before the first step this start takes (a v1 database goes through
+        # v2 to v3 in one start and is copied once, as it was before any change).
+        if 1 <= version < DB_SCHEMA_VERSION and self._holds_data() \
+                and not updater_backup_covers(self.path, version=version):
+            self._safety_copy()
         if version < 2:
-            if version >= 1 and self._holds_data() and not updater_backup_covers(self.path):
-                self._safety_copy()
             self._v1_to_v2()
             version = 2
+        if version < 3:
+            self._v2_to_v3()
+            version = 3
 
     def _holds_data(self) -> bool:
         return bool(self._db.execute("SELECT EXISTS (SELECT 1 FROM shows)").fetchone()[0])
 
     def _remove_torn_safety_copies(self) -> None:
         """A safety copy interrupted by a kill or power cut stays a .tmp file: never a .bak."""
-        for p in self.path.parent.glob(self.path.name + ".pre-v2*.tmp*"):
+        for p in self.path.parent.glob(self.path.name + ".pre-v*.tmp*"):
             try:
                 p.unlink()
                 log.warning("Removed an unfinished safety copy of the database (%s)", p.name)
@@ -276,14 +333,16 @@ class Recorder:
                 pass
 
     def _safety_copy(self) -> Path:
-        """Consistent, integrity-checked copy of the v1 database next to it, before the first v2
-        migration (protects dev installs and the emulate folder, which no updater backup covers).
-        Written as .tmp and renamed only when complete; only the newest SAFETY_COPY_KEEP are kept."""
+        """Consistent, integrity-checked copy of the database next to it, before it is upgraded
+        (protects dev installs and the emulate folder, which no updater backup covers). Named for
+        the version it is upgraded to (``.pre-v3.bak``). Written as .tmp and renamed only when
+        complete; only the newest SAFETY_COPY_KEEP copies (of any version) are kept."""
         from ..backup import backup_db
         from ..updater_common import fsync_dir, replace_with_retry
         dst = self.path.with_name(self.path.name + SAFETY_COPY_SUFFIX)
         if dst.exists():  # an older copy (e.g. update, roll back, update again): keep both
-            dst = self.path.with_name(f"{self.path.name}.pre-v2-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.bak")
+            stamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
+            dst = self.path.with_name(f"{self.path.name}.pre-v{DB_SCHEMA_VERSION}-{stamp}.bak")
         tmp = dst.with_name(dst.name + ".tmp")
         began = time.monotonic()
         try:
@@ -307,7 +366,7 @@ class Recorder:
         return dst
 
     def _prune_safety_copies(self, newest: Path) -> None:
-        copies = sorted(self.path.parent.glob(self.path.name + ".pre-v2*.bak"),
+        copies = sorted(self.path.parent.glob(self.path.name + SAFETY_COPY_GLOB),
                         key=lambda p: (p == newest, p.stat().st_mtime), reverse=True)
         for old in copies[SAFETY_COPY_KEEP:]:
             try:
@@ -350,6 +409,28 @@ class Recorder:
                     "INSERT INTO events (name, created) VALUES ('Event 1', COALESCE((SELECT MIN(started) FROM shows), ?))",
                     (time.time(),)).lastrowid
             db.execute("UPDATE shows SET event_id = ? WHERE event_id IS NULL", (event_id,))
+
+    def _v2_to_v3(self) -> None:
+        """DB v3, in one transaction: on any error the database stays exactly at v2. Only ALTER
+        ADD COLUMN (with defaults, so every existing marker is visible with no note and every
+        schedule item uses its kind's default) and a new table: no existing row is rewritten."""
+        db = self._db
+        began = time.monotonic()
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            for table, name, stmt in _V3_COLUMNS:
+                if name not in {r[1] for r in db.execute(f"PRAGMA table_info({table})")}:
+                    db.execute(stmt)
+            for stmt in _V3_TABLES:
+                db.execute(stmt)
+            db.execute("PRAGMA user_version = 3")
+            db.commit()
+        except BaseException as e:
+            db.rollback()
+            log.error("Database upgrade to v3 failed (%s); the database was left unchanged",
+                      type(e).__name__)
+            raise
+        log.info("Database upgraded to v3 (%.2f s)", time.monotonic() - began)
 
     # ----------------------------------------------------------------- events
     def _open_event(self) -> int:
@@ -526,42 +607,75 @@ class Recorder:
         return row[0] if row else None
 
     # ---------------------------------------------------------------- markers
-    def add_marker(self, label: str, source: str, ts: float | None = None) -> Marker:
+    _MARKER_COLS = "id, ts, label, source, hidden, note"
+
+    @staticmethod
+    def _marker(row) -> Marker:
+        return Marker(row[0], row[1], row[2], row[3], bool(row[4]), row[5] or "")
+
+    def add_marker(self, label: str, source: str, ts: float | None = None, note: str = "") -> Marker:
         ts = ts if ts is not None else time.time()
         cur = self._db.execute(
-            "INSERT INTO markers (show_id, ts, label, source) VALUES (?, ?, ?, ?)",
-            (self.show_id, ts, label, source))
+            "INSERT INTO markers (show_id, ts, label, source, note) VALUES (?, ?, ?, ?, ?)",
+            (self.show_id, ts, label, source, note))
         self._db.commit()
-        return Marker(cur.lastrowid, ts, label, source)
+        return Marker(cur.lastrowid, ts, label, source, False, note)
 
     def markers(self, show_id: int | None = None) -> list[Marker]:
+        """Every marker of the show, hidden ones included (they carry ``hidden``)."""
         show_id = show_id if show_id is not None else self.show_id
         rows = self._db.execute(
-            "SELECT id, ts, label, source FROM markers WHERE show_id = ? ORDER BY ts",
+            f"SELECT {self._MARKER_COLS} FROM markers WHERE show_id = ? ORDER BY ts",
             (show_id,)).fetchall()
-        return [Marker(*r) for r in rows]
+        return [self._marker(r) for r in rows]
 
-    def marker(self, marker_id: int) -> Marker | None:
-        row = self._db.execute(
-            "SELECT id, ts, label, source FROM markers WHERE id = ?", (marker_id,)).fetchone()
-        return Marker(*row) if row else None
+    def marker(self, marker_id: int, show_id: int | None = None) -> Marker | None:
+        """A marker by id; with ``show_id``, only if it belongs to that show."""
+        sql = f"SELECT {self._MARKER_COLS} FROM markers WHERE id = ?"
+        args: tuple = (marker_id,)
+        if show_id is not None:
+            sql += " AND show_id = ?"
+            args += (show_id,)
+        row = self._db.execute(sql, args).fetchone()
+        return self._marker(row) if row else None
+
+    def update_marker(self, marker_id: int, *, note: str | None = None, hidden: bool | None = None,
+                      show_id: int | None = None) -> Marker | None:
+        """Set a marker's note and/or hidden flag. None if there is no such marker (in
+        ``show_id``, when given)."""
+        if self.marker(marker_id, show_id) is None:
+            return None
+        sets, args = [], []
+        if note is not None:
+            sets.append("note = ?")
+            args.append(note)
+        if hidden is not None:
+            sets.append("hidden = ?")
+            args.append(1 if hidden else 0)
+        if sets:
+            self._db.execute(f"UPDATE markers SET {', '.join(sets)} WHERE id = ?", (*args, marker_id))
+            self._db.commit()
+        return self.marker(marker_id)
 
     def delete_marker(self, marker_id: int) -> bool:
         cur = self._db.execute("DELETE FROM markers WHERE id = ?", (marker_id,))
+        self._db.execute("UPDATE schedule_marks SET marker_id = NULL WHERE marker_id = ?", (marker_id,))
         self._db.commit()
         return cur.rowcount > 0
 
     # --------------------------------------------------------------- schedule
-    _SCHEDULE_COLS = "id, sort, stage, kind, title, planned_start, planned_end, setlist, updated"
+    _SCHEDULE_COLS = "id, sort, stage, kind, title, planned_start, planned_end, setlist, updated, marker"
 
     def schedule_items(self, show_id: int | None = None) -> list[dict]:
-        """A show's schedule rows (planned times only), ordered by start."""
+        """A show's schedule rows (planned times only), ordered by start. ``marker`` is the stored
+        setting: None (the kind's default), 0 or 1."""
         show_id = show_id if show_id is not None else self.show_id
         rows = self._db.execute(
             f"SELECT {self._SCHEDULE_COLS} FROM schedule_items WHERE show_id = ? "
             "ORDER BY planned_start, sort, id", (show_id,)).fetchall()
         return [{"id": r[0], "sort": r[1], "stage": r[2], "kind": r[3], "title": r[4],
-                 "planned_start": r[5], "planned_end": r[6], "setlist": r[7], "updated": r[8]} for r in rows]
+                 "planned_start": r[5], "planned_end": r[6], "setlist": r[7], "updated": r[8],
+                 "marker": None if r[9] is None else int(bool(r[9]))} for r in rows]
 
     def replace_schedule(self, show_id: int, rows: list[dict], now: float | None = None) -> None:
         """Replace a show's whole schedule in one transaction (all or nothing). A row keeps its
@@ -578,12 +692,14 @@ class Recorder:
                 keep = isinstance(rid, int) and rid in own and rid not in used
                 if keep:
                     used.add(rid)
+                marker = r.get("marker")
                 db.execute(
                     "INSERT INTO schedule_items (id, show_id, sort, stage, kind, title, planned_start, "
-                    "planned_end, setlist, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "planned_end, setlist, updated, marker) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (rid if keep else None, show_id, int(r.get("sort", i)), r["stage"], r["kind"], r["title"],
                      float(r["planned_start"]),
-                     None if r.get("planned_end") is None else float(r["planned_end"]), r["setlist"], now))
+                     None if r.get("planned_end") is None else float(r["planned_end"]), r["setlist"], now,
+                     None if marker is None else int(bool(marker))))
             db.commit()
         except BaseException:
             db.rollback()
@@ -601,6 +717,44 @@ class Recorder:
             self._db.commit()
         except BaseException:
             self._db.rollback()
+            raise
+
+    # ------------------------------------------------------- schedule moments
+    def schedule_marks(self, show_id: int) -> set[tuple[int, str]]:
+        """(item_id, edge) of every schedule moment of the show already settled."""
+        return {(r[0], r[1]) for r in self._db.execute(
+            "SELECT item_id, edge FROM schedule_marks WHERE show_id = ?", (show_id,))}
+
+    def settle_schedule_moment(self, item_id: int, edge: str, ts: float, label: str | None,
+                               source: str = "schedule", now: float | None = None) -> Marker | None:
+        """Settle one moment of the current show, once ever, in one transaction: with ``label``
+        add a marker at ``ts`` (unless the show already has an identical one from the same source,
+        e.g. after the item was deleted and typed in again); without, only record it as settled.
+        Returns the new marker, or None when nothing was added."""
+        now = time.time() if now is None else now
+        db = self._db
+        try:
+            if db.execute("SELECT 1 FROM schedule_marks WHERE show_id = ? AND item_id = ? AND edge = ?",
+                          (self.show_id, item_id, edge)).fetchone():
+                return None
+            marker = None
+            marker_id = None
+            if label is not None:
+                same = db.execute("SELECT id FROM markers WHERE show_id = ? AND source = ? AND ts = ? "
+                                  "AND label = ? LIMIT 1", (self.show_id, source, ts, label)).fetchone()
+                if same:
+                    marker_id = same[0]
+                else:
+                    marker_id = db.execute(
+                        "INSERT INTO markers (show_id, ts, label, source) VALUES (?, ?, ?, ?)",
+                        (self.show_id, ts, label, source)).lastrowid
+                    marker = Marker(marker_id, ts, label, source)
+            db.execute("INSERT INTO schedule_marks (show_id, item_id, edge, ts, marker_id, settled) "
+                       "VALUES (?, ?, ?, ?, ?, ?)", (self.show_id, item_id, edge, ts, marker_id, now))
+            db.commit()
+            return marker
+        except BaseException:
+            db.rollback()
             raise
 
     # ------------------------------------------------------------------ alarms
