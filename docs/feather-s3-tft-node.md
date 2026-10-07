@@ -372,6 +372,36 @@ numbers to suit your network. Keep the spaces at the start of each line.
 Pick an address outside your router's automatic range. Update the node (over USB the first time).
 In Stagewatch, if the address changes, the calibration stays with the board.
 
+### Moving between sites (several Wi-Fi networks)
+
+A node can know more than one network, for example your test bench, home and a venue. Open
+`stagewatch-s3-tft-ms8607.yaml` and replace the two lines `ssid:` and `password:` under `wifi:`
+with a `networks:` list. Keep the spaces at the start of each line. Add the extra names and
+passwords to `secrets.yaml` first, then flash again over USB or Wi-Fi.
+
+```yaml
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+    - ssid: !secret wifi_home_ssid
+      password: !secret wifi_home_password
+```
+
+- Each time the node starts, or loses its network, it looks for the networks in the list and
+  joins the strongest one it can see. Give a network `priority: 10` (a number from -128 to 127)
+  to make it win whenever it is in range.
+- It does not move to another listed network while it is still connected. Power it off and on
+  when you change site, or wait: if it cannot connect for 15 minutes it restarts and looks again.
+- If none of the networks is found, it starts its own back-up network (see "Other notes").
+- A fixed IP address belongs to one network, so put `manual_ip:` under that network in the list.
+  Stagewatch finds nodes by name, so a different address on each network is fine.
+- Stagewatch must be on the same network as the node to see it. Each network needs its own
+  Stagewatch computer or a route to it.
+- All the passwords are stored inside the node. Do not share a flashed node or its file.
+- Hidden networks need `hidden: true`. Nodes on batteries that sleep can add `fast_connect: true`
+  to save power, but it joins the first listed network it finds, not the strongest.
+
 ### Other notes
 
 - The node's own back-up network is named after `node_name` and uses `wifi_ap_password`. It

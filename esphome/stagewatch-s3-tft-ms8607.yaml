@@ -124,6 +124,8 @@ wifi:
   #   static_ip: 192.168.1.50
   #   gateway: 192.168.1.1
   #   subnet: 255.255.255.0
+  # Several networks (see the guide, "Moving between sites"): replace ssid and
+  # password above with a `networks:` list of ssid / password pairs.
   # Fallback access point if the node cannot join Wi-Fi.
   ap:
     ssid: "${node_name}"
