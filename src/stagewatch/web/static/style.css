@@ -407,6 +407,9 @@ body.disconnected .chart-wrap, body.disconnected [data-live] { opacity: .4; filt
 .wc-note.warn { color: var(--warn); font-weight: 600; }
 #wall-clock-card.wc-off .wc-time, #wall-clock-card.wc-stale .wc-time { color: var(--muted); }
 body.layout-phone .wc-time { font-size: 40px; }
-body.layout-wall .wc-time { font-size: 120px; }
-body.layout-wall .wc-note { font-size: 28px; }
-body.layout-wall #wall-clock-card > h2 { font-size: 22px; }
+/* A coloured edge as well as the note, so a warning is seen from across the room. */
+#wall-clock-card.wc-off, #wall-clock-card.wc-stale, #wall-clock-card.wc-differs { border-left: 6px solid var(--warn); }
+#wall-clock-card.wc-stale .wc-time { text-decoration: line-through; text-decoration-thickness: 3px; }
+body.layout-wall .wc-time { font-size: 150px; }
+body.layout-wall .wc-note { font-size: 32px; }
+body.layout-wall #wall-clock-card > h2 { font-size: 24px; }

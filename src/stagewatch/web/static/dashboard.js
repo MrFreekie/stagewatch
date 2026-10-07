@@ -670,16 +670,19 @@
     let note = "", level = "";
     if (!live) {
       setText(ui.time, "--:--:--");
-      note = m.status === "error" ? `${name} sent a time we can't read` : `${name} offline`;
+      note = m.status === "error" ? `▲ ${name} sent a time we can't read` : `▲ ${name} offline: no time to show`;
       level = "warn";
     } else if (stale) {
       setText(ui.time, clockText(m.clock_ms));   // frozen at the last reading
-      note = `Stale: no update for ${Math.round(age)} s`;
+      // Rounded in steps so the live region isn't re-announced every second.
+      const ago = age < 10 ? "a few seconds" : age < 60 ? `${Math.round(age / 10) * 10} s` : `${Math.round(age / 60)} min`;
+      note = `▲ Stale: nothing from ${name} for ${ago}. Don't trust this time.`;
       level = "warn";
     } else {
       setText(ui.time, clockText(m.clock_ms + age * 1000));
       if (m.warn && m.offset_s !== null && m.offset_s !== undefined) {
-        note = `▲ Differs from Stagewatch by ${wcOffsetText(m.offset_s)}${wholeHours(m.offset_s) ? ". Check the time zones." : ""}`;
+        const ahead = m.offset_s < 0 ? "behind" : "ahead";
+        note = `▲ Differs from Stagewatch by ${wcOffsetText(m.offset_s)} (${name} is ${ahead})${wholeHours(m.offset_s) ? ". Check the time zones." : ""}`;
         level = "warn";
       } else {
         note = "Matches Stagewatch";
@@ -687,7 +690,7 @@
     }
     setText(ui.note, note);
     setClass(ui.note, `wc-note${level ? ` ${level}` : ""}`);
-    setClass(card, `card${!live ? " wc-off" : stale ? " wc-stale" : ""}`);
+    setClass(card, `card${!live ? " wc-off" : stale ? " wc-stale" : level ? " wc-differs" : ""}`);
   }
   // --------------------------------------------------------------- cards
   // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists

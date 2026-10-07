@@ -399,12 +399,12 @@
       if (st.last_message) lines.push(`Last message ${SW.fmtTime(st.last_message, { seconds: true })}`);
       if (st.version) lines.push(`Ontime version ${st.version}`);
     } else {
-      lines.push(`Not connected${st.detail ? `: ${st.detail}` : ""}`);
+      lines.push(`▲ Not connected${st.detail ? `: ${st.detail}` : ""}`);
       if (st.version) lines.push(`Ontime version ${st.version}`);
     }
     return card("Wall Clock",
       h("p", { class: "muted" }, "Shows the time from Ontime on dashboards that have the Wall Clock card, and warns if it differs from Stagewatch. Stagewatch only listens: it never sends anything to Ontime."),
-      h("div", { class: "row" }, field("Source", source), field("Ontime address", url), field("Warn when different by (s)", warn),
+      h("div", { class: "row" }, field("Source", source), field("Ontime address", url), field("Warn if more than this many seconds out", warn),
         h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/wall-clock", {
           source: "ontime", ontime_url: val(url), warn_offset_s: Number(warn.value) || 2,
         }), "Wall Clock saved").then(refresh, () => {}) }, "Save"),
