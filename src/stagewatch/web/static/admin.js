@@ -448,13 +448,12 @@
     }
     return card("Wall Clock",
       h("p", { class: "muted" }, "Shows the time on dashboards that have the Wall Clock card. Choose where the time comes from: this computer, or Ontime (then it warns if Ontime differs from Stagewatch). Stagewatch only listens: it never sends anything to Ontime. If the source stops, the clock says so. It never switches to another source by itself."),
-      h("div", { class: "row" }, field("Time source", source), ...ontimeOnly,
+      h("div", { class: "row" }, field("Time source", source), ...ontimeOnly, testBtn),
+      h("div", { class: "row", style: "margin-top:10px" }, field("Time format", hour12), field("Show the date", showDate), field("Ring light", ring), field("Blink the colons", blink),
         h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/wall-clock", {
           source: source.value, ontime_url: val(url), warn_offset_s: Number(warn.value) || 2,
           display: { hour12: hour12.value === "12", show_date: showDate.checked, ring: ring.value, colon_blink: blink.checked },
-        }), "Wall Clock saved").then(refresh, () => {}) }, "Save"),
-        testBtn),
-      h("div", { class: "row", style: "margin-top:10px" }, field("Clock", hour12), field("Show the date", showDate), field("Ring style", ring), field("Colons blink", blink)),
+        }), "Wall Clock saved").then(refresh, () => {}) }, "Save")),
       h("p", { class: "muted hint" }, "These apply to every dashboard. The look (plain digits, LED ring or 7-segment) is set for each dashboard under User dashboards → Edit cards. Ring and 7-segment are always red on black."),
       result,
       h("p", { class: "muted" }, lines.join(" · ")));

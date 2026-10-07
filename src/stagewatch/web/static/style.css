@@ -429,14 +429,14 @@ body.layout-phone .wc-time { font-size: 40px; }
 /* A coloured edge as well as the note, so a warning is seen from across the room. */
 #wall-clock-card.wc-off, #wall-clock-card.wc-stale, #wall-clock-card.wc-differs { border-left: 6px solid var(--warn); }
 #wall-clock-card.wc-stale .wc-time { text-decoration: line-through; text-decoration-thickness: 3px; }
-body.layout-wall .wc-time { font-size: 150px; }
+body.layout-wall .wc-time { font-size: min(150px, 12vw); }   /* never wider than a narrow screen (12 h "10:25:49 pm") */
 body.layout-wall .wc-note { font-size: 32px; }
 body.layout-wall #wall-clock-card > h2 { font-size: 24px; }
 
 /* Wall Clock styles. The LED looks (ring, segments) are retro red on black in day and night
    alike, on purpose: one fixed look, no theme overrides. Stale, offline and differs never rely
    on this colour: they also have words (with a triangle) and a dashed outline or strike-through. */
-:root { --led-bg: #000; --led-on: #ff2b1c; --led-dim: #8a1c12; --led-off: #2b0906; --led-hour: #ff7a6a; }
+:root { --led-bg: #000; --led-on: #ff2b1c; --led-dim: #b8382b; --led-off: #2b0906; --led-hour: #ff7a6a; }
 .wc-host { display: flex; }
 .wc-style-ring .wc-host, .wc-style-segments .wc-host { justify-content: center; }
 .wc-date { margin: 8px 0 0; font-size: 18px; font-weight: 600; text-align: center; }
@@ -454,7 +454,7 @@ body.layout-wall #wall-clock-card > h2 { font-size: 24px; }
 .led.hr.on { fill: var(--led-hour); }
 .led.t1 { fill: var(--led-on); fill-opacity: .6; }
 .led.t2 { fill: var(--led-on); fill-opacity: .3; }
-.wc-digits { fill: var(--led-on); font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wc-digits { fill: var(--led-on); font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .wc-ring .wc-suffix { fill: var(--led-on); font-size: 13px; font-weight: 700; }
 .wc-s-stale .wc-digits { fill: var(--led-dim); }
 .wc-s-off .wc-digits { fill: var(--led-dim); }

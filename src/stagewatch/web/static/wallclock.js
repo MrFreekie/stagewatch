@@ -152,10 +152,10 @@ SW.wc = (function () {
     }
     const parts = { hh: S("tspan"), c1: S("tspan", { class: "colon" }), mm: S("tspan"), c2: S("tspan", { class: "colon" }), ss: S("tspan") };
     setText(parts.c1, ":"); setText(parts.c2, ":");
-    const text = S("text", { x: "100", y: "112", "text-anchor": "middle", class: "wc-digits" },
+    const text = S("text", { x: "100", y: "115", "text-anchor": "middle", class: "wc-digits" },
       parts.hh, parts.c1, parts.mm, parts.c2, parts.ss);
-    const suffix = S("text", { x: "100", y: "134", "text-anchor": "middle", class: "wc-suffix" });
-    const strike = S("line", { x1: "36", y1: "102", x2: "164", y2: "102", class: "wc-strike" });
+    const suffix = S("text", { x: "100", y: "139", "text-anchor": "middle", class: "wc-suffix" });
+    const strike = S("line", { x1: "30", y1: "103", x2: "170", y2: "103", class: "wc-strike" });
     svg.append(text, suffix, strike);
     const el = SW.h("div", {}, svg);
     const seen = new Array(60).fill("");
