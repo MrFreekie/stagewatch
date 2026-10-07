@@ -90,7 +90,7 @@ class OntimeIntegration(Integration):
     # ------------------------------------------------------------- device
     def _register(self) -> None:
         self.hub.register_device(Device(
-            DEVICE_ID, "Ontime", "ontime", "Ontime", "Rundown and show timer",
+            DEVICE_ID, "Ontime", "ontime", "Ontime", "Show clock",
             status=Status.INITIALIZING, status_detail="Connecting", category="service"))
         self._registered = True
 

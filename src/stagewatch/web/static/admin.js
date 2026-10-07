@@ -387,7 +387,7 @@
   function wallClockCard() {
     const w = admin.config.wall_clock, st = admin.wall_clock || {};
     const url = h("input", { value: w.ontime_url, placeholder: "http://127.0.0.1:4001", autocomplete: "off", spellcheck: "false", style: "min-width:260px" });
-    const warn = h("input", { class: "num", type: "number", step: "0.5", min: "0.5", max: "60", value: w.warn_offset_s });
+    const warn = h("input", { class: "num", type: "number", step: "0.5", min: "1", max: "60", value: w.warn_offset_s });
     const source = h("select", {}, h("option", { value: "ontime" }, "Ontime"));
     const result = h("p", { class: "muted", role: "status" });
     const lines = [];

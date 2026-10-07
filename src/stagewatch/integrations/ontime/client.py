@@ -17,6 +17,7 @@ import http.client
 import json
 import logging
 import socket
+import threading
 import time
 from typing import Callable
 
@@ -60,12 +61,34 @@ def http_get_json(base_url: str, path: str, timeout: float = HTTP_TIMEOUT_S, max
         raise ValueError("path not allowed")
     host, port = split_url(base_url)
     conn = http.client.HTTPConnection(host, port, timeout=timeout)
+    deadline = time.monotonic() + timeout   # for the whole request, not per read: a slow drip must not hold us
+
+    def cut() -> None:   # watchdog: also covers a host that drips its headers
+        sock = conn.sock
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    watchdog = threading.Timer(timeout, cut)
+    watchdog.daemon = True
+    watchdog.start()
     try:
         conn.request("GET", path, headers={"Accept": "application/json", "Connection": "close"})
         resp = conn.getresponse()
         if resp.status not in HTTP_OK:
             raise OntimeError("not_ontime")   # includes redirects: they are refused, not followed
-        data = resp.read(max_bytes + 1)
+        chunks, size = [], 0
+        while size <= max_bytes:
+            if time.monotonic() >= deadline:
+                raise OntimeError("timeout")
+            chunk = resp.read(min(65536, max_bytes + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+        data = b"".join(chunks)
     except OntimeError:
         raise
     except (TimeoutError, socket.timeout):
@@ -73,6 +96,7 @@ def http_get_json(base_url: str, path: str, timeout: float = HTTP_TIMEOUT_S, max
     except (OSError, http.client.HTTPException):
         raise OntimeError("unreachable") from None
     finally:
+        watchdog.cancel()
         conn.close()
     if len(data) > max_bytes:
         raise OntimeError("too_large")
@@ -201,11 +225,18 @@ class OntimeSource:
         delivered at least one valid clock. Never sends a data frame."""
         async with _NoRedirectConnect(ws_url(self._url_fn()), max_size=MAX_BYTES, proxy=None,
                                       open_timeout=self._open_timeout, ping_interval=20, ping_timeout=20,
-                                      compression=None) as ws:
+                                      compression=None, max_queue=4) as ws:
+            last_valid = time.monotonic()
             while True:
-                raw = await asyncio.wait_for(ws.recv(), self._no_data)
+                # The no-data timer follows the last VALID clock, not any frame: a server that
+                # keeps sending logs but no clock is treated as lost.
+                left = self._no_data - (time.monotonic() - last_valid)
+                if left <= 0:
+                    raise TimeoutError("no valid clock")
+                raw = await asyncio.wait_for(ws.recv(), left)
                 kind, ms = parse_ws_message(raw)
                 if kind == "clock":
+                    last_valid = time.monotonic()
                     self._got = True
                     self._good(ms, "websocket")
                 elif kind == "invalid":

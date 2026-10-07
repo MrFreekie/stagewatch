@@ -227,8 +227,8 @@ _ONTIME_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$
 
 class WallClockConfig(_Model):
     source: Literal["ontime"] = "ontime"
-    ontime_url: str = "http://127.0.0.1:4001"
-    warn_offset_s: float = Field(2.0, ge=0.5, le=60)
+    ontime_url: str = Field("http://127.0.0.1:4001", max_length=300)
+    warn_offset_s: float = Field(2.0, ge=1.0, le=60)   # 1.0 absorbs the source's 1 s granularity
 
     @field_validator("ontime_url")
     @classmethod
@@ -353,6 +353,16 @@ class Config(_Model):
     osc_out: OscOutConfig = Field(default_factory=OscOutConfig)
     updater: UpdaterConfig = Field(default_factory=UpdaterConfig)
     wall_clock: WallClockConfig = Field(default_factory=WallClockConfig)
+
+    @field_validator("wall_clock", mode="before")
+    @classmethod
+    def _wall_clock_floor(cls, v):
+        """On load only (the API validates WallClockConfig itself and refuses): a saved warning
+        limit below the 1.0 s minimum (older builds allowed 0.5) is raised to it. No schema bump."""
+        if isinstance(v, dict) and isinstance(v.get("warn_offset_s"), (int, float)) \
+                and not isinstance(v["warn_offset_s"], bool) and v["warn_offset_s"] < 1.0:
+            v = {**v, "warn_offset_s": 1.0}
+        return v
 
     @field_validator("calibrations")
     @classmethod

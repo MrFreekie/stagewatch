@@ -289,8 +289,10 @@ class FakeOntime:
     """Serves /api/version, /api/poll and a WebSocket at /ws; records every request path and
     every data frame a client sends."""
 
-    def __init__(self, clock_ms=58_994_023, ws=True, poll="ok", redirect_ws=False, big_ws=False):
+    def __init__(self, clock_ms=58_994_023, ws=True, poll="ok", redirect_ws=False, big_ws=False,
+                 logs_only=False):
         self.clock_ms, self.ws, self.poll, self.redirect_ws, self.big_ws = clock_ms, ws, poll, redirect_ws, big_ws
+        self.logs_only = logs_only
         self.paths: list[str] = []
         self.received: list = []
         self.server = None
@@ -340,6 +342,10 @@ class FakeOntime:
                 await ws.send("x" * (2 * parse.MAX_BYTES))
                 await asyncio.sleep(0.5)
                 return
+            if self.logs_only:   # frames keep arriving, but never a clock
+                while True:
+                    await asyncio.sleep(0.05)
+                    await ws.send(json.dumps({"tag": "log", "payload": {"text": "hello"}}))
             for item in load("ws_connect_1.json")["messages"]:
                 await ws.send(json.dumps(item["msg"]))
             while True:
@@ -506,7 +512,7 @@ def test_put_wall_clock_validates_and_saves(client):
     assert "wall_clock" in state and "ontime_url" not in state["wall_clock"]
     for bad in ({"ontime_url": "https://192.0.2.10"}, {"ontime_url": "http://u:p@192.0.2.10"},
                 {"ontime_url": "http://192.0.2.10/api/timer/start"}, {"ontime_url": "ftp://x"},
-                {"warn_offset_s": 0}, {"warn_offset_s": 61}, {"source": "ntp"}):
+                {"warn_offset_s": 0}, {"warn_offset_s": 0.9}, {"warn_offset_s": 61}, {"ontime_url": "http://" + "a" * 300}, {"source": "ntp"}):
         r = client.put("/api/admin/wall-clock", json={**ok, **bad})
         assert r.status_code == 422, bad
     assert client.hub.config.wall_clock.ontime_url == "http://192.0.2.10:4001"
@@ -578,3 +584,71 @@ def test_service_device_cannot_be_renamed_or_removed_as_a_node(client):
     assert "ontime" in client.hub.devices
     infos = {i["manifest"]["domain"]: i for i in client.get("/api/admin/state").json()["integrations"]}
     assert infos["ontime"]["manifest"]["tier"] == "experimental" and infos["ontime"]["running"] is True
+
+# ------------------------------------------------------------------ review fixes
+async def test_slow_drip_host_cannot_hold_the_request_open():
+    async def drip(reader, writer):
+        await reader.readuntil(b"\r\n\r\n")
+        writer.write(b"HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\n\r\n")
+        try:
+            for _ in range(20):
+                writer.write(b" ")        # a byte every 2 s would beat a per-read timeout
+                await writer.drain()
+                await asyncio.sleep(2.0)
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(drip, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(OntimeError) as err:
+            await asyncio.to_thread(http_get_json, f"http://127.0.0.1:{port}", "/api/poll", 1.0)
+        assert err.value.category == "timeout"
+        assert loop.time() - start < 3.5     # one overall deadline, not one per read
+    finally:
+        server.close()
+
+
+async def test_websocket_with_only_log_frames_counts_as_no_data():
+    async with FakeOntime(logs_only=True, poll="missing") as fake:
+        src = OntimeSource(lambda: fake.url, poll_every_s=0.05, backoff_min_s=0.05, backoff_max_s=0.2,
+                           no_data_s=0.5, open_timeout_s=1.0)
+        await src.start()
+        try:
+            await until(lambda: fake.paths.count("/ws") >= 2)   # gave up on it and reconnected
+            assert src.latest().status != "ok" and src.latest().clock_ms is None
+        finally:
+            await src.stop()
+
+
+def test_warn_limit_floor_and_url_length_on_load():
+    from stagewatch.core.config import Config
+    assert Config.model_validate({"wall_clock": {"warn_offset_s": 0.5}}).wall_clock.warn_offset_s == 1.0
+    assert Config.model_validate({"wall_clock": {"warn_offset_s": 3}}).wall_clock.warn_offset_s == 3
+    with pytest.raises(ValueError):
+        WallClockConfig(warn_offset_s=0.5)
+    with pytest.raises(ValueError):
+        WallClockConfig(ontime_url="http://" + "a" * 300)
+
+
+def test_same_zone_source_has_zero_offset_through_london_dst_days():
+    from stagewatch.core import sitetime
+    london = SiteConfig(timezone="Europe/London")
+    # Whole days around both changes, every 10 minutes, plus the repeated hour on 25 Oct.
+    for day in ((2026, 3, 28), (2026, 3, 29), (2026, 10, 24), (2026, 10, 25)):
+        start = datetime(*day, tzinfo=timezone.utc).timestamp()
+        for step in range(0, 3 * 86_400, 600):
+            ts = start + step
+            ms = sitetime.ms_since_local_midnight(ts, london)
+            assert wallclock.compute_offset_s(ms, ts, london) == 0
+    first = datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc).timestamp()   # 01:30 BST
+    second = first + 3600                                                    # 01:30 GMT, the repeat
+    assert sitetime.ms_since_local_midnight(first, london) == sitetime.ms_since_local_midnight(second, london) == 5_400_000
+    assert wallclock.compute_offset_s(5_400_000, second, london) == 0
+    spring = datetime(2026, 3, 29, 1, 0, tzinfo=timezone.utc).timestamp()    # clocks jump to 02:00 BST
+    assert sitetime.ms_since_local_midnight(spring, london) == 2 * 3_600_000
+    assert wallclock.compute_offset_s(2 * 3_600_000, spring, london) == 0
