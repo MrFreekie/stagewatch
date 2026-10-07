@@ -307,7 +307,9 @@ class Recorder:
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
         if version > DB_SCHEMA_VERSION:
             raise RuntimeError(f"Database schema {version} is newer than this build "
-                               f"({DB_SCHEMA_VERSION}); upgrade Stagewatch")
+                               f"({DB_SCHEMA_VERSION}); upgrade Stagewatch. If you rolled Stagewatch back, "
+                               "restore the database from the backup made before the update "
+                               "(the updater's backups folder, or the .bak file next to the database)")
         # One safety copy before the first step this start takes (a v1 database goes through
         # v2 to v3 in one start and is copied once, as it was before any change).
         if 1 <= version < DB_SCHEMA_VERSION and self._holds_data() \

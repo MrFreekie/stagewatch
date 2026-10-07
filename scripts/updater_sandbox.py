@@ -4,7 +4,9 @@
 
 Builds, under DIR (default: a folder in the system temp dir):
   origin.git   a local bare "remote" seeded from this working tree: v0.1.0, then v0.2.0 (raises
-               CONFIG_SCHEMA_VERSION by one so the update makes a data backup and has a changelog),
+               CONFIG_SCHEMA_VERSION and DB_SCHEMA_VERSION by one, with a harmless extra database
+               step, so the update makes a data backup, migrates the database and has a changelog;
+               rolling back to v0.1.0 must restore the database, because v0.1.0 refuses the newer one),
                and a `nightly` branch one commit after v0.2.0
   clone/       a managed clone checked out (detached) at v0.1.0, with a managed marker
   data/        an empty data dir
@@ -67,8 +69,19 @@ def build(root: Path) -> Path:
     edit("src/stagewatch/__init__.py", lambda t: re.sub(r'__version__ = "[^"]+"', '__version__ = "0.2.0"', t))
     edit("src/stagewatch/version.py", lambda t: re.sub(  # one config schema step up: forces a data backup
         r"^CONFIG_SCHEMA_VERSION = (\d+)$", lambda m: f"CONFIG_SCHEMA_VERSION = {int(m.group(1)) + 1}", t, flags=re.M))
+    edit("src/stagewatch/version.py", lambda t: re.sub(  # and one database step up: a real migration
+        r"^DB_SCHEMA_VERSION = (\d+)$", lambda m: f"DB_SCHEMA_VERSION = {int(m.group(1)) + 1}", t, flags=re.M))
+    db_now = int(re.search(r"^DB_SCHEMA_VERSION = (\d+)$", (work / "src/stagewatch/version.py").read_text(encoding="utf-8"),
+                           re.M).group(1))
+    step = (f"        if version < {db_now}:  # sandbox-only step\n"
+            '            self._db.execute("CREATE TABLE IF NOT EXISTS sandbox_step (x INTEGER)")\n'
+            f'            self._db.execute("PRAGMA user_version = {db_now}")\n'
+            f"            version = {db_now}\n")
+    edit("src/stagewatch/core/recorder.py", lambda t: re.sub(
+        r"(        if version < \d+:\n            self\._v\d+_to_v\d+\(\)\n            version = \d+\n)(?!        if version)",
+        lambda m: m.group(1) + step, t, count=1))
     edit("CHANGELOG.md", lambda t: t.replace("## [Unreleased]", "## [Unreleased]\n\n## [0.2.0] - 2026-10-01\n\n"
-                                             "### Added\n- Sandbox release: changes the config schema version.\n", 1))
+                                             "### Added\n- Sandbox release: changes the config and database schema versions.\n", 1))
     git(work, "commit", "-q", "-am", "sandbox v0.2.0")
     git(work, "tag", "-a", "v0.2.0", "-m", "v0.2.0")
     edit("CHANGELOG.md", lambda t: t + "\n<!-- nightly -->\n")
