@@ -312,6 +312,7 @@ them into a dated release section and tags the commit.
   virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
+- Sensor nodes: a battery gauge that reads a little over 100 % (or under 0) is now shown as 100 % (or 0 %). A reading that is not a number is ignored, never shown as 0 %.
 - Site settings now show at once. Changing the smoothing time, outlier rejection, which
   sensors count towards the average, or a sensor offset used to ease in over a minute or two;
   now the site values jump straight to the new figure. Normal readings are still smoothed.

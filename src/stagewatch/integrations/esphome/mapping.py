@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from ...acoustics import pressure_to_pa, temperature_to_c
 from ...core.model import UNITS, Kind
 
@@ -41,4 +43,10 @@ def to_canonical(kind: Kind, value: float, source_unit: str) -> float | None:
         return temperature_to_c(value, source_unit or "°C")
     if kind == Kind.PRESSURE:
         return pressure_to_pa(value, source_unit or "hPa")
+    if kind == Kind.BATTERY:
+        # A fuel gauge can read a little over 100 % (or under 0) when full or flat: show 0-100.
+        # Not a number at all is not a reading (never turned into 0 %).
+        if not math.isfinite(value):
+            return None
+        return min(100.0, max(0.0, value))
     return value
