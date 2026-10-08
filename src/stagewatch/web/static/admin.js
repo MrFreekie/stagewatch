@@ -270,6 +270,7 @@
     markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
     wall_clock: ["Wall Clock", "The time of day, as plain digits, an LED ring or 7-segment digits. Choose the source in the Wall Clock settings."],
+    ontime_timer: ["Ontime Timer", "The countdown Ontime is running, with the event title. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
   const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
@@ -419,7 +420,12 @@
     hour12.value = d.hour12 ? "12" : "24";
     const showDate = h("input", { type: "checkbox", checked: !!d.show_date });
     const blink = h("input", { type: "checkbox", checked: !!d.colon_blink });
-    const ontimeOnly = [field("Ontime address", url), field("Warn if more than this many seconds out", warn)];
+    // The address and the test serve both Ontime cards: show them when the clock uses Ontime or
+    // any dashboard has the Ontime Timer card. The warning limit is the clock's alone.
+    const timerOn = (admin.config.dashboards || []).some((x) => (x.cards || []).indexOf("ontime_timer") >= 0);
+    const addressField = field(timerOn ? "Ontime address (also used by the Ontime Timer card)" : "Ontime address", url);
+    const warnField = field("Warn if more than this many seconds out", warn);
+    const ontimeOnly = [addressField, warnField];
     const result = h("p", { class: "muted", role: "status" });
     const testBtn = h("button", { style: "align-self:flex-end", onclick: async (ev) => {
       const btn = ev.target; btn.disabled = true; result.textContent = "Testing…";
@@ -430,7 +436,11 @@
       finally { btn.disabled = false; }
     } }, "Test connection");
     // Only Ontime has an address to set and test (display:none, because label.field would override [hidden]).
-    const showOntime = () => [...ontimeOnly, testBtn].forEach((f) => { f.style.display = source.value === "ontime" ? "" : "none"; });
+    const showOntime = () => {
+      const clockOnOntime = source.value === "ontime";
+      addressField.style.display = testBtn.style.display = clockOnOntime || timerOn ? "" : "none";
+      warnField.style.display = clockOnOntime ? "" : "none";
+    };
     source.onchange = showOntime;
     showOntime();
     const lines = [];
@@ -457,6 +467,31 @@
         }), "Wall Clock saved").then(refresh, () => {}) }, "Save")),
       h("p", { class: "muted hint" }, "These apply to every dashboard. The look (plain digits, LED ring or 7-segment) is set for each dashboard under User dashboards → Edit cards. Ring and 7-segment are always red on black."),
       result,
+      h("p", { class: "muted" }, lines.join(" · ")));
+  }
+  // ------------------------------------------------------- ontime timer
+  // The Ontime Timer card shows the countdown Ontime is running. It uses the Ontime address from
+  // the Wall Clock settings (one connection serves both cards). Read-only: it only listens.
+  function ontimeTimerCard() {
+    const t = admin.config.ontime_timer || { show_title: true }, st = admin.ontime_timer || {};
+    const title = h("input", { type: "checkbox", checked: t.show_title !== false });
+    const lines = [];
+    if (!st.active) {
+      lines.push(st.card_assigned ? "Starting…"
+        : "Not running. It starts when a dashboard has the Ontime Timer card (User dashboards → Edit cards).");
+    } else if (st.status === "ok") {
+      lines.push("Connected");
+      if (st.last_message) lines.push(`Last message ${SW.fmtTime(st.last_message, { seconds: true })}`);
+    } else {
+      lines.push(`▲ Not connected${st.detail ? `: ${st.detail}` : ""}`);
+    }
+    return card("Ontime Timer",
+      h("p", { class: "muted" }, "Shows the countdown Ontime is running on dashboards that have the Ontime Timer card. It reads the Ontime address under Wall Clock, so set and test that first. Stagewatch only listens: it never starts, pauses or changes anything in Ontime. It is Ontime's timer on a screen, not a Stagewatch timer, so don't use it as a cue."),
+      h("div", { class: "row" }, field("Show the event title on dashboards", title),
+        h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/ontime-timer", {
+          show_title: title.checked,
+        }), "Ontime Timer saved").then(refresh, () => {}) }, "Save")),
+      h("p", { class: "muted hint" }, "The title is the event's name in Ontime, often an artist. Dashboards are not password protected, so untick this if the name should stay off the screens."),
       h("p", { class: "muted" }, lines.join(" · ")));
   }
   // ------------------------------------------------------- event & show
@@ -906,6 +941,7 @@
       dashboardsCard(),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, oscCard(), securityCard()),
       wallClockCard(),
+      ontimeTimerCard(),
       alarmLogCard(),
       supportCard(),
       catalogCard());

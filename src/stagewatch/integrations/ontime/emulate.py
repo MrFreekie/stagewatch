@@ -14,6 +14,7 @@ import time
 from typing import Callable
 
 from ...core import sitetime
+from ...core.ontimetimer import TimerReading, TimerState
 from ...core.wallclock import ClockReading
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,48 @@ CYCLE_DIFFERS = (50.0, 65.0)
 CYCLE_STALE = (65.0, 80.0)
 CYCLE_OFFLINE = (80.0, 95.0)
 CYCLE_AHEAD_S = 3.2
+
+
+# The emulated timer repeats a three-minute story (seconds into the cycle). A 60 s item with
+# Ontime-style warning and danger times of 20 s and 10 s:
+#   0-20 running | 20-30 paused | 30-120 running again, +0:20 added at 30, out of time at 90
+#   (overtime to -0:30) | 120-135 stopped | 135-150 armed (ready) | 150-165 Ontime offline
+#   | 165-180 armed. Nothing arrives from 60 to 70 (stale), in the middle of the run.
+TIMER_CYCLE_S = 180.0
+TIMER_DURATION_MS = 60_000
+TIMER_ADDED_MS = 20_000
+TIMER_WARN_MS = 20_000
+TIMER_DANGER_MS = 10_000
+TIMER_STALE = (60.0, 70.0)
+TIMER_OFFLINE = (150.0, 165.0)
+TIMER_TITLE = "Emulated: Support act"
+
+
+def emulated_timer_state(t: float) -> TimerState:
+    """The emulated timer ``t`` seconds into its 180 s cycle. Pure and deterministic."""
+    t = t % TIMER_CYCLE_S
+    ms = int(round(t * 1000))
+
+    def state(playback: str, current: int | None, added: int, elapsed: int | None, phase: str = "default") -> TimerState:
+        return TimerState(playback=playback, phase=phase, current_ms=current, duration_ms=TIMER_DURATION_MS,
+                          elapsed_ms=elapsed, added_ms=added, has_event=True, title=TIMER_TITLE,
+                          timer_type="count-down", warn_ms=TIMER_WARN_MS, danger_ms=TIMER_DANGER_MS)
+
+    def running(played_ms: int, added: int) -> TimerState:
+        current = TIMER_DURATION_MS + added - played_ms
+        phase = ("overtime" if current < 0 else "danger" if current <= TIMER_DANGER_MS
+                 else "warning" if current <= TIMER_WARN_MS else "default")
+        return state("play", current, added, played_ms, phase)
+
+    if t < 20:
+        return running(ms, 0)
+    if t < 30:
+        return state("pause", TIMER_DURATION_MS - 20_000, 0, 20_000)
+    if t < 120:
+        return running(20_000 + (ms - 30_000), TIMER_ADDED_MS)
+    if t < 135:
+        return state("stop", None, 0, None)
+    return state("armed", TIMER_DURATION_MS, 0, 0)
 
 
 class EmulatedClock:
@@ -64,6 +107,21 @@ class EmulatedClock:
             return ClockReading(None, now, "offline", "Emulated dropout")
         ms = sitetime.ms_since_local_midnight(now + self._lead, self._site_fn())
         return ClockReading(ms, now, "ok", "Emulated")
+
+    def latest_timer(self) -> TimerReading:
+        """The emulated Ontime timer (see TIMER_* above). With ``cycle`` it also goes stale and
+        offline in its own windows; without, it is offline whenever the clock drops out."""
+        now = self._time()
+        if self._cycle:
+            t = (now - self._t0) % TIMER_CYCLE_S
+            if TIMER_OFFLINE[0] <= t < TIMER_OFFLINE[1]:
+                return TimerReading(None, now, "offline", "Emulated dropout")
+            if TIMER_STALE[0] <= t < TIMER_STALE[1]:
+                return TimerReading(emulated_timer_state(TIMER_STALE[0]), now - (t - TIMER_STALE[0]), "ok", "Emulated")
+            return TimerReading(emulated_timer_state(t), now, "ok", "Emulated")
+        if self.latest().status != "ok":
+            return TimerReading(None, now, "offline", "Emulated dropout")
+        return TimerReading(emulated_timer_state((now - self._t0) % TIMER_CYCLE_S), now, "ok", "Emulated")
 
     def _cycle_reading(self, now: float) -> ClockReading:
         t = (now - self._t0) % CYCLE_S

@@ -317,6 +317,13 @@ class WallClockConfig(_Model):
         return f"http://{host}" + (f":{port}" if port is not None else "")
 
 
+class OntimeTimerConfig(_Model):
+    """The Ontime Timer card.  It reads Ontime at ``WallClockConfig.ontime_url`` (one address for
+    both cards).  The event title is rundown text (often an artist), so the admin can hide it
+    from every dashboard; the default is to show it."""
+    show_title: bool = True
+
+
 class Threshold(_Model):
     id: str
     entity: str
@@ -419,6 +426,7 @@ class Config(_Model):
     osc_out: OscOutConfig = Field(default_factory=OscOutConfig)
     updater: UpdaterConfig = Field(default_factory=UpdaterConfig)
     wall_clock: WallClockConfig = Field(default_factory=WallClockConfig)
+    ontime_timer: OntimeTimerConfig = Field(default_factory=OntimeTimerConfig)
 
     @field_validator("wall_clock", mode="before")
     @classmethod

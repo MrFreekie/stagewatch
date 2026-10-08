@@ -33,7 +33,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 
 from .. import __version__
 from ..core.config import (
-    CLOCK_STYLES, Dashboard, EntitySettings, EsphomeDeviceConfig, OscOutConfig, SiteConfig, Threshold, WallClockConfig,
+    CLOCK_STYLES, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig, SiteConfig, Threshold,
+    WallClockConfig,
 )
 from ..core.calibration import set_calibration
 from ..core.hub import Hub
@@ -229,6 +230,15 @@ class DevicePatch(BaseModel):
     @classmethod
     def _host(cls, v: str | None) -> str | None:
         return v if v is None else clean_host(v)
+
+
+class OntimeTimerBody(BaseModel):
+    """PUT /api/admin/ontime-timer. The field is required and must be a real true/false, so an empty
+    body or a misspelt name is refused instead of silently turning the titles back on."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    show_title: StrictBool
 
 
 class WallClockTestBody(BaseModel):
@@ -608,6 +618,8 @@ class LiveFeed:
             self._send_all({"type": "device", "device": payload.to_dict()})
         elif topic == "wall_clock" and isinstance(payload, dict):
             self._send_all({"type": "wall_clock", **payload})
+        elif topic == "ontime_timer" and isinstance(payload, dict):
+            self._send_all({"type": "ontime_timer", **payload})
         elif topic == "schedule" and isinstance(payload, dict):
             # Small on purpose: clients fetch GET /api/schedule?stage= for the list itself.
             self._send_all({"type": "schedule", "show_id": payload.get("show_id"),
@@ -872,6 +884,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "alarm_log": hub.recorder.alarm_log(),
             # Wall Clock card: is the source running, and what is it saying (no addresses).
             "wall_clock": hub.wall_clock.admin_status(),
+            "ontime_timer": hub.ontime_timer.admin_status(),
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
             # defaults a new dashboard gets for each layout.
             "cards": {"known": list(cards_mod.KNOWN_CARDS),
@@ -1048,6 +1061,15 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     @app.put("/api/admin/wall-clock", dependencies=admin_deps)
     async def put_wall_clock(body: WallClockConfig):
         hub.config.wall_clock = body
+        hub.save_config()
+        return body
+
+    # Ontime Timer card options (today only: show the event title). The address is the Wall
+    # Clock's. Saving goes through the config topic like every save.
+    @app.put("/api/admin/ontime-timer", dependencies=admin_deps)
+    async def put_ontime_timer(body: OntimeTimerBody):
+        hub.config.ontime_timer = OntimeTimerConfig(show_title=body.show_title)
+        body = hub.config.ontime_timer
         hub.save_config()
         return body
 

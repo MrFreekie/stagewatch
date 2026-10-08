@@ -175,10 +175,10 @@ def test_only_the_alarm_banner_is_outside_the_card_system():
 
 def _visible_cards(dash_cards: list[str], schedule_items: int = 0) -> list[str]:
     """The cards dashboard.js shows: ids it knows, once each, in order; the schedule only with
-    items for the dashboard's stage, and the Wall Clock not before its feature."""
+    items for the dashboard's stage, and the Wall Clock and Ontime Timer, which show only once a source is running."""
     known = _registry_ids()
     out = [c for i, c in enumerate(dash_cards) if c in known and c not in dash_cards[:i]]
-    return [c for c in out if not (c == "schedule" and not schedule_items) and c != "wall_clock"]
+    return [c for c in out if not (c == "schedule" and not schedule_items) and c not in ("wall_clock", "ontime_timer")]
 
 
 def test_migrated_dashboards_show_the_same_cards_as_0_2_0(tmp_path):
