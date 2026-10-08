@@ -124,7 +124,11 @@ SW.ot = (function () {
       else { const lv = ot.level(r, m); v.level = lv.level; v.tag = lv.tag; }
     }
     if (live && m.thresholds === "site") v.thrNote = "Warning times from Stagewatch settings";
-    v.flash = v.level === "alert" && SW.scheduleWarn.flash === true;
+    // The site's per-step flash (15, 5, 1!): in a step marked to flash, and in overtime when the
+    // smallest step is marked.
+    const fm = SW.scheduleWarn.flash_minutes || [], mins = SW.scheduleWarn.minutes || [];
+    v.flash = v.level === "alert" && r !== null &&
+      (v.over ? fm.indexOf(mins[mins.length - 1]) >= 0 : SW.nowFlash(ot.shownSeconds(r)));
 
     // Progress: how much of the timer (with any added time) has gone.
     const total = isNum(m.duration_ms) ? m.duration_ms + (m.added_ms || 0) : 0;

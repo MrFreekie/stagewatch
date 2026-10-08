@@ -99,9 +99,9 @@ eq([fb(16 * 60 * S).level, fb(15 * 60 * S), fb(5 * 60 * S), fb(5 * 60 * S + 1).l
 eq(fb(10 * 60 * S, { duration_ms: 180 * S }), { level: "", tag: "" }, "a 3 minute timer never shows the 5 and 15 minute steps");
 eq(fb(10 * 60 * S, { duration_ms: 600 * S }), { level: "", tag: "" }, "a 10 minute timer drops the 15 minute step (it is longer than the timer)");
 eq(fb(4 * 60 * S, { duration_ms: 600 * S }), { level: "alert", tag: "5 MIN" }, "the last step left is orange");
-SW.setScheduleWarn({ minutes: [10, 2], flash: true });
+SW.setScheduleWarn({ minutes: [10, 2], flash_minutes: [2] });
 eq(fb(2 * 60 * S), { level: "alert", tag: "2 MIN" }, "the site's own minutes are used");
-SW.setScheduleWarn({ minutes: [15, 5], flash: false });
+SW.setScheduleWarn({ minutes: [15, 5], flash_minutes: [] });
 for (const secs of [0.5, 60, 299, 300, 301, 899, 900, 901, 5000]) {
   eq(fb(secs * S, { duration_ms: null }).level, SW.nowLevel(secs), `same level as SW.nowLevel at ${secs} s`);
 }
@@ -192,10 +192,10 @@ ui.update(ot.view(msg(), NOW + 1));
 eq([ui.count.textContent, ui.count.writes - c0, ui.title.writes - t0], ["9:59", 1, 0], "one second on: only the number is written");
 ui.update(ot.view(msg({ current_ms: -2 * S }), NOW));
 eq([ui.count.textContent, ui.tag.textContent, ui.tag.hidden, ui.tag.className, ui.bar.className], ["-0:02", "▲ OVER", false, "sched-tag lvl-alert", "sched-bar lvl-alert"], "overtime: words, triangle, orange classes");
-SW.setScheduleWarn({ minutes: [15, 5], flash: true });
+SW.setScheduleWarn({ minutes: [15, 5], flash_minutes: [5] });
 ui.update(ot.view(msg({ current_ms: -2 * S }), NOW));
 eq(ui.tag.className, "sched-tag lvl-alert flash", "the optional flash follows the site setting");
-SW.setScheduleWarn({ minutes: [15, 5], flash: false });
+SW.setScheduleWarn({ minutes: [15, 5], flash_minutes: [] });
 ui.update(ot.view(msg({ playback: "pause", added_ms: 60 * S, current_ms: 50 * S }), NOW));
 eq([ui.added.textContent, ui.added.hidden, ui.badge.textContent], ["+1:00 added", false, "⏸ PAUSED"], "added time and paused");
 ui.update(ot.view(msg({ status: "offline", playback: null, current_ms: null }), NOW));
