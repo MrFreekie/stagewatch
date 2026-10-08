@@ -62,9 +62,10 @@
 # node (paste the same key into Stagewatch when adopting). Secrets used:
 # wifi_ssid, wifi_password, ota_password, api_encryption_key, wifi_ap_password.
 #
-# Status: validated with `esphome config`; untested on hardware. The user LED
-# polarity (GPIO15, active low) is assumed: if it is inverted, remove
-# `inverted: true` below.
+# Status: validated with `esphome config` and run on a real XIAO ESP32C6 with a DPS310
+# (address jumper bridged: `dps310_address: "0x76"`; adopted in Stagewatch). The user LED
+# (GPIO15, active low) stayed off while healthy, which is the intended behaviour; if it is
+# lit while all is well on your board, remove `inverted: true` below.
 
 substitutions:
   node_name: stagewatch-baro-c6-1       # unique per node: becomes <name>.local

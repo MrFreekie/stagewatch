@@ -10,10 +10,11 @@ does for temperature. Several nodes in different places also let you spot one th
 Time needed: about 30 to 45 minutes for the first node. Most of that is waiting for the first
 build.
 
-> **Test status: tested on hardware: pending.** All four node files have been checked by ESPHome
-> (it reads them without errors) but none has been seen working on a real board yet. The boards
-> are built and are being flashed now. This page will be updated when each one has run. Until
-> then, treat every step as unproven and tell us what you find.
+> **Test status.** All four node files have been checked by ESPHome (it reads them without
+> errors). The **XIAO ESP32C6 with a DPS310** has run on a real board and been adopted in
+> Stagewatch: the sensor answered at `0x76` (address jumper bridged) and the status light stayed
+> off while everything was well. The other three boards have not been seen working yet, so treat
+> their steps as unproven and tell us what you find.
 
 > Stagewatch is an advisory tool with no warranty. Check your node's readings against a
 > reference before you trust it. See the [main README](../README.md#stagewatch).
