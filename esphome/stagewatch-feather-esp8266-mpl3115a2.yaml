@@ -1,0 +1,160 @@
+# Stagewatch barometric-pressure CROSS-CHECK node: Adafruit Feather HUZZAH
+# ESP8266 (product 2821) + Adafruit MPL3115A2 I2C barometric pressure /
+# altitude / temperature sensor (product 1893). Wi-Fi. A second, independent
+# sensor type to compare against the DPS310 nodes (stagewatch-feather-s3-dps310.yaml
+# and stagewatch-xiao-esp32c6-dps310.yaml). Candidate hardware: not a core node.
+#
+# Hardware:
+#   - Adafruit Feather HUZZAH ESP8266 (2821), headers soldered
+#   - Adafruit MPL3115A2 breakout (1893), headers soldered
+#   - 4 jumper wires or a breadboard; USB micro-B data cable and a stable 5 V supply.
+#     Optional protected 3.7 V LiPo (JST-PH; check polarity). No battery gauge.
+#
+# Wiring (colour-coded):
+#   HUZZAH pin    GPIO    MPL3115A2 pin   Wire
+#   3V            -       VIN             red
+#   GND           -       GND             black
+#   SDA           GPIO4   SDA             blue
+#   SCL           GPIO5   SCL             yellow
+#   (The breakout's INT1 / INT2 pins are not used. GPIO4 / GPIO5 are the
+#   HUZZAH's default I2C pins; set explicitly below.)
+#
+# I2C address: fixed 0x60 (the MPL3115A2 has no address pin). The i2c scan
+# logs it.
+#
+# ESPHome options (https://esphome.io/components/sensor/mpl3115a2/): address,
+# update_interval, pressure (OR altitude, never both), temperature. There is no
+# oversampling option: the driver fixes the oversampling at 128 (slowest, lowest
+# noise, about 0.5 s per conversion). Checked against ESPHome 2026.9.1. Pressure
+# is hPa; Stagewatch converts to Pa. The sensor's resolution is 0.25 Pa and its
+# accuracy about +/-0.4 kPa (+/-4 hPa) absolute, much worse than the DPS310, so
+# use this node to cross-check trends and big errors, not absolute pressure.
+# Driver quirk to check: update() starts a conversion and reads the result
+# shortly after, which can return the PREVIOUS conversion, so values may lag by
+# one update, and the very first update may publish nothing. Harmless at 2 s.
+#
+# Stagewatch entities (mapping.py: device_class decides the Kind):
+#   "Pressure"    device_class atmospheric_pressure, hPa -> Kind.PRESSURE (Pa)
+#   "WiFi signal" device_class signal_strength, dBm      -> Kind.SIGNAL
+#   (no battery gauge, so no Battery entity)
+# Temperature is the sensor's die temperature, not the air: disabled so it does
+# not enter the site temperature average (same convention as the other pressure
+# nodes). If you enable it, untick "Average" for it in Stagewatch admin.
+#
+# Mounting: keep the breakout on a short lead away from the Feather's
+# regulator and Wi-Fi radio heat, out of sun, lamps and draughts, and not in a
+# sealed case (it must see outside static pressure). The MPL3115A2 is not
+# waterproof: use a vented housing and give the USB lead strain relief. ESP8266
+# has less RAM and Wi-Fi robustness than the ESP32 nodes: do not use it as the
+# only pressure source on a critical site.
+#
+# First flash (USB): copy secrets.example.yaml to secrets.yaml and fill it in.
+# Hold the GPIO0 button, press and release RESET, release GPIO0, then
+#     esphome run stagewatch-feather-esp8266-mpl3115a2.yaml
+# (the CP2104 usually enters the bootloader automatically, so try without the
+# buttons first). Later updates go over Wi-Fi (OTA). Use a different
+# api_encryption_key per node (paste the same key into Stagewatch). Secrets
+# used: wifi_ssid, wifi_password, ota_password, api_encryption_key,
+# wifi_ap_password.
+#
+# Status: validated with `esphome config`; untested on hardware.
+
+substitutions:
+  node_name: stagewatch-baro-esp8266-1  # unique per node: becomes <name>.local
+  friendly_name: "Stagewatch Baro ESP8266 1"
+
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: -100
+    then:
+      - light.turn_on: status_led       # lit = booting / no hub
+
+esp8266:
+  board: huzzah
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+  reboot_timeout: 15min
+  on_client_connected:
+    - light.turn_off: status_led        # off = all well
+  on_client_disconnected:
+    - light.turn_on: status_led
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Uncomment for a fixed address on the show control network:
+  # manual_ip:
+  #   static_ip: 192.168.1.52
+  #   gateway: 192.168.1.1
+  #   subnet: 255.255.255.0
+  # Several networks (see the guide, "Moving between sites"): replace ssid and
+  # password above with a `networks:` list of ssid / password pairs, e.g.
+  # networks:
+  #   - ssid: !secret wifi_ssid
+  #     password: !secret wifi_password
+  #   - ssid: !secret wifi_ssid_2
+  #     password: !secret wifi_password_2
+  # (add wifi_ssid_2 / wifi_password_2 to secrets.yaml first).
+  # Fallback access point if the node cannot join Wi-Fi.
+  ap:
+    ssid: "${node_name}"
+    password: !secret wifi_ap_password
+  on_disconnect:
+    - light.turn_on: status_led
+
+captive_portal:
+
+i2c:
+  sda: GPIO4
+  scl: GPIO5
+  frequency: 100kHz
+  scan: true
+
+# Status LED: the blue LED on GPIO2 (active low). Off normally, lit when Wi-Fi or
+# the hub connection is lost.
+output:
+  - platform: esp8266_pwm
+    id: user_led
+    pin:
+      number: GPIO2
+      inverted: true
+
+light:
+  - platform: monochromatic
+    id: status_led
+    internal: true
+    output: user_led
+    restore_mode: ALWAYS_OFF
+
+sensor:
+  - platform: mpl3115a2
+    address: 0x60
+    update_interval: 2s
+    pressure:
+      name: "Pressure"                  # hPa; Stagewatch converts to Pa
+      device_class: atmospheric_pressure
+      unit_of_measurement: "hPa"
+      accuracy_decimals: 2
+      filters:
+        - sliding_window_moving_average:
+            window_size: 5              # 10 s mean
+            send_every: 1
+        # - offset: 0.0                 # or use the Stagewatch admin offset, not both
+    # Die temperature, NOT air temperature: disabled on purpose (see header).
+    # temperature:
+    #   name: "Pressure sensor die temperature"
+    #   accuracy_decimals: 1
+
+  - platform: wifi_signal
+    name: "WiFi signal"
+    update_interval: 30s
