@@ -236,9 +236,15 @@
             onclick: () => run(() => api("POST", "/api/admin/esphome/unignore", { key: g.key }), "Node unignored").then(refresh) }, "Unignore")))))))
         : null) : null;
 
+    // Where a node is: the IP it is connected on now, and the name it was adopted with. Admin only.
+    const nodeAddress = (w) => {
+      if (!w || (!w.address && !w.host)) return h("span", { class: "muted" }, "-");
+      return h("div", {}, h("div", { style: "font-variant-numeric:tabular-nums" }, w.address || "Not connected"),
+        w.host && w.host !== w.address ? h("div", { class: "muted", style: "font-size:12px" }, w.host) : null);
+    };
     const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");   // services (Ontime) are listed under Integrations
     const devTable = h("table", {},
-      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Model"), h("th", {}, ""))),
+      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
       h("tbody", {}, devices.map((d) => {
         const name = h("input", { value: d.name });
         const area = h("input", { value: d.area });
@@ -246,6 +252,7 @@
           h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, d.id)),
           h("td", {}, area),
           h("td", {}, h("span", { class: `status ${d.status}` }, d.status), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null),
+          h("td", {}, nodeAddress(admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id])),
           h("td", {}, d.model),
           h("td", {}, h("div", { class: "row" },
             h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/devices/${encodeURIComponent(d.id)}`, { name: val(name), area: val(area) }), "Saved").then(refresh) }, "Save"),

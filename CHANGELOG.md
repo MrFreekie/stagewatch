@@ -312,6 +312,9 @@ them into a dated release section and tags the commit.
   virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
+- Admin: the adopted ESPHome nodes list now has an **Address** column: the IP address each node is
+  connected on now ("Not connected" while it is down) and the name it was adopted with. Only the admin
+  page shows it, never the dashboards.
 - Charts: each chart now starts on a sensible scale (temperature 10 to 30 °C, humidity 0 to 100 %,
   pressure 980 to 1040 hPa, speed of sound 335 to 350 m/s) and stays on it while the readings fit,
   so the lines no longer jump about. If a reading goes outside, only that side of the scale grows.

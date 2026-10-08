@@ -794,7 +794,7 @@ def test_admin_state_has_the_hardware_map_and_the_snapshot_does_not(client, monk
     _api_fault(client, monkeypatch)
     state = client.get("/api/admin/state").json()
     assert state["hardware"]["entities"]["sim_foh.temperature"] == "mac:025e00000002/temperature"
-    assert state["hardware"]["devices"]["sim_foh"] == {"hw_id": "mac:025e00000002", "conflict": None}
+    assert state["hardware"]["devices"]["sim_foh"] == {"hw_id": "mac:025e00000002", "conflict": None, "host": "", "address": ""}
     snap = client.get("/api/snapshot").text
     assert "025e0000000" not in snap and "hw_key" not in snap and "hw_id" not in snap
     for form in mac_forms(A) + mac_forms(B):
@@ -813,3 +813,19 @@ def test_put_entity_writes_the_hardware_record(client):
     assert settings["sim_foh.temperature"] == {"offset": -0.5, "include_in_average": True}
     assert settings["sim_foh.humidity"] == {"offset": 0.0, "include_in_average": True}
     assert "site.temperature" not in settings
+
+
+async def test_node_addresses_are_admin_only_and_show_the_connected_ip(tmp_path):
+    """The admin node list shows where each node is; the public snapshot never carries an address."""
+    hub = Hub(tmp_path)
+    esp = EsphomeIntegration(hub)
+    cfg = EsphomeDeviceConfig(id="foh", host="stagewatch-foh.local")
+    hub.config.esphome_devices.append(cfg)
+    node = await _node(hub, cfg, MAC_A)
+    esp._nodes[cfg.id] = node
+    node.client.connected_address = None
+    assert esp.node_addresses() == {"foh": {"host": "stagewatch-foh.local", "address": ""}}
+    node.client.connected_address = "192.0.2.77"
+    assert esp.node_addresses() == {"foh": {"host": "stagewatch-foh.local", "address": "192.0.2.77"}}
+    assert "192.0.2.77" not in repr(hub.snapshot())
+    hub.recorder.close()

@@ -396,6 +396,21 @@ class EsphomeIntegration(Integration):
         self.hub.set_device_status(cfg.id, Status.INITIALIZING, detail)
         await self._start_node(cfg)
 
+    def node_addresses(self) -> dict[str, dict]:
+        """Admin only (an address never goes in the public snapshot): where each adopted node is,
+        {device_id: {"host": the name or address it was adopted with, "address": the IP it is
+        connected on now, "" while it is not connected}}."""
+        out = {}
+        for device_id, node in self._nodes.items():
+            if not isinstance(node, _NodeConnection):
+                continue
+            try:
+                address = node.client.connected_address or ""
+            except Exception:  # noqa: BLE001 - an address is a convenience, never worth an error
+                address = ""
+            out[device_id] = {"host": node.cfg.host, "address": str(address)[:64]}
+        return out
+
     def hardware_conflicts(self) -> dict[str, dict]:
         """Admin only. Devices held in FAULT by an identity check:
         {device_id: {reason, expected, found, other, records}} (MACs as 12 hex, "" if none;

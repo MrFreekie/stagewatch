@@ -940,6 +940,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         and devices held in FAULT by the hardware check (with the MACs and other device id that
         the public status text leaves out)."""
         conflicts = esp.hardware_conflicts() if esp is not None and hasattr(esp, "hardware_conflicts") else {}
+        where = esp.node_addresses() if esp is not None and hasattr(esp, "node_addresses") else {}
         sensors = [e for e in hub.entities.values() if not e.derived]
         return {
             "entities": {e.id: e.hw_key for e in sensors if e.hw_key},
@@ -948,7 +949,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # record (no legacy mirror) is never shown as 0.
             "settings": {e.id: {"offset": (c := hub.calibration_for(e)).offset,
                                 "include_in_average": c.include_in_average} for e in sensors},
-            "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id)}
+            "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id),
+                               "host": where.get(d.id, {}).get("host", ""),
+                               "address": where.get(d.id, {}).get("address", "")}
                         for d in hub.devices.values() if d.id != "site"},
         }
 
