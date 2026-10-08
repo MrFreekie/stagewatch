@@ -14,8 +14,9 @@ build.
 > errors). The **XIAO ESP32C6 with a DPS310** (pressure only) has run on a real board and been
 > adopted in Stagewatch: the sensor answered at `0x76` (address jumper bridged) and the status
 > light stayed off while everything was well.
-> The **S3 Feather with a DPS310 on the STEMMA QT port** did not work on its first test: the
-> I²C bus was held low and nothing answered (see "If it didn't work" below). The **HUZZAH with
+> The **S3 Feather with a DPS310 on the STEMMA QT port** failed at first (the I²C bus was held
+> low and nothing answered; see "If it didn't work" below) and later worked with nothing
+> changed, so the cause is not known. The **HUZZAH with
 > an MPL3115A2** and the **HUZZAH with a BME/BMP280** have both run on a real board and been
 > adopted in Stagewatch. The all-in-one files with an SHT45 have not been tested yet. Treat the
 > steps for any board not listed as tested as unproven, and tell us what you find.
@@ -538,7 +539,7 @@ learns the new one.
 | What you see | Likely cause | What to do |
 |---|---|---|
 | The computer does not find the board (no COM port) | A charge-only USB cable, or the board is not in flashing mode. | Try another USB **data** cable and another USB port. Then use the button trick for your board in Step 3. |
-| **S3 Feather only:** the log says `Recovery failed: SCL is held LOW on the bus`, the bus scan finds no devices, and starting takes about 11 seconds longer | **Not solved yet.** It happened with every DPS310 plugged into the STEMMA QT port, while the Feather's own battery gauge read fine with nothing plugged in, and the same sensor works on the XIAO. A likely cause (not confirmed): the port's 3.3 V is switched on after the bus starts, and an unpowered sensor pulls the bus low. | Unplug the sensor and cable and reboot: if the bus then scans clean, the fault is in the sensor side, not the board. As a workaround, wire the sensor to the Feather's always-on **3V** pin and the **SDA** and **SCL** pads with jumpers, as on the XIAO. Tell us what you find. |
+| **S3 Feather only:** the log says `Recovery failed: SCL is held LOW on the bus`, the bus scan finds no devices, and starting takes about 11 seconds longer | **Cause not known.** It happened once with a DPS310 plugged into the STEMMA QT port, then went away with nothing changed. The Feather's own battery gauge read fine with nothing plugged in, and the same sensor works on the XIAO. A possible cause (not confirmed): a poor contact in the cable or socket, or the port's 3.3 V coming on after the bus starts. | Unplug the USB lead for ten seconds and start again. Push the STEMMA QT cable in firmly at both ends, or try another cable. If it keeps happening, wire the sensor to the Feather's always-on **3V** pin and the **SDA** and **SCL** pads with jumpers, as on the XIAO, and tell us what you find. |
 | **HUZZAH:** the log says the bus was recovered, then `Found no devices` and `Communication failed`, and the board is on Wi-Fi and connected to Stagewatch | The sensor is not answering although the bus is healthy. Most often the **SDA and SCL wires are on the wrong pins**, or the sensor has no power. | Check against the wiring table: SDA goes to the pin marked **SDA** (GPIO4) and SCL to **SCL** (GPIO5), and the sensor's VIN goes to **3V**. Swap SDA and SCL if unsure, then reboot. |
 | **XIAO:** the **Signal** is weak (about -80 dBm or worse) and readings keep dropping | The built-in antenna is blocked, or the node is far from an access point. | Move the node closer to an access point and clear of metal. If you cannot, see "Built-in or external antenna?" above. |
 | The log has no I²C address for the sensor | A wire or cable is loose, a wire is on the wrong pin, or the sensor has no power. | Push the STEMMA QT cable in at both ends, or check the four wires against the table in Step 1. Try another cable. |
