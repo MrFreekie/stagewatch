@@ -57,7 +57,8 @@
 # used: wifi_ssid, wifi_password, ota_password, api_encryption_key,
 # wifi_ap_password.
 #
-# Status: validated with `esphome config`; untested on hardware.
+# Status: validated with `esphome config`; run on a real HUZZAH with an MPL3115A2
+# (address 0x60; adopted in Stagewatch). Check your SDA and SCL wires if the scan finds nothing.
 
 substitutions:
   node_name: stagewatch-baro-esp8266-1  # unique per node: becomes <name>.local
