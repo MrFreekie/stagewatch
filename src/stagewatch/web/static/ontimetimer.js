@@ -141,7 +141,7 @@ SW.ot = (function () {
       v.added = `${m.added_ms > 0 ? "+" : "-"}${ot.fmtClock(Math.round(Math.abs(m.added_ms) / 1000))} ${m.added_ms > 0 ? "added" : "removed"}`;
     }
     if (v.over) v.extra.push(`Over by ${ot.fmtClock(-ot.shownSeconds(r))}`);
-    if (running(m) && !stale && isNum(m.finish_in_ms) && countsDown(m)) v.extra.push(`Finishes ${SW.fmtTime(m.received_at + m.finish_in_ms / 1000)}`);
+    if (running(m) && !stale && !v.over && isNum(m.finish_in_ms) && m.finish_in_ms > 0 && countsDown(m)) v.extra.push(`Finishes ${SW.fmtTime(m.received_at + m.finish_in_ms / 1000)}`);
     if (isNum(m.elapsed_ms) && m.elapsed_ms >= 0 && v.state !== "ready" && v.state !== "stopped") {
       const e = ot.advancing(m, now) ? m.elapsed_ms + a * 1000 : m.elapsed_ms;
       v.extra.push(`Elapsed ${ot.fmtClock(Math.floor(e / 1000))}`);
