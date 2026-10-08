@@ -313,6 +313,7 @@ them into a dated release section and tags the commit.
   virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
+- Admin: the **Connect a tablet** card can be folded away (**Show or hide the addresses**). It stays open until you close it, and your choice is remembered in that browser.
 - XIAO ESP32C6 nodes: an optional external-antenna block (off by default; the built-in antenna stays
   the default) and a guide section on when to use it. Not yet tested on hardware.
 - Admin: the adopted ESPHome nodes list now has an **Address** column: the IP address each node is

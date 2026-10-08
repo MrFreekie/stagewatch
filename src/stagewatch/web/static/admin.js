@@ -952,9 +952,16 @@
   // list of the computer's network addresses is not shown on the no-login dashboards.
   function connectCard() {
     const body = h("div", {}, h("p", { class: "muted" }, "Looking up this computer's network address…"));
-    const c = card("Connect a tablet",
+    // A collapsible card: it stays open until someone closes it, and is remembered in this browser.
+    let open = true;
+    try { open = localStorage.getItem("sw.admin.connect.open") !== "0"; } catch (_) { /* no storage: stay open */ }
+    const fold = h("details", {},
+      h("summary", { class: "muted", style: "cursor:pointer;min-height:44px;display:flex;align-items:center" }, "Show or hide the addresses"),
       h("p", { class: "muted" }, "On the tablet, join the same Wi-Fi as this computer, then scan a QR code or type the address into the browser."),
       body);
+    fold.open = open;
+    fold.addEventListener("toggle", () => { try { localStorage.setItem("sw.admin.connect.open", fold.open ? "1" : "0"); } catch (_) { /* ignore */ } });
+    const c = card("Connect a tablet", fold);
     c.id = "connect";
     api("GET", "/api/admin/connect").then((r) => {
       if (!r.addresses.length) {
