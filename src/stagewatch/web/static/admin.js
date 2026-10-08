@@ -296,9 +296,11 @@
     const draw = () => {
       ul.replaceChildren(...items.map((it, i) => {
         const info = CARD_INFO[it.id] || [it.id, ""];
-        const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; onChange(); } });
+        const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; if (lookField) lookField.style.display = box.checked ? "" : "none"; onChange(); } });
+        const lookField = it.id === "wall_clock" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Wall Clock look"), clockStyle) : null;
         return h("li", {},
           h("label", { class: "card-pick" }, box, h("span", {}, h("strong", {}, info[0]), info[1] ? h("span", { class: "muted" }, info[1]) : null)),
+          lookField,
           h("button", { type: "button", class: "card-up", "aria-label": `Move ${info[0]} up`, title: "Move up", disabled: i === 0, onclick: () => move(i, -1) }, "▲"),
           h("button", { type: "button", class: "card-down", "aria-label": `Move ${info[0]} down`, title: "Move down", disabled: i === items.length - 1, onclick: () => move(i, 1) }, "▼"));
       }));
@@ -315,8 +317,8 @@
       newer.length ? h("p", { class: "warn-text hint" }, `This dashboard also lists cards from a newer version of Stagewatch (${newer.join(", ")}). This version can't show them, and saving here removes them.`) : null,
       ul,
       h("div", { class: "row", style: "margin-top:10px" },
-        field("Stage", stage), field("Wall Clock look", clockStyle)),
-      h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. Wall Clock look: how the Wall Clock card is drawn on this screen. The ring and 7-segment looks are always red on black."));
+        field("Stage", stage)),
+      h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black."));
     return {
       el,
       read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value }),
@@ -415,8 +417,6 @@
     const hour12 = h("select", {}, h("option", { value: "24" }, "24-hour"), h("option", { value: "12" }, "12-hour (am/pm)"));
     hour12.value = d.hour12 ? "12" : "24";
     const showDate = h("input", { type: "checkbox", checked: !!d.show_date });
-    const ring = h("select", {}, h("option", { value: "sweep" }, "One moving light"), h("option", { value: "fill" }, "Fills up each minute"));
-    ring.value = d.ring === "fill" ? "fill" : "sweep";
     const blink = h("input", { type: "checkbox", checked: !!d.colon_blink });
     const ontimeOnly = [field("Ontime address", url), field("Warn if more than this many seconds out", warn)];
     const result = h("p", { class: "muted", role: "status" });
@@ -449,10 +449,10 @@
     return card("Wall Clock",
       h("p", { class: "muted" }, "Shows the time on dashboards that have the Wall Clock card. Choose where the time comes from: this computer, or Ontime (then it warns if Ontime differs from Stagewatch). Stagewatch only listens: it never sends anything to Ontime. If the source stops, the clock says so. It never switches to another source by itself."),
       h("div", { class: "row" }, field("Time source", source), ...ontimeOnly, testBtn),
-      h("div", { class: "row", style: "margin-top:10px" }, field("Time format", hour12), field("Show the date", showDate), field("Ring light", ring), field("Blink the colons", blink),
+      h("div", { class: "row", style: "margin-top:10px" }, field("Time format", hour12), field("Show the date", showDate), field("Blink the colons", blink),
         h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/wall-clock", {
           source: source.value, ontime_url: val(url), warn_offset_s: Number(warn.value) || 2,
-          display: { hour12: hour12.value === "12", show_date: showDate.checked, ring: ring.value, colon_blink: blink.checked },
+          display: { hour12: hour12.value === "12", show_date: showDate.checked, ring: d.ring === "fill" ? "fill" : "sweep", colon_blink: blink.checked },
         }), "Wall Clock saved").then(refresh, () => {}) }, "Save")),
       h("p", { class: "muted hint" }, "These apply to every dashboard. The look (plain digits, LED ring or 7-segment) is set for each dashboard under User dashboards → Edit cards. Ring and 7-segment are always red on black."),
       result,

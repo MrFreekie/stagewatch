@@ -682,7 +682,7 @@
       ui.face = SW.wc.createFace(style);
       ui.host.replaceChildren(ui.face.el);
     }
-    ui.face.update(v, { ring: v.opts.ring, colonBlink: v.opts.colonBlink, reduced: SW.wc.reducedMotion() });
+    ui.face.update(v, { colonBlink: v.opts.colonBlink, reduced: SW.wc.reducedMotion() });
     setText(ui.date, v.date);
     ui.date.hidden = !v.date;
     setText(ui.note, v.note);

@@ -17,12 +17,11 @@ them into a dated release section and tags the commit.
 
 ### Added
 - Wall Clock: the card now has **three looks**, chosen for each dashboard: plain digits (as
-  before), an **LED ring** (60 lights round a circle with a brighter light for each hour, and
-  the time in the middle) and **7-segment digits** like a studio clock. The ring and 7-segment looks
+  before), an **LED ring** (an outer ring of 60 lights for the seconds, an inner ring of 12 brighter lights for the hours,
+  and the time in the middle) and **7-segment digits** like a studio clock. The ring and 7-segment looks
   are always red on black, by day and by night. Choose the look under **Admin → User dashboards →
   Edit cards → Wall Clock look**. Under **Admin → Wall Clock** you can also choose 24-hour or
-  12-hour (am/pm), show the date, choose how the ring moves (one moving light, or lights that fill
-  up each minute) and make the colons blink (they stay steady if the device asks for reduced
+  12-hour (am/pm), show the date and make the colons blink (they stay steady if the device asks for reduced
   motion). A ring on a card narrower than about 280 pixels shows plain digits. "Differs",
   "stale" and "offline" are shown with words and a ▲ as well as a dashed outline or a line through
   the time, never colour alone. `--emulate` gives the three stock dashboards one look each, and the
@@ -193,6 +192,13 @@ them into a dated release section and tags the commit.
   key on every node to stop other devices pretending to be yours.
 
 ### Changed
+- Wall Clock LED ring: the 60 lights for the seconds are now an outer ring, and the 12 hour marks
+  are a separate inner ring that is always lit. The seconds fill up: every second that has passed
+  in the minute stays lit, and all the lights go out at the start of the next minute (none are lit
+  at :00). The "Ring light" choice is gone, because the ring always fills up. Action needed: none;
+  a saved "ring" setting is kept but ignored. When the time goes stale, the lit lights freeze and dim.
+- Admin: the **Wall Clock look** choice now sits on the Wall Clock line under **User dashboards**
+  **Edit cards**, and only shows while the Wall Clock card is ticked for that dashboard.
 - The schedule card no longer has a separate curfew timer. Instead, the act on now counts down to
   its end time (if it has one), turning amber at 15 minutes ("15 MIN") and orange at 5 ("5 MIN").
   NOW and NEXT now sit side by side, and the curfew is still listed in the running order.
