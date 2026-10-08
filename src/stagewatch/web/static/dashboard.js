@@ -720,7 +720,7 @@
         h("div", { class: "baro-label" }, "Sea-level pressure"),
         h("div", { class: "baro-value" }, u.msl, h("span", { class: "baro-unit" }, "hPa")), u.off, u.tend, u.hint);
       u.body = h("div", { class: "baro-body" }, h("div", { class: "baro-dial-host" }, u.dial.el), u.figures);
-      card.append(u.flag, u.body, u.notes, u.info, u.temp, h("p", { class: "baro-foot muted" }, SW.baro.FOOTER));
+      card.append(u.flag, u.notes, u.body, u.info, u.temp, h("p", { class: "baro-foot muted" }, SW.baro.FOOTER));
     }
     const u = baroUi.ui;
     setClass(card, `card baro baro-${v.state}${v.dim ? " dim" : ""}`);

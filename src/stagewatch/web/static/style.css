@@ -487,8 +487,8 @@ body.layout-wall .wc-date { font-size: 36px; }
 .baro-face { fill: var(--panel); stroke: var(--grid); stroke-width: 1; }
 .baro-tick { stroke: var(--muted); stroke-width: 1; }
 .baro-tick.major { stroke: var(--text); stroke-width: 1.6; }
-text.baro-num { fill: var(--text); font-size: 8px; font-variant-numeric: tabular-nums; }
-.baro-word { fill: var(--muted); font-size: 7.5px; }
+text.baro-num { fill: var(--text); font-size: 9px; font-variant-numeric: tabular-nums; }
+.baro-word { fill: var(--muted); font-size: 8.5px; }
 .baro-point { fill: var(--muted); }
 .baro-hand { fill: var(--text); }
 .baro-tail { stroke: var(--text); stroke-width: 4; stroke-linecap: round; }
@@ -498,7 +498,7 @@ text.baro-num { fill: var(--text); font-size: 8px; font-variant-numeric: tabular
 .baro-setlabel { fill: var(--muted); font-size: 8px; font-variant-numeric: tabular-nums; }
 .baro-needle, .baro-sethand { transform-origin: 100px 100px; transition: transform .6s ease; }
 @media (prefers-reduced-motion: reduce) { .baro-needle, .baro-sethand { transition: none; } }
-.baro-dial.dim { opacity: .45; }
+.baro-dial.dim { opacity: .6; }
 .baro-figures { flex: 1 1 220px; min-width: 0; }
 .baro-label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
 .baro-value { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
@@ -517,25 +517,34 @@ text.baro-num { fill: var(--text); font-size: 8px; font-variant-numeric: tabular
 .baro-flag { border: 3px solid var(--warn); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; display: flex; gap: 6px 14px; align-items: baseline; flex-wrap: wrap; background: var(--panel-2); }
 .baro-flag.lvl-alert { border-color: var(--alert); }
 .baro-flag-text { font-size: 20px; letter-spacing: .03em; }
-.baro-notes { margin: 10px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.baro-notes { margin: 0 0 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .baro-info, .baro-temp { margin: 6px 0 0; font-size: 12px; }
 .baro-temp[hidden] { display: none; }
 .baro-foot { margin: 8px 0 0; font-size: 12px; }
-.baro-no_sensor .baro-figures { display: none; }
+.baro-no_sensor .baro-figures, .baro-no_sensor .baro-dial-host { display: none; }   /* an empty dial says nothing: just the sentence */
 .baro.dim .baro-value, .baro.dim .baro-unit { color: var(--muted); }
-body.layout-phone .baro .baro-dial-host { width: 240px; margin: 0 auto; }
+/* Phone: the number first (it is what you glance for), the dial under it, a little smaller. */
+body.layout-phone .baro .baro-dial-host { width: 220px; margin: 0 auto; order: 2; }
+body.layout-phone .baro .baro-figures { flex-basis: 100%; }
 body.layout-phone .baro-temp, body.layout-wall .baro-temp { display: none; }
 body.layout-phone .baro-value { font-size: 36px; }
 body.layout-wall .baro-dial-host { display: none; }
 body.layout-wall .baro-label { font-size: 24px; }
-body.layout-wall .baro-value { font-size: 96px; }
-body.layout-wall .baro-unit { font-size: 40px; }
+/* Wall: the pressure big on the left, the tendency and the hint beside it, to leave room for the other cards. */
+body.layout-wall .baro-figures { display: grid; grid-template-columns: auto 1fr; gap: 0 56px; align-items: center; }
+body.layout-wall .baro-figures > .baro-label { grid-column: 1 / -1; }
+body.layout-wall .baro-figures > .baro-value { grid-column: 1; grid-row: 2 / span 2; }
+body.layout-wall .baro-figures > .baro-off { grid-column: 1 / -1; grid-row: 4; font-size: 40px; }
+body.layout-wall .baro-figures > .baro-tend { grid-column: 2; grid-row: 2; margin-top: 0; }
+body.layout-wall .baro-figures > .baro-hint { grid-column: 2; grid-row: 3; margin-top: 8px; }
+body.layout-wall .baro-value { font-size: 128px; }
+body.layout-wall .baro-unit { font-size: 48px; }
 body.layout-wall .baro-tend { font-size: 64px; border-left-width: 14px; }
 body.layout-wall .baro-figure { font-size: 48px; }
 body.layout-wall .baro-outlook { font-size: 48px; }
 body.layout-wall .baro-icon { width: 64px; height: 64px; }
 body.layout-wall .baro-way { font-size: 32px; }
-body.layout-wall .baro-disclaimer, body.layout-wall .baro-info { font-size: 20px; }
+body.layout-wall .baro-disclaimer, body.layout-wall .baro-info { font-size: 22px; }
 body.layout-wall .baro-flag-text { font-size: 48px; }
 body.layout-wall .baro-flag-line { font-size: 32px; }
 body.layout-wall .baro-notes { font-size: 32px; }

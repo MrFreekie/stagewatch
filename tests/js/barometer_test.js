@@ -117,15 +117,15 @@ eq([v.approx, v.tempNote], ["Sea-level pressure is approximate: there is no temp
 
 // collecting: ready about 21:30; after an hour a provisional figure with no word
 v = baro.view({ state: "collecting", msl_pa: 101300, ready_ts: 1688247000, first_ts: 1688247000 - 10800, last_ts: NOW, approx: "ok", reduction: "temperature" }, NOW);
-eq([v.state, v.notes, v.tendency, v.outlook, v.flag, v.setLabel], ["collecting", ["Collecting, ready about 21:30"], null, null, null, ""], "collecting");
+eq([v.state, v.notes, v.tendency, v.outlook, v.flag, v.setLabel], ["collecting", ["Collecting pressure history, trend ready about 21:30"], null, null, null, ""], "collecting");
 v = baro.view({ state: "collecting", msl_pa: 101300, ready_ts: 1688247000, last_hour_pa: -60, last_ts: NOW, approx: "ok", reduction: "temperature" }, NOW);
-eq(v.notes, ["Collecting, ready about 21:30", "Last hour: −0.6 hPa"], "collecting with the last hour");
+eq(v.notes, ["Collecting pressure history, trend ready about 21:30", "Last hour: −0.6 hPa"], "collecting with the last hour");
 eq([v.tendency, v.outlook], [null, null], "no word and no outlook while collecting");
 
 // gap
 const t1410 = 1688169600 + 14 * 3600 + 10 * 60, t1505 = 1688169600 + 15 * 3600 + 5 * 60;
 v = baro.view({ state: "gap", msl_pa: 101300, gap: [t1410, t1505], ready_ts: t1505 + 10800, last_ts: NOW, approx: "ok", reduction: "temperature" }, NOW);
-eq(v.notes, ["Pressure gap 14:10 to 15:05, ready about 18:05"], "gap");
+eq(v.notes, ["Pressure gap 14:10 to 15:05, trend ready about 18:05"], "gap");
 eq([v.tendency, v.outlook, v.flag], [null, null, null], "no word, outlook or flag in a gap");
 
 // stale: dim, with its age, never a flag or an outlook, even if the payload still carries them

@@ -131,9 +131,9 @@ SW.baro = (function () {
     if (b.reduction === "temperature") v.tempNote = baro.TEMP_NOTE;
     if (v.state === "collecting" || v.state === "gap") {
       if (v.state === "gap" && Array.isArray(b.gap) && b.gap.length === 2) {
-        v.notes.push(`Pressure gap ${SW.fmtTime(b.gap[0])} to ${SW.fmtTime(b.gap[1])}${isNum(b.ready_ts) ? `, ready about ${SW.fmtTime(b.ready_ts)}` : ""}`);
+        v.notes.push(`Pressure gap ${SW.fmtTime(b.gap[0])} to ${SW.fmtTime(b.gap[1])}${isNum(b.ready_ts) ? `, trend ready about ${SW.fmtTime(b.ready_ts)}` : ""}`);
       } else {
-        v.notes.push(`Collecting${isNum(b.ready_ts) ? `, ready about ${SW.fmtTime(b.ready_ts)}` : ""}`);
+        v.notes.push(`Collecting pressure history${isNum(b.ready_ts) ? `, trend ready about ${SW.fmtTime(b.ready_ts)}` : ""}`);
       }
       if (isNum(b.last_hour_pa)) v.notes.push(`Last hour: ${baro.changeText(b.last_hour_pa)} hPa`);   // provisional: no word
       return v;
@@ -191,16 +191,16 @@ SW.baro = (function () {
       const o = polar(88, a), i = polar(major ? 80 : 84, a);
       svg.append(SW.svg("line", { x1: f1(o[0]), y1: f1(o[1]), x2: f1(i[0]), y2: f1(i[1]), class: major ? "baro-tick major" : "baro-tick" }));
       if (major) {
-        const t = polar(71, a);
+        const t = polar(67, a);          // inside the tick, clear of it at the sides where four digits are widest
         const label = SW.svg("text", { x: f1(t[0]), y: f1(t[1] + 2.4), class: "baro-num", "text-anchor": "middle" });
         label.textContent = SW.num(p, 0);
         svg.append(label);
       }
     }
     for (const w of baro.DIAL_WORDS) {          // each word at its own point, no coloured bands
-      const a = baro.angle(w[0]), m = polar(80, a), t = polar(52, a);
+      const a = baro.angle(w[0]), m = polar(80, a), t = polar(46, a);
       svg.append(SW.svg("circle", { cx: f1(m[0]), cy: f1(m[1]), r: 1.6, class: "baro-point" }));
-      const label = SW.svg("text", { x: f1(t[0]), y: f1(t[1] + 2.4), class: "baro-word", "text-anchor": "middle" });
+      const label = SW.svg("text", { x: f1(t[0]), y: f1(t[1] + 2.6), class: "baro-word", "text-anchor": "middle" });
       label.textContent = w[1];
       svg.append(label);
     }

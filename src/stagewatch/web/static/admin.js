@@ -114,7 +114,7 @@
     return card("Site",
       h("div", { class: "row" },
         field("Site / show name", name),
-        field("Altitude (m): used only without a pressure sensor", alt),
+        field("Altitude (m): for the barometer, and the speed of sound without a pressure sensor", alt),
         field("Reference distance (m) for Δ ms", dist),
         field("Stale after (s)", stale),
         field("Smoothing τ (s)", tau),
@@ -175,17 +175,17 @@
     hemi.value = b.hemisphere === "south" ? "south" : "north";
     const alarm = h("input", { type: "checkbox", checked: !!b.rapid_fall_alarm });
     const thr = h("input", { class: "num touch", type: "number", step: "0.1", min: "1.5", max: "10", value: b.rapid_fall_hpa_3h === undefined ? 3.6 : b.rapid_fall_hpa_3h });
-    const demos = admin.emulate ? h("div", { class: "row", style: "margin-top:10px" }, h("span", { class: "muted" }, "Demo weather (emulate mode only):"),
+    const demos = admin.emulate ? h("div", { class: "row", style: "margin-top:10px" }, h("span", { class: "muted" }, "Try the card with demo weather (emulate mode only; the dropout starts after 1 minute):"),
       DEMOS.map((d) => h("button", { type: "button", class: "touch", onclick: () => run(() => api("POST", "/api/admin/barometer/demo", { scenario: d[0] }), `${d[1]} started`).then(refresh, () => {}) }, d[1]))) : null;
     return card("Barometer",
       h("p", { class: "muted" }, "Sea-level pressure, how it has changed over 3 hours and a rough outlook, on dashboards that have the Barometer card (User dashboards → Edit cards). It uses the pressure sensors, the site temperature and the altitude in the Site card. It is a guide from pressure at this site only, not a forecast: it does not replace the Met Office forecast and warnings or your event's weather plan."),
       h("div", { class: "row" }, field("Hemisphere (for the summer and winter months)", hemi),
-        field("Quiet notice and marker when pressure falls quickly", alarm),
+        field("Silent alarm and marker when pressure falls quickly", alarm),
         field("Falls at least this much in 3 h (hPa)", thr),
-        h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/barometer", {
+        h("button", { class: "primary touch", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/barometer", {
           hemisphere: hemi.value, rapid_fall_alarm: alarm.checked, rapid_fall_hpa_3h: Number(thr.value) || 3.6,
         }), "Barometer saved").then(refresh, () => {}) }, "Save")),
-      h("p", { class: "muted hint" }, "The falling-quickly warning on the card is always on. The quiet notice adds a silent line to the alarm list and one marker, and never sounds. 3.6 hPa in 3 hours is the Met Office's \"falling quickly\". The sea-level figure uses the measured temperature; it can differ from airport QNH by a hPa or so."),
+      h("p", { class: "muted hint" }, "The falling-quickly warning on the card is always on. The silent alarm adds a line to the alarm list and one marker, and never sounds. 3.6 hPa in 3 hours is the Met Office's \"falling quickly\". The sea-level figure uses the measured temperature; it can differ from airport QNH by a hPa or so."),
       demos);
   }
 
