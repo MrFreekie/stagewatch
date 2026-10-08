@@ -604,6 +604,15 @@ body.layout-wall .baro-foot { font-size: 20px; }
 .sensor-group td input[type="checkbox"] { width: 24px; height: 24px; margin: 10px; }
 .sg-buttons { margin: 8px 0; }
 
+/* Sensors card: accuracy, preset and share columns, and the weighting switch. */
+label.field.inline { flex-direction: row; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; color: var(--fg, inherit); }
+label.field.inline input[type="checkbox"] { width: 24px; height: 24px; margin: 0; }
+.weight-notes { list-style: none; margin: 4px 0 8px; padding: 0; font-size: 13px; }
+.sensor-group .acc-field { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap; }
+.sensor-group .acc-field input.num { width: 76px; }
+.sensor-group td select { min-height: 44px; }
+.sensor-group .preset-note { max-width: 24ch; white-space: normal; }
+
 /* Connect a tablet and Software folds share the Sensors fold look */
 .connect-fold > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 44px; padding: 4px 0; cursor: pointer; }
 .connect-fold .cf-name { font-weight: 600; }

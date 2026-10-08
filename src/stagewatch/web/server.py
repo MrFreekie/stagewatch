@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 
 from .. import __version__, acoustics
 from ..core.config import (
-    CLOCK_STYLES, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
     SiteConfig, Threshold, WallClockConfig,
 )
 from ..core.calibration import set_calibration
@@ -948,7 +948,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # else defaults): the admin card shows these, so an offset kept only in a hardware
             # record (no legacy mirror) is never shown as 0.
             "settings": {e.id: {"offset": (c := hub.calibration_for(e)).offset,
-                                "include_in_average": c.include_in_average} for e in sensors},
+                                "include_in_average": c.include_in_average,
+                                "accuracy": c.accuracy, "accuracy_basis": c.accuracy_basis} for e in sensors},
+            # Each sensor's live share of its kind's site average, and why weighting is not in use.
+            "averages": hub.average_info,
             "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id),
                                "host": where.get(d.id, {}).get("host", ""),
                                "address": where.get(d.id, {}).get("address", "")}
@@ -975,7 +978,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # Set on the schedule page; the Site card doesn't send it, so keep it as it is.
             body = body.model_copy(update={"schedule_auto_markers": hub.config.site.schedule_auto_markers})
         # Callers that don't send the warning times keep what is set.
-        keep = {k: getattr(hub.config.site, k) for k in ("schedule_warn_minutes", "schedule_warn_flash_minutes")
+        keep = {k: getattr(hub.config.site, k)
+                for k in ("schedule_warn_minutes", "schedule_warn_flash_minutes", "weight_by_accuracy")
                 if k not in body.model_fields_set}
         if keep:
             body = body.model_copy(update=keep)
@@ -1047,15 +1051,35 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if entity_id not in hub.entities:
             raise HTTPException(404, "No such entity")
         entity = hub.entities[entity_id]
+        # Accuracy: only for the three kinds that make the site average, within a sane limit for
+        # the kind. Fixed text; the submitted number is never echoed.
+        extra = {}
+        if "accuracy" in body.model_fields_set or "accuracy_basis" in body.model_fields_set:
+            limit = ACCURACY_MAX.get(entity.kind.value)
+            if body.accuracy is not None and (limit is None or entity.derived):
+                raise HTTPException(422, "Accuracy can only be set for temperature, humidity and pressure sensors")
+            if body.accuracy is not None and body.accuracy > limit:
+                raise HTTPException(422, "That accuracy figure is too large for this kind of sensor")
+            if body.accuracy is not None and body.accuracy < ACCURACY_MIN[entity.kind.value]:
+                raise HTTPException(422, "That accuracy figure is too small for this kind of sensor")
+            if "accuracy" in body.model_fields_set:
+                extra["accuracy"] = body.accuracy
+            if "accuracy_basis" in body.model_fields_set:
+                extra["accuracy_basis"] = body.accuracy_basis
         # Hardware record when the sensor's board is known (a "manual" history entry when the
         # offset changes), else the legacy entry keyed by entity id.
-        set_calibration(hub.config, entity_id, entity.hw_key, body.offset, body.include_in_average)
+        set_calibration(hub.config, entity_id, entity.hw_key, body.offset, body.include_in_average, **extra)
         hub.save_config()
         if entity.raw_value is not None and not entity.derived:
             hub.update_state(entity_id, entity.raw_value, entity.updated)
         else:
             hub.bus.publish("entity", entity)   # screens still learn the new offset
         return body
+
+    @app.get("/api/admin/averages", dependencies=[Depends(require_admin)])
+    async def admin_averages():
+        """Admin only: each sensor's share of the site average now (the page refreshes it live)."""
+        return {"weight_by_accuracy": hub.config.site.weight_by_accuracy, "averages": hub.average_info}
 
     @app.put("/api/admin/thresholds", dependencies=admin_deps)
     async def put_thresholds(body: list[Threshold]):

@@ -282,7 +282,7 @@ on the page:
 | **Connect a tablet** | The address and QR code for each dashboard and the home page. Tap a name to open or close it; **Expand all** and **Collapse all** do the lot. |
 | **Software** | Check for and install updates. It is folded into **Installed**, **Updates**, **History**, **Data backups** and **Displaced data**; the closed line gives a short status such as "up to date, checked 14:02". **Updates** stays open while an update is available. See [Updating and backups](updating-and-backups.md). |
 | **ESPHome nodes** | Adopt new sensor nodes. See [First sensor node](first-sensor-node.md). Rename a node, change its area, or remove it. On a shared network the **Discovered node** list can fill up with other people's devices. Click **Ignore** next to one to hide it. Stagewatch never connects to a node you have not adopted, so ignoring only tidies the list. To bring one back, click **Show ignored** under the list, then **Unignore**. |
-| **Sensors: calibration & averaging** | Sensors are grouped by node. Tap a node's name to open or close it; the closed line shows its status and any offset. Stagewatch remembers which nodes you left open, and **Expand all** and **Collapse all** do the lot. Correct a sensor with an **offset**. Untick **Average** to leave one out of the site average. On the dashboards, a sensor with an offset shows a `*` after its value, with a note under the **Sensors** table, so crew know the reading has been adjusted. The chart key and the Site average line show it too. |
+| **Sensors: calibration & averaging** | Sensors are grouped by node. Tap a node's name to open or close it; the closed line shows its status and any offset. Stagewatch remembers which nodes you left open, and **Expand all** and **Collapse all** do the lot. Correct a sensor with an **offset**. Untick **Average** to leave one out of the site average. On the dashboards, a sensor with an offset shows a `*` after its value, with a note under the **Sensors** table, so crew know the reading has been adjusted. The chart key and the Site average line show it too. You can also give a sensor an **Accuracy**: see [Accuracy and weighting](#accuracy-and-weighting). |
 | **Threshold alarms** | Add limits. Pick the **Entity** (choose the "Site:" ones for the average), the **Above** or **Below** value, the **Level** (Advisory, Alert, Stop), **Hyst.** (how far back past the limit before it clears) and **Hold s** (how many seconds it must last before it alarms). Values are in the units shown on the dashboards, **except pressure, which is in pascals (Pa)**. Click **Save thresholds**. |
 | **User dashboards** | Add or remove dashboards. Each has a URL name, a title, a **Layout** (tablet, phone or wall), and ticks for whether people can **Add markers** and **Ack alarms**. Click **Edit cards** to choose what it shows (see [Choose the cards on a dashboard](#choose-the-cards-on-a-dashboard)). Click **Save dashboards**. |
 | **OSC output** | Send the site average and alarm state to other gear (the desk, for example). See the [main README](../README.md#osc-output). |
@@ -395,6 +395,50 @@ Good to know:
 - A moment that passes while its marker is switched off gets no marker, even if you switch it on
   afterwards.
 - Schedule markers can be hidden, given notes or deleted like any other marker.
+
+### Accuracy and weighting
+
+Every sensor is a little out, and some are more out than others. The maker prints a "±" figure
+in the datasheet. You can type it in so Stagewatch can count the better sensors for more in the
+site average. This is optional and **off** until you switch it on. It only shows on the Admin page,
+never on the dashboards.
+
+1. Go to **Admin → Sensors: calibration & averaging** and open a node.
+2. In the **Accuracy** column, type the figure after the **±**. Use °C for temperature, %RH for
+   humidity and hPa for pressure (not Pa, unlike the offset). For example `0.5` for ±0.5 °C.
+3. Pick **typical** or **maximum**. Most datasheets headline the typical figure. If you are not
+   sure, leave it as **typical**.
+4. Or choose your part from **Preset…**. It fills in the typical figure from the manufacturer's
+   page. Check it against your sensor's datasheet, and change it if you know better. If the
+   maker's page gave no clear figure, the preset leaves the box empty and says so: type it yourself.
+5. Click **Save** on that row. You will see, for example, "Accuracy ±1 %RH (typical)" under the value.
+
+To use the figures, tick **Weight the average by accuracy** at the top of the card. A sensor with
+a smaller figure then counts for more: a sensor of ±0.1 °C counts 4 times as much as one of
+±0.2 °C. No sensor ever counts for more than **80 %**, however good its figure, so the site
+average still covers every place you put a sensor and does not turn into one sensor's reading. The
+**Share** column shows "(capped)" when that limit is holding a sensor back. Figures are accepted
+from 0.01 °C, 0.1 %RH and 0.01 hPa upwards. The **Share** column shows how much each sensor counts in the average right now, as a
+percentage. With the switch off, every sensor in the average shares it equally.
+
+Stagewatch only weights temperature, humidity or pressure when **every sensor in that average
+has an accuracy figure and the figures are all typical or all maximum**. Otherwise that one uses
+equal weights, and the card says why, for example "Equal weights: 2 sensors have no accuracy
+figure". A sensor that is stale, left out by its **Average** tick box, or thrown out as an outlier
+does not count, and the shares of the others adjust to add up to 100 %. Outlier rejection works
+exactly as before.
+
+Where a sensor sits (sun, stage lights, heat from kit, its own warmth, airflow) usually matters
+more than the datasheet figure. Sensors you calibrated against the same reference share that
+reference's error, so averaging them does not remove it.
+
+An offset and an accuracy figure do different jobs. The offset corrects a reading you have
+checked against a reference. The accuracy figure says how far the sensor can still be off. After
+you calibrate a sensor, type the uncertainty you are left with (a figure that may be smaller or
+larger than the datasheet's), not the datasheet figure.
+
+How to check it worked: turn the switch on, give two sensors of one kind different figures, and
+watch the **Share** column change to match. Turn the switch off and the shares go back to equal.
 
 ### Choose the cards on a dashboard
 

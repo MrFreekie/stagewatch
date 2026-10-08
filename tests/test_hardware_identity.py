@@ -810,8 +810,8 @@ def test_put_entity_writes_the_hardware_record(client):
     assert client.hub.entities["sim_foh.temperature"].value == pytest.approx(21.5)
     # The admin card reads the settings that apply now, so a hardware-only offset is never shown as 0.
     settings = client.get("/api/admin/state").json()["hardware"]["settings"]
-    assert settings["sim_foh.temperature"] == {"offset": -0.5, "include_in_average": True}
-    assert settings["sim_foh.humidity"] == {"offset": 0.0, "include_in_average": True}
+    assert settings["sim_foh.temperature"] == {"offset": -0.5, "include_in_average": True, "accuracy": None, "accuracy_basis": "typical"}
+    assert settings["sim_foh.humidity"] == {"offset": 0.0, "include_in_average": True, "accuracy": None, "accuracy_basis": "typical"}
     assert "site.temperature" not in settings
 
 

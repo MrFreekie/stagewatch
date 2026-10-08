@@ -104,6 +104,9 @@ class SiteConfig(_Model):
     stale_after_s: float = Field(60.0, ge=5, le=3600)
     smoothing_tau_s: float = Field(30.0, ge=0, le=900)
     outlier_reject: bool = True
+    # "Weight the average by accuracy" (admin, Sensors card). Off by default: equal weights, as
+    # before. Additive with a default: no config schema bump; older builds ignore the key.
+    weight_by_accuracy: bool = False
     timezone: str = ""          # "" = not set: use this computer's zone
     day_rollover: str = "06:00"  # a show day runs from this time to the same time next morning
     # "Add markers from the schedule" (schedule page): a marker at doors, soundchecks and act
@@ -200,11 +203,27 @@ class EsphomeDeviceConfig(_Model):
         return mac
 
 
+# Sensor accuracy ("Accuracy ±"), stored in canonical units (degC, %RH, Pa) per kind. The upper
+# bounds are what the admin API accepts (a datasheet figure above this is a typing slip). A value
+# outside them in a saved file is ignored when averaging.
+ACCURACY_MAX = {"temperature": 20.0, "humidity": 30.0, "pressure": 5000.0}
+# Smallest figure accepted per kind (a datasheet never claims better; tiny typed figures would
+# otherwise swamp every other sensor, or underflow). Same canonical units.
+ACCURACY_MIN = {"temperature": 0.01, "humidity": 0.1, "pressure": 1.0}
+ACCURACY_MAX_ANY = max(ACCURACY_MAX.values())
+ACCURACY_MIN_ANY = min(ACCURACY_MIN.values())
+ACCURACY_BASES = ("typical", "maximum")
+
+
 class EntitySettings(_Model):
     """Legacy per-entity calibration, keyed by entity id.  Kept as the pending map: entries move to
     ``Config.calibrations`` once the hardware behind the entity is known."""
     offset: float = 0.0
     include_in_average: bool = True
+    # Datasheet accuracy (canonical units) and whether it is a typical or a maximum figure.
+    # None = not set. Additive: older builds ignore both keys.
+    accuracy: float | None = Field(None, ge=ACCURACY_MIN_ANY, le=ACCURACY_MAX_ANY, allow_inf_nan=False)
+    accuracy_basis: Literal["typical", "maximum"] = "typical"
 
 
 CALIBRATION_KEY_RE = re.compile(r"(mac:[0-9a-f]{12}|dev:[a-z0-9_]+)/[a-z0-9_]+")  # fullmatch
@@ -242,6 +261,8 @@ class Calibration(_Model):
     the board when it is re-adopted.  Canonical units: degC, %RH, Pa."""
     offset: float = Field(0.0, allow_inf_nan=False)
     include_in_average: bool = True
+    accuracy: float | None = Field(None, ge=ACCURACY_MIN_ANY, le=ACCURACY_MAX_ANY, allow_inf_nan=False)
+    accuracy_basis: Literal["typical", "maximum"] = "typical"
     history: list[CalibrationEntry] = Field(default_factory=list)  # newest first
     chip: str = Field("", max_length=64)  # reserved
     applied_on_node: bool = False  # reserved; ignored
@@ -454,6 +475,31 @@ class Config(_Model):
             elif disp.get("ring") not in (None, "sweep", "fill"):
                 v = {**v, "display": {k: x for k, x in disp.items() if k != "ring"}}
         return v
+
+    @field_validator("entities", "calibrations", mode="before")
+    @classmethod
+    def _lenient_accuracy(cls, v):
+        """On load only (the API validates the models strictly and refuses): an accuracy figure or
+        basis that can't be read is left out, so one bad value never costs the offset next to it.
+        Logs a count, never the value."""
+        if not isinstance(v, dict):
+            return v
+        fixed, bad = {}, 0
+        for key, rec in v.items():
+            if isinstance(rec, dict) and ("accuracy" in rec or "accuracy_basis" in rec):
+                acc = rec.get("accuracy")
+                ok_acc = acc is None or (isinstance(acc, (int, float)) and not isinstance(acc, bool)
+                                         and ACCURACY_MIN_ANY <= acc <= ACCURACY_MAX_ANY)
+                ok_basis = rec.get("accuracy_basis", "typical") in ACCURACY_BASES
+                if not (ok_acc and ok_basis):
+                    bad += 1
+                    drop = ({"accuracy"} if not ok_acc else set()) | ({"accuracy_basis"} if not ok_basis else set())
+                    rec = {k: x for k, x in rec.items() if k not in drop}
+            fixed[key] = rec
+        if bad:
+            log.warning("Sensor accuracy: %d figure%s this version can't read left out",
+                        bad, "" if bad == 1 else "s")
+        return fixed
 
     @field_validator("calibrations")
     @classmethod
