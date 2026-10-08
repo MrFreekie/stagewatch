@@ -290,6 +290,37 @@ SW.fmtDelta = function (kind, delta) {
   return `${SW.signed(f.conv(delta), dec)} ${f.unit}`.trim();
 };
 
+// Calibration offsets. An entity carries `offset` (canonical units) only when one is applied.
+SW.OFFSET_NOTE = "Calibration offset applied";
+SW.OFFSET_KINDS = ["temperature", "humidity", "pressure"];
+// "+0.5 °C", "-1.0 hPa", "+2.0 % points": always signed, one decimal, in the display unit.
+SW.fmtCalOffset = function (kind, offset) {
+  const f = SW.KIND_FMT[kind];
+  if (!f || typeof offset !== "number" || !isFinite(offset)) return "";
+  const unit = kind === "humidity" ? "% points" : f.unit;
+  return `${SW.signed(f.conv(offset), 1)} ${unit}`.trim();
+};
+SW.hasOffset = (e) => !!(e && !e.derived && typeof e.offset === "number" && e.offset !== 0);
+// One note per adjusted sensor: [{ name, kind, text }], by node name. `devices` is a list of
+// {id, name}; `entities` a list of entity dicts.
+SW.offsetNotes = function (devices, entities) {
+  const notes = [];
+  for (const d of devices) {
+    const adj = entities.filter((e) => e.device_id === d.id && SW.OFFSET_KINDS.indexOf(e.kind) >= 0 && SW.hasOffset(e));
+    for (const e of adj) {
+      const amount = SW.fmtCalOffset(e.kind, e.offset);
+      if (amount) notes.push({ name: d.name, kind: e.kind, text: adj.length > 1 ? `${d.name} ${e.kind} ${amount}` : `${d.name} ${amount}` });
+    }
+  }
+  return notes;
+};
+// "* Calibration offset applied: Feather S3 -1.0 hPa, MPL3115A2 +0.5 hPa", or "" when none.
+SW.offsetFootnote = function (notes) {
+  return notes.length ? `* ${SW.OFFSET_NOTE}: ${notes.map((n) => n.text).join(", ")}` : "";
+};
+// True when any sensor feeding this kind's site average has an offset.
+SW.averageAdjusted = (entities, kind) => SW.OFFSET_KINDS.indexOf(kind) >= 0 && entities.some((e) => e.kind === kind && SW.hasOffset(e));
+
 // "+1.23" / "-1.23" / "0.00" (never "-0.00" from rounding noise)
 SW.signed = function (v, dec) {
   const s = SW.num(v, dec);

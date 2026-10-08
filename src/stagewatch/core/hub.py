@@ -344,6 +344,11 @@ class Hub:
                 and not e.is_stale(now, stale_after)
                 and self.calibration_for(e).include_in_average]
 
+    def entity_dict(self, entity: Entity, now: float, stale_after: float) -> dict:
+        """Public form of an entity: includes ``offset`` only when a calibration offset is set."""
+        offset = 0.0 if entity.derived else float(self.calibration_for(entity).offset or 0.0)
+        return entity.to_dict(now, stale_after, offset)
+
     def calibration_for(self, entity: Entity) -> Calibration | EntitySettings:
         """The hardware record (by ``entity.hw_key``), else the legacy entry by entity id, else
         the defaults. Read-only."""
@@ -633,7 +638,7 @@ class Hub:
             "wall_clock": self.wall_clock.snapshot(),  # None while no dashboard has the card
             "ontime_timer": self.ontime_timer.snapshot(),  # likewise
             "devices": [d.to_dict() for d in self.devices.values()],
-            "entities": [e.to_dict(now, stale_after) for e in self.entities.values()],
+            "entities": [self.entity_dict(e, now, stale_after) for e in self.entities.values()],
             "markers": [m.to_dict() for m in self.recorder.markers()],
             "alarms": self.alarms.to_list(),
             "sounding": self.alarms.sounding,
