@@ -16,10 +16,12 @@
     ["site.dew_point", "Dew point"],
   ];
   const SERIES_MODES = {
-    temperature: { label: "Temp", site: "site.temperature", kind: "temperature" },
-    humidity: { label: "RH", site: "site.humidity", kind: "humidity" },
-    pressure: { label: "Pressure", site: "site.pressure", kind: "pressure" },
-    speed_of_sound: { label: "c", site: "site.speed_of_sound", kind: "speed_of_sound" },
+    // `range` is the chart's starting scale in canonical units (°C, %, Pa, m/s): the axis stays on
+    // it while the readings fit and grows when they don't.
+    temperature: { label: "Temp", site: "site.temperature", kind: "temperature", range: [10, 30] },
+    humidity: { label: "RH", site: "site.humidity", kind: "humidity", range: [0, 100] },
+    pressure: { label: "Pressure", site: "site.pressure", kind: "pressure", range: [98000, 104000] },
+    speed_of_sound: { label: "c", site: "site.speed_of_sound", kind: "speed_of_sound", range: [335, 350] },
   };
   const SPANS = [[900, "15m"], [3600, "1h"], [14400, "4h"], [43200, "12h"]];
   const COLORS = ["--s2", "--s3", "--s4", "--s5", "--s6"];
@@ -342,6 +344,7 @@
     });
     const now = serverNow();
     chart.range = [now - state.span, now];
+    chart.defaultRange = (SERIES_MODES[state.mode] || {}).range || null;
     chart.draw();
     $("legend").replaceChildren(...chart.series.map((s) => h("span", {}, h("i", { style: `background:${s.color}` }), s.label)));
   }

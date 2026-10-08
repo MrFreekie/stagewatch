@@ -146,5 +146,17 @@ for (const [theme, block] of [["dark", darkBlock], ["light", lightBlock]]) {
   }
 }
 
+// ---- the chart's y range: stays on the default while the data fits, grows only where it must
+const near = (a, b) => Math.abs(a - b) < 1e-6;
+const yr = (lo, hi, def) => TimeChart.yRange(lo, hi, def);
+eq(yr(18, 24, [10, 30]), [10, 30], "data inside the default: the axis stays exactly on it");
+eq(yr(10, 30, [10, 30]), [10, 30], "data touching the default edges: unchanged");
+{ const [lo, hi] = yr(18, 34, [10, 30]); ok(lo === 10 && hi > 34 && hi < 36, "hotter than the default: only the top grows, with a little room"); }
+{ const [lo, hi] = yr(2, 24, [10, 30]); ok(hi === 30 && lo < 2 && lo > -3, "colder than the default: only the bottom grows"); }
+{ const [lo, hi] = yr(2, 40, [10, 30]); ok(lo < 2 && hi > 40, "both sides out: both grow"); }
+{ const [lo, hi] = yr(20, 20, null); ok(near(lo, 19.42) && near(hi, 20.58), "no default, one value: a little either side as before"); }
+{ const [lo, hi] = yr(10, 20, undefined); ok(near(lo, 9.2) && near(hi, 20.8), "no default: fit the data with 8 % room as before"); }
+eq(yr(5, 6, [30, 10]), yr(5, 6, null), "a backwards default is ignored");
+
 console.log(`${count - fails}/${count} passed`);
 process.exit(fails ? 1 : 0);

@@ -312,6 +312,9 @@ them into a dated release section and tags the commit.
   virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
+- Charts: each chart now starts on a sensible scale (temperature 10 to 30 °C, humidity 0 to 100 %,
+  pressure 980 to 1040 hPa, speed of sound 335 to 350 m/s) and stays on it while the readings fit,
+  so the lines no longer jump about. If a reading goes outside, only that side of the scale grows.
 - Sensor nodes: a battery gauge that reads a little over 100 % (or under 0) is now shown as 100 % (or 0 %). A reading that is not a number is ignored, never shown as 0 %.
 - Site settings now show at once. Changing the smoothing time, outlier rejection, which
   sensors count towards the average, or a sensor offset used to ease in over a minute or two;

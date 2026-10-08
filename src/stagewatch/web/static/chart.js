@@ -10,6 +10,7 @@ class TimeChart {
     this.markers = [];    // [{ts, label, selected}]
     this.range = [Date.now() / 1000 - 3600, Date.now() / 1000];
     this.format = opts.format || ((v) => v.toFixed(1));
+    this.defaultRange = null;   // [lo, hi] the axis starts from; it grows if the data goes outside it
     this.onMarkerClick = opts.onMarkerClick || null;
     this._markerHits = [];
     this._hover = null;
@@ -120,6 +121,21 @@ class TimeChart {
     return getComputedStyle(this.canvas).getPropertyValue(name).trim() || fallback;
   }
 
+  // The y range to draw for data spanning [lo, hi]. With a default range [d0, d1] the axis stays
+  // exactly on it while the data fits (so the lines don't jump about with every reading), and
+  // grows only on the side the data goes past, with a little room. Without one: fit the data.
+  static yRange(lo, hi, def) {
+    const room = (a, b) => Math.max(b - a, 1e-9) * 0.08;
+    if (Array.isArray(def) && def.length === 2 && def[0] < def[1]) {
+      const dLo = lo < def[0] ? lo - room(lo, Math.max(hi, def[1])) : def[0];
+      const dHi = hi > def[1] ? hi + room(Math.min(lo, def[0]), hi) : def[1];
+      return [dLo, dHi];
+    }
+    if (hi - lo < 1e-9) { lo -= 0.5; hi += 0.5; }
+    const m = (hi - lo) * 0.08;
+    return [lo - m, hi + m];
+  }
+
   static niceStep(span, target) {
     const raw = span / Math.max(target, 1);
     const mag = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -194,9 +210,7 @@ class TimeChart {
       this._drawMarkers(ctx, pad, ph, text);
       return;
     }
-    if (hi - lo < 1e-9) { lo -= 0.5; hi += 0.5; }
-    const margin = (hi - lo) * 0.08;
-    lo -= margin; hi += margin;
+    [lo, hi] = TimeChart.yRange(lo, hi, this.defaultRange);
     const x = (t) => pad.l + ((t - t0) / (t1 - t0)) * pw;
     const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * ph;
 
