@@ -417,8 +417,8 @@ Good to know:
 
 - A **new** dashboard starts with a sensible set for its layout. If you change its **Layout**
   before saving, the ticks change to that layout's set.
-- **Wall Clock** is never switched on by default. Tick it if you want it, then set the address in the
-  **Wall Clock** card (see below).
+- **Wall Clock** is never switched on by default. Tick it if you want it, then choose its time
+  source and look (see below).
 - **Schedule** stays hidden until the show has a schedule, even when it is ticked. Add the
   schedule under **Admin → Schedule → Open schedule editor**.
 - **Open on a tablet** is always at the bottom of the screen, wherever it is in the list. Tick
@@ -430,25 +430,50 @@ Good to know:
 **If it didn't work:** if the screen still shows the old cards, reload the page. See
 [Troubleshooting](troubleshooting.md).
 
-### Show the Ontime clock (Wall Clock card)
+### Show the time (Wall Clock card)
 
-The **Wall Clock** card shows the time of day from [Ontime](https://github.com/cpvalente/ontime),
-the free rundown and show timer, so everyone can see the same clock as the stage manager.
-Stagewatch only listens to Ontime. It never sends anything to it, and it does not read your
-rundown, timers or messages.
+The **Wall Clock** card shows the time of day. One time source serves the whole installation. You
+choose it in **Admin → Wall Clock → Time source**:
+
+- **Stagewatch PC** (the standard for new installations): the clock of the computer running
+  Stagewatch, in the site's time zone. It needs nothing else, and it can't be out of step with
+  Stagewatch.
+- **Ontime**: the time from [Ontime](https://github.com/cpvalente/ontime), the free rundown and
+  show timer, so everyone sees the same clock as the stage manager. Stagewatch only listens to
+  Ontime. It never sends anything to it, and it does not read your rundown, timers or messages.
+
+If you already use Ontime, Stagewatch keeps using it after the update. Stagewatch never switches to
+the other source by itself: if Ontime stops, the card says so.
 
 1. Open **Admin** and find the **Wall Clock** card.
-2. Type the **Ontime address**, for example `http://192.168.1.50:4001` (your Ontime computer's
-   address and port). If Ontime runs on this computer, leave `http://127.0.0.1:4001`.
-3. Click **Test connection**. **What you'll see:** "Ontime 4.14.0 answered." (your version number).
-4. Optional: change **Warn when different by**. The default is 2 seconds.
+2. Choose the **Time source**.
+3. If you chose Ontime, type the **Ontime address**, for example `http://192.168.1.50:4001` (your
+   Ontime computer's address and port). If Ontime runs on this computer, leave
+   `http://127.0.0.1:4001`. Click **Test connection**. **What you'll see:** "Ontime 4.14.0 answered."
+   (your version number). Optional: change **Warn if more than this many seconds out**. The
+   default is 2 seconds.
+4. Optional: choose **24-hour** or **12-hour (am/pm)**, tick **Show the date**, choose the **Ring
+   style** (one moving light, or lights that fill up each minute) and tick **Colons blink**. These
+   apply to every dashboard.
 5. Click **Save**.
-6. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Wall Clock** and click
-   **Save dashboards**.
+6. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Wall Clock**, choose its
+   **Wall Clock look** and click **Save dashboards**.
 
-**What you'll see:** the time in large digits, as Ontime reports it, and "Matches Stagewatch" under it.
+The look is set for each dashboard, so the wall can show the ring while a phone shows plain digits:
 
-What the card tells you:
+- **Plain digits**: the time in large digits.
+- **LED ring**: 60 lights round a circle with the time in the middle, and a brighter light for each
+  hour. On a card narrower than about 280 pixels it shows plain digits instead.
+- **7-segment digits**: the time as on a studio clock, with the unlit segments faintly visible.
+
+The ring and the 7-segment look are always red on black, by day and by night.
+
+**What you'll see:** the time, and "Matches Stagewatch" (Ontime) or "Stagewatch's own clock" (PC)
+under it. In the Stagewatch emulate mode the three stock dashboards each show a different look and
+the clock runs through "differs", "stale" and "offline" every two minutes, so you can see them all.
+
+What the card tells you. Each of these has words with a ▲, and a dashed outline or a line through
+the time, as well as colour:
 
 - **Differs from Stagewatch by +3.2 s**: Ontime is 3.2 seconds ahead of the Stagewatch computer
   (a minus sign means behind). Check the two computers' clocks.
@@ -457,9 +482,11 @@ What the card tells you:
   to match.
 - **Ontime offline**: Stagewatch can't hear Ontime. A quiet notice also appears in the alarm bar.
   It never makes a sound. Check Ontime is running and the address is right.
-- **Stale**: nothing has arrived for 3 seconds. The digits are dimmed and are not live.
+- **Stale**: nothing has arrived for 3 seconds. The time is dimmed with a line through it and is
+  not live. Don't trust it.
 
-Stagewatch only contacts Ontime while a dashboard has the Wall Clock card.
+The Stagewatch PC source never shows "Differs", because it is Stagewatch's own time.
+Stagewatch only contacts Ontime while a dashboard has the Wall Clock card and Ontime is the source.
 
 **If it didn't work:** see [Troubleshooting](troubleshooting.md).
 

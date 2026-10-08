@@ -654,6 +654,10 @@ def test_config_fixture_migrates_to_v2(v1_dir, caplog):
     assert cfg.site.timezone == "" and cfg.site.day_rollover == "06:00" and cfg.wall_clock == WallClockConfig()
     assert [d.mac for d in cfg.esphome_devices] == ["", "", ""]
     assert not (v1_dir / "config.invalid.yaml").exists()  # a normal load, not a salvage
+    cfg.dashboard("foh").clock_style = "ring"   # Wall Clock looks survive the round trip
+    cfg.wall_clock.source = "pc"
+    cfg.wall_clock.display.hour12 = True
+    cfg.wall_clock.display.ring = "fill"
     store.save()
     text = (v1_dir / "config.yaml").read_text(encoding="utf-8")
     assert "schema_version: 2" in text and "password" not in text and LEGACY_PASSWORD not in text
@@ -661,6 +665,7 @@ def test_config_fixture_migrates_to_v2(v1_dir, caplog):
         assert secret not in caplog.text
     again = ConfigStore(v1_dir / "config.yaml").load()  # and the saved v2 file reloads the same
     assert again.model_dump() == cfg.model_dump()
+    assert again.dashboard("foh").clock_style == "ring" and again.wall_clock.source == "pc" and again.wall_clock.display.ring == "fill"
 
 
 def test_config_migration_is_pure_and_idempotent():

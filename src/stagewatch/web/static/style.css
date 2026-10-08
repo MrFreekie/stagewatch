@@ -429,6 +429,47 @@ body.layout-phone .wc-time { font-size: 40px; }
 /* A coloured edge as well as the note, so a warning is seen from across the room. */
 #wall-clock-card.wc-off, #wall-clock-card.wc-stale, #wall-clock-card.wc-differs { border-left: 6px solid var(--warn); }
 #wall-clock-card.wc-stale .wc-time { text-decoration: line-through; text-decoration-thickness: 3px; }
-body.layout-wall .wc-time { font-size: 150px; }
+body.layout-wall .wc-time { font-size: min(150px, 12vw); }   /* never wider than a narrow screen (12 h "10:25:49 pm") */
 body.layout-wall .wc-note { font-size: 32px; }
 body.layout-wall #wall-clock-card > h2 { font-size: 24px; }
+
+/* Wall Clock styles. The LED looks (ring, segments) are retro red on black in day and night
+   alike, on purpose: one fixed look, no theme overrides. Stale, offline and differs never rely
+   on this colour: they also have words (with a triangle) and a dashed outline or strike-through. */
+:root { --led-bg: #000; --led-on: #ff2b1c; --led-dim: #b8382b; --led-off: #2b0906; --led-hour: #ff7a6a; }
+.wc-host { display: flex; }
+.wc-style-ring .wc-host, .wc-style-segments .wc-host { justify-content: center; }
+.wc-date { margin: 8px 0 0; font-size: 18px; font-weight: 600; text-align: center; }
+.wc-date[hidden] { display: none; }
+.wc-face { width: 100%; background: var(--led-bg); border-radius: 14px; padding: 14px; }
+.wc-face .wc-svg { display: block; width: 100%; height: auto; }
+.wc-ring { max-width: 360px; }
+.wc-segments { max-width: 720px; }
+.wc-face.wc-s-differs { outline: 4px dashed var(--warn); outline-offset: 4px; }
+.wc-strike { display: none; }
+.wc-s-stale .wc-strike { display: inline; stroke: var(--warn); stroke-width: 4; }
+.led { fill: var(--led-off); }
+.led.hr { fill: var(--led-dim); }
+.led.on { fill: var(--led-on); }
+.led.hr.on { fill: var(--led-hour); }
+.led.t1 { fill: var(--led-on); fill-opacity: .6; }
+.led.t2 { fill: var(--led-on); fill-opacity: .3; }
+.wc-digits { fill: var(--led-on); font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wc-ring .wc-suffix { fill: var(--led-on); font-size: 13px; font-weight: 700; }
+.wc-s-stale .wc-digits { fill: var(--led-dim); }
+.wc-s-off .wc-digits { fill: var(--led-dim); }
+.wc-digits .blink-off { fill-opacity: .15; }
+.seg { fill: var(--led-off); }
+.seg.on { fill: var(--led-on); }
+.wc-s-stale .seg.on { fill: var(--led-dim); }
+.colon .dot { fill: var(--led-off); }
+.colon.on .dot { fill: var(--led-on); }
+.wc-s-stale .colon.on .dot { fill: var(--led-dim); }
+.colon.on.blink-off .dot { fill: var(--led-off); }
+.wc-segments .wc-suffix { color: var(--led-on); font-size: 22px; font-weight: 700; text-align: center; }
+.wc-segments .wc-suffix:empty { display: none; }
+body.layout-phone .wc-ring { max-width: 320px; }
+body.layout-wall .wc-ring { max-width: 58vh; }
+body.layout-wall .wc-segments { max-width: none; }
+body.layout-wall .wc-date { font-size: 36px; }
+@media (prefers-reduced-motion: reduce) { .wc-face * { transition: none; animation: none; } }

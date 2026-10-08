@@ -635,28 +635,22 @@
   }
 
   // --------------------------------------------------------- wall clock
-  // The time of day from Ontime, shown as received (no zone conversion), with a note when it
-  // differs from Stagewatch's own time. The server sends a "wall_clock" message about once a
-  // second; the digits are advanced locally from the server-corrected clock between messages. A
-  // reading older than 3 s is shown dimmed and says so, never as if it were live. The timer runs
-  // only while the card is on this dashboard. Nothing here sounds or raises an alarm.
+  // The time of day from one source (this computer, or Ontime), shown as received (no zone
+  // conversion), with a note when it differs from Stagewatch's own time. The server sends a
+  // "wall_clock" message about once a second; the time is advanced locally from the
+  // server-corrected clock between messages. A reading older than 3 s is shown dimmed and says
+  // so, never as if it were live. What to show is decided in SW.wc.view (wallclock.js); the look
+  // is this dashboard's clock_style (digits, ring or segments). The timer runs only while the
+  // card is on this dashboard, ticking just after each shown second. Nothing here sounds or
+  // raises an alarm.
   const wc = { timer: null, ui: null };
-  const WC_STALE_S = 3;
-  const pad2 = (n) => (n < 10 ? "0" : "") + n;
-  const clockText = (ms) => {
-    const s = Math.floor((((ms % 86400000) + 86400000) % 86400000) / 1000);
-    return `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor(s / 60) % 60)}:${pad2(s % 60)}`;
-  };
-  const wholeHours = (off) => Math.abs(off) >= 1800 && Math.abs(Math.abs(off) - Math.round(Math.abs(off) / 3600) * 3600) < 5;
-  // "+3.2 s", "+2 min 5 s", or (whole hours) "+1 h".
-  function wcOffsetText(off) {
-    const a = Math.abs(off);
-    if (a < 60) return `${SW.signed(off, 1)} s`;
-    const sign = off < 0 ? "-" : "+";
-    if (wholeHours(off)) return `${sign}${Math.round(a / 3600)} h`;
-    return `${sign}${Math.floor(a / 60)} min ${Math.round(a % 60)} s`;
+  function stopWallClockTimer() { if (wc.timer) { clearTimeout(wc.timer); wc.timer = null; } }
+
+  // The look to draw: this dashboard's style, but a ring needs room, so a narrow card shows digits.
+  function wallClockStyle(card) {
+    const style = SW.wc.style(state.dash && state.dash.clock_style);
+    return style === "ring" && card.clientWidth > 0 && card.clientWidth < SW.wc.RING_MIN_WIDTH ? "digits" : style;
   }
-  function stopWallClockTimer() { if (wc.timer) { clearInterval(wc.timer); wc.timer = null; } }
 
   function renderWallClock() {
     const card = $("wall-clock-card");
@@ -668,46 +662,33 @@
     }
     card.hidden = false;
     if (!wc.ui) {
-      wc.ui = { head: card.querySelector("h2"), time: h("div", { class: "wc-time", "data-live": "" }), note: h("p", { class: "wc-note", role: "status" }) };
-      card.replaceChildren(wc.ui.head, wc.ui.time, wc.ui.note);
+      wc.ui = { head: card.querySelector("h2"), face: null, host: h("div", { class: "wc-host" }),
+        date: h("p", { class: "wc-date" }), note: h("p", { class: "wc-note", role: "status" }) };
+      card.replaceChildren(wc.ui.head, wc.ui.host, wc.ui.date, wc.ui.note);
     }
     wc.ui.head.textContent = `Wall Clock · ${m.label || "Ontime"}`;
     tickWallClock();
-    if (!wc.timer) wc.timer = setInterval(tickWallClock, 1000);
   }
 
   function tickWallClock() {
+    stopWallClockTimer();
     const m = state.wallClock, ui = wc.ui;
-    if (!m || !ui || !has("wall_clock")) { stopWallClockTimer(); return; }
+    if (!m || !ui || !has("wall_clock")) return;
     const card = $("wall-clock-card");
-    const name = m.label || "Ontime";
-    const live = m.status === "ok" && m.clock_ms !== null && m.clock_ms !== undefined;
-    const age = Math.max(0, serverNow() - m.received_at);
-    const stale = live && age > WC_STALE_S;
-    let note = "", level = "";
-    if (!live) {
-      setText(ui.time, "--:--:--");
-      note = m.status === "error" ? `▲ ${name} sent a time we can't read` : `▲ ${name} offline: no time to show`;
-      level = "warn";
-    } else if (stale) {
-      setText(ui.time, clockText(m.clock_ms));   // frozen at the last reading
-      // Rounded in steps so the live region isn't re-announced every second.
-      const ago = age < 10 ? "a few seconds" : age < 60 ? `${Math.round(age / 10) * 10} s` : `${Math.round(age / 60)} min`;
-      note = `▲ Stale: nothing from ${name} for ${ago}. Don't trust this time.`;
-      level = "warn";
-    } else {
-      setText(ui.time, clockText(m.clock_ms + age * 1000));
-      if (m.warn && m.offset_s !== null && m.offset_s !== undefined) {
-        const ahead = m.offset_s < 0 ? "behind" : "ahead";
-        note = `▲ Differs from Stagewatch by ${wcOffsetText(m.offset_s)} (${name} is ${ahead})${wholeHours(m.offset_s) ? ". Check the time zones." : ""}`;
-        level = "warn";
-      } else {
-        note = "Matches Stagewatch";
-      }
+    const now = serverNow();
+    const v = SW.wc.view(m, now);
+    const style = wallClockStyle(card);
+    if (!ui.face || ui.face.style !== style) {      // first draw, or the style / width changed
+      ui.face = SW.wc.createFace(style);
+      ui.host.replaceChildren(ui.face.el);
     }
-    setText(ui.note, note);
-    setClass(ui.note, `wc-note${level ? ` ${level}` : ""}`);
-    setClass(card, `card${!live ? " wc-off" : stale ? " wc-stale" : level ? " wc-differs" : ""}`);
+    ui.face.update(v, { ring: v.opts.ring, colonBlink: v.opts.colonBlink, reduced: SW.wc.reducedMotion() });
+    setText(ui.date, v.date);
+    ui.date.hidden = !v.date;
+    setText(ui.note, v.note);
+    setClass(ui.note, `wc-note${v.level ? ` ${v.level}` : ""}`);
+    setClass(card, `card${v.cls ? ` ${v.cls}` : ""} wc-style-${style}`);
+    wc.timer = setTimeout(tickWallClock, SW.wc.nextDelayMs(m, now));
   }
   // --------------------------------------------------------------- cards
   // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists
