@@ -16,9 +16,9 @@ build.
 > light stayed off while everything was well.
 > The **S3 Feather with a DPS310 on the STEMMA QT port** did not work on its first test: the
 > I²C bus was held low and nothing answered (see "If it didn't work" below). The **HUZZAH with
-> an MPL3115A2** has run on a real board and been adopted in Stagewatch. The BME/BMP280 HUZZAH
-> file has not been tested yet. Treat the steps for any board not listed as tested as unproven,
-> and tell us what you find.
+> an MPL3115A2** and the **HUZZAH with a BME/BMP280** have both run on a real board and been
+> adopted in Stagewatch. The all-in-one files with an SHT45 have not been tested yet. Treat the
+> steps for any board not listed as tested as unproven, and tell us what you find.
 >
 > **The two all-in-one files (DPS310 plus SHT45) are tested on hardware: pending.** That means
 > the SHT45 additions have not run on a real board yet. Check their readings against a

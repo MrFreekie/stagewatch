@@ -63,7 +63,7 @@
 # used: wifi_ssid, wifi_password, ota_password, api_encryption_key,
 # wifi_ap_password.
 #
-# Status: validated with `esphome config`; untested on hardware.
+# Status: validated with `esphome config`; run on a real HUZZAH (adopted in Stagewatch).
 
 substitutions:
   node_name: stagewatch-env-esp8266-1  # unique per node: becomes <name>.local
