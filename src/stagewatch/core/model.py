@@ -119,8 +119,8 @@ class Entity:
     # register_entity; calibration follows it (core/calibration.py). Admin only: never in to_dict().
     hw_key: str = ""
 
-    def to_dict(self, now: float, stale_after_s: float) -> dict:
-        return {
+    def to_dict(self, now: float, stale_after_s: float, offset: float = 0.0) -> dict:
+        data = {
             "id": self.id,
             "device_id": self.device_id,
             "name": self.name,
@@ -133,6 +133,11 @@ class Entity:
             "updated": self.updated,
             "stale": self.is_stale(now, stale_after_s),
         }
+        # Only the amount, in canonical units (C, %, Pa), and only when it is not zero, so
+        # dashboards can mark an adjusted sensor. Nothing else about calibration goes out.
+        if offset and not self.derived:
+            data["offset"] = offset
+        return data
 
     def is_stale(self, now: float, stale_after_s: float) -> bool:
         return self.updated is None or now - self.updated > stale_after_s

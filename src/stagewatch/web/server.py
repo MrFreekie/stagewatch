@@ -667,7 +667,7 @@ class LiveFeed:
                 continue
             now = time.time()
             stale_after = self.hub.config.site.stale_after_s
-            entities = [e.to_dict(now, stale_after) for e in self._dirty.values()]
+            entities = [self.hub.entity_dict(e, now, stale_after) for e in self._dirty.values()]
             self._dirty.clear()
             self._send_all({"type": "states", "now": now, "entities": entities,
                             "site": {**self.hub.site_meta, "time": self.hub.site_time(now),
@@ -1053,6 +1053,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         hub.save_config()
         if entity.raw_value is not None and not entity.derived:
             hub.update_state(entity_id, entity.raw_value, entity.updated)
+        else:
+            hub.bus.publish("entity", entity)   # screens still learn the new offset
         return body
 
     @app.put("/api/admin/thresholds", dependencies=admin_deps)

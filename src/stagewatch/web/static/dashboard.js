@@ -171,6 +171,8 @@
 
   // Node health: Wi-Fi signal (dBm) in words, and battery level. Amber when it needs attention.
   SW.signalWord = (dbm) => (dbm >= -67 ? "good" : dbm >= -75 ? "fair" : "weak");
+  // A "*" straight after a value or legend label: text, not colour, with a name for screen readers.
+  const offsetStar = (title) => h("span", { class: "cal-star", role: "img", title: title || SW.OFFSET_NOTE, "aria-label": title || SW.OFFSET_NOTE }, "*");
   function renderSensors() {
     const devs = sensorDevices();
     const ents = Object.values(state.entities);
@@ -179,7 +181,7 @@
     const rows = devs.map((d) => {
       const mine = ents.filter((e) => e.device_id === d.id);
       const byKind = (k) => mine.find((e) => e.kind === k);
-      const cell = (k) => { const e = byKind(k); return h("td", { class: "num" + (e && e.stale ? " muted" : "") }, e ? fmt(k, e.value) : ""); };
+      const cell = (k) => { const e = byKind(k); return h("td", { class: "num" + (e && e.stale ? " muted" : "") }, e ? fmt(k, e.value) : "", SW.hasOffset(e) ? offsetStar() : null); };
       const health = (k, warn, text) => {
         const e = byKind(k);
         if (!e || e.value === null || e.value === undefined) return h("td", { class: "num muted" }, "");
@@ -204,6 +206,9 @@
         showBattery ? h("th", { class: "num" }, "Battery") : null,
         h("th", { class: "num" }, "Updated"))),
       h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: cols, class: "muted" }, "No sensor nodes yet. An admin can adopt ESPHome nodes."))));
+    const foot = SW.offsetFootnote(SW.offsetNotes(devs, ents));
+    $("offset-note").textContent = foot;
+    $("offset-note").hidden = !foot;
     $("site-note").textContent = `Readings older than ${Math.round(state.site.stale_after_s || 60)} s are treated as stale and left out of the average.`;
   }
 
@@ -336,6 +341,7 @@
       const e = state.entities[id];
       const dev = e && state.devices[e.device_id];
       return {
+        adjusted: i === 0 ? SW.averageAdjusted(Object.values(state.entities), SERIES_MODES[state.mode].kind) : SW.hasOffset(e),
         label: i === 0 ? "Site average" : (dev ? dev.name : id),
         color: i === 0 ? css("--s1") : css(COLORS[(i - 1) % COLORS.length]),
         width: i === 0 ? 3 : 1.3,
@@ -346,7 +352,8 @@
     chart.range = [now - state.span, now];
     chart.defaultRange = (SERIES_MODES[state.mode] || {}).range || null;
     chart.draw();
-    $("legend").replaceChildren(...chart.series.map((s) => h("span", {}, h("i", { style: `background:${s.color}` }), s.label)));
+    $("legend").replaceChildren(...chart.series.map((s) => h("span", {}, h("i", { style: `background:${s.color}` }), s.label,
+      s.adjusted ? offsetStar(s === chart.series[0] ? "Calibration offset applied to a sensor in this average" : SW.OFFSET_NOTE) : null)));
   }
 
   async function loadHistory() {
