@@ -13,8 +13,11 @@ build.
 > **Test status.** All six node files have been checked by ESPHome (it reads them without
 > errors). The **XIAO ESP32C6 with a DPS310** (pressure only) has run on a real board and been
 > adopted in Stagewatch: the sensor answered at `0x76` (address jumper bridged) and the status
-> light stayed off while everything was well. The other boards have not been seen working yet,
-> so treat their steps as unproven and tell us what you find.
+> light stayed off while everything was well.
+> The **S3 Feather with a DPS310 on the STEMMA QT port** did not work on its first test: the
+> I²C bus was held low and nothing answered (see "If it didn't work" below). The **HUZZAH**
+> files have not been tested yet. Treat the steps for any board not listed as tested as
+> unproven, and tell us what you find.
 >
 > **The two all-in-one files (DPS310 plus SHT45) are tested on hardware: pending.** That means
 > the SHT45 additions have not run on a real board yet. Check their readings against a
@@ -500,6 +503,7 @@ learns the new one.
 | What you see | Likely cause | What to do |
 |---|---|---|
 | The computer does not find the board (no COM port) | A charge-only USB cable, or the board is not in flashing mode. | Try another USB **data** cable and another USB port. Then use the button trick for your board in Step 3. |
+| **S3 Feather only:** the log says `Recovery failed: SCL is held LOW on the bus`, the bus scan finds no devices, and starting takes about 11 seconds longer | **Not solved yet.** It happened with every DPS310 plugged into the STEMMA QT port, while the Feather's own battery gauge read fine with nothing plugged in, and the same sensor works on the XIAO. A likely cause (not confirmed): the port's 3.3 V is switched on after the bus starts, and an unpowered sensor pulls the bus low. | Unplug the sensor and cable and reboot: if the bus then scans clean, the fault is in the sensor side, not the board. As a workaround, wire the sensor to the Feather's always-on **3V** pin and the **SDA** and **SCL** pads with jumpers, as on the XIAO. Tell us what you find. |
 | The log has no I²C address for the sensor | A wire or cable is loose, a wire is on the wrong pin, or the sensor has no power. | Push the STEMMA QT cable in at both ends, or check the four wires against the table in Step 1. Try another cable. |
 | The log says the address is `0x76` but the file uses `0x77` (or the other way round) | The DPS310 or BME280 answers at a different address from the one in the file. | Change the address in the file to match the scan and flash again. |
 | BME280 file: the log shows a chip-id error, and there is no **Humidity** | You have a BMP280, not a BME280. | Do the BMP280 swap marked in the file. See "Which chip is it?". |

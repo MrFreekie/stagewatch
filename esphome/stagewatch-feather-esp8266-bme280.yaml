@@ -58,8 +58,8 @@
 # Hold the GPIO0 button, press and release RESET, release GPIO0, then
 #     esphome run stagewatch-feather-esp8266-bme280.yaml
 # (the CP2104 usually enters the bootloader automatically, so try without the
-# buttons first). Later updates go over Wi-Fi (OTA). Use a different
-# api_encryption_key per node (paste the same key into Stagewatch). Secrets
+# buttons first). Later updates go over Wi-Fi (OTA). The
+# api_encryption_key comes from secrets.yaml (one shared key is fine; paste it into Stagewatch). Secrets
 # used: wifi_ssid, wifi_password, ota_password, api_encryption_key,
 # wifi_ap_password.
 #

@@ -80,8 +80,8 @@
 #     esphome run stagewatch-feather-s3-dps310-sht45.yaml
 # choosing the COM port; tap RESET afterwards. This replaces Adafruit's UF2
 # bootloader (restore it with Adafruit's web installer if needed). Later updates
-# go over Wi-Fi (OTA). Use a different api_encryption_key per node and paste the
-# same key into Stagewatch when adopting. Secrets used: wifi_ssid, wifi_password,
+# go over Wi-Fi (OTA). The api_encryption_key comes from secrets.yaml (one shared key
+# is fine); paste the same key into Stagewatch when adopting. Secrets used: wifi_ssid, wifi_password,
 # ota_password, api_encryption_key, wifi_ap_password.
 #
 # Status: validated with `esphome config`; untested on hardware.
