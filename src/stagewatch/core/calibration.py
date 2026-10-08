@@ -169,6 +169,7 @@ def _with_entry(cal: Calibration, entry: CalibrationEntry) -> list[CalibrationEn
 
 
 def _mirror(cal: Calibration) -> EntitySettings:
+    # Only what a config v1 build (0.2.0) reads. Accuracy lives on the hardware record.
     return EntitySettings(offset=cal.offset, include_in_average=cal.include_in_average)
 
 
@@ -200,6 +201,7 @@ def move_legacy(config: Config, device_id: str, node: str, now: float | None = N
             continue
         config.calibrations[key] = Calibration(
             offset=legacy.offset, include_in_average=legacy.include_in_average,
+            accuracy=legacy.accuracy, accuracy_basis=legacy.accuracy_basis,
             history=[CalibrationEntry(offset=legacy.offset, date=date, method="migrated",
                                       reference=entity_id[:120])])
         changes += 1
@@ -224,7 +226,8 @@ def copy_node(config: Config, old_node: str, new_node: str, now: float | None = 
         target = config.calibrations.get(new_key)
         history = _with_entry(target, entry) if target is not None else _with_entry(cal, entry)
         config.calibrations[new_key] = Calibration(
-            offset=cal.offset, include_in_average=cal.include_in_average, history=history, chip=cal.chip)
+            offset=cal.offset, include_in_average=cal.include_in_average, history=history, chip=cal.chip,
+            accuracy=cal.accuracy, accuracy_basis=cal.accuracy_basis)
         copied += 1
     if copied:
         log.info("Copied %d calibration record(s) from %s to %s", copied, old_node, new_node)
@@ -250,25 +253,42 @@ def drop_legacy(config: Config, device_id: str) -> int:
     return len(keys)
 
 
+_KEEP = object()   # "leave this as it is" (a caller that doesn't send accuracy must not clear it)
+
+
 def set_calibration(config: Config, entity_id: str, hw_key: str, offset: float,
                     include_in_average: bool, *, method: str = "manual", note: str = "",
-                    reference: str = "", now: float | None = None) -> None:
+                    reference: str = "", now: float | None = None,
+                    accuracy=_KEEP, accuracy_basis=_KEEP) -> None:
     """The admin's write path: the hardware record when the entity has a hardware key (adding a
     history entry when the offset changes), else the legacy entry keyed by entity id. A legacy
-    entry that already exists is kept in step as the rollback mirror."""
+    entry that already exists is kept in step as the rollback mirror.
+
+    ``accuracy`` (canonical units, or None to clear) and ``accuracy_basis`` are stored next to the
+    offset, so they follow the board; left out, they keep what is stored."""
     if not hw_key:
-        config.entities[entity_id] = EntitySettings(offset=offset, include_in_average=include_in_average)
+        old = config.entities.get(entity_id)
+        acc = (old.accuracy if old else None) if accuracy is _KEEP else accuracy
+        basis = (old.accuracy_basis if old else "typical") if accuracy_basis is _KEEP else accuracy_basis
+        config.entities[entity_id] = EntitySettings(
+            offset=offset, include_in_average=include_in_average, accuracy=acc, accuracy_basis=basis)
         return
     cal = config.calibrations.get(hw_key)
     if cal is None:
         legacy = config.entities.get(entity_id)
         cal = Calibration(offset=legacy.offset if legacy else 0.0,
-                          include_in_average=legacy.include_in_average if legacy else True)
+                          include_in_average=legacy.include_in_average if legacy else True,
+                          accuracy=legacy.accuracy if legacy else None,
+                          accuracy_basis=legacy.accuracy_basis if legacy else "typical")
     history = list(cal.history)
     if offset != cal.offset or (not history and offset != 0.0):
         history = _with_entry(cal, CalibrationEntry(offset=offset, date=utc_now_iso(now), method=method,
                                                     reference=reference[:120], note=note[:200]))
-    config.calibrations[hw_key] = cal.model_copy(update={
-        "offset": offset, "include_in_average": include_in_average, "history": history})
+    update = {"offset": offset, "include_in_average": include_in_average, "history": history}
+    if accuracy is not _KEEP:
+        update["accuracy"] = accuracy
+    if accuracy_basis is not _KEEP:
+        update["accuracy_basis"] = accuracy_basis
+    config.calibrations[hw_key] = cal.model_copy(update=update)
     if entity_id in config.entities:  # rollback mirror (drop in 0.4.0)
         config.entities[entity_id] = EntitySettings(offset=offset, include_in_average=include_in_average)

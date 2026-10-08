@@ -321,6 +321,69 @@ SW.offsetFootnote = function (notes) {
 // True when any sensor feeding this kind's site average has an offset.
 SW.averageAdjusted = (entities, kind) => SW.OFFSET_KINDS.indexOf(kind) >= 0 && entities.some((e) => e.kind === kind && SW.hasOffset(e));
 
+// Sensor accuracy ("Accuracy ±"), admin only (never on the public dashboards). The server keeps it
+// in canonical units (°C, %RH, Pa); the admin shows and takes °C, %RH and hPa.
+SW.ACCURACY_KINDS = {
+  temperature: { unit: "°C", factor: 1, max: 20 },
+  humidity: { unit: "%RH", factor: 1, max: 30 },
+  pressure: { unit: "hPa", factor: 100, max: 50 },
+};
+// canonical -> number in the display unit (or null)
+SW.accuracyShown = function (kind, canon) {
+  const k = SW.ACCURACY_KINDS[kind];
+  if (!k || typeof canon !== "number" || !isFinite(canon) || canon <= 0) return null;
+  return Number((canon / k.factor).toPrecision(6));
+};
+// text typed in the display unit -> canonical number, or null when empty, not a number, <= 0 or above the limit
+SW.accuracyCanon = function (kind, shown) {
+  const k = SW.ACCURACY_KINDS[kind];
+  const t = String(shown === null || shown === undefined ? "" : shown).trim().replace(",", ".");
+  if (!k || t === "") return null;
+  const v = Number(t);
+  if (!isFinite(v) || v <= 0 || v > k.max) return null;
+  return Number((v * k.factor).toPrecision(8));
+};
+// "Accuracy ±2 %RH (typical)", or "" when there is no figure
+SW.fmtAccuracy = function (kind, canon, basis) {
+  const v = SW.accuracyShown(kind, canon);
+  if (v === null) return "";
+  return `Accuracy ±${v} ${SW.ACCURACY_KINDS[kind].unit} (${basis === "maximum" ? "maximum" : "typical"})`;
+};
+// Preset parts. Figures are in display units (°C, %RH, hPa) and are the typical ones from the
+// manufacturers' pages (TMP117's headline is a maximum). A kind listed under `unconfirmed` has no
+// confirmed figure: the preset fills nothing and says so. A kind in neither list is not measured.
+SW.ACCURACY_PRESETS = [
+  { id: "sht45", name: "SHT45", figures: { temperature: 0.1, humidity: 1.0 }, unconfirmed: [] },
+  { id: "sht41", name: "SHT41", figures: {}, unconfirmed: ["temperature", "humidity"] },
+  { id: "sht40", name: "SHT40", figures: {}, unconfirmed: ["temperature", "humidity"] },
+  { id: "tmp117", name: "TMP117", figures: { temperature: 0.1 }, basis: "maximum", unconfirmed: [] },
+  { id: "dps310", name: "DPS310", figures: { temperature: 0.5, pressure: 1.0 }, unconfirmed: [] },
+  { id: "bme280", name: "BME280", figures: { humidity: 3, pressure: 1.0 }, unconfirmed: ["temperature"] },
+  { id: "bmp280", name: "BMP280", figures: { pressure: 1.0 }, unconfirmed: ["temperature"] },
+  { id: "ms8607", name: "MS8607", figures: { temperature: 1.0, humidity: 3, pressure: 2.0 }, unconfirmed: [] },
+  { id: "mpl3115a2", name: "MPL3115A2", figures: {}, unconfirmed: ["temperature", "pressure"],
+    hints: { pressure: "One distributor lists about 4 hPa. That is not confirmed." } },
+];
+// What choosing `part` does for a sensor of `kind`: { accuracy (display unit or null), basis, hint }.
+SW.presetFill = function (part, kind) {
+  const label = { temperature: "temperature", humidity: "humidity", pressure: "pressure" }[kind] || kind;
+  if (!part || !SW.ACCURACY_KINDS[kind]) return { accuracy: null, basis: "typical", hint: "" };
+  const basis = part.basis === "maximum" ? "maximum" : "typical";
+  const fig = part.figures[kind];
+  if (typeof fig === "number") return { accuracy: fig, basis, hint: `${basis}, from the manufacturer's page` };
+  if (part.unconfirmed.indexOf(kind) >= 0) {
+    const extra = part.hints && part.hints[kind] ? ` ${part.hints[kind]}` : "";
+    return { accuracy: null, basis: null, hint: `No confirmed ${label} figure for the ${part.name}.${extra} Type it from the datasheet.` };
+  }
+  return { accuracy: null, basis: null, hint: `The ${part.name} does not measure ${label}.` };
+};
+// A sensor's share of the site average: "96.2 %", "100 %", or "—".
+SW.fmtShare = function (share) {
+  if (typeof share !== "number" || !isFinite(share) || share < 0) return "—";
+  const pct = share * 100;
+  return pct >= 99.95 ? "100 %" : `${SW.num(pct, 1)} %`;
+};
+
 // "+1.23" / "-1.23" / "0.00" (never "-0.00" from rounding noise)
 SW.signed = function (v, dec) {
   const s = SW.num(v, dec);

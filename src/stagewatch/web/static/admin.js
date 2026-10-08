@@ -283,10 +283,22 @@
   };
   const saveSensorOpen = () => { try { localStorage.setItem(SENSOR_OPEN_KEY, JSON.stringify(sensorOpen)); } catch (_) { /* ignore */ } };
 
+  // The server recomputes the averages once a second: wait for that before redrawing the shares.
+  const afterTick = (v) => new Promise((resolve) => setTimeout(() => resolve(v), 1200));
+  const KIND_WORD = { temperature: "Temperature", humidity: "Humidity", pressure: "Pressure" };
+  // One line per kind with a reason (or "Weighted by accuracy") while the switch is on.
+  function weightNoteItems(averages, on) {
+    if (!on) return [];
+    return ["temperature", "humidity", "pressure"].filter((k) => averages[k] && averages[k].note)
+      .map((k) => h("li", {}, `${KIND_WORD[k]}: ${averages[k].note}`));
+  }
+
   function entitiesCard() {
     const ents = snap.entities.filter((e) => !e.derived);
     const settingsOf = (e) => (admin.hardware && admin.hardware.settings[e.id]) || admin.config.entities[e.id]
-      || { offset: 0, include_in_average: true };
+      || { offset: 0, include_in_average: true, accuracy: null, accuracy_basis: "typical" };
+    const averages = (admin.hardware && admin.hardware.averages) || {};
+    const shareOf = (e) => ((averages[e.kind] || {}).sensors || {})[e.id];
     // Same order as the adopted-nodes list; anything else (site rows) goes last, in a "Site" group.
     const devs = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");
     const groups = devs.map((d) => ({ id: d.id, name: d.name, status: d.status, ents: ents.filter((e) => e.device_id === d.id) }));
@@ -308,6 +320,10 @@
       return n.indexOf(g.name + " ") === 0 && n.length > g.name.length + 1 ? n.slice(g.name.length + 1) : n;
     };
 
+    const shareText = (sh) => (sh && sh.state === "in" ? SW.fmtShare(sh.share) : sh && sh.state === "stale" ? "Stale" : sh && sh.state === "outlier" ? "Left out" : "—");
+    const shareTitle = (sh) => (!sh ? "" : sh.state === "off" ? "Not in the site average (ticked off)"
+      : sh.state === "stale" ? "No recent reading, so left out of the average" : sh.state === "outlier" ? "Reading far from the others, so left out of the average"
+      : sh.state === "none" ? "No reading yet" : "Share of the site average now");
     const groupEl = (g) => {
       const offs = g.ents.map(offsetText).filter(Boolean);
       const bad = g.status && g.status !== "ok";
@@ -317,15 +333,58 @@
         const label = shortName(g, e);
         const off = h("input", { class: "num", type: "number", step: "0.01", value: s.offset, "aria-label": `${g.name} ${label} offset` });
         const inc = h("input", { type: "checkbox", checked: s.include_in_average, "aria-label": `${g.name} ${label} in site average` });
+        const accKind = SW.ACCURACY_KINDS[e.kind];
+        let accCells;
+        let readAccuracy = () => ({});
+        if (accKind) {
+          const shown = SW.accuracyShown(e.kind, s.accuracy);
+          const acc = h("input", { class: "num", type: "number", step: "any", min: "0", value: shown === null ? "" : shown, inputmode: "decimal",
+            "aria-label": `${g.name} ${label} accuracy` });
+          const basis = h("select", { "aria-label": `${g.name} ${label} accuracy basis` },
+            h("option", { value: "typical" }, "typical"), h("option", { value: "maximum" }, "maximum"));
+          basis.value = s.accuracy_basis === "maximum" ? "maximum" : "typical";
+          const presetNote = h("div", { class: "muted preset-note", role: "status", style: "font-size:12px" });
+          const preset = h("select", { "aria-label": `${g.name} ${label} preset` },
+            h("option", { value: "" }, "Preset…"),
+            SW.ACCURACY_PRESETS.map((part) => h("option", { value: part.id }, part.name)));
+          preset.addEventListener("change", () => {
+            const part = SW.ACCURACY_PRESETS.find((x) => x.id === preset.value);
+            if (!part) { presetNote.textContent = ""; return; }
+            const fill = SW.presetFill(part, e.kind);
+            if (fill.accuracy !== null) { acc.value = String(fill.accuracy); basis.value = fill.basis; }
+            presetNote.textContent = fill.hint;
+            dirty = true;
+          });
+          accCells = [
+            h("td", {}, h("div", { class: "acc-field" }, h("span", { class: "muted" }, "±"), acc, h("span", { class: "muted" }, ` ${accKind.unit}`), basis)),
+            h("td", {}, preset, presetNote)];
+          readAccuracy = () => {
+            const typed = acc.value.trim();
+            const canon = SW.accuracyCanon(e.kind, typed);
+            if (typed !== "" && canon === null) return null;   // typed something we can't use
+            return { accuracy: canon, accuracy_basis: basis.value };
+          };
+        } else {
+          accCells = [h("td", { class: "muted", colspan: "2" }, "—")];
+        }
+        const sh = shareOf(e);
+        const accText = accKind ? SW.fmtAccuracy(e.kind, s.accuracy, s.accuracy_basis) : "";
         return h("tr", { id: `sensor-row-${e.id}` },
           h("td", {}, label, h("div", { class: "muted", style: "font-size:12px" }, e.id)),
-          h("td", { class: "num", dataset: { live: e.id } }, fmt(e.kind, e.value)),
+          h("td", { class: "num" }, h("span", { dataset: { live: e.id } }, fmt(e.kind, e.value)),
+            accText ? h("div", { class: "muted", style: "font-size:12px" }, accText) : null),
           h("td", {}, off, h("span", { class: "muted" }, " ", e.unit)),
           h("td", {}, inc),
+          h("td", { class: "num" }, accKind ? h("span", { dataset: { share: e.id }, title: shareTitle(sh) }, shareText(sh)) : "—"),
+          accCells,
           h("td", {}, h("button", { class: "small", "aria-label": `Save ${g.name} ${label}`, onclick: () => {
             const y = window.scrollY;
+            const accBody = readAccuracy();
+            if (accBody === null) { toast(`Type the accuracy as a number above 0 and up to ${accKind.max} ${accKind.unit}, for example 0.5. Nothing has been changed.`, true); return; }
             run(() => api("PUT", `/api/admin/entities/${encodeURIComponent(e.id)}`,
-              { offset: Number(off.value) || 0, include_in_average: inc.checked }), "Saved").then(refresh).then(() => window.scrollTo(0, y));
+              Object.assign({ offset: Number(off.value) || 0, include_in_average: inc.checked }, accBody)), "Saved")
+              .then(afterTick).then(refresh, (err) => { if (err.status === 422) toast("That accuracy figure was not accepted. Nothing has been changed.", true); })
+              .then(() => window.scrollTo(0, y));
           } }, "Save")));
       });
       const d = h("details", { class: "sensor-group", id: `sensor-group-${g.id}` },
@@ -335,16 +394,28 @@
           h("span", { class: "muted" }, `${g.ents.length} ${g.ents.length === 1 ? "sensor" : "sensors"}`),
           offs.length ? h("span", { class: "muted sg-offs" }, `offset: ${offs.join(", ")}`) : null),
         h("div", { class: "table-scroll" }, h("table", {},
-          h("thead", {}, h("tr", {}, h("th", {}, "Sensor"), h("th", { class: "num" }, "Value"), h("th", {}, "Offset"), h("th", {}, "Average"), h("th", {}, ""))),
+          h("thead", {}, h("tr", {}, h("th", {}, "Sensor"), h("th", { class: "num" }, "Value"), h("th", {}, "Offset"), h("th", {}, "Average"), h("th", { class: "num" }, "Share"), h("th", {}, "Accuracy"), h("th", {}, "Preset"), h("th", {}, ""))),
           h("tbody", {}, rows))));
       d.open = Object.prototype.hasOwnProperty.call(state, g.id) ? !!state[g.id] : defaultOpen;
       d.addEventListener("toggle", () => { state[g.id] = d.open; saveSensorOpen(); });
       return d;
     };
     const els = shown.map(groupEl);
+    const weigh = h("input", { type: "checkbox", checked: !!admin.config.site.weight_by_accuracy, "aria-label": "Weight the average by accuracy" });
+    weigh.addEventListener("change", () => {
+      const y = window.scrollY;
+      run(() => api("PUT", "/api/admin/site", Object.assign({}, admin.config.site, { weight_by_accuracy: weigh.checked })), weigh.checked ? "Weighting on" : "Weighting off")
+        .then(afterTick).then(refresh, () => { weigh.checked = !weigh.checked; }).then(() => window.scrollTo(0, y));
+    });
+    const notes = h("ul", { class: "weight-notes muted", role: "status", dataset: { weightNotes: "1" } });
+    notes.append(...weightNoteItems(averages, admin.config.site.weight_by_accuracy));
     const setAll = (open) => { els.forEach((d, i) => { d.open = open; state[shown[i].id] = open; }); saveSensorOpen(); };
     return card("Sensors: calibration & averaging",
       h("p", { class: "muted" }, "Offset is added to every reading (compare against a reference such as a Kestrel). Pressure offsets are in Pa (1 hPa = 100 Pa). Untick to leave a sensor out of the site average, e.g. one in direct sun."),
+      h("label", { class: "field inline" }, weigh, " Weight the average by accuracy"),
+      h("p", { class: "muted hint" }, "Off: every sensor in the average counts the same. On: a sensor with a smaller accuracy figure counts for more. This only applies to temperature, humidity or pressure when every sensor in that average has an accuracy figure and the figures are all typical or all maximum. Otherwise that one uses equal weights, and the reason is shown here. Share is how much each sensor counts in the average now."),
+      notes,
+      h("p", { class: "muted hint" }, "Accuracy is the maker's ± figure from the datasheet, in °C, %RH or hPa. Typical is the usual figure; maximum is the worst case. Presets fill the typical figure from the manufacturer's page: check it against your sensor's datasheet, and change it if you know better. Accuracy is only shown here, not on the dashboards."),
       shown.length ? h("div", { class: "row sg-buttons" },
         h("button", { class: "touch", onclick: () => setAll(true) }, "Expand all"),
         h("button", { class: "touch", onclick: () => setAll(false) }, "Collapse all")) : null,
@@ -1112,6 +1183,19 @@
         const td = document.querySelector(`[data-live="${CSS.escape(e.id)}"]`);
         if (td) td.textContent = fmt(e.kind, e.value);
       }
+      // Shares of the site average, live (the weighting note too).
+      try {
+        const live = await api("GET", "/api/admin/averages");
+        if (admin.hardware) admin.hardware.averages = live.averages;
+        for (const k of Object.keys(live.averages)) {
+          for (const [id, sh] of Object.entries(live.averages[k].sensors)) {
+            const el = document.querySelector(`[data-share="${CSS.escape(id)}"]`);
+            if (el) el.textContent = sh.state === "in" ? SW.fmtShare(sh.share) : sh.state === "stale" ? "Stale" : sh.state === "outlier" ? "Left out" : "—";
+          }
+        }
+        const nl = document.querySelector("[data-weight-notes]");
+        if (nl) nl.replaceChildren(...weightNoteItems(live.averages, live.weight_by_accuracy));
+      } catch (err) { if (err.status === 401) throw err; }
       // The Schedule summary: reload it when the schedule changed anywhere, and redraw it every
       // poll so NOW / NEXT follow the clock. It has no fields, so a redraw wipes nothing.
       const meta = s.schedule || {};

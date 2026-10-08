@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -17,8 +18,8 @@ from .alarms import AlarmChange, AlarmEngine
 from .barometer import BarometerService
 from .bus import EventBus
 from .calibration import calibration_for as _calibration_for
-from .config import Calibration, ConfigStore, EntitySettings
-from .derived import OUTLIER_LIMITS, Ema, robust_mean
+from .config import ACCURACY_MAX, Calibration, ConfigStore, EntitySettings
+from .derived import OUTLIER_LIMITS, AvgInput, AvgResult, Ema, average
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
 from .recorder import REASON_POWER_OR_RESTART, Recorder
@@ -92,6 +93,7 @@ class Hub:
         self._baro_block: dict = {"state": "stale"}
         self._emas: dict[str, Ema] = {}
         self._ema_sigs: dict[str, tuple] = {}
+        self.average_info: dict[str, dict] = {}   # admin only (see _average_info)
         self._tasks: list[asyncio.Task] = []
         # Set by the updater: process exit code (75 = launcher applies a pending update) and the
         # callback __main__ installs to stop uvicorn gracefully.
@@ -354,25 +356,76 @@ class Hub:
         the defaults. Read-only."""
         return _calibration_for(self.config, entity.id, entity.hw_key)
 
+    def accuracy_of(self, entity: Entity) -> tuple[float | None, str]:
+        """(accuracy in canonical units or None, basis) of a sensor. A figure that is missing, not
+        positive or above the sane limit for its kind counts as missing. Read-only."""
+        cal = self.calibration_for(entity)
+        acc = getattr(cal, "accuracy", None)
+        basis = getattr(cal, "accuracy_basis", "typical")
+        limit = ACCURACY_MAX.get(entity.kind.value)
+        if (acc is None or isinstance(acc, bool) or limit is None
+                or not math.isfinite(acc) or not 0 < acc <= limit):
+            return None, basis
+        return float(acc), basis
+
     def _ema_settings(self, kind: Kind) -> tuple:
         site = self.config.site
         sensors = []
         for e in self.entities.values():
             if e.kind == kind and not e.derived:
                 cal = self.calibration_for(e)
-                sensors.append((e.id, float(cal.offset), bool(cal.include_in_average)))
-        return (float(site.smoothing_tau_s), bool(site.outlier_reject), tuple(sorted(sensors)))
+                acc, basis = self.accuracy_of(e)
+                sensors.append((e.id, float(cal.offset), bool(cal.include_in_average), acc, basis))
+        return (float(site.smoothing_tau_s), bool(site.outlier_reject), bool(site.weight_by_accuracy),
+                tuple(sorted(sensors)))
+
+    def _average_info(self, kind: Kind, now: float, result: AvgResult) -> dict:
+        """Admin-only description of one kind's average: what each sensor is doing (``in``,
+        ``outlier``, ``stale``, ``off`` = left out by its tick box, ``none`` = no reading yet), its
+        share of the average, and fixed text saying why weighting is not in use. Never public."""
+        site = self.config.site
+        stale_after = site.stale_after_s
+        sensors: dict[str, dict] = {}
+        for e in self.entities.values():
+            if e.kind != kind or e.derived:
+                continue
+            if not self.calibration_for(e).include_in_average:
+                state = "off"
+            elif e.value is None:
+                state = "none"
+            elif e.is_stale(now, stale_after):
+                state = "stale"
+            elif e.id in result.rejected:
+                state = "outlier"
+            else:
+                state = "in"
+            share = result.shares.get(e.id) if state == "in" else None
+            sensors[e.id] = {"state": state, "share": share}
+        note = ""
+        if site.weight_by_accuracy and result.used >= 2:
+            if result.weighted:
+                note = "Weighted by accuracy"
+            elif result.reason == "missing":
+                n = result.missing
+                note = f"Equal weights: {n} sensor{'s have' if n != 1 else ' has'} no accuracy figure"
+            elif result.reason == "mixed":
+                note = "Equal weights: the figures mix typical and maximum"
+        return {"weighted": result.weighted, "note": note, "sensors": sensors}
 
     def compute_site(self, now: float | None = None) -> None:
         now = now if now is not None else time.time()
         site = self.config.site
         averages: dict[Kind, float | None] = {}
         counts: dict[str, int] = {}
+        info: dict[str, dict] = {}
         for kind in ENV_KINDS:
             inputs = self._env_inputs(kind, now)
             limit = OUTLIER_LIMITS.get(kind.value) if site.outlier_reject else None
-            mean, used = robust_mean([e.value for e in inputs], limit)
+            result = average([AvgInput(e.id, e.value, *self.accuracy_of(e)) for e in inputs],
+                             limit, site.weight_by_accuracy)
+            mean, used = result.mean, result.used
             counts[kind.value] = used
+            info[kind.value] = self._average_info(kind, now, result)
             if mean is not None:
                 # Start the smoothing afresh when the settings behind it change (smoothing time,
                 # outlier rejection, which sensors count, their offsets), so a deliberate change
@@ -387,6 +440,7 @@ class Hub:
                 mean = ema.update(mean, now)
             averages[kind] = mean
 
+        self.average_info = info   # admin only: never in site_meta or the public snapshot
         temp = averages[Kind.TEMPERATURE]
         rh = averages[Kind.HUMIDITY]
         pressure = averages[Kind.PRESSURE]
