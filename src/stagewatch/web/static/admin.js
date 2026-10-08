@@ -189,19 +189,28 @@
       demos);
   }
 
+  // Environment (air at the site: feeds the site average) or Equipment (gear: never averaged).
+  function roleSelect(value, aria) {
+    const sel = h("select", aria ? { "aria-label": aria } : {},
+      h("option", { value: "environment" }, "Environment"), h("option", { value: "equipment" }, "Equipment"));
+    sel.value = value === "equipment" ? "equipment" : "environment";
+    return sel;
+  }
+
   function adoptForm(prefill = {}) {
     const host = h("input", { placeholder: "node-name.local or IP", value: prefill.host || "" });
     const port = h("input", { class: "num", type: "number", value: prefill.port || 6053 });
     const name = h("input", { placeholder: "e.g. Stage L node", value: prefill.friendly_name || "" });
     const area = h("input", { placeholder: "e.g. Stage L, FOH, Delay tower 1" });
     const psk = h("input", { type: "password", placeholder: prefill.encrypted ? "required: api encryption key" : "api encryption key (if set)", autocomplete: "off" });
+    const role = roleSelect("environment");
     return h("form", { class: "row", onsubmit: (ev) => {
       ev.preventDefault();
       run(() => api("POST", "/api/admin/esphome/adopt", {
-        host: val(host), port: Number(port.value), name: val(name), area: val(area), noise_psk: val(psk),
+        host: val(host), port: Number(port.value), name: val(name), area: val(area), noise_psk: val(psk), role: role.value,
       }), "Node adopted").then(refresh);
     } }, field("Host", host), field("Port", port), field("Name", name), field("Area", area),
-    field("Encryption key", psk), h("button", { class: "primary", type: "submit", style: "align-self:flex-end" }, "Adopt"));
+    field("Role", role), field("Encryption key", psk), h("button", { class: "primary", type: "submit", style: "align-self:flex-end" }, "Adopt"));
   }
 
   function devicesCard() {
@@ -244,18 +253,21 @@
     };
     const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");   // services (Ontime) are listed under Integrations
     const devTable = h("table", {},
-      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
+      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Role"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
       h("tbody", {}, devices.map((d) => {
         const name = h("input", { value: d.name });
         const area = h("input", { value: d.area });
+        const hwd = admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id];
+        const role = roleSelect(hwd && hwd.role, `${d.name} role`);
         return h("tr", {},
           h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, d.id)),
           h("td", {}, area),
+          h("td", {}, role),
           h("td", {}, h("span", { class: `status ${d.status}` }, d.status), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null),
           h("td", {}, nodeAddress(admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id])),
           h("td", {}, d.model),
           h("td", {}, h("div", { class: "row" },
-            h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/devices/${encodeURIComponent(d.id)}`, { name: val(name), area: val(area) }), "Saved").then(refresh) }, "Save"),
+            h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/devices/${encodeURIComponent(d.id)}`, { name: val(name), area: val(area), role: role.value }), "Saved").then(refresh) }, "Save"),
             h("button", { class: "small danger", onclick: () => confirm(`Remove ${d.name}? History is kept.`) && run(() => api("DELETE", `/api/admin/devices/${encodeURIComponent(d.id)}`), "Removed").then(refresh) }, "Remove"))));
       })));
 
@@ -324,15 +336,19 @@
   function entitiesCard() {
     const ents = snap.entities.filter((e) => !e.derived);
     const settingsOf = (e) => (admin.hardware && admin.hardware.settings[e.id]) || admin.config.entities[e.id]
-      || { offset: 0, include_in_average: true, accuracy: null, accuracy_basis: "typical" };
+      || { offset: 0, include_in_average: true, accuracy: null, accuracy_basis: "typical", role: "" };
+    const nodeRoleOf = (id) => {
+      const hd = admin.hardware && admin.hardware.devices && admin.hardware.devices[id];
+      return hd && hd.role === "equipment" ? "equipment" : "environment";
+    };
     const averages = (admin.hardware && admin.hardware.averages) || {};
     const shareOf = (e) => ((averages[e.kind] || {}).sensors || {})[e.id];
     // Same order as the adopted-nodes list; anything else (site rows) goes last, in a "Site" group.
     const devs = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");
-    const groups = devs.map((d) => ({ id: d.id, name: d.name, status: d.status, ents: ents.filter((e) => e.device_id === d.id) }));
+    const groups = devs.map((d) => ({ id: d.id, name: d.name, status: d.status, role: nodeRoleOf(d.id), ents: ents.filter((e) => e.device_id === d.id) }));
     const known = new Set(devs.map((d) => d.id));
     const rest = ents.filter((e) => !known.has(e.device_id));
-    if (rest.length) groups.push({ id: "site", name: "Site", status: "", ents: rest });
+    if (rest.length) groups.push({ id: "site", name: "Site", status: "", role: "environment", ents: rest });
     const shown = groups.filter((g) => g.ents.length);
     const state = sensorFolds.state();
 
@@ -348,8 +364,8 @@
       return n.indexOf(g.name + " ") === 0 && n.length > g.name.length + 1 ? n.slice(g.name.length + 1) : n;
     };
 
-    const shareText = (sh) => (sh && sh.state === "in" ? SW.fmtShare(sh.share) + (sh.capped ? " (capped)" : "") : sh && sh.state === "stale" ? "Stale" : sh && sh.state === "outlier" ? "Left out" : "—");
-    const shareTitle = (sh) => (!sh ? "" : sh.state === "off" ? "Not in the site average (ticked off)"
+    const shareText = (sh) => (sh && sh.state === "equipment" ? "Never" : sh && sh.state === "in" ? SW.fmtShare(sh.share) + (sh.capped ? " (capped)" : "") : sh && sh.state === "stale" ? "Stale" : sh && sh.state === "outlier" ? "Left out" : "—");
+    const shareTitle = (sh) => (!sh ? "" : sh.state === "equipment" ? "Equipment readings are never averaged" : sh.state === "off" ? "Not in the site average (ticked off)"
       : sh.state === "stale" ? "No recent reading, so left out of the average" : sh.state === "outlier" ? "Reading far from the others, so left out of the average"
       : sh.state === "none" ? "No reading yet" : sh.capped ? "Capped at 80 %: this sensor would otherwise have counted for more" : "Share of the site average now");
     const groupEl = (g) => {
@@ -361,6 +377,12 @@
         const label = shortName(g, e);
         const off = h("input", { class: "num", type: "number", step: "0.01", value: s.offset, "aria-label": `${g.name} ${label} offset` });
         const inc = h("input", { type: "checkbox", checked: s.include_in_average, "aria-label": `${g.name} ${label} in site average` });
+        const accEls = [];   // greyed out while the sensor is Equipment
+        const roleSel = h("select", { "aria-label": `${g.name} ${label} role` },
+          h("option", { value: "" }, `Node's role (${g.role === "equipment" ? "Equipment" : "Environment"})`),
+          h("option", { value: "environment" }, "Environment"), h("option", { value: "equipment" }, "Equipment"));
+        roleSel.value = s.role === "environment" || s.role === "equipment" ? s.role : "";
+        const eqHint = h("div", { class: "muted", style: "font-size:12px", role: "status" });
         const accKind = SW.ACCURACY_KINDS[e.kind];
         let accCells;
         let readAccuracy = () => ({});
@@ -371,10 +393,12 @@
           const basis = h("select", { "aria-label": `${g.name} ${label} accuracy basis` },
             h("option", { value: "typical" }, "typical"), h("option", { value: "maximum" }, "maximum"));
           basis.value = s.accuracy_basis === "maximum" ? "maximum" : "typical";
+          accEls.push(acc, basis);
           const presetNote = h("div", { class: "muted preset-note", role: "status", style: "font-size:12px" });
           const preset = h("select", { "aria-label": `${g.name} ${label} preset` },
             h("option", { value: "" }, "Preset…"),
             SW.ACCURACY_PRESETS.map((part) => h("option", { value: part.id }, part.name)));
+          accEls.push(preset);
           preset.addEventListener("change", () => {
             const part = SW.ACCURACY_PRESETS.find((x) => x.id === preset.value);
             if (!part) { presetNote.textContent = ""; return; }
@@ -396,13 +420,21 @@
           accCells = [h("td", { class: "muted", colspan: "2" }, "—")];
         }
         const sh = shareOf(e);
+        const applyRole = () => {
+          const eq = (roleSel.value || g.role) === "equipment";
+          inc.disabled = eq;
+          accEls.forEach((x) => { x.disabled = eq; });
+          eqHint.textContent = eq ? "Equipment readings are never averaged" : "";
+          tr.classList.toggle("role-eq", eq);
+        };
         const accText = accKind ? SW.fmtAccuracy(e.kind, s.accuracy, s.accuracy_basis) : "";
-        return h("tr", { id: `sensor-row-${e.id}` },
+        const tr = h("tr", { id: `sensor-row-${e.id}` },
           h("td", {}, label, h("div", { class: "muted", style: "font-size:12px" }, e.id)),
           h("td", { class: "num" }, h("span", { dataset: { live: e.id } }, fmt(e.kind, e.value)),
             accText ? h("div", { class: "muted", style: "font-size:12px" }, accText) : null),
           h("td", {}, off, h("span", { class: "muted" }, " ", e.unit)),
-          h("td", {}, inc),
+          h("td", {}, roleSel),
+          h("td", {}, inc, eqHint),
           h("td", { class: "num" }, accKind ? h("span", { dataset: { share: e.id }, title: shareTitle(sh) }, shareText(sh)) : "—"),
           accCells,
           h("td", {}, h("button", { class: "small", "aria-label": `Save ${g.name} ${label}`, onclick: () => {
@@ -410,11 +442,14 @@
             const accBody = readAccuracy();
             if (accBody === null) { toast(`Type the accuracy as a number from ${accKind.min} to ${accKind.max} ${accKind.unit}, for example 0.5. Nothing has been changed.`, true); return; }
             api("PUT", `/api/admin/entities/${encodeURIComponent(e.id)}`,
-              Object.assign({ offset: Number(off.value) || 0, include_in_average: inc.checked }, accBody))
+              Object.assign({ offset: Number(off.value) || 0, include_in_average: inc.checked, role: roleSel.value }, accBody))
               .then(() => { toast("Saved"); return afterTick(); }).then(refresh,
                 (err) => toast(err.status === 422 ? "That accuracy figure was not accepted. Nothing has been changed." : err.message, true))
               .then(() => window.scrollTo(0, y));
           } }, "Save")));
+        roleSel.addEventListener("change", applyRole);
+        applyRole();
+        return tr;
       });
       const d = h("details", { class: "sensor-group", id: `sensor-group-${g.id}` },
         h("summary", {},
@@ -423,7 +458,7 @@
           h("span", { class: "muted" }, `${g.ents.length} ${g.ents.length === 1 ? "sensor" : "sensors"}`),
           offs.length ? h("span", { class: "muted sg-offs" }, `offset: ${offs.join(", ")}`) : null),
         h("div", { class: "table-scroll" }, h("table", {},
-          h("thead", {}, h("tr", {}, h("th", {}, "Sensor"), h("th", { class: "num" }, "Value"), h("th", {}, "Offset"), h("th", {}, "Average"), h("th", { class: "num" }, "Share"), h("th", {}, "Accuracy"), h("th", {}, "Preset"), h("th", {}, ""))),
+          h("thead", {}, h("tr", {}, h("th", {}, "Sensor"), h("th", { class: "num" }, "Value"), h("th", {}, "Offset"), h("th", {}, "Role"), h("th", {}, "Average"), h("th", { class: "num" }, "Share"), h("th", {}, "Accuracy"), h("th", {}, "Preset"), h("th", {}, ""))),
           h("tbody", {}, rows))));
       d.open = Object.prototype.hasOwnProperty.call(state, g.id) ? !!state[g.id] : defaultOpen;
       d.addEventListener("toggle", () => { state[g.id] = d.open; sensorFolds.save(); });
@@ -439,6 +474,12 @@
     const notes = h("ul", { class: "weight-notes muted", role: "status", dataset: { weightNotes: "1" } });
     notes.append(...weightNoteItems(averages, admin.config.site.weight_by_accuracy));
     const setAll = (open) => sensorFolds.setAll(els, shown.map((g) => g.id), open);
+    // Environment and Equipment headings, with the node folds under the one their role names.
+    const section = (title, role, empty) => {
+      const mine = shown.map((g, i) => ({ g, el: els[i] })).filter((x) => x.g.role === role);
+      return [h("h3", { class: "sg-heading", id: `sensor-heading-${role}` }, title)]
+        .concat(mine.length ? mine.map((x) => x.el) : [h("p", { class: "muted hint" }, empty)]);
+    };
     return card("Sensors: calibration & averaging",
       h("p", { class: "muted" }, "Offset is added to every reading (compare against a reference such as a Kestrel). Pressure offsets are in Pa (1 hPa = 100 Pa). Untick to leave a sensor out of the site average, e.g. one in direct sun."),
       h("label", { class: "field inline" }, weigh, " Weight the average by accuracy"),
@@ -447,7 +488,9 @@
       h("p", { class: "muted hint" }, "Accuracy is the maker's ± figure from the datasheet, in °C, %RH or hPa. Typical is the usual figure; maximum is the worst case. Presets fill the typical figure from the manufacturer's page: check it against your sensor's datasheet, and change it if you know better."),
       h("p", { class: "muted hint" }, "After you calibrate a sensor, type the uncertainty you are left with, not the datasheet figure. Sensors calibrated against the same reference share that reference's error, so averaging them does not remove it. Where a sensor sits (sun, lights, heat, its own warmth, airflow) usually matters more than the datasheet. Accuracy is only shown here, not on the dashboards."),
       shown.length ? foldButtons(setAll) : null,
-      shown.length ? els : h("p", { class: "muted" }, "No sensors yet. Add a node under ESPHome nodes."));
+      shown.length ? [...section("Environment", "environment", "None."),
+        ...section("Equipment", "equipment", "None. Set a node's Role to Equipment under ESPHome nodes (an amp rack, a power supply). Equipment readings are never averaged.")]
+        : h("p", { class: "muted" }, "No sensors yet. Add a node under ESPHome nodes."));
   }
 
   function thresholdsCard() {
@@ -493,6 +536,7 @@
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
     wall_clock: ["Wall Clock", "The time of day, as plain digits, an LED ring or 7-segment digits. Choose the source in the Wall Clock settings."],
     ontime_timer: ["Ontime Timer", "The countdown Ontime is running, with the event title. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings."],
+    equipment: ["Equipment", "Readings from Equipment sensors (amp racks, power supplies), by node. Never part of the site average. Stays hidden until a sensor has the Equipment role."],
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };

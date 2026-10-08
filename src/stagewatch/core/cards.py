@@ -19,6 +19,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "ontime_timer",    # Ontime Timer: the countdown Ontime is running; never added by default
     "connect_footer",  # "Open on a tablet" QR footer
     "barometer",       # sea-level pressure dial, 3-hour tendency, rough outlook; never added by default
+    "equipment",       # readings from Equipment-role sensors (amp racks, PSUs), by node; hidden while there are none; never added by default
 )
 KNOWN_CARDS = KNOWN_CARDS_0_3
 

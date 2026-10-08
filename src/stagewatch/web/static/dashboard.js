@@ -178,26 +178,42 @@
     const ents = Object.values(state.entities);
     const any = (k) => devs.some((d) => ents.some((e) => e.device_id === d.id && e.kind === k));
     const showSignal = any("signal_strength"), showBattery = any("battery");
-    const rows = devs.map((d) => {
-      const mine = ents.filter((e) => e.device_id === d.id);
+    const isHealth = (e) => e.kind === "signal_strength" || e.kind === "battery";
+    // One row for what a node measures: `mine` is the entities this row shows, `health` whether the
+    // node's own signal and battery go on it.
+    const rowFor = (d, mine, health) => {
       const byKind = (k) => mine.find((e) => e.kind === k);
       const cell = (k) => { const e = byKind(k); return h("td", { class: "num" + (e && e.stale ? " muted" : "") }, e ? fmt(k, e.value) : "", SW.hasOffset(e) ? offsetStar() : null); };
-      const health = (k, warn, text) => {
-        const e = byKind(k);
+      const healthCell = (k, warn, text) => {
+        const e = health ? byKind(k) : null;
         if (!e || e.value === null || e.value === undefined) return h("td", { class: "num muted" }, "");
         const cls = "num" + (e.stale ? " muted" : warn(e.value) ? " warn-text" : "");
         return h("td", { class: cls }, text(e.value));
       };
-      const last = Math.max(0, ...mine.filter((e) => e.kind !== "signal_strength" && e.kind !== "battery").map((e) => e.updated || 0));
+      const last = Math.max(0, ...mine.filter((e) => !isHealth(e)).map((e) => e.updated || 0));
       return h("tr", {},
         h("td", {}, d.name, d.area ? h("div", { class: "muted", style: "font-size:12px" }, d.area) : null),
         h("td", {}, h("span", { class: `status ${d.status}`, title: d.status_detail || "" }, d.status)),
         cell("temperature"), cell("humidity"), cell("pressure"),
-        showSignal ? health("signal_strength", (v) => v < -75, (v) => `${fmt("signal_strength", v)} ${SW.signalWord(v)}`) : null,
-        showBattery ? health("battery", (v) => v < 20, (v) => (v < 20 ? `${fmt("battery", v)} low` : fmt("battery", v))) : null,
+        showSignal ? healthCell("signal_strength", (v) => v < -75, (v) => `${fmt("signal_strength", v)} ${SW.signalWord(v)}`) : null,
+        showBattery ? healthCell("battery", (v) => v < 20, (v) => (v < 20 ? `${fmt("battery", v)} low` : fmt("battery", v))) : null,
         h("td", { class: "num muted" }, SW.age(last || null, state.now)));
-    });
+    };
+    // Environment rows first, then Equipment. A node whose sensors are all equipment is an
+    // equipment row; a node with a mix appears in both groups, each with its own sensors.
+    const envRows = [], eqRows = [];
+    for (const d of devs) {
+      const mine = ents.filter((e) => e.device_id === d.id);
+      const eq = mine.filter((e) => !isHealth(e) && SW.isEquipment(e));
+      const env = mine.filter((e) => !isHealth(e) && !SW.isEquipment(e));
+      if (!eq.length) { envRows.push(rowFor(d, mine, true)); continue; }
+      if (!env.length) { eqRows.push(rowFor(d, mine, true)); continue; }
+      envRows.push(rowFor(d, mine.filter((e) => !SW.isEquipment(e)), true));
+      eqRows.push(rowFor(d, eq, false));
+    }
     const cols = 6 + (showSignal ? 1 : 0) + (showBattery ? 1 : 0);
+    const heading = (text) => h("tr", { class: "group-row" }, h("th", { colspan: cols, scope: "colgroup" }, text));
+    const body = eqRows.length ? [heading("Environment"), ...envRows, heading("Equipment"), ...eqRows] : envRows;
     $("sensors").replaceChildren(
       h("thead", {}, h("tr", {}, h("th", {}, "Node"), h("th", {}, "Status"),
         h("th", { class: "num" }, "Temp"), h("th", { class: "num" }, "RH"),
@@ -205,7 +221,7 @@
         showSignal ? h("th", { class: "num" }, "Signal") : null,
         showBattery ? h("th", { class: "num" }, "Battery") : null,
         h("th", { class: "num" }, "Updated"))),
-      h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: cols, class: "muted" }, "No sensor nodes yet. An admin can adopt ESPHome nodes."))));
+      h("tbody", {}, body.length ? body : h("tr", {}, h("td", { colspan: cols, class: "muted" }, "No sensor nodes yet. An admin can adopt ESPHome nodes."))));
     const foot = SW.offsetFootnote(SW.offsetNotes(devs, ents));
     $("offset-note").textContent = foot;
     $("offset-note").hidden = !foot;
@@ -329,7 +345,7 @@
     const mode = SERIES_MODES[state.mode];
     const ids = [mode.site];
     if (mode.kind !== "speed_of_sound") {
-      for (const e of Object.values(state.entities)) if (!e.derived && e.kind === mode.kind) ids.push(e.id);
+      for (const e of Object.values(state.entities)) if (!e.derived && e.kind === mode.kind && !SW.isEquipment(e)) ids.push(e.id);
     }
     return ids;
   }
@@ -735,6 +751,40 @@
     setClass($("ontime-timer-card"), `card ${v.cls}${v.level ? ` lvl-${v.level}` : ""}${v.over ? " ot-over" : ""}`);
     ot.timer = setTimeout(tickOntimeTimer, SW.ot.nextDelayMs(m, now));
   }
+  // --------------------------------------------------------- equipment
+  // Readings from sensors whose role is Equipment (an amp rack, a power supply): never part of
+  // any site average. Grouped by node; each reading shows its value with the unit, goes dim with
+  // its age when stale, and carries the calibration asterisk. Text is set with textContent only.
+  // The card hides itself while there is no equipment sensor, and updates in place.
+  function equipmentGroups() {
+    const byDev = {};
+    for (const e of Object.values(state.entities)) {
+      if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery") continue;
+      (byDev[e.device_id] = byDev[e.device_id] || []).push(e);
+    }
+    return Object.keys(byDev).map((id) => ({ dev: state.devices[id] || { id, name: id, status: "" }, ents: byDev[id] }))
+      .sort((a, b) => (a.dev.name || "").localeCompare(b.dev.name || ""));
+  }
+  const eqValue = (e) => {
+    if (SW.KIND_FMT[e.kind]) return fmt(e.kind, e.value);
+    if (e.value === null || e.value === undefined || Number.isNaN(e.value)) return "—";
+    return `${SW.num(e.value, Math.max(0, Math.min(3, e.decimals || 0)))}${e.unit ? " " + e.unit : ""}`;
+  };
+  function renderEquipment() {
+    const card = $("equipment-card");
+    if (!has("equipment")) { card.hidden = true; return; }
+    const groups = equipmentGroups();
+    card.hidden = groups.length === 0;
+    $("equipment-body").replaceChildren(...groups.map(({ dev, ents }) =>
+      h("div", { class: "eq-node" },
+        h("h3", {}, dev.name || dev.id, dev.status ? h("span", { class: `status ${dev.status}`, title: dev.status_detail || "" }, dev.status) : null),
+        h("div", { class: "eq-grid" }, ...ents.map((e) =>
+          h("div", { class: "tile eq-tile" + (e.stale ? " stale" : "") },
+            h("div", { class: "label" }, e.name || e.id),
+            h("div", { class: "value" }, eqValue(e), SW.hasOffset(e) ? offsetStar() : null),
+            h("div", { class: "foot" }, e.stale ? `Old reading, ${SW.age(e.updated, state.now)}` : SW.age(e.updated, state.now))))))));
+  }
+
   // --------------------------------------------------------- barometer
   // Sea-level pressure, the 3-hour change and a rough outlook, from site.baro (Pa, a state, a
   // tendency word and an outlook letter; SW.baro.view decides the words). Advisory only. The dial
@@ -824,6 +874,8 @@
     ontime_timer: { el: cardEl("ontime_timer"), wide: true, render: renderOntimeTimer, empty: () => !state.ontimeTimer },
     // Hidden on the wall while there is no pressure sensor (renderBarometer keeps it in step).
     barometer: { el: cardEl("barometer"), render: renderBarometer, empty: () => isWall() && !!state.site.baro && state.site.baro.state === "no_sensor" },
+    // Hidden while no sensor has the Equipment role (renderEquipment keeps it in step).
+    equipment: { el: cardEl("equipment"), render: renderEquipment, empty: () => equipmentGroups().length === 0 },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
     connect_footer: { el: cardEl("connect_footer"), footer: true, render: renderConnectFooter },
   };
@@ -939,12 +991,14 @@
         if (has("env_tiles")) renderTiles();
         if (has("sensors")) renderSensors();
         if (has("barometer")) renderBarometer();
+        if (has("equipment")) renderEquipment();
         if (has("chart")) updateChartSeries();
         break;
       }
       case "device":
         state.devices[msg.device.id] = msg.device;
         if (has("sensors")) renderSensors();
+        if (has("equipment")) renderEquipment();
         break;
       case "marker":
         if (!findMarker(msg.marker.id)) state.markers.push(msg.marker);
@@ -992,5 +1046,5 @@
   // Re-bucket history so long views stay tidy; refresh the sensors' "Updated" ages. Each only
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); }, 5000);
 })();

@@ -440,6 +440,45 @@ larger than the datasheet's), not the datasheet figure.
 How to check it worked: turn the switch on, give two sensors of one kind different figures, and
 watch the **Share** column change to match. Turn the switch off and the shares go back to equal.
 
+### Environment and Equipment
+
+Stagewatch treats a temperature as the air at the site, and averages it with the others. That is
+wrong for the temperature of an amp rack or a heatsink. A **role** tells Stagewatch which is
+which.
+
+- **Environment** is the air at the site: temperature, humidity and pressure. It feeds the site
+  average, the speed of sound, the dew point and the barometer. Every node starts as Environment.
+- **Equipment** is gear: a rack, a power supply, a fan. Its readings are shown in their own group
+  and are **never** averaged or used for the speed of sound, the dew point, the barometer or the
+  accuracy weighting. This is automatic: there is no tick box to forget.
+
+To set it:
+
+1. When you adopt a node (**Admin → ESPHome nodes**), pick the **Role**. Environment is already
+   chosen. For a node you have already adopted, change **Role** in the **ESPHome nodes** list and
+   click **Save**.
+2. Only one sensor on a node is different? Open **Sensors: calibration & averaging**, find the
+   sensor and change its **Role** from "Node's role" to Environment or Equipment, then click
+   **Save** on that row.
+
+On that card the nodes are listed under **Environment** and **Equipment** headings. On an
+Equipment row the **Average** tick and the accuracy boxes are greyed out: "Equipment readings are
+never averaged". The offset still works.
+
+On the dashboards, the **Sensors** table shows the same two headings once you have any Equipment
+sensor, and the history chart draws only the Environment sensors. Add the **Equipment** card (see
+below) to show each Equipment reading by node, with its unit, its status and the `*` for an
+offset. The card stays hidden until a sensor has the Equipment role.
+
+Threshold alarms work for both roles. For a rack, set an absolute limit on its own sensor, for
+example above 45 °C. It does not depend on the site average.
+
+How to check it worked: set a node to Equipment and watch the site temperature tile. The count
+under it ("3 sensor(s) averaged") goes down by one and the value stops following that node.
+
+If you go back to an older version of Stagewatch, it does not know about roles and averages every
+sensor again. Set the roles again after you upgrade.
+
 ### Choose the cards on a dashboard
 
 Each dashboard shows a set of **cards**, such as the readings tiles, the history chart or the
@@ -464,6 +503,8 @@ Good to know:
   before saving, the ticks change to that layout's set.
 - **Wall Clock** and **Ontime Timer** are never switched on by default. Tick them if you want them,
   then choose the time source and look (see below).
+- **Equipment** is never switched on by default either. It shows the readings of Equipment sensors (see
+  above) and stays hidden while there are none.
 - **Barometer** is never switched on by default either. It needs a pressure sensor (see below).
 - **Schedule** stays hidden until the show has a schedule, even when it is ticked. Add the
   schedule under **Admin → Schedule → Open schedule editor**.

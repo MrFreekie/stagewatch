@@ -300,6 +300,9 @@ SW.fmtCalOffset = function (kind, offset) {
   const unit = kind === "humidity" ? "% points" : f.unit;
   return `${SW.signed(f.conv(offset), 1)} ${unit}`.trim();
 };
+// Sensor roles: an entity carries `role: "equipment"` only for gear readings (never averaged).
+// Absent means environment (air at the site).
+SW.isEquipment = (e) => !!(e && !e.derived && e.role === "equipment");
 SW.hasOffset = (e) => !!(e && !e.derived && typeof e.offset === "number" && e.offset !== 0);
 // One note per adjusted sensor: [{ name, kind, text }], by node name. `devices` is a list of
 // {id, name}; `entities` a list of entity dicts.
@@ -319,7 +322,7 @@ SW.offsetFootnote = function (notes) {
   return notes.length ? `* ${SW.OFFSET_NOTE}: ${notes.map((n) => n.text).join(", ")}` : "";
 };
 // True when any sensor feeding this kind's site average has an offset.
-SW.averageAdjusted = (entities, kind) => SW.OFFSET_KINDS.indexOf(kind) >= 0 && entities.some((e) => e.kind === kind && SW.hasOffset(e));
+SW.averageAdjusted = (entities, kind) => SW.OFFSET_KINDS.indexOf(kind) >= 0 && entities.some((e) => e.kind === kind && !SW.isEquipment(e) && SW.hasOffset(e));
 
 // Sensor accuracy ("Accuracy ±"), admin only (never on the public dashboards). The server keeps it
 // in canonical units (°C, %RH, Pa); the admin shows and takes °C, %RH and hPa.

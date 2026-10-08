@@ -25,7 +25,8 @@ UPDATE_S = 5.0
 
 class EmulatedNode:
     def __init__(self, hub, device_id: str, name: str, area: str, temp_offset: float,
-                 has_pressure: bool = True, flaky: bool = False, mac: str = "") -> None:
+                 has_pressure: bool = True, flaky: bool = False, mac: str = "",
+                 role: str = "environment") -> None:
         self.hub = hub
         self.device_id = device_id
         self.mac = mac
@@ -34,6 +35,9 @@ class EmulatedNode:
         self.temp_offset = temp_offset
         self.has_pressure = has_pressure
         self.flaky = flaky
+        self.role = role
+        # The equipment demo node is a rack probe: one temperature, no humidity or pressure.
+        self.rack = role == "equipment"
         self._task: asyncio.Task | None = None
         self._t0 = time.time()
 
@@ -44,6 +48,9 @@ class EmulatedNode:
             cls(hub, "sim_foh", "FOH (sim)", "FOH", 0.0, mac="02:5e:00:00:00:02"),
             cls(hub, "sim_delay_1", "Delay tower 1 (sim)", "Delay tower 1", -0.6,
                 has_pressure=False, flaky=True, mac="02:5e:00:00:00:03"),
+            # Gear, not air: its temperature climbs and never enters any site average.
+            cls(hub, "sim_rack_1", "Rack 1 (sim)", "FOH", 0.0, has_pressure=False,
+                mac="02:5e:00:00:00:04", role="equipment"),
         ]
 
     def _hw(self, object_id: str) -> str:
@@ -57,14 +64,16 @@ class EmulatedNode:
             except OSError:
                 log.exception("Could not save the moved calibrations of %s", self.device_id)
         self.hub.register_device(Device(self.device_id, self.name, "esphome",
-                                        "ESPHome (emulated)", "BME280", self.area, Status.OK,
+                                        "ESPHome (emulated)", "BME280" if self.role == "environment" else "DS18B20",
+                                        self.area, Status.OK, role=self.role,
                                         hw_id=node))
         self.hub.register_entity(Entity(f"{self.device_id}.temperature", self.device_id,
                                         "Temperature", Kind.TEMPERATURE, "°C", 1,
                                         hw_key=self._hw("temperature")))
-        self.hub.register_entity(Entity(f"{self.device_id}.humidity", self.device_id,
-                                        "Humidity", Kind.HUMIDITY, "%", 0,
-                                        hw_key=self._hw("humidity")))
+        if not self.rack:
+            self.hub.register_entity(Entity(f"{self.device_id}.humidity", self.device_id,
+                                            "Humidity", Kind.HUMIDITY, "%", 0,
+                                            hw_key=self._hw("humidity")))
         if self.has_pressure:
             self._sync_pressure_entity()
         # Node health: every node reports Wi-Fi signal; the flaky delay-tower node also runs on a
@@ -109,11 +118,16 @@ class EmulatedNode:
             return
         self.hub.set_device_status(self.device_id, Status.OK)
         hours = (now - self._t0) / 3600.0
-        temp = 24.0 - 3.0 * math.sin(min(hours, 6.0) / 6.0 * math.pi / 2) + self.temp_offset
-        temp += 0.4 * math.sin(now / 420.0) + random.gauss(0, 0.05)
-        rh = 48.0 + 6.0 * math.sin(min(hours, 6.0) / 6.0 * math.pi / 2) + random.gauss(0, 0.4)
-        self.hub.update_state(f"{self.device_id}.temperature", round(temp, 2), now)
-        self.hub.update_state(f"{self.device_id}.humidity", round(rh, 1), now)
+        if self.rack:
+            # An amp rack warming up through the evening: well above the room, drifting.
+            temp = 34.0 + 9.0 * math.sin(min(hours, 6.0) / 6.0 * math.pi / 2) + 0.8 * math.sin(now / 300.0)
+            self.hub.update_state(f"{self.device_id}.temperature", round(temp + random.gauss(0, 0.05), 2), now)
+        else:
+            temp = 24.0 - 3.0 * math.sin(min(hours, 6.0) / 6.0 * math.pi / 2) + self.temp_offset
+            temp += 0.4 * math.sin(now / 420.0) + random.gauss(0, 0.05)
+            rh = 48.0 + 6.0 * math.sin(min(hours, 6.0) / 6.0 * math.pi / 2) + random.gauss(0, 0.4)
+            self.hub.update_state(f"{self.device_id}.temperature", round(temp, 2), now)
+            self.hub.update_state(f"{self.device_id}.humidity", round(rh, 1), now)
         if self.has_pressure:
             self._sync_pressure_entity()
             if self.hub.baro.demo is None:       # a hub that was not started: the old slow drift
@@ -122,7 +136,7 @@ class EmulatedNode:
                 p = self.hub.baro.emulated_pa(now)   # the demo weather; None while a sensor "drops out"
             if p is not None and f"{self.device_id}.pressure" in self.hub.entities:
                 self.hub.update_state(f"{self.device_id}.pressure", round(p + random.gauss(0, 8), 0), now)
-        base = {"sim_stage_l": -62.0, "sim_foh": -54.0}.get(self.device_id, -78.0)
+        base = {"sim_stage_l": -62.0, "sim_foh": -54.0, "sim_rack_1": -58.0}.get(self.device_id, -78.0)
         self.hub.update_state(f"{self.device_id}.wifi_signal", round(base + random.gauss(0, 1.5)), now)
         if self.flaky:
             self.hub.update_state(f"{self.device_id}.battery", max(5.0, round(26.0 - 12.0 * hours)), now)

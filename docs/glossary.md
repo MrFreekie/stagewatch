@@ -70,6 +70,10 @@ You don't need an account to download it.
 A private text file next to a node's settings. It holds your Wi-Fi name and password and
 the node's key. Keep it private.
 
+**Role (Environment or Equipment)**
+What a node or sensor is measuring. Environment is the air at the site and feeds the site
+average. Equipment is gear, such as an amp rack, and is never averaged.
+
 **Sensor**
 The part that measures something, such as a BME280 (temperature, humidity, pressure) or
 an SHT45 (temperature, humidity).

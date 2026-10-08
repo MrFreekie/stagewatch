@@ -178,6 +178,15 @@ class AdminConfig(_Model):
 
 
 
+# Sensor roles. "environment" = air conditions at the site (feeds the site average, the speed of
+# sound, the dew point and the barometer); "equipment" = readings about gear (an amp rack, a power
+# supply), never averaged. Additive: a config without a role means "environment", so every older
+# install behaves exactly as before. An older build ignores the key and averages everything again.
+ROLES = ("environment", "equipment")
+ROLE_ENVIRONMENT = "environment"
+ROLE_EQUIPMENT = "equipment"
+
+
 class EsphomeDeviceConfig(_Model):
     id: str
     host: str
@@ -186,6 +195,7 @@ class EsphomeDeviceConfig(_Model):
     area: str = ""
     noise_psk: str = ""
     mac: str = ""  # the board's MAC (12 lowercase hex), set by the hub on first connect
+    role: Literal["environment", "equipment"] = "environment"   # the node's role; a sensor can override it
 
     @field_validator("id")
     @classmethod
@@ -224,6 +234,8 @@ class EntitySettings(_Model):
     # None = not set. Additive: older builds ignore both keys.
     accuracy: float | None = Field(None, ge=ACCURACY_MIN_ANY, le=ACCURACY_MAX_ANY, allow_inf_nan=False)
     accuracy_basis: Literal["typical", "maximum"] = "typical"
+    # Per-sensor role override: "" = follow the node's role. Additive (older builds ignore it).
+    role: Literal["", "environment", "equipment"] = ""
 
 
 CALIBRATION_KEY_RE = re.compile(r"(mac:[0-9a-f]{12}|dev:[a-z0-9_]+)/[a-z0-9_]+")  # fullmatch
@@ -263,6 +275,7 @@ class Calibration(_Model):
     include_in_average: bool = True
     accuracy: float | None = Field(None, ge=ACCURACY_MIN_ANY, le=ACCURACY_MAX_ANY, allow_inf_nan=False)
     accuracy_basis: Literal["typical", "maximum"] = "typical"
+    role: Literal["", "environment", "equipment"] = ""   # "" = follow the node's role
     history: list[CalibrationEntry] = Field(default_factory=list)  # newest first
     chip: str = Field("", max_length=64)  # reserved
     applied_on_node: bool = False  # reserved; ignored
@@ -484,8 +497,11 @@ class Config(_Model):
         Logs a count, never the value."""
         if not isinstance(v, dict):
             return v
-        fixed, bad = {}, 0
+        fixed, bad, bad_role = {}, 0, 0
         for key, rec in v.items():
+            if isinstance(rec, dict) and rec.get("role", "") not in ("", *ROLES):
+                rec = {k: x for k, x in rec.items() if k != "role"}   # unknown role: follow the node
+                bad_role += 1
             if isinstance(rec, dict) and ("accuracy" in rec or "accuracy_basis" in rec):
                 acc = rec.get("accuracy")
                 ok_acc = acc is None or (isinstance(acc, (int, float)) and not isinstance(acc, bool)
@@ -499,7 +515,28 @@ class Config(_Model):
         if bad:
             log.warning("Sensor accuracy: %d figure%s this version can't read left out",
                         bad, "" if bad == 1 else "s")
+        if bad_role:
+            log.warning("Sensor roles: %d value%s this version can't read left out (those sensors follow their node)",
+                        bad_role, "" if bad_role == 1 else "s")
         return fixed
+
+    @field_validator("esphome_devices", mode="before")
+    @classmethod
+    def _lenient_node_role(cls, v):
+        """On load: a node role this version doesn't know (from a newer release) counts as
+        "environment" rather than costing the node. Logs a count, never the value."""
+        if not isinstance(v, list):
+            return v
+        out, bad = [], 0
+        for rec in v:
+            if isinstance(rec, dict) and rec.get("role", ROLE_ENVIRONMENT) not in ROLES:
+                rec = {**rec, "role": ROLE_ENVIRONMENT}
+                bad += 1
+            out.append(rec)
+        if bad:
+            log.warning("Node roles: %d value%s this version can't read treated as Environment",
+                        bad, "" if bad == 1 else "s")
+        return out
 
     @field_validator("calibrations")
     @classmethod

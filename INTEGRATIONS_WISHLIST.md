@@ -187,7 +187,7 @@ Boards expected to work as Stagewatch sensor or output nodes. **Supported** = te
 - **Curfew SPL budget**: predicts from the current level and trend whether the LAeq15 will go over the limit before the 15 minutes are up ("At this level you'll exceed the 15-min limit in about 4 min"), not only after.
 
 ### Equipment monitoring
-- **Environment and Equipment sensor roles**: each node (with a per-sensor override) is either **Environment** (air conditions at the site: feeds the site average, the speed of sound and the barometer) or **Equipment** (readings about gear: rack temperatures, fans, power supplies, UPS). Equipment readings never enter a site average, and show in their own group with their own thresholds, usually absolute limits (for example a rack above 45 °C or a fan below 500 RPM). Existing nodes stay Environment. The base for the rack monitor node and the power and UPS integrations.
+- **Environment and Equipment sensor roles** (**Built**, in the next release): each node (with a per-sensor override) is either **Environment** (air conditions at the site: feeds the site average, the speed of sound and the barometer) or **Equipment** (readings about gear: rack temperatures, fans, power supplies, UPS). Equipment readings never enter a site average, and show in their own group with their own thresholds, usually absolute limits (for example a rack above 45 °C or a fan below 500 RPM). Existing nodes stay Environment. The base for the rack monitor node and the power and UPS integrations.
 
 ### Site and crew welfare
 - **Heat stress for crew**: an estimated WBGT heat-stress index for stage and FOH on hot days, with advisory levels. Estimated from temperature, humidity and (optionally) a black-globe or sun sensor; not a certified WBGT meter.
