@@ -598,6 +598,27 @@ class Recorder:
             out[entity_id] = [[r[1], r[2]] for r in rows]
         return out
 
+    def series(self, entity_id: str, since: float, until: float | None = None,
+               bucket_s: float = 60.0) -> list[tuple[float, float]]:
+        """Read-only: [(ts, value)] for one entity across every show that overlaps
+        ``since..until``, averaged into ``bucket_s`` buckets (``history()`` is per show, so a
+        "Next day" or a restart would cut it). Uses the (show_id, entity_id, ts) index.
+        Only what was recorded: gaps stay gaps."""
+        self.flush()
+        until = until if until is not None else time.time()
+        out: list[tuple[float, float]] = []
+        for show in self.shows():
+            if show["started"] > until or (show["ended"] is not None and show["ended"] < since):
+                continue
+            rows = self._db.execute(
+                "SELECT AVG(ts), AVG(value) FROM states WHERE show_id = ? AND entity_id = ? "
+                "AND ts >= ? AND ts <= ? AND value IS NOT NULL "
+                "GROUP BY CAST(ts / ? AS INTEGER) ORDER BY 1",
+                (show["id"], entity_id, since, until, bucket_s)).fetchall()
+            out += [(r[0], r[1]) for r in rows]
+        out.sort()
+        return out
+
     def value_at(self, entity_id: str, ts: float, max_age_s: float = 600.0) -> float | None:
         """Last recorded value of entity_id at or before ts (current show)."""
         self.flush()

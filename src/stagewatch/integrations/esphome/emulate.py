@@ -66,9 +66,7 @@ class EmulatedNode:
                                         "Humidity", Kind.HUMIDITY, "%", 0,
                                         hw_key=self._hw("humidity")))
         if self.has_pressure:
-            self.hub.register_entity(Entity(f"{self.device_id}.pressure", self.device_id,
-                                            "Pressure", Kind.PRESSURE, "Pa", 0,
-                                            hw_key=self._hw("pressure")))
+            self._sync_pressure_entity()
         # Node health: every node reports Wi-Fi signal; the flaky delay-tower node also runs on a
         # battery that slowly drains, so the Sensors card shows "weak" and "low" in emulate mode.
         self.hub.register_entity(Entity(f"{self.device_id}.wifi_signal", self.device_id,
@@ -83,6 +81,22 @@ class EmulatedNode:
         if self._task:
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
+
+    def _register_pressure(self) -> None:
+        self.hub.register_entity(Entity(f"{self.device_id}.pressure", self.device_id,
+                                        "Pressure", Kind.PRESSURE, "Pa", 0,
+                                        hw_key=self._hw("pressure")))
+
+    def _sync_pressure_entity(self) -> None:
+        """The "No pressure sensor" demo scenario takes the pressure sensors away; any other
+        scenario puts them back."""
+        demo = self.hub.baro.demo
+        gone = demo is not None and demo.scenario == "none"
+        have = f"{self.device_id}.pressure" in self.hub.entities
+        if gone and have:
+            self.hub.remove_entity(f"{self.device_id}.pressure")
+        elif not gone and not have:
+            self._register_pressure()
 
     def _offline(self, now: float) -> bool:
         # Flaky node: offline for 90 s out of every 10 minutes.
@@ -101,8 +115,13 @@ class EmulatedNode:
         self.hub.update_state(f"{self.device_id}.temperature", round(temp, 2), now)
         self.hub.update_state(f"{self.device_id}.humidity", round(rh, 1), now)
         if self.has_pressure:
-            p = 101325.0 - 180.0 * hours / 6.0 + random.gauss(0, 8)
-            self.hub.update_state(f"{self.device_id}.pressure", round(p, 0), now)
+            self._sync_pressure_entity()
+            if self.hub.baro.demo is None:       # a hub that was not started: the old slow drift
+                p = 101325.0 - 180.0 * hours / 6.0
+            else:
+                p = self.hub.baro.emulated_pa(now)   # the demo weather; None while a sensor "drops out"
+            if p is not None and f"{self.device_id}.pressure" in self.hub.entities:
+                self.hub.update_state(f"{self.device_id}.pressure", round(p + random.gauss(0, 8), 0), now)
         base = {"sim_stage_l": -62.0, "sim_foh": -54.0}.get(self.device_id, -78.0)
         self.hub.update_state(f"{self.device_id}.wifi_signal", round(base + random.gauss(0, 1.5)), now)
         if self.flaky:

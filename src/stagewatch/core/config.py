@@ -399,6 +399,15 @@ class UpdaterConfig(_Model):
 MAX_IGNORED = 200
 
 
+class BarometerConfig(_Model):
+    """Barometer card settings. Additive with defaults: no config schema bump. An older build
+    ignores the section and forgets it on its next save."""
+    hemisphere: Literal["north", "south"] = "north"   # which months count as summer for the outlook
+    # Optional silent notice (never audible) plus one marker when pressure is falling quickly.
+    rapid_fall_alarm: bool = False
+    rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10)   # Met Office "quickly": 3.6 hPa in 3 h
+
+
 class Config(_Model):
     schema_version: int = CONFIG_SCHEMA_VERSION
     site: SiteConfig = Field(default_factory=SiteConfig)
@@ -419,6 +428,7 @@ class Config(_Model):
     osc_out: OscOutConfig = Field(default_factory=OscOutConfig)
     updater: UpdaterConfig = Field(default_factory=UpdaterConfig)
     wall_clock: WallClockConfig = Field(default_factory=WallClockConfig)
+    barometer: BarometerConfig = Field(default_factory=BarometerConfig)
 
     @field_validator("wall_clock", mode="before")
     @classmethod

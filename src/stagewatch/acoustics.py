@@ -52,6 +52,41 @@ def pressure_at_altitude_pa(altitude_m: float) -> float:
     return STANDARD_PRESSURE_PA * base ** (_ISA_G * _ISA_M / (_ISA_R * _ISA_LAPSE))
 
 
+_R_DRY_AIR = _ISA_R / _ISA_M
+"""Specific gas constant of dry air, J/(kg K) (287.053)."""
+
+
+def msl_from_station_pa(station_pa: float, altitude_m: float, temp_c: float | None = None) -> float:
+    """Mean sea-level pressure from the pressure at the station, Pa.
+
+    With a measured temperature this is the hypsometric reduction: the pressure ratio is
+    ``exp(g h / (Rd Tm))``, where Tm is the mean temperature of the air column between the
+    station and sea level, taken as the measured temperature plus half the standard lapse over
+    the height (``Tm = T + L h / 2``). Humidity is ignored. Without a temperature it falls back to
+    the International Standard Atmosphere (the "QNH" style reduction), which is the exact inverse
+    of :func:`pressure_at_altitude_pa`. The caller says which one applied.
+    """
+    if temp_c is None:
+        return station_pa * STANDARD_PRESSURE_PA / pressure_at_altitude_pa(altitude_m)
+    tm = temp_c + 273.15 + _ISA_LAPSE * altitude_m / 2.0
+    return station_pa * math.exp(_ISA_G * altitude_m / (_R_DRY_AIR * tm))
+
+
+def altitude_from_msl_pa(station_pa: float, msl_pa: float, temp_c: float | None = None) -> float:
+    """The altitude at which :func:`msl_from_station_pa` turns ``station_pa`` into ``msl_pa``, m.
+
+    Exact inverse of the reduction, for the same temperature. Hypsometric: with
+    ``x = ln(msl/p) Rd / g`` the height is ``h = x T / (1 - x L / 2)`` (T in kelvin). ISA:
+    ``h = (T0 / L) (1 - (p / msl)^(Rd L / g))``.
+    """
+    if temp_c is None:
+        expo = _R_DRY_AIR * _ISA_LAPSE / _ISA_G
+        ratio = station_pa / msl_pa   # pressure_at_altitude_pa(h) / 101325 Pa
+        return (_ISA_T0 / _ISA_LAPSE) * (1.0 - ratio ** expo)
+    x = math.log(msl_pa / station_pa) * _R_DRY_AIR / _ISA_G
+    return x * (temp_c + 273.15) / (1.0 - x * _ISA_LAPSE / 2.0)
+
+
 def speed_of_sound(temp_c: float, rh_pct: float = 50.0,
                    pressure_pa: float = STANDARD_PRESSURE_PA) -> float:
     """Speed of sound in air, m/s (Cramer 1993)."""

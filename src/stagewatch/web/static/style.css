@@ -474,3 +474,69 @@ body.layout-wall .wc-ring { max-width: 58vh; }
 body.layout-wall .wc-segments { max-width: none; }
 body.layout-wall .wc-date { font-size: 36px; }
 @media (prefers-reduced-motion: reduce) { .wc-face * { transition: none; animation: none; } }
+
+/* ---- dashboard: Barometer card ----
+   Tablet: the dial beside the figures. Phone: a smaller dial above them. Wall: big numbers, no dial
+   (a needle position cannot be read at 5 m). A fast fall always has words and ▼▼ as well as colour
+   (amber for "quickly", orange for "very rapidly"; never red, it is not a stop condition). Old
+   readings are dimmed and say so. The needle eases for 600 ms unless the device asks for no motion. */
+.baro .baro-body { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.baro .baro-dial-host { width: 320px; max-width: 100%; flex: 0 0 auto; }
+.baro-dial { width: 100%; height: auto; display: block; }
+.baro-bezel { fill: var(--panel-2); stroke: var(--grid); stroke-width: 2; }
+.baro-face { fill: var(--panel); stroke: var(--grid); stroke-width: 1; }
+.baro-tick { stroke: var(--muted); stroke-width: 1; }
+.baro-tick.major { stroke: var(--text); stroke-width: 1.6; }
+text.baro-num { fill: var(--text); font-size: 8px; font-variant-numeric: tabular-nums; }
+.baro-word { fill: var(--muted); font-size: 7.5px; }
+.baro-point { fill: var(--muted); }
+.baro-hand { fill: var(--text); }
+.baro-tail { stroke: var(--text); stroke-width: 4; stroke-linecap: round; }
+.baro-hub { fill: var(--panel-2); stroke: var(--text); stroke-width: 2; }
+.baro-setmark { fill: var(--accent); }
+.baro-setline { stroke: var(--accent); stroke-width: 1.5; }
+.baro-setlabel { fill: var(--muted); font-size: 8px; font-variant-numeric: tabular-nums; }
+.baro-needle, .baro-sethand { transform-origin: 100px 100px; transition: transform .6s ease; }
+@media (prefers-reduced-motion: reduce) { .baro-needle, .baro-sethand { transition: none; } }
+.baro-dial.dim { opacity: .45; }
+.baro-figures { flex: 1 1 220px; min-width: 0; }
+.baro-label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+.baro-value { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.baro-unit { font-size: 18px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.baro-off { display: block; font-weight: 700; color: var(--warn); }
+.baro-tend { margin-top: 8px; font-size: 22px; font-weight: 700; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; border-left: 6px solid var(--grid); padding-left: 10px; }
+.baro-tend[hidden], .baro-hint[hidden], .baro-flag[hidden], .baro-off[hidden], .baro-notes[hidden], .baro-info[hidden] { display: none; }
+.baro-tend.lvl-warn { border-left-color: var(--warn); }
+.baro-tend.lvl-alert { border-left-color: var(--alert); }
+.baro-figure { font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
+.baro-hint { margin-top: 12px; }
+.baro-outlook { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 18px; font-weight: 600; }
+.baro-icon { width: 32px; height: 32px; flex: 0 0 auto; }
+.baro-way { color: var(--muted); font-size: 14px; font-weight: 500; }
+.baro-disclaimer { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.baro-flag { border: 3px solid var(--warn); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; display: flex; gap: 6px 14px; align-items: baseline; flex-wrap: wrap; background: var(--panel-2); }
+.baro-flag.lvl-alert { border-color: var(--alert); }
+.baro-flag-text { font-size: 20px; letter-spacing: .03em; }
+.baro-notes { margin: 10px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.baro-info, .baro-temp { margin: 6px 0 0; font-size: 12px; }
+.baro-temp[hidden] { display: none; }
+.baro-foot { margin: 8px 0 0; font-size: 12px; }
+.baro-no_sensor .baro-figures { display: none; }
+.baro.dim .baro-value, .baro.dim .baro-unit { color: var(--muted); }
+body.layout-phone .baro .baro-dial-host { width: 240px; margin: 0 auto; }
+body.layout-phone .baro-temp, body.layout-wall .baro-temp { display: none; }
+body.layout-phone .baro-value { font-size: 36px; }
+body.layout-wall .baro-dial-host { display: none; }
+body.layout-wall .baro-label { font-size: 24px; }
+body.layout-wall .baro-value { font-size: 96px; }
+body.layout-wall .baro-unit { font-size: 40px; }
+body.layout-wall .baro-tend { font-size: 64px; border-left-width: 14px; }
+body.layout-wall .baro-figure { font-size: 48px; }
+body.layout-wall .baro-outlook { font-size: 48px; }
+body.layout-wall .baro-icon { width: 64px; height: 64px; }
+body.layout-wall .baro-way { font-size: 32px; }
+body.layout-wall .baro-disclaimer, body.layout-wall .baro-info { font-size: 20px; }
+body.layout-wall .baro-flag-text { font-size: 48px; }
+body.layout-wall .baro-flag-line { font-size: 32px; }
+body.layout-wall .baro-notes { font-size: 32px; }
+body.layout-wall .baro-foot { font-size: 20px; }

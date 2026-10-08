@@ -110,6 +110,7 @@
         `Time zone not set. Dashboards use the clock of the computer running Stagewatch (${SW.fmtOffset(t.utc_offset_s || 0)} now). `,
         browserZone ? h("button", { type: "button", class: "touch", onclick: () => save({ timezone: browserZone }) }, `Use ${browserZone} from this browser`) : null);
     }
+    const altHelper = altitudeHelper(alt, save);
     return card("Site",
       h("div", { class: "row" },
         field("Site / show name", name),
@@ -118,6 +119,7 @@
         field("Stale after (s)", stale),
         field("Smoothing τ (s)", tau),
         field("Reject outliers (≥3 sensors)", outl)),
+      altHelper,
       h("div", { class: "row", style: "margin-top:10px" },
         field("Time zone", tz), tzList,
         field("New show day starts at (HH:MM, 24-hour)", rollover)),
@@ -128,6 +130,63 @@
       tzNote,
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { class: "primary", onclick: () => save() }, "Save site")));
+  }
+
+  // "Set altitude from today's sea-level pressure": type the sea-level pressure (QNH) from the Met
+  // Office, a weather app or the nearest airport; the server works out the altitude that makes the
+  // barometer read that figure and sends it back for a look. Nothing is saved until Save is pressed
+  // (it then uses the ordinary Save site path).
+  function altitudeHelper(altInput, save) {
+    const qnh = h("input", { class: "num touch", inputmode: "decimal", placeholder: "1,013.2", maxlength: 9, autocomplete: "off", "aria-label": "Sea-level pressure in hPa" });
+    const out = h("div", { role: "status" });
+    const panel = h("div", { class: "card-inset", hidden: true },
+      h("p", { class: "muted hint" }, "Use the pressure at sea level from the Met Office, a weather app or the nearest airport METAR (QNH), taken in the last hour and within about 20 km. This sets an altitude that makes the barometer read that figure; it may differ a little from the surveyed height. If you know your true height and the readings are off, use the pressure offset in the sensor settings instead."),
+      h("div", { class: "row" }, field("Sea-level pressure (hPa)", qnh),
+        h("button", { type: "button", class: "touch", style: "align-self:flex-end", onclick: work }, "Work out altitude"),
+        h("button", { type: "button", class: "touch", style: "align-self:flex-end", onclick: () => { panel.hidden = true; out.replaceChildren(); } }, "Cancel")),
+      out);
+    async function work() {
+      const n = Number(String(qnh.value).replace(/[,\s]/g, ""));
+      if (!isFinite(n) || String(qnh.value).trim() === "") { out.replaceChildren(h("p", { class: "error" }, "Type the pressure as a number of hPa, for example 1,013.2. Nothing has been changed.")); return; }
+      try {
+        const r = await api("POST", "/api/admin/site/altitude-from-pressure", { qnh_hpa: n });
+        out.replaceChildren(
+          h("p", {}, `Pressure measured here: ${SW.num(r.station_hpa, 1)} hPa (${r.sensors_used} sensor${r.sensors_used === 1 ? "" : "s"}, ${r.station_age_s} s ago). Sea-level pressure you entered: ${SW.num(n, 1)} hPa. `,
+            "That gives an altitude of ", h("strong", {}, `${SW.num(r.altitude_m, 0)} m`), ` (now set to ${SW.num(r.current_altitude_m, 0)} m). Save ${SW.num(r.altitude_m, 0)} m?`),
+          ...r.warnings.map((w) => h("p", { class: "warn-text" }, `▲ ${w}`)),
+          h("div", { class: "row" },
+            h("button", { type: "button", class: "primary touch", onclick: () => { altInput.value = r.altitude_m; save({ altitude_m: r.altitude_m }); } }, `Save ${SW.num(r.altitude_m, 0)} m`),
+            h("button", { type: "button", class: "touch", onclick: () => { out.replaceChildren(); } }, "Cancel")));
+      } catch (err) { out.replaceChildren(h("p", { class: "error" }, err.message)); }
+    }
+    return h("div", { style: "margin-top:10px" },
+      h("button", { type: "button", class: "touch", onclick: () => { panel.hidden = !panel.hidden; if (!panel.hidden) qnh.focus(); } }, "Set altitude from today's sea-level pressure…"),
+      panel);
+  }
+
+  // ------------------------------------------------------------ barometer
+  // Settings for the Barometer card. The card itself is added to a dashboard under User dashboards →
+  // Edit cards. Advisory only.
+  const DEMOS = [["steady", "Settled high"], ["slow_fall", "Slow fall"], ["front", "Front arriving"], ["storm", "Storm"],
+    ["rising", "Clearing"], ["dropout", "Sensor dropout 20 min"], ["none", "No pressure sensor"]];
+  function barometerCard() {
+    const b = admin.config.barometer || {};
+    const hemi = h("select", { class: "touch" }, h("option", { value: "north" }, "Northern (UK, Europe, North America)"), h("option", { value: "south" }, "Southern"));
+    hemi.value = b.hemisphere === "south" ? "south" : "north";
+    const alarm = h("input", { type: "checkbox", checked: !!b.rapid_fall_alarm });
+    const thr = h("input", { class: "num touch", type: "number", step: "0.1", min: "1.5", max: "10", value: b.rapid_fall_hpa_3h === undefined ? 3.6 : b.rapid_fall_hpa_3h });
+    const demos = admin.emulate ? h("div", { class: "row", style: "margin-top:10px" }, h("span", { class: "muted" }, "Demo weather (emulate mode only):"),
+      DEMOS.map((d) => h("button", { type: "button", class: "touch", onclick: () => run(() => api("POST", "/api/admin/barometer/demo", { scenario: d[0] }), `${d[1]} started`).then(refresh, () => {}) }, d[1]))) : null;
+    return card("Barometer",
+      h("p", { class: "muted" }, "Sea-level pressure, how it has changed over 3 hours and a rough outlook, on dashboards that have the Barometer card (User dashboards → Edit cards). It uses the pressure sensors, the site temperature and the altitude in the Site card. It is a guide from pressure at this site only, not a forecast: it does not replace the Met Office forecast and warnings or your event's weather plan."),
+      h("div", { class: "row" }, field("Hemisphere (for the summer and winter months)", hemi),
+        field("Quiet notice and marker when pressure falls quickly", alarm),
+        field("Falls at least this much in 3 h (hPa)", thr),
+        h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/barometer", {
+          hemisphere: hemi.value, rapid_fall_alarm: alarm.checked, rapid_fall_hpa_3h: Number(thr.value) || 3.6,
+        }), "Barometer saved").then(refresh, () => {}) }, "Save")),
+      h("p", { class: "muted hint" }, "The falling-quickly warning on the card is always on. The quiet notice adds a silent line to the alarm list and one marker, and never sounds. 3.6 hPa in 3 hours is the Met Office's \"falling quickly\". The sea-level figure uses the measured temperature; it can differ from airport QNH by a hPa or so."),
+      demos);
   }
 
   function adoptForm(prefill = {}) {
@@ -270,6 +329,7 @@
     markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
     wall_clock: ["Wall Clock", "The time of day, as plain digits, an LED ring or 7-segment digits. Choose the source in the Wall Clock settings."],
+    barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
   const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
@@ -906,6 +966,7 @@
       dashboardsCard(),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, oscCard(), securityCard()),
       wallClockCard(),
+      barometerCard(),
       alarmLogCard(),
       supportCard(),
       catalogCard());
