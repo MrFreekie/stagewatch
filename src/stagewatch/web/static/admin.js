@@ -268,30 +268,87 @@
       h("div", { class: "table-scroll" }, devices.length ? devTable : h("p", { class: "muted" }, "None yet.")));
   }
 
+  // Which sensor groups are open, remembered per node in this browser. Kept in memory too, so a
+  // re-render after Save keeps the state even when the browser has no storage.
+  const SENSOR_OPEN_KEY = "sw.admin.sensors.open";
+  let sensorOpen = null;
+  const loadSensorOpen = () => {
+    if (sensorOpen) return sensorOpen;
+    sensorOpen = {};
+    try {
+      const o = JSON.parse(localStorage.getItem(SENSOR_OPEN_KEY) || "{}");
+      if (o && typeof o === "object") sensorOpen = o;
+    } catch (_) { /* no storage: groups use their default */ }
+    return sensorOpen;
+  };
+  const saveSensorOpen = () => { try { localStorage.setItem(SENSOR_OPEN_KEY, JSON.stringify(sensorOpen)); } catch (_) { /* ignore */ } };
+
   function entitiesCard() {
     const ents = snap.entities.filter((e) => !e.derived);
-    const devName = (id) => (snap.devices.find((d) => d.id === id) || {}).name || id;
-    const rows = ents.map((e) => {
-      // The settings that apply now (hardware record, else legacy entry), so an offset kept only
-      // in a hardware record still shows.
-      const s = (admin.hardware && admin.hardware.settings[e.id]) || admin.config.entities[e.id]
-        || { offset: 0, include_in_average: true };
-      const off = h("input", { class: "num", type: "number", step: "0.01", value: s.offset });
-      const inc = h("input", { type: "checkbox", checked: s.include_in_average });
-      return h("tr", {},
-        h("td", {}, devName(e.device_id), h("div", { class: "muted", style: "font-size:12px" }, e.id)),
-        h("td", {}, e.kind),
-        h("td", { class: "num", dataset: { live: e.id } }, fmt(e.kind, e.value)),
-        h("td", {}, off, h("span", { class: "muted" }, " ", e.unit === "Pa" ? "Pa" : e.unit)),
-        h("td", {}, inc),
-        h("td", {}, h("button", { class: "small", onclick: () => run(() => api("PUT", `/api/admin/entities/${encodeURIComponent(e.id)}`,
-          { offset: Number(off.value) || 0, include_in_average: inc.checked }), "Saved").then(refresh) }, "Save")));
-    });
+    const settingsOf = (e) => (admin.hardware && admin.hardware.settings[e.id]) || admin.config.entities[e.id]
+      || { offset: 0, include_in_average: true };
+    // Same order as the adopted-nodes list; anything else (site rows) goes last, in a "Site" group.
+    const devs = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");
+    const groups = devs.map((d) => ({ id: d.id, name: d.name, status: d.status, ents: ents.filter((e) => e.device_id === d.id) }));
+    const known = new Set(devs.map((d) => d.id));
+    const rest = ents.filter((e) => !known.has(e.device_id));
+    if (rest.length) groups.push({ id: "site", name: "Site", status: "", ents: rest });
+    const shown = groups.filter((g) => g.ents.length);
+    const state = loadSensorOpen();
+
+    const offsetText = (e) => {
+      const o = Number(settingsOf(e).offset) || 0;
+      if (!o) return "";
+      const amount = SW.OFFSET_KINDS.indexOf(e.kind) >= 0 ? SW.fmtCalOffset(e.kind, o) : `${SW.signed(o, 1)} ${e.unit}`.trim();
+      return `${e.name} ${amount}`;
+    };
+    // Inside a node the entity label is enough: drop the node's name from the front of it.
+    const shortName = (g, e) => {
+      const n = e.name || e.kind;
+      return n.indexOf(g.name + " ") === 0 && n.length > g.name.length + 1 ? n.slice(g.name.length + 1) : n;
+    };
+
+    const groupEl = (g) => {
+      const offs = g.ents.map(offsetText).filter(Boolean);
+      const bad = g.status && g.status !== "ok";
+      const defaultOpen = offs.length > 0 || !!bad;
+      const rows = g.ents.map((e) => {
+        const s = settingsOf(e);
+        const label = shortName(g, e);
+        const off = h("input", { class: "num", type: "number", step: "0.01", value: s.offset, "aria-label": `${g.name} ${label} offset` });
+        const inc = h("input", { type: "checkbox", checked: s.include_in_average, "aria-label": `${g.name} ${label} in site average` });
+        return h("tr", { id: `sensor-row-${e.id}` },
+          h("td", {}, label, h("div", { class: "muted", style: "font-size:12px" }, e.id)),
+          h("td", { class: "num", dataset: { live: e.id } }, fmt(e.kind, e.value)),
+          h("td", {}, off, h("span", { class: "muted" }, " ", e.unit)),
+          h("td", {}, inc),
+          h("td", {}, h("button", { class: "small", "aria-label": `Save ${g.name} ${label}`, onclick: () => {
+            const y = window.scrollY;
+            run(() => api("PUT", `/api/admin/entities/${encodeURIComponent(e.id)}`,
+              { offset: Number(off.value) || 0, include_in_average: inc.checked }), "Saved").then(refresh).then(() => window.scrollTo(0, y));
+          } }, "Save")));
+      });
+      const d = h("details", { class: "sensor-group", id: `sensor-group-${g.id}` },
+        h("summary", {},
+          h("span", { class: "sg-name" }, g.name),
+          g.status ? h("span", { class: `status ${g.status}` }, g.status) : null,
+          h("span", { class: "muted" }, `${g.ents.length} ${g.ents.length === 1 ? "sensor" : "sensors"}`),
+          offs.length ? h("span", { class: "muted sg-offs" }, `offset: ${offs.join(", ")}`) : null),
+        h("div", { class: "table-scroll" }, h("table", {},
+          h("thead", {}, h("tr", {}, h("th", {}, "Sensor"), h("th", { class: "num" }, "Value"), h("th", {}, "Offset"), h("th", {}, "Average"), h("th", {}, ""))),
+          h("tbody", {}, rows))));
+      d.open = Object.prototype.hasOwnProperty.call(state, g.id) ? !!state[g.id] : defaultOpen;
+      d.addEventListener("toggle", () => { state[g.id] = d.open; saveSensorOpen(); });
+      return d;
+    };
+    const els = shown.map(groupEl);
+    const setAll = (open) => { els.forEach((d, i) => { d.open = open; state[shown[i].id] = open; }); saveSensorOpen(); };
     return card("Sensors: calibration & averaging",
       h("p", { class: "muted" }, "Offset is added to every reading (compare against a reference such as a Kestrel). Pressure offsets are in Pa (1 hPa = 100 Pa). Untick to leave a sensor out of the site average, e.g. one in direct sun."),
-      h("div", { class: "table-scroll" }, h("table", {},
-        h("thead", {}, h("tr", {}, h("th", {}, "Sensor"), h("th", {}, "Kind"), h("th", { class: "num" }, "Value"), h("th", {}, "Offset"), h("th", {}, "Average"), h("th", {}, ""))),
-        h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: 6, class: "muted" }, "No sensors yet."))))));
+      shown.length ? h("div", { class: "row sg-buttons" },
+        h("button", { class: "touch", onclick: () => setAll(true) }, "Expand all"),
+        h("button", { class: "touch", onclick: () => setAll(false) }, "Collapse all")) : null,
+      shown.length ? els : h("p", { class: "muted" }, "No sensors yet. Add a node under ESPHome nodes."));
   }
 
   function thresholdsCard() {
