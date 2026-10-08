@@ -593,3 +593,13 @@ body.layout-wall .baro-flag-text { font-size: 48px; }
 body.layout-wall .baro-flag-line { font-size: 32px; }
 body.layout-wall .baro-notes { font-size: 32px; }
 body.layout-wall .baro-foot { font-size: 20px; }
+
+/* Admin "Sensors: calibration & averaging": one collapsible group per node */
+.sensor-group { border: 1px solid var(--grid); border-radius: 8px; margin: 8px 0; padding: 0 10px; }
+.sensor-group > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 44px; padding: 4px 0; cursor: pointer; }
+.sensor-group .sg-name { font-weight: 600; }
+.sensor-group .sg-offs { font-size: 12px; }
+.sensor-group .table-scroll { padding-bottom: 8px; }
+.sensor-group td button.small, .sensor-group td input.num { min-height: 44px; }
+.sensor-group td input[type="checkbox"] { width: 24px; height: 24px; margin: 10px; }
+.sg-buttons { margin: 8px 0; }
