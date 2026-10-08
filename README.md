@@ -54,6 +54,7 @@ crew, with every step explained and what you should see after it. Start here:
 - **[Install on a Raspberry Pi](docs/install-raspberry-pi.md)**: a small always-on box, with an optional wall-screen kiosk.
 - **[Build your first sensor node](docs/first-sensor-node.md)**: an ESP32-S3 Feather and a plug-in sensor, no soldering.
 - **[Build a Feather sensor node with a screen](docs/feather-s3-tft-node.md)**: ESP32-S3 TFT Feather and an MS8607 sensor, no soldering.
+- **[Build a pressure node (barometer)](docs/pressure-nodes.md)**: DPS310, MPL3115A2 or BME280 on an S3 Feather, XIAO ESP32C6 or HUZZAH. Not yet tested on hardware.
 - **[Using Stagewatch on show day](docs/using-stagewatch.md)**: dashboards, markers, alarms.
 - More: [updating and backups](docs/updating-and-backups.md) (including a forgotten PIN),
   [troubleshooting](docs/troubleshooting.md) and a [glossary](docs/glossary.md).
@@ -147,6 +148,10 @@ Example configs are in [`esphome/`](esphome/):
 | `stagewatch-feather-s3.yaml` | Adafruit ESP32-S3 Feather (STEMMA QT) + BME280 or SHT45, Wi-Fi |
 | `stagewatch-feather-s3-tft.yaml` | Adafruit ESP32-S3 TFT Feather + BME280 or SHT45, with on-board status display |
 | `stagewatch-s3-tft-ms8607.yaml` | Adafruit ESP32-S3 TFT Feather (5483) + MS8607, with screen. Guide: [Feather sensor node](docs/feather-s3-tft-node.md) |
+| `stagewatch-feather-s3-dps310.yaml` | Adafruit ESP32-S3 Feather (5477) + DPS310, pressure. Guide: [Pressure nodes](docs/pressure-nodes.md) |
+| `stagewatch-xiao-esp32c6-dps310.yaml` | Seeed XIAO ESP32C6 + DPS310, pressure. Guide: [Pressure nodes](docs/pressure-nodes.md) |
+| `stagewatch-feather-esp8266-mpl3115a2.yaml` | Feather HUZZAH ESP8266 + MPL3115A2, pressure cross-check. Guide: [Pressure nodes](docs/pressure-nodes.md) |
+| `stagewatch-feather-esp8266-bme280.yaml` | Feather HUZZAH ESP8266 + BME280 or BMP280. Guide: [Pressure nodes](docs/pressure-nodes.md) |
 
 1. Copy `esphome/secrets.example.yaml` to `esphome/secrets.yaml` (gitignored) and fill it in.
 2. Flash the node: `esphome run esphome/stagewatch-env.yaml`

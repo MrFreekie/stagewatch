@@ -1,7 +1,8 @@
 # Stagewatch barometric-pressure node: Adafruit ESP32-S3 Feather (product 5477,
 # 4MB flash, 2MB PSRAM) + Adafruit DPS310 precision barometric sensor (product
-# 4494) on STEMMA QT. Wi-Fi. One of three pressure nodes (see also
-# stagewatch-xiao-esp32c6-dps310.yaml and stagewatch-feather-esp8266-mpl3115a2.yaml).
+# 4494) on STEMMA QT. Wi-Fi. One of four pressure and environment nodes (see also
+# stagewatch-xiao-esp32c6-dps310.yaml, stagewatch-feather-esp8266-mpl3115a2.yaml and
+# stagewatch-feather-esp8266-bme280.yaml).
 #
 # Hardware (no soldering):
 #   - Adafruit ESP32-S3 Feather, 4MB Flash, 2MB PSRAM (5477)

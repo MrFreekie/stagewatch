@@ -1,7 +1,7 @@
 # Stagewatch environment node: Adafruit Feather HUZZAH ESP8266 (product 2821) +
 # BME280 (temperature, humidity, pressure) OR BMP280 (temperature, pressure,
 # NO humidity) on I2C. Wi-Fi. The owner is not sure which chip is fitted, so this
-# file is written for the BME280 with a marked 3-line BMP280 swap below.
+# file is written for the BME280 with a marked BMP280 alternative below.
 # Candidate hardware: not a core node.
 #
 # Hardware:
@@ -28,7 +28,7 @@
 #     (older BMP280 samples may read 0x56 / 0x57). With the wrong platform the
 #     sensor logs a chip-id error and is marked failed.
 #   - If there is no "Humidity" entity or it reads nothing, or the id is 0x58,
-#     it is a BMP280: do the 3-line swap in the sensor block below.
+#     it is a BMP280: swap in the BMP280 block in the sensor block below.
 #   - The chips look identical; BME280 packages are often marked with a
 #     rectangular metal lid, but do not rely on it.
 #
@@ -145,7 +145,7 @@ light:
 sensor:
   # --- BME280 (chip id 0x60): temperature, humidity, pressure ---
   - platform: bme280_i2c
-    address: 0x76                       # 0x77 on Adafruit and some other boards
+    address: 0x76                       # use the address from the I2C scan: 0x77 on most Adafruit boards, 0x76 on most cheap modules
     update_interval: 5s
     temperature:
       name: "Temperature"
@@ -157,7 +157,7 @@ sensor:
       oversampling: 16x
 
   # --- BMP280 ALTERNATIVE (chip id 0x58): delete the BME280 block above and
-  # --- uncomment this block (3 lines; no humidity). Keep the address from the scan.
+  # --- uncomment this block (no humidity). Keep the address from the scan.
   # - platform: bmp280_i2c
   #   address: 0x76
   #   temperature: { name: "Temperature", oversampling: 16x }

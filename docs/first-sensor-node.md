@@ -9,6 +9,8 @@ Time needed: about 45 minutes the first time (most of it is waiting for the firs
 Building the TFT Feather with the MS8607 sensor instead? Use the
 [Feather sensor node guide](feather-s3-tft-node.md).
 
+Building a barometer (pressure) node instead? Use the [pressure nodes guide](pressure-nodes.md).
+
 > Stagewatch is an advisory tool with no warranty. Check your node's readings against a
 > reference thermometer before you trust it. See the [main README](../README.md#stagewatch).
 
