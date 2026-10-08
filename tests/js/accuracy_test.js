@@ -30,6 +30,12 @@ eq(SW.accuracyShown("pressure", 100), 1, "100 Pa shows as 1 hPa");
 eq(SW.accuracyShown("pressure", 150), 1.5, "150 Pa shows as 1.5 hPa");
 for (const bad of ["", "abc", "0", "-1", "NaN", "Infinity", "21"]) eq(SW.accuracyCanon("temperature", bad), null, `temperature "${bad}" is refused`);
 eq(SW.accuracyCanon("pressure", "51"), null, "above 50 hPa refused");
+eq(SW.accuracyCanon("temperature", "0.009"), null, "below the smallest temperature figure");
+eq(SW.accuracyCanon("temperature", "0.01"), 0.01, "smallest temperature figure");
+eq(SW.accuracyCanon("humidity", "0.05"), null, "below the smallest humidity figure");
+eq(SW.accuracyCanon("pressure", "0.005"), null, "below 1 Pa");
+eq(SW.accuracyCanon("pressure", "0.01"), 1, "0.01 hPa is 1 Pa");
+eq(SW.accuracyCanon("temperature", "1e-200"), null, "tiny figure refused");
 eq(SW.accuracyCanon("speed_of_sound", "1"), null, "other kinds have no accuracy");
 eq(SW.accuracyShown("temperature", null), null, "nothing stored");
 

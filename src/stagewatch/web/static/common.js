@@ -324,9 +324,9 @@ SW.averageAdjusted = (entities, kind) => SW.OFFSET_KINDS.indexOf(kind) >= 0 && e
 // Sensor accuracy ("Accuracy ±"), admin only (never on the public dashboards). The server keeps it
 // in canonical units (°C, %RH, Pa); the admin shows and takes °C, %RH and hPa.
 SW.ACCURACY_KINDS = {
-  temperature: { unit: "°C", factor: 1, max: 20 },
-  humidity: { unit: "%RH", factor: 1, max: 30 },
-  pressure: { unit: "hPa", factor: 100, max: 50 },
+  temperature: { unit: "°C", factor: 1, min: 0.01, max: 20 },
+  humidity: { unit: "%RH", factor: 1, min: 0.1, max: 30 },
+  pressure: { unit: "hPa", factor: 100, min: 0.01, max: 50 },
 };
 // canonical -> number in the display unit (or null)
 SW.accuracyShown = function (kind, canon) {
@@ -334,13 +334,13 @@ SW.accuracyShown = function (kind, canon) {
   if (!k || typeof canon !== "number" || !isFinite(canon) || canon <= 0) return null;
   return Number((canon / k.factor).toPrecision(6));
 };
-// text typed in the display unit -> canonical number, or null when empty, not a number, <= 0 or above the limit
+// text typed in the display unit -> canonical number, or null when empty, not a number, below the smallest or above the largest figure
 SW.accuracyCanon = function (kind, shown) {
   const k = SW.ACCURACY_KINDS[kind];
   const t = String(shown === null || shown === undefined ? "" : shown).trim().replace(",", ".");
   if (!k || t === "") return null;
   const v = Number(t);
-  if (!isFinite(v) || v <= 0 || v > k.max) return null;
+  if (!isFinite(v) || v < k.min || v > k.max) return null;
   return Number((v * k.factor).toPrecision(8));
 };
 // "Accuracy ±2 %RH (typical)", or "" when there is no figure

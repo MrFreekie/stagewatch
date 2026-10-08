@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, CLOCK_STYLES, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
     SiteConfig, Threshold, WallClockConfig,
 )
 from ..core.calibration import set_calibration
@@ -1060,6 +1060,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 raise HTTPException(422, "Accuracy can only be set for temperature, humidity and pressure sensors")
             if body.accuracy is not None and body.accuracy > limit:
                 raise HTTPException(422, "That accuracy figure is too large for this kind of sensor")
+            if body.accuracy is not None and body.accuracy < ACCURACY_MIN[entity.kind.value]:
+                raise HTTPException(422, "That accuracy figure is too small for this kind of sensor")
             if "accuracy" in body.model_fields_set:
                 extra["accuracy"] = body.accuracy
             if "accuracy_basis" in body.model_fields_set:

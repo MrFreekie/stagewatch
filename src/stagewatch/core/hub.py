@@ -18,7 +18,7 @@ from .alarms import AlarmChange, AlarmEngine
 from .barometer import BarometerService
 from .bus import EventBus
 from .calibration import calibration_for as _calibration_for
-from .config import ACCURACY_MAX, Calibration, ConfigStore, EntitySettings
+from .config import ACCURACY_MAX, ACCURACY_MIN, Calibration, ConfigStore, EntitySettings
 from .derived import OUTLIER_LIMITS, AvgInput, AvgResult, Ema, average
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
@@ -363,8 +363,9 @@ class Hub:
         acc = getattr(cal, "accuracy", None)
         basis = getattr(cal, "accuracy_basis", "typical")
         limit = ACCURACY_MAX.get(entity.kind.value)
-        if (acc is None or isinstance(acc, bool) or limit is None
-                or not math.isfinite(acc) or not 0 < acc <= limit):
+        floor = ACCURACY_MIN.get(entity.kind.value)
+        if (acc is None or isinstance(acc, bool) or limit is None or floor is None
+                or not isinstance(acc, (int, float)) or not math.isfinite(acc) or not floor <= acc <= limit):
             return None, basis
         return float(acc), basis
 
@@ -401,10 +402,12 @@ class Hub:
                 state = "in"
             share = result.shares.get(e.id) if state == "in" else None
             sensors[e.id] = {"state": state, "share": share}
+            if share is not None and result.capped == e.id:
+                sensors[e.id]["capped"] = True
         note = ""
         if site.weight_by_accuracy and result.used >= 2:
             if result.weighted:
-                note = "Weighted by accuracy"
+                note = "Weighted by accuracy" + (". Capped at 80 %" if result.capped else "")
             elif result.reason == "missing":
                 n = result.missing
                 note = f"Equal weights: {n} sensor{'s have' if n != 1 else ' has'} no accuracy figure"

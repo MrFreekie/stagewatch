@@ -4,6 +4,7 @@ Weights are inverse-variance: w = 1 / accuracy**2, in canonical units (degC, %RH
 renormalised over the sensors actually in the average. Expected values below are worked by hand.
 """
 
+import math
 import time
 
 import pytest
@@ -23,16 +24,75 @@ A = AvgInput
 
 
 # ------------------------------------------------------------------ the maths
-def test_two_sensors_weights_are_25_to_1():
-    """0.1 and 0.5 degC: w = 1/0.01 = 100 and 1/0.25 = 4, so 25:1. Shares 100/104 = 0.961538
-    and 4/104 = 0.038462. Values 20.0 and 21.0: mean = 20.0 + 0.038462 * 1.0 = 20.038462."""
-    r = average([A("a", 20.0, 0.1), A("b", 21.0, 0.5)], None, True)
-    assert r.weighted and r.used == 2 and r.reason == ""
-    assert r.shares["a"] == pytest.approx(100 / 104)
-    assert r.shares["b"] == pytest.approx(4 / 104)
-    assert r.shares["a"] / r.shares["b"] == pytest.approx(25.0)
-    assert r.mean == pytest.approx(20.0 + 4 / 104)
+def test_two_sensors_weights_as_ratios():
+    """0.1 and 0.15 degC: w = (a_min / a)**2 = 1 and (0.1/0.15)**2 = 4/9, total 13/9. Shares
+    9/13 = 0.692308 and 4/13 = 0.307692 (below the 80 % cap). Values 20.0 and 21.0:
+    mean = 20.0 + (4/13) * 1.0 = 20.307692."""
+    r = average([A("a", 20.0, 0.1), A("b", 21.0, 0.15)], None, True)
+    assert r.weighted and r.used == 2 and r.reason == "" and r.capped == ""
+    assert r.shares["a"] == pytest.approx(9 / 13)
+    assert r.shares["b"] == pytest.approx(4 / 13)
+    assert r.mean == pytest.approx(20.0 + 4 / 13)
     assert sum(r.shares.values()) == pytest.approx(1.0)
+
+
+def test_share_is_capped_at_80_percent_with_two_sensors():
+    """0.1 and 0.5 degC would be 25:1 (96.2 % / 3.8 %). The cap holds the better sensor at 80 %
+    and gives the other the remaining 20 %. Values 20.0 and 21.0: mean = 20.0 + 0.2 = 20.2."""
+    r = average([A("a", 20.0, 0.1), A("b", 21.0, 0.5)], None, True)
+    assert r.weighted and r.capped == "a"
+    assert r.shares["a"] == pytest.approx(0.8) and r.shares["b"] == pytest.approx(0.2)
+    assert r.mean == pytest.approx(20.2)
+
+
+def test_cap_renormalises_the_rest_in_proportion():
+    """0.1, 0.4, 0.4: w = 1, 1/16, 1/16, total 1.125, so the best would be 88.9 %. Capped at
+    0.8; the other two share 0.2 equally (0.1 each). Values 20, 21, 22:
+    mean = 20 + 0.1 * 1 + 0.1 * 2 = 20.3."""
+    r = average([A("a", 20.0, 0.1), A("b", 21.0, 0.4), A("c", 22.0, 0.4)], None, True)
+    assert r.capped == "a"
+    assert r.shares == {"a": pytest.approx(0.8), "b": pytest.approx(0.1), "c": pytest.approx(0.1)}
+    assert r.mean == pytest.approx(20.3)
+
+
+def test_cap_keeps_unequal_rest_in_proportion():
+    """0.1, 0.4, 0.8: w = 1, 1/16, 1/64. The best is capped at 0.8; the rest split 0.2 as
+    (1/16) : (1/64) = 4 : 1, that is 0.16 and 0.04."""
+    r = average([A("a", 20.0, 0.1), A("b", 21.0, 0.4), A("c", 22.0, 0.8)], None, True)
+    assert r.shares == {"a": pytest.approx(0.8), "b": pytest.approx(0.16), "c": pytest.approx(0.04)}
+
+
+def test_exactly_80_percent_is_not_called_capped():
+    """0.1 and 0.2: w = 1 and 1/4, shares exactly 0.8 and 0.2. Nothing is held back."""
+    r = average([A("a", 20.0, 0.1), A("b", 21.0, 0.2)], None, True)
+    assert r.capped == "" and r.shares["a"] == pytest.approx(0.8)
+
+
+def test_a_single_sensor_is_100_percent_and_not_capped():
+    r = average([A("a", 20.0, 0.1)], None, True)
+    assert r.shares == {"a": 1.0} and r.capped == ""
+    # two sensors left after rejection of a third: the cap still applies to those two
+    r = average([A("a", 20.0, 0.1), A("b", 20.4, 0.5), A("c", 31.0, 0.1)], 3.0, True)
+    assert r.rejected == ["c"] and r.capped == "a" and r.shares["b"] == pytest.approx(0.2)
+
+
+def test_identical_values_give_exactly_that_value():
+    """The mean is v0 + sum(share * (v - v0)), so identical readings give the reading, to the bit."""
+    for v in (0.1, 20.1, 1013.25, 101325.3):
+        r = average([A("a", v, 0.1), A("b", v, 0.3), A("c", v, 0.7)], None, True)
+        assert r.weighted and r.mean == v
+
+
+def test_extreme_figures_cannot_overflow_or_make_nan():
+    """The smallest and largest accepted figures together (0.01 and 20 degC): weights are worked as
+    ratios, so the worst is (0.01/20)**2 = 2.5e-7. No overflow, no NaN, and the cap applies."""
+    r = average([A("a", 20.0, 0.01), A("b", 25.0, 20.0)], None, True)
+    assert r.mean == pytest.approx(20.0 + 0.2 * 5.0) and r.capped == "a"
+    for tiny in (1e-6, 1e-170, 5e-324, 1e-200, 0.00999):
+        r = average([A("a", 20.0, tiny), A("b", 21.0, 0.5)], None, True)
+        assert not r.weighted and r.reason == "missing" and r.mean == 20.5
+        r = average([A("a", 20.0, tiny), A("b", 21.0, tiny)], None, True)
+        assert not r.weighted and r.missing == 2 and r.mean == 20.5
 
 
 def test_equal_accuracies_give_the_plain_mean():
@@ -71,8 +131,8 @@ def test_mixed_basis_keeps_equal_weights():
 
 
 def test_same_basis_maximum_is_weighted():
-    r = average([A("a", 20.0, 0.1, "maximum"), A("b", 21.0, 0.5, "maximum")], None, True)
-    assert r.weighted and r.mean == pytest.approx(20.0 + 4 / 104)
+    r = average([A("a", 20.0, 0.1, "maximum"), A("b", 21.0, 0.15, "maximum")], None, True)
+    assert r.weighted and r.mean == pytest.approx(20.0 + 4 / 13)
 
 
 def test_zero_or_negative_accuracy_counts_as_missing():
@@ -82,18 +142,21 @@ def test_zero_or_negative_accuracy_counts_as_missing():
 
 
 def test_three_sensors_weighted_mean():
-    """0.1, 0.1, 0.5 with 20.0, 20.4, 21.0: w = 100, 100, 4 (sum 204).
-    mean = (2000 + 2040 + 84) / 204 = 4124 / 204 = 20.215686."""
+    """0.1, 0.1, 0.5 with 20.0, 20.4, 21.0: w = 1, 1, 0.04 (sum 2.04), best share 0.490196, below
+    the cap. mean = (20 + 20.4 + 0.04 * 21) / 2.04 = 41.24 / 2.04 = 20.215686."""
     r = average([A("a", 20.0, 0.1), A("b", 20.4, 0.1), A("c", 21.0, 0.5)], None, True)
-    assert r.mean == pytest.approx(4124 / 204)
-    assert r.shares["c"] == pytest.approx(4 / 204)
+    assert r.mean == pytest.approx(41.24 / 2.04) and r.capped == ""
+    assert r.shares["c"] == pytest.approx(0.04 / 2.04)
 
 
 def test_dropout_renormalises_the_weights():
-    """Sensor b goes stale (the caller no longer passes it): the others are renormalised,
-    100 and 4 -> (2000 + 84) / 104 = 20.038462, shares 0.961538 / 0.038462, summing to 1."""
-    r = average([A("a", 20.0, 0.1), A("c", 21.0, 0.5)], None, True)
-    assert r.mean == pytest.approx(2084 / 104)
+    """a 0.1, b 0.1, c 0.15: w = 1, 1, 4/9 (total 22/9): shares 9/22, 9/22, 4/22 and
+    mean = (9*20 + 9*20.4 + 4*21) / 22 = 447.6 / 22 = 20.345455. Sensor b goes stale (the caller
+    stops passing it): the rest renormalise to 9/13 and 4/13, mean 20 + 4/13 = 20.307692."""
+    three = average([A("a", 20.0, 0.1), A("b", 20.4, 0.1), A("c", 21.0, 0.15)], None, True)
+    assert three.mean == pytest.approx(447.6 / 22) and three.shares["c"] == pytest.approx(4 / 22)
+    r = average([A("a", 20.0, 0.1), A("c", 21.0, 0.15)], None, True)
+    assert r.mean == pytest.approx(20.0 + 4 / 13)
     assert sum(r.shares.values()) == pytest.approx(1.0)
 
 
@@ -140,14 +203,51 @@ def _hub(tmp_path, weigh=True):
 def test_hub_weights_by_accuracy_and_reports_shares(tmp_path):
     h = _hub(tmp_path)
     set_calibration(h.config, "a.temperature", "", 0.0, True, accuracy=0.1)
+    set_calibration(h.config, "b.temperature", "", 0.0, True, accuracy=0.15)
+    h.update_state("a.temperature", 20.0)
+    h.update_state("b.temperature", 21.0)
+    h.compute_site()
+    assert h.entities["site.temperature"].value == pytest.approx(20.0 + 4 / 13)
+    info = h.average_info["temperature"]
+    assert info["weighted"] and info["note"] == "Weighted by accuracy"
+    assert info["sensors"]["a.temperature"]["share"] == pytest.approx(9 / 13)
+    assert "capped" not in info["sensors"]["a.temperature"]
+
+
+def test_hub_reports_when_the_cap_applies(tmp_path):
+    """0.1 vs 0.5 would be 96 / 4: held at 80 / 20, and the admin is told."""
+    h = _hub(tmp_path)
+    set_calibration(h.config, "a.temperature", "", 0.0, True, accuracy=0.1)
     set_calibration(h.config, "b.temperature", "", 0.0, True, accuracy=0.5)
     h.update_state("a.temperature", 20.0)
     h.update_state("b.temperature", 21.0)
     h.compute_site()
-    assert h.entities["site.temperature"].value == pytest.approx(20.0 + 4 / 104)
+    assert h.entities["site.temperature"].value == pytest.approx(20.2)
     info = h.average_info["temperature"]
-    assert info["weighted"] and info["note"] == "Weighted by accuracy"
-    assert info["sensors"]["a.temperature"]["share"] == pytest.approx(100 / 104)
+    assert info["note"] == "Weighted by accuracy. Capped at 80 %"
+    assert info["sensors"]["a.temperature"] == {"state": "in", "share": pytest.approx(0.8), "capped": True}
+    assert "capped" not in info["sensors"]["b.temperature"]
+    h.recorder.close()
+
+
+def test_hub_tiny_accuracy_figures_are_ignored_and_never_make_nan(tmp_path):
+    """Hand-edited or bypassed figures far below the minimum count as missing: equal weights, a
+    finite site value, no exception in tick, nothing NaN in the smoothing."""
+    h = _hub(tmp_path)
+    h.config.site.smoothing_tau_s = 30
+    for tiny in (1e-6, 1e-170, 5e-324, 1e-200):
+        for ent in ("a.temperature", "b.temperature"):
+            h.config.entities[ent] = EntitySettings.model_construct(
+                offset=0.0, include_in_average=True, accuracy=tiny, accuracy_basis="typical")
+        assert h.accuracy_of(h.entities["a.temperature"])[0] is None
+        h.update_state("a.temperature", 20.0)
+        h.update_state("b.temperature", 21.0)
+        h.tick()
+        v = h.entities["site.temperature"].value
+        assert v is not None and math.isfinite(v) and v == pytest.approx(20.5)
+        assert h.average_info["temperature"]["note"] == "Equal weights: 2 sensors have no accuracy figure"
+        assert math.isfinite(h.entities["site.speed_of_sound"].value)
+    h.recorder.close()
     h.recorder.close()
 
 
@@ -182,7 +282,7 @@ def test_hub_stale_and_excluded_sensors_get_no_share_and_weights_renormalise(tmp
     h = _hub(tmp_path)
     h.register_device(Device("c", "c", "test"))
     h.register_entity(Entity("c.temperature", "c", "c t", Kind.TEMPERATURE))
-    for e, acc in (("a", 0.1), ("b", 0.5), ("c", 0.1)):
+    for e, acc in (("a", 0.1), ("b", 0.15), ("c", 0.1)):
         set_calibration(h.config, f"{e}.temperature", "", 0.0, True, accuracy=acc)
     now = time.time()
     h.update_state("a.temperature", 20.0, now)
@@ -191,8 +291,8 @@ def test_hub_stale_and_excluded_sensors_get_no_share_and_weights_renormalise(tmp
     h.compute_site(now)
     s = h.average_info["temperature"]["sensors"]
     assert s["c.temperature"] == {"state": "stale", "share": None}
-    assert s["a.temperature"]["share"] == pytest.approx(100 / 104)
-    set_calibration(h.config, "b.temperature", "", 0.0, False, accuracy=0.5)   # ticked off
+    assert s["a.temperature"]["share"] == pytest.approx(9 / 13)
+    set_calibration(h.config, "b.temperature", "", 0.0, False, accuracy=0.15)  # ticked off
     h.compute_site(now)
     s = h.average_info["temperature"]["sensors"]
     assert s["b.temperature"] == {"state": "off", "share": None}
@@ -232,10 +332,10 @@ def test_smoothing_restarts_when_the_weighting_changes(tmp_path):
     h.update_state("b.temperature", 21.0, now)
     h.compute_site(now)
     set_calibration(h.config, "a.temperature", "", 0.0, True, accuracy=0.1)
-    set_calibration(h.config, "b.temperature", "", 0.0, True, accuracy=0.5)
+    set_calibration(h.config, "b.temperature", "", 0.0, True, accuracy=0.15)
     h.config.site.weight_by_accuracy = True
     h.compute_site(now + 1)
-    assert h.entities["site.temperature"].value == pytest.approx(20.0 + 4 / 104)   # at once
+    assert h.entities["site.temperature"].value == pytest.approx(20.0 + 4 / 13)   # at once
     h.recorder.close()
 
 
@@ -249,7 +349,7 @@ def test_defaults_and_old_files_load():
 
 
 def test_models_validate_strictly():
-    for bad in (0, -1, float("nan"), float("inf"), 10 ** 6):
+    for bad in (0, -1, float("nan"), float("inf"), 10 ** 6, 1e-6, 1e-170, 5e-324, 1e-200, 0.009):
         with pytest.raises(ValidationError):
             EntitySettings(accuracy=bad)
         with pytest.raises(ValidationError):
@@ -389,6 +489,16 @@ def test_entity_accuracy_validation_has_fixed_text_and_no_echo(client):
     r = _put(client, temp, accuracy=21.0)   # over the 20 degC limit
     assert r.status_code == 422 and r.json()["detail"] == "That accuracy figure is too large for this kind of sensor"
     assert _put(client, temp, accuracy=20.0).status_code == 200
+    for tiny in (1e-6, 1e-200, 5e-324, 0.009):
+        r = _put(client, temp, accuracy=tiny)
+        assert r.status_code == 422 and str(tiny) not in r.text
+    assert _put(client, temp, accuracy=0.01).status_code == 200
+    hum = next(e.id for e in ents if e.kind == Kind.HUMIDITY)
+    r = _put(client, hum, accuracy=0.05)    # fine as a number, under the 0.1 %RH minimum
+    assert r.status_code == 422 and r.json()["detail"] == "That accuracy figure is too small for this kind of sensor"
+    assert _put(client, hum, accuracy=0.1).status_code == 200
+    assert _put(client, press, accuracy=0.5).status_code == 422    # under 1 Pa
+    assert _put(client, press, accuracy=1.0).status_code == 200
     assert _put(client, press, accuracy=5001.0).status_code == 422
     assert _put(client, press, accuracy=5000.0).status_code == 200
     assert _put(client, temp, accuracy=0.1, accuracy_basis="best").status_code == 422

@@ -207,7 +207,11 @@ class EsphomeDeviceConfig(_Model):
 # bounds are what the admin API accepts (a datasheet figure above this is a typing slip). A value
 # outside them in a saved file is ignored when averaging.
 ACCURACY_MAX = {"temperature": 20.0, "humidity": 30.0, "pressure": 5000.0}
+# Smallest figure accepted per kind (a datasheet never claims better; tiny typed figures would
+# otherwise swamp every other sensor, or underflow). Same canonical units.
+ACCURACY_MIN = {"temperature": 0.01, "humidity": 0.1, "pressure": 1.0}
 ACCURACY_MAX_ANY = max(ACCURACY_MAX.values())
+ACCURACY_MIN_ANY = min(ACCURACY_MIN.values())
 ACCURACY_BASES = ("typical", "maximum")
 
 
@@ -218,7 +222,7 @@ class EntitySettings(_Model):
     include_in_average: bool = True
     # Datasheet accuracy (canonical units) and whether it is a typical or a maximum figure.
     # None = not set. Additive: older builds ignore both keys.
-    accuracy: float | None = Field(None, gt=0, le=ACCURACY_MAX_ANY, allow_inf_nan=False)
+    accuracy: float | None = Field(None, ge=ACCURACY_MIN_ANY, le=ACCURACY_MAX_ANY, allow_inf_nan=False)
     accuracy_basis: Literal["typical", "maximum"] = "typical"
 
 
@@ -257,7 +261,7 @@ class Calibration(_Model):
     the board when it is re-adopted.  Canonical units: degC, %RH, Pa."""
     offset: float = Field(0.0, allow_inf_nan=False)
     include_in_average: bool = True
-    accuracy: float | None = Field(None, gt=0, le=ACCURACY_MAX_ANY, allow_inf_nan=False)
+    accuracy: float | None = Field(None, ge=ACCURACY_MIN_ANY, le=ACCURACY_MAX_ANY, allow_inf_nan=False)
     accuracy_basis: Literal["typical", "maximum"] = "typical"
     history: list[CalibrationEntry] = Field(default_factory=list)  # newest first
     chip: str = Field("", max_length=64)  # reserved
@@ -485,7 +489,7 @@ class Config(_Model):
             if isinstance(rec, dict) and ("accuracy" in rec or "accuracy_basis" in rec):
                 acc = rec.get("accuracy")
                 ok_acc = acc is None or (isinstance(acc, (int, float)) and not isinstance(acc, bool)
-                                         and 0 < acc <= ACCURACY_MAX_ANY)
+                                         and ACCURACY_MIN_ANY <= acc <= ACCURACY_MAX_ANY)
                 ok_basis = rec.get("accuracy_basis", "typical") in ACCURACY_BASES
                 if not (ok_acc and ok_basis):
                     bad += 1

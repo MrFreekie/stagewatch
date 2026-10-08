@@ -414,8 +414,11 @@ never on the dashboards.
 5. Click **Save** on that row. You will see, for example, "Accuracy ±1 %RH (typical)" under the value.
 
 To use the figures, tick **Weight the average by accuracy** at the top of the card. A sensor with
-a smaller figure then counts for more: a sensor of ±0.1 °C counts 25 times as much as one of
-±0.5 °C. The **Share** column shows how much each sensor counts in the average right now, as a
+a smaller figure then counts for more: a sensor of ±0.1 °C counts 4 times as much as one of
+±0.2 °C. No sensor ever counts for more than **80 %**, however good its figure, so the site
+average still covers every place you put a sensor and does not turn into one sensor's reading. The
+**Share** column shows "(capped)" when that limit is holding a sensor back. Figures are accepted
+from 0.01 °C, 0.1 %RH and 0.01 hPa upwards. The **Share** column shows how much each sensor counts in the average right now, as a
 percentage. With the switch off, every sensor in the average shares it equally.
 
 Stagewatch only weights temperature, humidity or pressure when **every sensor in that average
@@ -425,9 +428,14 @@ figure". A sensor that is stale, left out by its **Average** tick box, or thrown
 does not count, and the shares of the others adjust to add up to 100 %. Outlier rejection works
 exactly as before.
 
+Where a sensor sits (sun, stage lights, heat from kit, its own warmth, airflow) usually matters
+more than the datasheet figure. Sensors you calibrated against the same reference share that
+reference's error, so averaging them does not remove it.
+
 An offset and an accuracy figure do different jobs. The offset corrects a reading you have
 checked against a reference. The accuracy figure says how far the sensor can still be off. After
-you calibrate a sensor, a smaller figure than the datasheet's may be fair: that is your call.
+you calibrate a sensor, type the uncertainty you are left with (a figure that may be smaller or
+larger than the datasheet's), not the datasheet figure.
 
 How to check it worked: turn the switch on, give two sensors of one kind different figures, and
 watch the **Share** column change to match. Turn the switch off and the shares go back to equal.

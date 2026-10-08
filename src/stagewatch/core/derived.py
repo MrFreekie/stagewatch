@@ -6,6 +6,8 @@ import math
 import statistics
 from dataclasses import dataclass, field
 
+from .config import ACCURACY_MIN_ANY
+
 OUTLIER_LIMITS = {
     "temperature": 3.0,   # degC from the median
     "humidity": 15.0,     # % RH
@@ -46,6 +48,13 @@ class AvgInput:
     basis: str = "typical"
 
 
+# No sensor may count for more than this share of an average with two or more sensors. Weighting
+# is meant to favour the better sensors, not to turn a spatial average (several places in the
+# venue) into one sensor's reading.
+SHARE_CAP = 0.8
+_CAP_EPS = 1e-12
+
+
 @dataclass
 class AvgResult:
     mean: float | None
@@ -55,10 +64,30 @@ class AvgResult:
     weighted: bool = False                                    # True only if accuracy weights were used
     reason: str = ""    # why weighting was not used: "off", "missing", "mixed" or "" (n/a or weighted)
     missing: int = 0    # included sensors with no accuracy figure (reason "missing")
+    capped: str = ""    # id of the sensor held at SHARE_CAP, if any
 
 
 def _usable(acc: float | None) -> bool:
-    return acc is not None and math.isfinite(acc) and acc > 0
+    """A figure that can be a weight: finite and at least the smallest accepted figure."""
+    return acc is not None and math.isfinite(acc) and acc >= ACCURACY_MIN_ANY
+
+
+def _shares_from_accuracy(accs: list[float]) -> tuple[list[float], int]:
+    """Shares for inverse-variance weights ``w = 1 / a**2``, worked as ratios to the smallest
+    figure, ``w_i = (a_min / a_i)**2``, so nothing can overflow (the best sensor has w = 1 and
+    the rest are between 0 and 1). The largest share is then held at SHARE_CAP, the rest
+    renormalised to fill what is left in proportion to their weights. Returns (shares, index of the
+    capped sensor or -1)."""
+    a_min = min(accs)
+    w = [(a_min / a) ** 2 for a in accs]
+    total = sum(w)
+    shares = [x / total for x in w]
+    top = max(range(len(shares)), key=shares.__getitem__)
+    if len(shares) >= 2 and shares[top] > SHARE_CAP + _CAP_EPS:
+        rest = total - w[top]
+        shares = [SHARE_CAP if i == top else (1.0 - SHARE_CAP) * w[i] / rest for i in range(len(w))]
+        return shares, top
+    return shares, -1
 
 
 def average(inputs: list[AvgInput], max_deviation: float | None, weight_by_accuracy: bool) -> AvgResult:
@@ -67,8 +96,10 @@ def average(inputs: list[AvgInput], max_deviation: float | None, weight_by_accur
     1. Outlier rejection works exactly as in ``robust_mean`` (it looks at the values only).
     2. If ``weight_by_accuracy`` is on, and every sensor still in the average has an accuracy
        figure, and the figures all have the same basis (typical or maximum), each gets the
-       inverse-variance weight ``w = 1 / accuracy**2``. The mean is ``sum(w*v) / sum(w)`` over the
-       sensors that stayed in, so the weights are renormalised after any sensor drops out.
+       inverse-variance weight ``w = 1 / accuracy**2`` (worked as ratios, see
+       ``_shares_from_accuracy``), renormalised over the sensors that stayed in, and no sensor
+       counts for more than SHARE_CAP. The mean is ``v0 + sum(share * (v - v0))``, which gives
+       exactly ``v0`` when all the values are the same.
     3. Otherwise every sensor counts equally (``reason`` says why).
     Sensors that were left out earlier (stale, switched off) must not be passed in."""
     live = [i for i in inputs if i.value is not None and math.isfinite(i.value)]
@@ -79,7 +110,7 @@ def average(inputs: list[AvgInput], max_deviation: float | None, weight_by_accur
     keep_set = set(keep)
     rejected = [live[i].id for i in range(len(live)) if i not in keep_set]
     n = len(kept)
-    weights = None
+    use_weights = False
     reason, missing = "", 0
     if not weight_by_accuracy:
         reason = "off"
@@ -90,16 +121,17 @@ def average(inputs: list[AvgInput], max_deviation: float | None, weight_by_accur
         elif len({k.basis for k in kept}) > 1:
             reason = "mixed"
         else:
-            weights = [1.0 / (k.accuracy ** 2) for k in kept]
-    if weights is None:
+            use_weights = True
+    if not use_weights:
         # Equal weights: the same arithmetic as robust_mean, so nothing changes when weighting is off.
         mean = sum(k.value for k in kept) / n
         shares = {k.id: 1.0 / n for k in kept}
         return AvgResult(mean, n, shares, rejected, False, reason, missing)
-    total = sum(weights)
-    shares = {k.id: w / total for k, w in zip(kept, weights)}
-    mean = sum(shares[k.id] * k.value for k in kept)
-    return AvgResult(mean, n, shares, rejected, True, "", 0)
+    share_list, top = _shares_from_accuracy([k.accuracy for k in kept])
+    v0 = kept[0].value
+    mean = v0 + sum(s * (k.value - v0) for s, k in zip(share_list, kept))
+    shares = {k.id: s for s, k in zip(share_list, kept)}
+    return AvgResult(mean, n, shares, rejected, True, "", 0, kept[top].id if top >= 0 else "")
 
 
 class Ema:

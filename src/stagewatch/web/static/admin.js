@@ -348,10 +348,10 @@
       return n.indexOf(g.name + " ") === 0 && n.length > g.name.length + 1 ? n.slice(g.name.length + 1) : n;
     };
 
-    const shareText = (sh) => (sh && sh.state === "in" ? SW.fmtShare(sh.share) : sh && sh.state === "stale" ? "Stale" : sh && sh.state === "outlier" ? "Left out" : "—");
+    const shareText = (sh) => (sh && sh.state === "in" ? SW.fmtShare(sh.share) + (sh.capped ? " (capped)" : "") : sh && sh.state === "stale" ? "Stale" : sh && sh.state === "outlier" ? "Left out" : "—");
     const shareTitle = (sh) => (!sh ? "" : sh.state === "off" ? "Not in the site average (ticked off)"
       : sh.state === "stale" ? "No recent reading, so left out of the average" : sh.state === "outlier" ? "Reading far from the others, so left out of the average"
-      : sh.state === "none" ? "No reading yet" : "Share of the site average now");
+      : sh.state === "none" ? "No reading yet" : sh.capped ? "Capped at 80 %: this sensor would otherwise have counted for more" : "Share of the site average now");
     const groupEl = (g) => {
       const offs = g.ents.map(offsetText).filter(Boolean);
       const bad = g.status && g.status !== "ok";
@@ -408,10 +408,11 @@
           h("td", {}, h("button", { class: "small", "aria-label": `Save ${g.name} ${label}`, onclick: () => {
             const y = window.scrollY;
             const accBody = readAccuracy();
-            if (accBody === null) { toast(`Type the accuracy as a number above 0 and up to ${accKind.max} ${accKind.unit}, for example 0.5. Nothing has been changed.`, true); return; }
-            run(() => api("PUT", `/api/admin/entities/${encodeURIComponent(e.id)}`,
-              Object.assign({ offset: Number(off.value) || 0, include_in_average: inc.checked }, accBody)), "Saved")
-              .then(afterTick).then(refresh, (err) => { if (err.status === 422) toast("That accuracy figure was not accepted. Nothing has been changed.", true); })
+            if (accBody === null) { toast(`Type the accuracy as a number from ${accKind.min} to ${accKind.max} ${accKind.unit}, for example 0.5. Nothing has been changed.`, true); return; }
+            api("PUT", `/api/admin/entities/${encodeURIComponent(e.id)}`,
+              Object.assign({ offset: Number(off.value) || 0, include_in_average: inc.checked }, accBody))
+              .then(() => { toast("Saved"); return afterTick(); }).then(refresh,
+                (err) => toast(err.status === 422 ? "That accuracy figure was not accepted. Nothing has been changed." : err.message, true))
               .then(() => window.scrollTo(0, y));
           } }, "Save")));
       });
@@ -441,9 +442,10 @@
     return card("Sensors: calibration & averaging",
       h("p", { class: "muted" }, "Offset is added to every reading (compare against a reference such as a Kestrel). Pressure offsets are in Pa (1 hPa = 100 Pa). Untick to leave a sensor out of the site average, e.g. one in direct sun."),
       h("label", { class: "field inline" }, weigh, " Weight the average by accuracy"),
-      h("p", { class: "muted hint" }, "Off: every sensor in the average counts the same. On: a sensor with a smaller accuracy figure counts for more. This only applies to temperature, humidity or pressure when every sensor in that average has an accuracy figure and the figures are all typical or all maximum. Otherwise that one uses equal weights, and the reason is shown here. Share is how much each sensor counts in the average now."),
+      h("p", { class: "muted hint" }, "Off: every sensor in the average counts the same. On: a sensor with a smaller accuracy figure counts for more, but no sensor counts for more than 80 %, so the average still covers the places you put sensors. This only applies to temperature, humidity or pressure when every sensor in that average has an accuracy figure and the figures are all typical or all maximum. Otherwise that one uses equal weights, and the reason is shown here. Share is how much each sensor counts in the average now."),
       notes,
-      h("p", { class: "muted hint" }, "Accuracy is the maker's ± figure from the datasheet, in °C, %RH or hPa. Typical is the usual figure; maximum is the worst case. Presets fill the typical figure from the manufacturer's page: check it against your sensor's datasheet, and change it if you know better. Accuracy is only shown here, not on the dashboards."),
+      h("p", { class: "muted hint" }, "Accuracy is the maker's ± figure from the datasheet, in °C, %RH or hPa. Typical is the usual figure; maximum is the worst case. Presets fill the typical figure from the manufacturer's page: check it against your sensor's datasheet, and change it if you know better."),
+      h("p", { class: "muted hint" }, "After you calibrate a sensor, type the uncertainty you are left with, not the datasheet figure. Sensors calibrated against the same reference share that reference's error, so averaging them does not remove it. Where a sensor sits (sun, lights, heat, its own warmth, airflow) usually matters more than the datasheet. Accuracy is only shown here, not on the dashboards."),
       shown.length ? foldButtons(setAll) : null,
       shown.length ? els : h("p", { class: "muted" }, "No sensors yet. Add a node under ESPHome nodes."));
   }
@@ -1249,7 +1251,7 @@
         for (const k of Object.keys(live.averages)) {
           for (const [id, sh] of Object.entries(live.averages[k].sensors)) {
             const el = document.querySelector(`[data-share="${CSS.escape(id)}"]`);
-            if (el) el.textContent = sh.state === "in" ? SW.fmtShare(sh.share) : sh.state === "stale" ? "Stale" : sh.state === "outlier" ? "Left out" : "—";
+            if (el) el.textContent = sh.state === "in" ? SW.fmtShare(sh.share) + (sh.capped ? " (capped)" : "") : sh.state === "stale" ? "Stale" : sh.state === "outlier" ? "Left out" : "—";
           }
         }
         const nl = document.querySelector("[data-weight-notes]");
