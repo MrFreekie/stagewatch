@@ -37,8 +37,7 @@ SW.wc = (function () {
   // Options with defaults; anything unexpected falls back to the default.
   wc.options = function (d) {
     d = d && typeof d === "object" ? d : {};
-    return { hour12: d.hour12 === true, showDate: d.show_date === true, ring: d.ring === "fill" ? "fill" : "sweep",
-      colonBlink: d.colon_blink === true };
+    return { hour12: d.hour12 === true, showDate: d.show_date === true, colonBlink: d.colon_blink === true };
   };
 
   wc.wholeHours = (off) => Math.abs(off) >= 1800 && Math.abs(Math.abs(off) - Math.round(Math.abs(off) / 3600) * 3600) < 5;
@@ -137,25 +136,26 @@ SW.wc = (function () {
     };
   }
 
-  // ring: 60 LEDs round a circle (viewBox 200 x 200), every fifth one a brighter, larger hour
-  // marker, the time as SVG text in the middle.
-  const RING_R = 88;
+  // ring: an OUTER ring of 60 seconds LEDs and an INNER ring of 12 hour marks (always lit,
+  // brighter), the time as SVG text in the middle (viewBox 220 x 220). The seconds fill up:
+  // second s lights LEDs 0..s-1, so every earlier second of the minute stays lit and the whole
+  // ring is dark at :00, which makes the minute rollover unmistakable.
+  const RING_R = 102, MARK_R = 78;
   function ringFace() {
     const leds = [];
-    const svg = S("svg", { viewBox: "0 0 200 200", width: "200", height: "200", role: "img", class: "wc-svg" });
+    const svg = S("svg", { viewBox: "0 0 220 220", width: "220", height: "220", role: "img", class: "wc-svg" });
+    const at = (r, i, n) => { const a = (i * 2 * Math.PI) / n; return { cx: (110 + r * Math.sin(a)).toFixed(2), cy: (110 - r * Math.cos(a)).toFixed(2) }; };
     for (let i = 0; i < 60; i++) {
-      const a = (i * 6 * Math.PI) / 180, hour = i % 5 === 0;
-      const c = S("circle", { cx: (100 + RING_R * Math.sin(a)).toFixed(2), cy: (100 - RING_R * Math.cos(a)).toFixed(2),
-        r: hour ? "4" : "2.2", class: hour ? "led hr" : "led" });
+      const c = S("circle", Object.assign(at(RING_R, i, 60), { r: "2.6", class: "led" }));
       leds.push(c);
       svg.append(c);
     }
-    const parts = { hh: S("tspan"), c1: S("tspan", { class: "colon" }), mm: S("tspan"), c2: S("tspan", { class: "colon" }), ss: S("tspan") };
+    for (let i = 0; i < 12; i++) svg.append(S("circle", Object.assign(at(MARK_R, i, 12), { r: "4.2", class: "led mark" })));    const parts = { hh: S("tspan"), c1: S("tspan", { class: "colon" }), mm: S("tspan"), c2: S("tspan", { class: "colon" }), ss: S("tspan") };
     setText(parts.c1, ":"); setText(parts.c2, ":");
-    const text = S("text", { x: "100", y: "115", "text-anchor": "middle", class: "wc-digits" },
+    const text = S("text", { x: "110", y: "120", "text-anchor": "middle", class: "wc-digits" },
       parts.hh, parts.c1, parts.mm, parts.c2, parts.ss);
-    const suffix = S("text", { x: "100", y: "139", "text-anchor": "middle", class: "wc-suffix" });
-    const strike = S("line", { x1: "30", y1: "103", x2: "170", y2: "103", class: "wc-strike" });
+    const suffix = S("text", { x: "110", y: "146", "text-anchor": "middle", class: "wc-suffix" });
+    const strike = S("line", { x1: "40", y1: "110", x2: "180", y2: "110", class: "wc-strike" });
     svg.append(text, suffix, strike);
     const el = SW.h("div", {}, svg);
     const seen = new Array(60).fill("");
@@ -164,15 +164,14 @@ SW.wc = (function () {
       style: "ring", el,
       update(v, opts) {
         faceClass(el, "ring", v);
-        // Which LEDs are lit: none when stale or offline (the hour markers and faint dots stay).
+        // Seconds LEDs lit: 0..s-1, frozen (and dimmed by CSS) when stale, none when offline. The hour marks stay lit.
         const want = new Array(60).fill("");
-        if (v.sec !== null && v.state !== "stale") {
+        if (v.sec !== null) {
           const s = v.sec % 60;
-          if (opts.ring === "fill") { for (let i = 0; i <= s; i++) want[i] = "on"; }
-          else { want[s] = "on"; want[(s + 59) % 60] = "t1"; want[(s + 58) % 60] = "t2"; }
+          for (let i = 0; i < s; i++) want[i] = "on";
         }
         for (let i = 0; i < 60; i++) {
-          if (seen[i] !== want[i]) { seen[i] = want[i]; setAttr(leds[i], "class", (i % 5 === 0 ? "led hr" : "led") + (want[i] ? ` ${want[i]}` : "")); }
+          if (seen[i] !== want[i]) { seen[i] = want[i]; setAttr(leds[i], "class", "led" + (want[i] ? " on" : "")); }
         }
         const t = v.state === "off" ? { hh: "--", mm: "--", ss: "--" } : v.parts;
         setText(parts.hh, t.hh); setText(parts.mm, t.mm); setText(parts.ss, t.ss);

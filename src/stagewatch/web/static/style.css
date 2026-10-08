@@ -388,6 +388,9 @@ dialog.sw-dialog .pre-wrap { max-height: 32vh; }
 .card-pick input { flex: none; }
 .card-pick > span { display: flex; flex-direction: column; min-width: 0; }
 .card-pick .muted { font-size: 13px; }
+.card-picker li .card-look { flex: 0 0 190px; }
+.card-picker li .card-look select { min-height: 44px; }
+@media (max-width: 700px) { .card-picker li { flex-wrap: wrap; } .card-picker li .card-look { flex: 1 1 100%; order: 3; } }
 .card-picker button { min-width: 44px; min-height: 44px; padding: 4px 10px; border-color: var(--muted); }   /* the panel and the button share a background in the light theme: the outline shows where to tap */
 .card-picker button:disabled { border-color: var(--grid); }
 .no-flex-gap .card-picker li > *, .no-flex-gap .card-pick > * { margin-right: 10px; }
@@ -449,12 +452,10 @@ body.layout-wall #wall-clock-card > h2 { font-size: 24px; }
 .wc-strike { display: none; }
 .wc-s-stale .wc-strike { display: inline; stroke: var(--warn); stroke-width: 4; }
 .led { fill: var(--led-off); }
-.led.hr { fill: var(--led-dim); }
 .led.on { fill: var(--led-on); }
-.led.hr.on { fill: var(--led-hour); }
-.led.t1 { fill: var(--led-on); fill-opacity: .6; }
-.led.t2 { fill: var(--led-on); fill-opacity: .3; }
-.wc-digits { fill: var(--led-on); font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.led.mark { fill: var(--led-hour); }
+.wc-s-stale .led.on { fill: var(--led-dim); }
+.wc-digits { fill: var(--led-on); font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .wc-ring .wc-suffix { fill: var(--led-on); font-size: 13px; font-weight: 700; }
 .wc-s-stale .wc-digits { fill: var(--led-dim); }
 .wc-s-off .wc-digits { fill: var(--led-dim); }

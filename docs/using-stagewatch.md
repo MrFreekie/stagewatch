@@ -452,18 +452,17 @@ the other source by itself: if Ontime stops, the card says so.
    `http://127.0.0.1:4001`. Click **Test connection**. **What you'll see:** "Ontime 4.14.0 answered."
    (your version number). Optional: change **Warn if more than this many seconds out**. The
    default is 2 seconds.
-4. Optional: choose **24-hour** or **12-hour (am/pm)**, tick **Show the date**, choose the **Ring
-   style** (one moving light, or lights that fill up each minute) and tick **Colons blink**. These
+4. Optional: choose **24-hour** or **12-hour (am/pm)**, tick **Show the date** and tick **Colons blink**. These
    apply to every dashboard.
 5. Click **Save**.
 6. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Wall Clock**, choose its
-   **Wall Clock look** and click **Save dashboards**.
+   **Wall Clock look** (it appears beside the Wall Clock tick box) and click **Save dashboards**.
 
 The look is set for each dashboard, so the wall can show the ring while a phone shows plain digits:
 
 - **Plain digits**: the time in large digits.
-- **LED ring**: 60 lights round a circle with the time in the middle, and a brighter light for each
-  hour. On a card narrower than about 280 pixels it shows plain digits instead.
+- **LED ring**: an outer ring of 60 lights that fill up through each minute (all dark at :00, all
+  lit by :59), an inner ring of 12 brighter hour lights, and the time in the middle. On a card narrower than about 280 pixels it shows plain digits instead.
 - **7-segment digits**: the time as on a studio clock, with the unlit segments faintly visible.
 
 The ring and the 7-segment look are always red on black, by day and by night.
