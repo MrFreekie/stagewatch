@@ -270,18 +270,46 @@
 
   // Which sensor groups are open, remembered per node in this browser. Kept in memory too, so a
   // re-render after Save keeps the state even when the browser has no storage.
-  const SENSOR_OPEN_KEY = "sw.admin.sensors.open";
-  let sensorOpen = null;
-  const loadSensorOpen = () => {
-    if (sensorOpen) return sensorOpen;
-    sensorOpen = {};
-    try {
-      const o = JSON.parse(localStorage.getItem(SENSOR_OPEN_KEY) || "{}");
-      if (o && typeof o === "object") sensorOpen = o;
-    } catch (_) { /* no storage: groups use their default */ }
-    return sensorOpen;
-  };
-  const saveSensorOpen = () => { try { localStorage.setItem(SENSOR_OPEN_KEY, JSON.stringify(sensorOpen)); } catch (_) { /* ignore */ } };
+  // The same store and buttons serve the Sensors, Connect a tablet and Software cards.
+  function foldStore(storageKey) {
+    let state = null;
+    const load = () => {
+      if (state) return state;
+      state = {};
+      try {
+        const o = JSON.parse(localStorage.getItem(storageKey) || "{}");
+        if (o && typeof o === "object") state = o;
+      } catch (_) { /* no storage: groups use their default */ }
+      return state;
+    };
+    const save = () => { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch (_) { /* ignore */ } };
+    const store = {
+      state: load,
+      save,
+      isOpen: (id, dflt) => (Object.prototype.hasOwnProperty.call(load(), id) ? !!state[id] : dflt),
+      // Set up a <details>: open by the remembered choice (else dflt); `force` keeps it open and
+      // remembers nothing. Only a person's own toggle is remembered, never a default.
+      bind(d, id, dflt, force) {
+        let skip = 0;
+        if (force || store.isOpen(id, dflt)) { d.open = true; skip = 1; }   // this change fires one toggle event: ignore it
+        d.addEventListener("toggle", () => {
+          if (skip) { skip = 0; return; }
+          if (force) { d.open = true; return; }
+          load()[id] = d.open; save();
+        });
+        return d;
+      },
+      setAll(els, ids, open) { els.forEach((d, i) => { d.open = open; load()[ids[i]] = open; }); save(); },
+    };
+    return store;
+  }
+  // Expand all / Collapse all for a list of folds.
+  const foldButtons = (onAll) => h("div", { class: "row sg-buttons" },
+    h("button", { class: "touch", onclick: () => onAll(true) }, "Expand all"),
+    h("button", { class: "touch", onclick: () => onAll(false) }, "Collapse all"));
+  const sensorFolds = foldStore("sw.admin.sensors.open");
+  const connectFolds = foldStore("sw.admin.connect.open2");
+  const softwareFolds = foldStore("sw.admin.software.open");
 
   function entitiesCard() {
     const ents = snap.entities.filter((e) => !e.derived);
@@ -294,7 +322,7 @@
     const rest = ents.filter((e) => !known.has(e.device_id));
     if (rest.length) groups.push({ id: "site", name: "Site", status: "", ents: rest });
     const shown = groups.filter((g) => g.ents.length);
-    const state = loadSensorOpen();
+    const state = sensorFolds.state();
 
     const offsetText = (e) => {
       const o = Number(settingsOf(e).offset) || 0;
@@ -338,16 +366,14 @@
           h("thead", {}, h("tr", {}, h("th", {}, "Sensor"), h("th", { class: "num" }, "Value"), h("th", {}, "Offset"), h("th", {}, "Average"), h("th", {}, ""))),
           h("tbody", {}, rows))));
       d.open = Object.prototype.hasOwnProperty.call(state, g.id) ? !!state[g.id] : defaultOpen;
-      d.addEventListener("toggle", () => { state[g.id] = d.open; saveSensorOpen(); });
+      d.addEventListener("toggle", () => { state[g.id] = d.open; sensorFolds.save(); });
       return d;
     };
     const els = shown.map(groupEl);
-    const setAll = (open) => { els.forEach((d, i) => { d.open = open; state[shown[i].id] = open; }); saveSensorOpen(); };
+    const setAll = (open) => sensorFolds.setAll(els, shown.map((g) => g.id), open);
     return card("Sensors: calibration & averaging",
       h("p", { class: "muted" }, "Offset is added to every reading (compare against a reference such as a Kestrel). Pressure offsets are in Pa (1 hPa = 100 Pa). Untick to leave a sensor out of the site average, e.g. one in direct sun."),
-      shown.length ? h("div", { class: "row sg-buttons" },
-        h("button", { class: "touch", onclick: () => setAll(true) }, "Expand all"),
-        h("button", { class: "touch", onclick: () => setAll(false) }, "Collapse all")) : null,
+      shown.length ? foldButtons(setAll) : null,
       shown.length ? els : h("p", { class: "muted" }, "No sensors yet. Add a node under ESPHome nodes."));
   }
 
@@ -836,7 +862,14 @@
   function rerenderSoftware() {
     swBadge().hidden = !(sw && sw.update_available);
     const old = document.getElementById("software");
-    if (old) old.replaceWith(softwareCard());
+    if (!old) return;
+    // Keep the scroll position and, if it can be found again, the focused control.
+    const y = window.scrollY;
+    const ae = document.activeElement;
+    const focusId = ae && ae.id && old.contains(ae) ? ae.id : "";
+    old.replaceWith(softwareCard());
+    if (focusId) { const f = document.getElementById(focusId); if (f && !f.disabled) f.focus({ preventScroll: true }); }
+    window.scrollTo(0, y);
   }
   async function swAction(fn, okMsg) {
     try { const r = await fn(); if (okMsg) toast(okMsg); return r; }
@@ -949,14 +982,13 @@
     if (!sw.mutable) {
       return el(info, h("p", { class: "muted" }, sw.message || "In-app updates are only available on a managed install."));
     }
-    const sub = (text) => h("h3", { class: "sw-sub" }, text);
     const chanName = (c) => (c === "nightly" ? "Nightly" : "Stable");
     const checkedAt = (last) => SW.fmtTime(last.ts, { date: true });
     const chan = h("select", { id: "sw-channel" }, [["stable", "Stable"], ["nightly", "Nightly"]].map(([v, l]) => h("option", { value: v }, l)));
     chan.value = sw.channel;
     chan.onchange = () => swAction(() => api("PUT", "/api/admin/software/channel", { channel: chan.value }), "Channel changed");
     const busy = sw.job.running || sw.restarting;
-    const checkBtn = h("button", { disabled: busy, onclick: async (ev) => {
+    const checkBtn = h("button", { id: "sw-check", disabled: busy, onclick: async (ev) => {
       ev.target.disabled = true;
       ev.target.textContent = "Checking…";
       const r = await swAction(() => api("POST", "/api/admin/software/check"));
@@ -975,7 +1007,7 @@
       last.schema_changed ? h("p", { class: "warn-text" }, "⚠ This update changes the data format; a backup is made first.") : null,
       changesText(last) ? [h("div", { class: "muted", style: "font-size:12px;margin-top:8px" }, "What's changed"),
         h("div", { class: "pre-wrap", tabindex: "0", role: "region", "aria-label": "What's changed" }, changesText(last))] : null,
-      h("button", { class: "primary sw-go", disabled: sw.restarting, onclick: () => startUpdate(last) }, "Update now…"));
+      h("button", { id: "sw-update", class: "primary sw-go", disabled: sw.restarting, onclick: () => startUpdate(last) }, "Update now…"));
 
     // Nightly builds keep the release's version number, so show the commit when the versions match.
     const histLabel = (e) => {
@@ -989,51 +1021,78 @@
         h("div", {}, h("strong", {}, histLabel(e)), `  ${e.action || ""}: `,
           h("span", { class: e.result === "ok" ? "sw-ok" : "warn-text" }, (e.result === "ok" ? "✓ " : "⚠ ") + e.result), e.reason ? ` (${e.reason})` : ""),
         h("div", { class: "muted", style: "font-size:12px" }, when(e.ts))),
-      e.can_rollback ? h("button", { class: "small danger", disabled: sw.restarting, onclick: () => startRollback(e) }, "Roll back…") : null)))
+      e.can_rollback ? h("button", { id: `sw-rb-${e.id}`, class: "small danger", disabled: sw.restarting, onclick: () => startRollback(e) }, "Roll back…") : null)))
       : h("p", { class: "muted" }, "No updates yet.");
-    const sizes = (rows, label) => rows.length ? h("div", {}, sub(label),
-      h("table", {}, h("tbody", {}, rows.map((r) => h("tr", {}, h("td", { class: "mono" }, r.id || r.name), h("td", { class: "num" }, bytes(r.size)))))))
-      : null;
+    const sizeTable = (rows) => h("table", {}, h("tbody", {}, rows.map((r) => h("tr", {}, h("td", { class: "mono" }, r.id || r.name), h("td", { class: "num" }, bytes(r.size))))));
+    const total = (rows) => bytes(rows.reduce((n, r) => n + (r.size || 0), 0));
 
-    return el(sub("Installed"), info,
-      sub("Updates"),
-      h("div", { class: "row sw-controls" }, h("label", { class: "field", for: "sw-channel" }, "Channel", chan), checkBtn),
-      sw.channel === "nightly" ? h("p", { class: "warn-text" }, "Nightly is bleeding edge, tested automatically only. Don't run it on show days.") : null,
-      sw.restarting ? h("p", { class: "warn-text", role: "status" }, "Restarting for an update…") : null,
-      result,
-      sub("Update history"), hist,
-      sizes(sw.backups, "Data backups"), sizes(sw.displaced, "Displaced data (set aside by a restore)"));
+    // One fold per section, with a one-line status in the summary.
+    const updating = sw.job.running || sw.restarting;
+    const newest = sw.history[0];
+    const available = !!(last && last.ok && last.available);
+    let updStatus;
+    if (sw.restarting) updStatus = "restarting";
+    else if (sw.job.running) updStatus = "working…";
+    else if (available) updStatus = `update available ${last.target_version || ""}`.trim();
+    else if (!last) updStatus = "not checked yet";
+    else if (!last.ok) updStatus = "last check failed";
+    else updStatus = `up to date, checked ${SW.fmtTime(last.ts)}`;
+    const histFailed = !!(newest && newest.result !== "ok");
+    const sections = [
+      { key: "installed", label: "Installed", status: sw.describe, dflt: true, body: [info] },
+      { key: "updates", label: "Updates", status: updStatus, dflt: true, force: available || updating || !!sw.update_available,
+        body: [h("div", { class: "row sw-controls" }, h("label", { class: "field", for: "sw-channel" }, "Channel", chan), checkBtn),
+          sw.channel === "nightly" ? h("p", { class: "warn-text" }, "Nightly is bleeding edge, tested automatically only. Don't run it on show days.") : null,
+          sw.restarting ? h("p", { class: "warn-text", role: "status" }, "Restarting for an update…") : null,
+          result] },
+      { key: "history", label: "History", status: sw.history.length ? (histFailed ? "last update failed" : `${sw.history.length} ${sw.history.length === 1 ? "entry" : "entries"}`) : "no updates yet",
+        dflt: histFailed, body: [hist] },
+      sw.backups.length ? { key: "backups", label: "Data backups", status: `${sw.backups.length}, ${total(sw.backups)}`, dflt: false, body: [sizeTable(sw.backups)] } : null,
+      sw.displaced.length ? { key: "displaced", label: "Displaced data", status: `${sw.displaced.length}, ${total(sw.displaced)}`, dflt: false,
+        body: [h("p", { class: "muted" }, "Set aside by a restore."), sizeTable(sw.displaced)] } : null,
+    ].filter(Boolean);
+    const folds = sections.map((s) => {
+      const d = h("details", { class: "sensor-group sw-fold", id: `sw-fold-${s.key}` },
+        h("summary", { id: `sw-sum-${s.key}` },
+          h("span", { class: "sg-name" }, s.label + ":"),
+          h("span", { class: `muted${s.key === "updates" && available ? " sw-flag" : ""}` }, s.status)),
+        h("div", { class: "sw-fold-body" }, s.body));
+      return softwareFolds.bind(d, s.key, s.dflt, s.force);
+    });
+    return el(foldButtons((open) => softwareFolds.setAll(folds, sections.map((s) => s.key), open)), folds);
   }
   // ------------------------------------------------- connect a tablet
   // Shows the address to type (and a QR code to scan) for each dashboard. Admin-only: the
   // list of the computer's network addresses is not shown on the no-login dashboards.
   function connectCard() {
     const body = h("div", {}, h("p", { class: "muted" }, "Looking up this computer's network address…"));
-    // A collapsible card: it stays open until someone closes it, and is remembered in this browser.
-    let open = true;
-    try { open = localStorage.getItem("sw.admin.connect.open") !== "0"; } catch (_) { /* no storage: stay open */ }
-    const fold = h("details", {},
-      h("summary", { class: "muted", style: "cursor:pointer;min-height:44px;display:flex;align-items:center" }, "Show or hide the addresses"),
+    const c = card("Connect a tablet",
       h("p", { class: "muted" }, "On the tablet, join the same Wi-Fi as this computer, then scan a QR code or type the address into the browser."),
       body);
-    fold.open = open;
-    fold.addEventListener("toggle", () => { try { localStorage.setItem("sw.admin.connect.open", fold.open ? "1" : "0"); } catch (_) { /* ignore */ } });
-    const c = card("Connect a tablet", fold);
     c.id = "connect";
     api("GET", "/api/admin/connect").then((r) => {
       if (!r.addresses.length) {
         body.replaceChildren(h("p", { class: "warn-text" }, "This computer does not seem to be on a network. Connect it to the show network (Wi-Fi or cable) and reload this page."));
         return;
       }
-      const item = (title, urls, mdns) => h("li", { class: "connect-item" },
-        SW.qrSvg(urls[0], 132) || "",
-        h("div", {},
-          h("div", { class: "muted" }, title),
-          urls.map((u) => h("div", { class: "connect-url" }, u)),
-          mdns ? h("div", { class: "muted" }, "Or, on most devices: ", h("span", { class: "mono" }, mdns), " (if that does not work, use the numbers above)") : null));
-      body.replaceChildren(h("ul", { class: "connect-list" },
-        r.dashboards.map((d) => item(`${d.title} (${d.layout})`, d.ip, d.mdns)),
-        item("Home page (all dashboards)", r.home.ip, r.home.mdns)));
+      // One fold per dashboard and one for the home page. Up to 3 start open, otherwise only the first.
+      const items = r.dashboards.map((d) => ({ key: d.slug, title: `${d.title} (${d.layout})`, urls: d.ip, mdns: d.mdns }))
+        .concat([{ key: "home", title: "Home page (all dashboards)", urls: r.home.ip, mdns: r.home.mdns }]);
+      const folds = items.map((it, i) => {
+        const d = h("details", { class: "connect-fold", id: `connect-fold-${it.key}` },
+          h("summary", {},
+            h("span", { class: "cf-name" }, it.title),
+            h("span", { class: "muted cf-url" }, it.urls[0] || "")),
+          h("div", { class: "connect-item" },
+            SW.qrSvg(it.urls[0], 132) || "",
+            h("div", {},
+              it.urls.map((u) => h("div", { class: "connect-url" }, u)),
+              it.mdns ? h("div", { class: "muted" }, "Or, on most devices: ", h("span", { class: "mono" }, it.mdns), " (if that does not work, use the numbers above)") : null)));
+        return connectFolds.bind(d, it.key, items.length <= 3 || i === 0);
+      });
+      body.replaceChildren(
+        foldButtons((open) => connectFolds.setAll(folds, items.map((it) => it.key), open)),
+        h("div", { class: "connect-list" }, folds));
     }).catch((err) => body.replaceChildren(h("p", { class: "error" }, err.message)));
     return c;
   }
