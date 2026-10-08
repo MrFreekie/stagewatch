@@ -703,7 +703,8 @@ async def test_a_second_save_during_a_slow_start_is_not_lost_for_the_timer(tmp_p
         await asyncio.wait_for(probe.entered.wait(), 3)       # the first apply is stuck starting the source
         set_cards(hub)                                          # the card is taken off meanwhile
         probe.gate.set()
-        await until(lambda: not hub.ontime_timer.active and probe.stops == 1)
+        await until(lambda: not hub.ontime_timer.active and probe.stops == 1
+        and "ontime" not in hub.devices and hub.integrations["ontime"].clock_source.holders == frozenset())
         assert "ontime" not in hub.devices and hub.integrations["ontime"].clock_source.holders == frozenset()
     finally:
         await hub.stop()
@@ -716,7 +717,7 @@ async def test_a_second_save_during_a_slow_start_is_not_lost_for_the_wall_clock(
         await asyncio.wait_for(probe.entered.wait(), 3)
         set_cards(hub)
         probe.gate.set()
-        await until(lambda: not hub.wall_clock.active and probe.stops == 1)
+        await until(lambda: not hub.wall_clock.active and probe.stops == 1 and "ontime" not in hub.devices)
         assert "ontime" not in hub.devices
     finally:
         await hub.stop()
