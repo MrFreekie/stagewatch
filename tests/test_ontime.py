@@ -213,8 +213,8 @@ async def test_source_runs_only_while_the_card_is_assigned(tmp_path):
 
         assign_card(hub, on=False)
         hub.save_config()
-        await until(lambda: not hub.wall_clock.active)
-        assert "ontime" not in hub.devices and hub.snapshot()["wall_clock"] is None
+        await until(lambda: not hub.wall_clock.active and "ontime" not in hub.devices)
+        assert hub.snapshot()["wall_clock"] is None
     finally:
         await hub.stop()
 
