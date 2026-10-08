@@ -448,6 +448,40 @@ The board, its regulator and any battery warm the air around them. Warm air also
 
 The SHT45's heater is switched off in the files, because it would raise the temperature reading.
 
+### Built-in or external antenna? (XIAO boards only)
+
+The XIAO ESP32C6 has a small **built-in antenna** and a tiny socket for an **external antenna**
+(a U.FL, also called IPEX, socket). **Every file uses the built-in antenna. That is the default
+and it is fine for most shows.** Only think about the external antenna if:
+
+- Stagewatch shows the node's **Signal** as **weak** (about -80 dBm or worse) and moving the node
+  closer to an access point is not an option;
+- the node has to sit **inside a metal case or rack**, which blocks the built-in antenna;
+- you want a **bigger or more directional antenna**.
+
+**What you need:** a 2.4 GHz Wi-Fi antenna with a **U.FL (IPEX) plug**. Fit it to the XIAO's
+socket **before** you switch the option on. The plug is tiny and clicks on with a firm press
+straight down. Do not pull the antenna by its lead.
+
+**How to switch it on:**
+1. Open your node file (`stagewatch-xiao-esp32c6-dps310.yaml` or the `-sht45` one) and go to the
+   very end. The last block is headed **External antenna**.
+2. Take the `# ` off the start of every line of that block, so the lines start with `switch:`
+   and the spaces after it stay as they are.
+3. Flash the node over **USB** the first time you do this (see Step 3).
+4. Watch the **Signal** column in Stagewatch for a few minutes. It should improve.
+
+**To go back to the built-in antenna:** put the `# ` back on every line of the block and flash
+again over USB.
+
+**Be careful:**
+- If you switch it on **without an antenna fitted**, the node loses its Wi-Fi. It cannot be
+  updated over Wi-Fi either, so you will need a USB cable to flash it back.
+- **This option has not been tested on a real board yet.** It follows Seeed's own instructions
+  for the board (the antenna is chosen by pin `GPIO14`, after `GPIO3` is held low). Tell us what
+  you find.
+- Only fit antennas made for 2.4 GHz Wi-Fi.
+
 ### Checking and correcting the readings (calibration)
 
 Every pressure sensor has its own small error. The DPS310 is about 1 hPa out in absolute terms.
@@ -506,6 +540,7 @@ learns the new one.
 | The computer does not find the board (no COM port) | A charge-only USB cable, or the board is not in flashing mode. | Try another USB **data** cable and another USB port. Then use the button trick for your board in Step 3. |
 | **S3 Feather only:** the log says `Recovery failed: SCL is held LOW on the bus`, the bus scan finds no devices, and starting takes about 11 seconds longer | **Not solved yet.** It happened with every DPS310 plugged into the STEMMA QT port, while the Feather's own battery gauge read fine with nothing plugged in, and the same sensor works on the XIAO. A likely cause (not confirmed): the port's 3.3 V is switched on after the bus starts, and an unpowered sensor pulls the bus low. | Unplug the sensor and cable and reboot: if the bus then scans clean, the fault is in the sensor side, not the board. As a workaround, wire the sensor to the Feather's always-on **3V** pin and the **SDA** and **SCL** pads with jumpers, as on the XIAO. Tell us what you find. |
 | **HUZZAH:** the log says the bus was recovered, then `Found no devices` and `Communication failed`, and the board is on Wi-Fi and connected to Stagewatch | The sensor is not answering although the bus is healthy. Most often the **SDA and SCL wires are on the wrong pins**, or the sensor has no power. | Check against the wiring table: SDA goes to the pin marked **SDA** (GPIO4) and SCL to **SCL** (GPIO5), and the sensor's VIN goes to **3V**. Swap SDA and SCL if unsure, then reboot. |
+| **XIAO:** the **Signal** is weak (about -80 dBm or worse) and readings keep dropping | The built-in antenna is blocked, or the node is far from an access point. | Move the node closer to an access point and clear of metal. If you cannot, see "Built-in or external antenna?" above. |
 | The log has no I²C address for the sensor | A wire or cable is loose, a wire is on the wrong pin, or the sensor has no power. | Push the STEMMA QT cable in at both ends, or check the four wires against the table in Step 1. Try another cable. |
 | The log says the address is `0x76` but the file uses `0x77` (or the other way round) | The DPS310 or BME280 answers at a different address from the one in the file. | Change the address in the file to match the scan and flash again. |
 | BME280 file: the log shows a chip-id error, and there is no **Humidity** | You have a BMP280, not a BME280. | Do the BMP280 swap marked in the file. See "Which chip is it?". |

@@ -313,6 +313,8 @@ them into a dated release section and tags the commit.
   virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
+- XIAO ESP32C6 nodes: an optional external-antenna block (off by default; the built-in antenna stays
+  the default) and a guide section on when to use it. Not yet tested on hardware.
 - Admin: the adopted ESPHome nodes list now has an **Address** column: the IP address each node is
   connected on now ("Not connected" while it is down) and the name it was adopted with. Only the admin
   page shows it, never the dashboards.

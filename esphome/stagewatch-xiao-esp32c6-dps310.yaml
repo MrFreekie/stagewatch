@@ -51,9 +51,18 @@
 # installation solder the leads or use a Qwiic/STEMMA QT cable, put the pair in
 # a vented housing and add strain relief on the USB lead.
 #
-# Antenna: the board uses its ceramic antenna by default. For an external
-# antenna (U.FL) GPIO3 must be driven LOW, then GPIO14 HIGH (Seeed wiki); not
-# configured here.
+# External antenna (OPTIONAL, OFF by default, NOT YET TESTED ON HARDWARE):
+#   The node uses the board's built-in ceramic antenna. That is the default and
+#   is fine for most shows. Consider the external antenna only if the signal at
+#   the node is weak, the node sits in a metal case, or you want a larger or
+#   directional antenna. It needs a 2.4 GHz antenna with a U.FL (IPEX) plug,
+#   fitted to the socket BEFORE you enable it. Enable it by uncommenting the
+#   "External antenna" block near the end of this file (it holds GPIO3 low, then
+#   GPIO14 high, per the Seeed wiki "RF SWITCH" section, before the radio is
+#   used). WARNING: with the block enabled and no antenna fitted the node will
+#   lose Wi-Fi, and the fallback hotspot will be unreachable too, so you will
+#   need a USB cable to flash it back. To go back to the built-in antenna,
+#   re-comment the block and flash over USB.
 #
 # First flash (USB): copy secrets.example.yaml to secrets.yaml and fill it in.
 # Hold BOOT, plug in USB, release BOOT (or hold BOOT and tap RESET), then
@@ -171,3 +180,32 @@ sensor:
   - platform: wifi_signal
     name: "WiFi signal"
     update_interval: 30s
+
+# --- External antenna (OPTIONAL: uncomment the whole block to use) ------------
+# Read the "External antenna" note in the header first. Fit a U.FL antenna BEFORE
+# flashing this. Per Seeed (wiki.seeedstudio.com/xiao_esp32c6_getting_started/,
+# "RF SWITCH"): GPIO3 must be LOW, then GPIO14 HIGH selects the U.FL socket.
+# The gpio switch for GPIO3 is inverted so "on" = pin low. The template switch
+# runs at boot (restore_mode ALWAYS_ON), waits 100 ms, then sets GPIO14 high.
+# switch:
+#   - platform: gpio
+#     id: rf_switch_power               # GPIO3 held LOW
+#     pin:
+#       number: GPIO3
+#       inverted: true
+#     restore_mode: ALWAYS_ON
+#     internal: true
+#   - platform: gpio
+#     id: rf_switch_select              # GPIO14 held HIGH = external antenna
+#     pin: GPIO14
+#     restore_mode: ALWAYS_OFF
+#     internal: true
+#   - platform: template
+#     id: rf_external_antenna
+#     optimistic: true
+#     restore_mode: ALWAYS_ON
+#     internal: true
+#     turn_on_action:
+#       - switch.turn_on: rf_switch_power
+#       - delay: 100ms
+#       - switch.turn_on: rf_switch_select
