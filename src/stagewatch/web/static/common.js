@@ -487,13 +487,13 @@ SW.scheduleEnds = function (ordered) {
   });
 };
 // Schedule warning steps: minutes before NOW ends / NEXT starts, shared by every dashboard (the
-// server sends them as site.schedule_warn = {minutes, flash}). Default 15 and 5 minutes.
-// - NOW: the smallest step the item has passed is the current one. The last (smallest) step is
-//   "alert" (orange), earlier steps are "warn" (amber). Above the first step, or with no
+// server sends them as site.schedule_warn = {minutes, flash_minutes}). Default 15 and 5.
+// - NOW: the smallest step the item has passed is the current one. The first (largest) step is
+//   "warn" (amber), every later step "alert" (orange). flash_minutes lists the steps that pulse. Above the first step, or with no
 //   countdown, there is no level. At zero the item is no longer current. Never red. Always shown
 //   with a text tag too.
 // - NEXT: "warn" (amber) within the smallest step only.
-SW.scheduleWarn = { minutes: [15, 5], flash: false };
+SW.scheduleWarn = { minutes: [15, 5], flash_minutes: [] };
 SW.setScheduleWarn = function (w) {
   if (!w || !Array.isArray(w.minutes) || !w.minutes.length || w.minutes.length > 8) return;
   const m = [];
@@ -503,7 +503,9 @@ SW.setScheduleWarn = function (w) {
     m.push(n);
   }
   m.sort(function (a, b) { return b - a; });
-  SW.scheduleWarn = { minutes: m, flash: w.flash === true };
+  const f = [];
+  if (Array.isArray(w.flash_minutes)) for (let i = 0; i < w.flash_minutes.length; i++) if (m.indexOf(w.flash_minutes[i]) >= 0) f.push(w.flash_minutes[i]);
+  SW.scheduleWarn = { minutes: m, flash_minutes: f };
 };
 // The step (in minutes) NOW is in, or 0 when it is above the first step / has no countdown.
 SW.nowStep = function (seconds) {
@@ -516,8 +518,12 @@ SW.nowStep = function (seconds) {
 SW.nowLevel = function (seconds) {
   const step = SW.nowStep(seconds);
   if (!step) return "";
-  const m = SW.scheduleWarn.minutes;
-  return step === m[m.length - 1] ? "alert" : "warn";
+  return step === SW.scheduleWarn.minutes[0] ? "warn" : "alert";
+};
+// True when NOW is in a step that was marked to flash (and so has a level).
+SW.nowFlash = function (seconds) {
+  const step = SW.nowStep(seconds);
+  return step > 0 && SW.scheduleWarn.flash_minutes.indexOf(step) >= 0;
 };
 // NEXT turns amber (and says so) within the smallest step before the next item starts: "" or "warn".
 SW.nextStep = function () {

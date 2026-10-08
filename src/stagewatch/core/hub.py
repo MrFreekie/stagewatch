@@ -182,7 +182,7 @@ class Hub:
     def schedule_warn(self) -> dict:
         """The public schedule warning steps: {minutes, flash}. Visual settings only."""
         site = self.config.site
-        return {"minutes": list(site.schedule_warn_minutes), "flash": bool(site.schedule_warn_flash)}
+        return {"minutes": list(site.schedule_warn_minutes), "flash_minutes": list(site.schedule_warn_flash_minutes)}
 
     def set_site(self, site) -> None:
         """Replace the site settings (the caller saves). A time-zone change re-bases the current

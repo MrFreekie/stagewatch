@@ -152,7 +152,7 @@ def test_now_levels_are_colour_and_text():
     # NEXT: amber with text for the last 5 minutes
     assert "`STARTS IN ${SW.nextStep()} MIN`" in js
     # the optional flash: only in the last step, never on NEXT, and a steady highlight for reduced motion
-    assert 'lvl === "alert" && SW.scheduleWarn.flash' in js and "flash" not in js[js.index("const nlvl"):js.index("const nlvl") + 600]
+    assert "SW.nowFlash(left)" in js and "flash" not in js[js.index("const nlvl"):js.index("const nlvl") + 600]
     assert ".sched-block.now.flash { border-left-width: 14px; }" in css and ".5s ease-in-out infinite alternate" in css
     assert 'lvl-${nlvl}' in js
     # wall: large enough for 5 m; phone: the strip expands
