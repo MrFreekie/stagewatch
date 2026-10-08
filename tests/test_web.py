@@ -74,7 +74,7 @@ def test_emulated_nodes_and_snapshot(client):
     snap = client.get("/api/snapshot").json()
     ids = {e["id"] for e in snap["entities"]}
     assert {"sim_foh.temperature", "site.speed_of_sound"} <= ids
-    assert len([d for d in snap["devices"] if d["id"] != "site"]) == 3
+    assert len([d for d in snap["devices"] if d["id"] != "site"]) == 4   # three environment nodes and the equipment rack
 
 
 def test_websocket_snapshot_and_marker(client):

@@ -235,7 +235,9 @@ class BarometerService:
         """Take this tick's site pressure (None unless a sensor reading is fresh) and temperature,
         and return the ``baro`` block."""
         hub = self.hub
-        has_sensor = any(e.kind == Kind.PRESSURE and not e.derived for e in hub.entities.values())
+        # Equipment pressure sensors (never averaged) do not make a barometer.
+        has_sensor = any(e.kind == Kind.PRESSURE and not e.derived and hub.role_of(e) == "environment"
+                         for e in hub.entities.values())
         if pressure_pa is not None and not plausible_pressure(pressure_pa):
             pressure_pa = None            # not weather: ignored, never stored or reduced
         if temp_c is not None and not (isinstance(temp_c, (int, float)) and math.isfinite(temp_c) and -90.0 <= temp_c <= 70.0):

@@ -88,6 +88,9 @@ class Device:
     # "sensor" (measures the site; listed on the Sensors card and the chart) or "service" (a
     # software source such as Ontime; no readings, listed under Integrations in the admin page).
     category: str = "sensor"
+    # "environment" (air at the site) or "equipment" (gear). Set by the integration from the
+    # node's config. Not in to_dict(): dashboards group by the entity's role.
+    role: str = "environment"
 
     def to_dict(self) -> dict:
         return {
@@ -119,7 +122,7 @@ class Entity:
     # register_entity; calibration follows it (core/calibration.py). Admin only: never in to_dict().
     hw_key: str = ""
 
-    def to_dict(self, now: float, stale_after_s: float, offset: float = 0.0) -> dict:
+    def to_dict(self, now: float, stale_after_s: float, offset: float = 0.0, role: str = "environment") -> dict:
         data = {
             "id": self.id,
             "device_id": self.device_id,
@@ -137,6 +140,10 @@ class Entity:
         # dashboards can mark an adjusted sensor. Nothing else about calibration goes out.
         if offset and not self.derived:
             data["offset"] = offset
+        # Only for equipment (gear readings, never averaged); absent means environment, so the
+        # public shape of every existing sensor is unchanged.
+        if role == "equipment" and not self.derived:
+            data["role"] = "equipment"
         return data
 
     def is_stale(self, now: float, stale_after_s: float) -> bool:

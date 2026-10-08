@@ -622,3 +622,15 @@ label.field.inline input[type="checkbox"] { width: 24px; height: 24px; margin: 0
 .sw-fold > summary { min-width: 0; }
 .sw-fold .sw-fold-body { padding-bottom: 10px; overflow-wrap: anywhere; }
 .sw-fold .sw-flag { font-weight: 600; }
+
+/* Sensor roles: the Environment / Equipment headings in tables, and the Equipment card */
+.group-row th { text-align: left; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--panel-2); padding: 6px 8px; }
+.eq-node + .eq-node { margin-top: 14px; }
+.eq-node h3 { margin: 0 0 8px; font-size: 15px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.eq-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.eq-tile.stale { opacity: .75; }
+body.layout-phone .eq-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+body.layout-wall .eq-node h3 { font-size: 24px; }
+body.layout-wall .eq-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }.sg-heading { margin: 16px 0 6px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.sensor-group tr.role-eq td { background: var(--panel-2); }
+.sensor-group tr.role-eq input:disabled, .sensor-group tr.role-eq select:disabled { opacity: .5; }

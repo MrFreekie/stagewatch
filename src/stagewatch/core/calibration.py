@@ -201,7 +201,7 @@ def move_legacy(config: Config, device_id: str, node: str, now: float | None = N
             continue
         config.calibrations[key] = Calibration(
             offset=legacy.offset, include_in_average=legacy.include_in_average,
-            accuracy=legacy.accuracy, accuracy_basis=legacy.accuracy_basis,
+            accuracy=legacy.accuracy, accuracy_basis=legacy.accuracy_basis, role=legacy.role,
             history=[CalibrationEntry(offset=legacy.offset, date=date, method="migrated",
                                       reference=entity_id[:120])])
         changes += 1
@@ -227,7 +227,7 @@ def copy_node(config: Config, old_node: str, new_node: str, now: float | None = 
         history = _with_entry(target, entry) if target is not None else _with_entry(cal, entry)
         config.calibrations[new_key] = Calibration(
             offset=cal.offset, include_in_average=cal.include_in_average, history=history, chip=cal.chip,
-            accuracy=cal.accuracy, accuracy_basis=cal.accuracy_basis)
+            accuracy=cal.accuracy, accuracy_basis=cal.accuracy_basis, role=cal.role)
         copied += 1
     if copied:
         log.info("Copied %d calibration record(s) from %s to %s", copied, old_node, new_node)
@@ -259,7 +259,7 @@ _KEEP = object()   # "leave this as it is" (a caller that doesn't send accuracy 
 def set_calibration(config: Config, entity_id: str, hw_key: str, offset: float,
                     include_in_average: bool, *, method: str = "manual", note: str = "",
                     reference: str = "", now: float | None = None,
-                    accuracy=_KEEP, accuracy_basis=_KEEP) -> None:
+                    accuracy=_KEEP, accuracy_basis=_KEEP, role=_KEEP) -> None:
     """The admin's write path: the hardware record when the entity has a hardware key (adding a
     history entry when the offset changes), else the legacy entry keyed by entity id. A legacy
     entry that already exists is kept in step as the rollback mirror.
@@ -270,8 +270,10 @@ def set_calibration(config: Config, entity_id: str, hw_key: str, offset: float,
         old = config.entities.get(entity_id)
         acc = (old.accuracy if old else None) if accuracy is _KEEP else accuracy
         basis = (old.accuracy_basis if old else "typical") if accuracy_basis is _KEEP else accuracy_basis
+        own = (old.role if old else "") if role is _KEEP else role
         config.entities[entity_id] = EntitySettings(
-            offset=offset, include_in_average=include_in_average, accuracy=acc, accuracy_basis=basis)
+            offset=offset, include_in_average=include_in_average, accuracy=acc, accuracy_basis=basis,
+            role=own)
         return
     cal = config.calibrations.get(hw_key)
     if cal is None:
@@ -279,7 +281,8 @@ def set_calibration(config: Config, entity_id: str, hw_key: str, offset: float,
         cal = Calibration(offset=legacy.offset if legacy else 0.0,
                           include_in_average=legacy.include_in_average if legacy else True,
                           accuracy=legacy.accuracy if legacy else None,
-                          accuracy_basis=legacy.accuracy_basis if legacy else "typical")
+                          accuracy_basis=legacy.accuracy_basis if legacy else "typical",
+                          role=legacy.role if legacy else "")
     history = list(cal.history)
     if offset != cal.offset or (not history and offset != 0.0):
         history = _with_entry(cal, CalibrationEntry(offset=offset, date=utc_now_iso(now), method=method,
@@ -289,6 +292,8 @@ def set_calibration(config: Config, entity_id: str, hw_key: str, offset: float,
         update["accuracy"] = accuracy
     if accuracy_basis is not _KEEP:
         update["accuracy_basis"] = accuracy_basis
+    if role is not _KEEP:
+        update["role"] = role
     config.calibrations[hw_key] = cal.model_copy(update=update)
     if entity_id in config.entities:  # rollback mirror (drop in 0.4.0)
         config.entities[entity_id] = EntitySettings(offset=offset, include_in_average=include_in_average)

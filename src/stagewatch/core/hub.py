@@ -18,7 +18,8 @@ from .alarms import AlarmChange, AlarmEngine
 from .barometer import BarometerService
 from .bus import EventBus
 from .calibration import calibration_for as _calibration_for
-from .config import ACCURACY_MAX, ACCURACY_MIN, Calibration, ConfigStore, EntitySettings
+from .config import (ACCURACY_MAX, ACCURACY_MIN, ROLE_ENVIRONMENT, ROLES, Calibration, ConfigStore,
+                     EntitySettings)
 from .derived import OUTLIER_LIMITS, AvgInput, AvgResult, Ema, average
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
@@ -270,6 +271,7 @@ class Hub:
                 device.name or existing.name, device.manufacturer, device.model)
             if device.area:
                 existing.area = device.area
+            existing.role = device.role
             existing.hw_id = device.hw_id  # as reported now; "" when the board gave no MAC
             device = existing
         else:
@@ -339,17 +341,49 @@ class Hub:
         return entity.value, entity.is_stale(time.time(), self.config.site.stale_after_s)
 
     # -------------------------------------------------------------- derived
+    def role_of(self, entity: Entity) -> str:
+        """``"environment"`` or ``"equipment"``: the sensor's own override when it has one, else
+        its node's role, else environment (unknown or missing). Derived (site) values are always
+        environment. Read-only."""
+        if entity.derived:
+            return ROLE_ENVIRONMENT
+        own = getattr(self.calibration_for(entity), "role", "")
+        if own in ROLES:
+            return own
+        device = self.devices.get(entity.device_id)
+        node = getattr(device, "role", ROLE_ENVIRONMENT)
+        return node if node in ROLES else ROLE_ENVIRONMENT
+
     def _env_inputs(self, kind: Kind, now: float) -> list[Entity]:
+        """The sensors that may go into a site average: environment only. Filtering happens here,
+        before averaging, so accuracy shares are worked out over environment sensors alone."""
         stale_after = self.config.site.stale_after_s
         return [e for e in self.entities.values()
                 if e.kind == kind and not e.derived and e.value is not None
                 and not e.is_stale(now, stale_after)
+                and self.role_of(e) == ROLE_ENVIRONMENT
                 and self.calibration_for(e).include_in_average]
 
     def entity_dict(self, entity: Entity, now: float, stale_after: float) -> dict:
-        """Public form of an entity: includes ``offset`` only when a calibration offset is set."""
+        """Public form of an entity: includes ``offset`` only when a calibration offset is set,
+        and ``role`` only for equipment."""
         offset = 0.0 if entity.derived else float(self.calibration_for(entity).offset or 0.0)
-        return entity.to_dict(now, stale_after, offset)
+        return entity.to_dict(now, stale_after, offset, self.role_of(entity))
+
+    def set_node_role(self, device_id: str, role: str) -> None:
+        """Change a node's role and tell every open screen about its sensors at once (no reload).
+        The site average follows on the next tick."""
+        device = self.devices.get(device_id)
+        if device is None or role not in ROLES:
+            return
+        device.role = role
+        self.bus.publish("device", device)
+        self._republish_device_entities(device_id)
+
+    def _republish_device_entities(self, device_id: str) -> None:
+        for e in list(self.entities.values()):
+            if e.device_id == device_id:
+                self.bus.publish("entity", e)
 
     def calibration_for(self, entity: Entity) -> Calibration | EntitySettings:
         """The hardware record (by ``entity.hw_key``), else the legacy entry by entity id, else
@@ -376,6 +410,8 @@ class Hub:
             if e.kind == kind and not e.derived:
                 cal = self.calibration_for(e)
                 acc, basis = self.accuracy_of(e)
+                if self.role_of(e) != ROLE_ENVIRONMENT:
+                    continue   # equipment is not in any average; its settings must not restart one
                 sensors.append((e.id, float(cal.offset), bool(cal.include_in_average), acc, basis))
         return (float(site.smoothing_tau_s), bool(site.outlier_reject), bool(site.weight_by_accuracy),
                 tuple(sorted(sensors)))
@@ -390,7 +426,9 @@ class Hub:
         for e in self.entities.values():
             if e.kind != kind or e.derived:
                 continue
-            if not self.calibration_for(e).include_in_average:
+            if self.role_of(e) != ROLE_ENVIRONMENT:
+                state = "equipment"   # never averaged
+            elif not self.calibration_for(e).include_in_average:
                 state = "off"
             elif e.value is None:
                 state = "none"

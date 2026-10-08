@@ -193,6 +193,7 @@ class AdoptBody(BaseModel):
     name: str = ""
     area: str = ""
     noise_psk: str = ""
+    role: Literal["environment", "equipment"] = "environment"
 
     @field_validator("host")
     @classmethod
@@ -224,6 +225,7 @@ class DevicePatch(BaseModel):
 
     name: str | None = None
     area: str | None = None
+    role: Literal["environment", "equipment"] | None = None
     host: str | None = Field(None, max_length=253)
     port: int | None = Field(None, ge=1, le=65535)
 
@@ -949,10 +951,12 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # record (no legacy mirror) is never shown as 0.
             "settings": {e.id: {"offset": (c := hub.calibration_for(e)).offset,
                                 "include_in_average": c.include_in_average,
-                                "accuracy": c.accuracy, "accuracy_basis": c.accuracy_basis} for e in sensors},
+                                "accuracy": c.accuracy, "accuracy_basis": c.accuracy_basis,
+                                "role": c.role,          # the sensor's own override ("" = follows the node)
+                                "role_now": hub.role_of(e)} for e in sensors},
             # Each sensor's live share of its kind's site average, and why weighting is not in use.
             "averages": hub.average_info,
-            "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id),
+            "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id), "role": d.role,
                                "host": where.get(d.id, {}).get("host", ""),
                                "address": where.get(d.id, {}).get("address", "")}
                         for d in hub.devices.values() if d.id != "site"},
@@ -994,7 +998,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(409, f"Device id '{device_id}' is already in use")
         cfg = EsphomeDeviceConfig(id=device_id, host=body.host.strip(), port=body.port,
                                   name=body.name.strip(), area=body.area.strip(),
-                                  noise_psk=body.noise_psk.strip())
+                                  noise_psk=body.noise_psk.strip(), role=body.role)
         try:
             warning = await esphome().adopt(cfg)
         except ValueError as exc:
@@ -1034,7 +1038,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         esp = esphome()
         if (body.host is not None or body.port is not None) and esp.config_of(device_id) is None:
             raise HTTPException(409, "This device has no network address to change")
-        await esp.update(device_id, body.name, body.area, body.host, body.port)
+        await esp.update(device_id, body.name, body.area, body.host, body.port, body.role)
         return {"ok": True}
 
     @app.delete("/api/admin/devices/{device_id}", dependencies=admin_deps)
@@ -1066,6 +1070,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 extra["accuracy"] = body.accuracy
             if "accuracy_basis" in body.model_fields_set:
                 extra["accuracy_basis"] = body.accuracy_basis
+        if "role" in body.model_fields_set:
+            if entity.derived:
+                raise HTTPException(422, "A role can only be set for a sensor")
+            extra["role"] = body.role
         # Hardware record when the sensor's board is known (a "manual" history entry when the
         # offset changes), else the legacy entry keyed by entity id.
         set_calibration(hub.config, entity_id, entity.hw_key, body.offset, body.include_in_average, **extra)

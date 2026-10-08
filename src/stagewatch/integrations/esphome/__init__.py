@@ -98,7 +98,7 @@ class _NodeConnection:
     async def start(self) -> None:
         self.hub.register_device(Device(
             self.cfg.id, self.cfg.name or self.cfg.host, MANIFEST.domain,
-            "ESPHome", "", self.cfg.area, Status.INITIALIZING))
+            "ESPHome", "", self.cfg.area, Status.INITIALIZING, role=self.cfg.role))
         await self.logic.start()
 
     async def stop(self) -> None:
@@ -148,7 +148,7 @@ class _NodeConnection:
         self.hub.register_device(Device(
             self.cfg.id, self.cfg.name or info.friendly_name or info.name, MANIFEST.domain,
             info.manufacturer or "ESPHome", info.model or info.project_name or "",
-            self.cfg.area, hw_id=node))
+            self.cfg.area, hw_id=node, role=self.cfg.role))
         for e in entities:
             object_id = slugify(e.object_id or e.name or str(e.key))
             entity_id = f"{self.cfg.id}.{object_id}"
@@ -353,14 +353,16 @@ class EsphomeIntegration(Integration):
         return next((c for c in self.hub.config.esphome_devices if c.id == device_id), None)
 
     async def update(self, device_id: str, name: str | None, area: str | None,
-                     host: str | None = None, port: int | None = None) -> None:
-        """Rename or move a device. A new host or port restarts its connection; its recorded MAC
-        stays, so the same board at the new address carries on with its calibration."""
+                     host: str | None = None, port: int | None = None,
+                     role: str | None = None) -> None:
+        """Rename or move a device, or change its role. A new host or port restarts its
+        connection; its recorded MAC stays, so the same board at the new address carries on with
+        its calibration."""
         async with self._lock(device_id):
-            await self._update_locked(device_id, name, area, host, port)
+            await self._update_locked(device_id, name, area, host, port, role)
 
     async def _update_locked(self, device_id: str, name: str | None, area: str | None,
-                             host: str | None, port: int | None) -> None:
+                             host: str | None, port: int | None, role: str | None = None) -> None:
         reconnect = None
         for cfg in self.hub.config.esphome_devices:
             if cfg.id == device_id:
@@ -368,6 +370,8 @@ class EsphomeIntegration(Integration):
                     cfg.name = name
                 if area is not None:
                     cfg.area = area
+                if role is not None:
+                    cfg.role = role
                 if (host is not None and host != cfg.host) or (port is not None and port != cfg.port):
                     cfg.host = host if host is not None else cfg.host
                     cfg.port = port if port is not None else cfg.port
@@ -378,6 +382,8 @@ class EsphomeIntegration(Integration):
                 device.name = name
             if area is not None:
                 device.area = area
+            if role is not None:
+                self.hub.set_node_role(device_id, role)   # tells every open screen at once
             self.hub.bus.publish("device", device)
         self.hub.save_config()
         if reconnect is not None:

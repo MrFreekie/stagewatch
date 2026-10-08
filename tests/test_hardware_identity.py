@@ -559,7 +559,7 @@ async def test_address_change_overlapping_a_delete_never_brings_it_back(tmp_path
 def test_emulated_macs_are_fixed_and_locally_administered(tmp_path):
     hub = Hub(tmp_path, emulate=True)
     macs = [n.mac for n in EmulatedNode.defaults(hub)]
-    assert macs == ["02:5e:00:00:00:01", "02:5e:00:00:00:02", "02:5e:00:00:00:03"]
+    assert macs == ["02:5e:00:00:00:01", "02:5e:00:00:00:02", "02:5e:00:00:00:03", "02:5e:00:00:00:04"]
     assert all(int(m.split(":")[0], 16) & 0b10 for m in macs)  # locally administered bit
     assert macs == [n.mac for n in EmulatedNode.defaults(hub)]
     hub.recorder.close()
@@ -794,7 +794,7 @@ def test_admin_state_has_the_hardware_map_and_the_snapshot_does_not(client, monk
     _api_fault(client, monkeypatch)
     state = client.get("/api/admin/state").json()
     assert state["hardware"]["entities"]["sim_foh.temperature"] == "mac:025e00000002/temperature"
-    assert state["hardware"]["devices"]["sim_foh"] == {"hw_id": "mac:025e00000002", "conflict": None, "host": "", "address": ""}
+    assert state["hardware"]["devices"]["sim_foh"] == {"hw_id": "mac:025e00000002", "conflict": None, "role": "environment", "host": "", "address": ""}
     snap = client.get("/api/snapshot").text
     assert "025e0000000" not in snap and "hw_key" not in snap and "hw_id" not in snap
     for form in mac_forms(A) + mac_forms(B):
@@ -810,8 +810,10 @@ def test_put_entity_writes_the_hardware_record(client):
     assert client.hub.entities["sim_foh.temperature"].value == pytest.approx(21.5)
     # The admin card reads the settings that apply now, so a hardware-only offset is never shown as 0.
     settings = client.get("/api/admin/state").json()["hardware"]["settings"]
-    assert settings["sim_foh.temperature"] == {"offset": -0.5, "include_in_average": True, "accuracy": None, "accuracy_basis": "typical"}
-    assert settings["sim_foh.humidity"] == {"offset": 0.0, "include_in_average": True, "accuracy": None, "accuracy_basis": "typical"}
+    assert settings["sim_foh.temperature"] == {"offset": -0.5, "include_in_average": True, "accuracy": None, "accuracy_basis": "typical",
+                                                 "role": "", "role_now": "environment"}
+    assert settings["sim_foh.humidity"] == {"offset": 0.0, "include_in_average": True, "accuracy": None, "accuracy_basis": "typical",
+                                                 "role": "", "role_now": "environment"}
     assert "site.temperature" not in settings
 
 
