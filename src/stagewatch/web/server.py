@@ -40,6 +40,7 @@ from ..core.hub import Hub
 from ..core.model import Device, Entity, Kind, Marker, slugify
 from ..core.recorder import clean_note, valid_day
 from .. import diagnostics, netinfo
+from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
 from ..core import schedule as sched
 from ..integrations.ontime.client import check_connection
@@ -246,6 +247,17 @@ class AltitudeFromPressureBody(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     qnh_hpa: float = Field(allow_inf_nan=False)
+
+
+class BarometerBody(BaseModel):
+    """PUT /api/admin/barometer: strict (no coercion, no unknown keys). BarometerConfig itself stays
+    lenient so an older or damaged file still loads."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    hemisphere: Literal["north", "south"] = "north"
+    rapid_fall_alarm: StrictBool = False
+    rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10, allow_inf_nan=False, strict=True)
 
 
 class BaroDemoBody(BaseModel):
@@ -1074,10 +1086,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     # Barometer card settings (hemisphere, optional silent rapid-fall notice).
     @app.put("/api/admin/barometer", dependencies=admin_deps)
-    async def put_barometer(body: BarometerConfig):
-        hub.config.barometer = body
+    async def put_barometer(body: BarometerBody):
+        hub.config.barometer = BarometerConfig(**body.model_dump())
         hub.save_config()
-        return body
+        return hub.config.barometer
 
     @app.post("/api/admin/barometer/demo", dependencies=admin_deps)
     async def barometer_demo(body: BaroDemoBody):
@@ -1104,10 +1116,12 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if age > hub.config.site.stale_after_s:
             raise HTTPException(409, f"The pressure reading is {round(age)} s old. Wait for a fresh reading. Nothing has been changed.")
         station_pa = entity.value
+        if not baro_mod.plausible_pressure(station_pa):
+            raise HTTPException(409, "The pressure reading is not plausible. Check the pressure sensors. Nothing has been changed.")
         temp = hub.baro.temp_mean_c(now)
         altitude = acoustics.altitude_from_msl_pa(station_pa, body.qnh_hpa * 100.0, temp)
         lo, hi = ALTITUDE_RANGE_M
-        if not lo <= altitude <= hi:
+        if not (isinstance(altitude, float) and altitude == altitude and lo <= altitude <= hi):
             raise HTTPException(422, "That pressure gives an altitude outside -500 to 6,000 m. Check the figure. Nothing has been changed.")
         altitude_m = round(altitude)
         warnings: list[str] = []

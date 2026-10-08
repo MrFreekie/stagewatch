@@ -130,16 +130,18 @@ def test_there_are_26_letters_and_every_row_is_inside_them():
 @pytest.mark.parametrize("p, trend, month, hemi, letter", [
     # steady, July, 1013.2: Z = 144 - 0.13 x 1013.2 = 144 - 131.716 = 12.284 -> 12; index 12 - 9 = 3 -> "ABEKNPSWXZ"[2]
     (1013.2, 0, 7, "north", "E"),
-    # steady, 1010: Z = 144 - 131.3 = 12.7 -> 13; index 4 -> K
-    (1010.0, 0, 7, "north", "K"),
+    # steady, 1010: Z = 144 - 131.3 = 12.7 -> floor 12 (not 13): index 3 -> E
+    (1010.0, 0, 7, "north", "E"),
+    # falling, 1010: Z = 127 - 121.2 = 5.8 -> floor 5 (not 6): index 5 -> O
+    (1010.0, -1, 7, "north", "O"),
     # falling, July, 1013.2: Z = 127 - 0.12 x 1013.2 = 127 - 121.584 = 5.416 -> 5; index 5 -> "ABDHORUVX"[4]
     (1013.2, -1, 7, "north", "O"),
     # falling, January (winter) lowers Z by 1: 4 -> "ABDHORUVX"[3]
     (1013.2, -1, 1, "north", "H"),
-    # rising, July: Z = 185 - 0.16 x 1013.2 = 185 - 162.112 = 22.888 -> 23; index 23 - 19 = 4 -> "ABCFGIJLMQTYZ"[3]
-    (1013.2, 1, 7, "north", "F"),
-    # rising, January (winter) raises Z by 1: 24 -> index 5 -> G
-    (1013.2, 1, 1, "north", "G"),
+    # rising, July: Z = 185 - 0.16 x 1013.2 = 185 - 162.112 = 22.888 -> floor 22; index 22 - 19 = 3 -> "ABCFGIJLMQTYZ"[2]
+    (1013.2, 1, 7, "north", "C"),
+    # rising, January (winter) raises Z by 1: 23 -> index 4 -> F
+    (1013.2, 1, 1, "north", "F"),
     # the south mirrors the seasons: June is winter there
     (1013.2, -1, 6, "south", "H"),
     (1013.2, -1, 1, "south", "O"),
@@ -203,12 +205,12 @@ def linear(delta_pa_per_3h, base=101000.0):
 # --------------------------------------------------------------- the service
 def test_steady_pressure(tmp_path):
     """101,000 Pa all the time, alt 0: sea level = 101,000 Pa (the exponent is 0). Change 0.0 -> steady.
-    July, steady, 1010.0 hPa: Z = 144 - 0.13 x 1010 = 12.7 -> 13; index 4 -> K."""
+    July, steady, 1010.0 hPa: Z = 144 - 0.13 x 1010 = 12.7 -> floor 12; index 3 -> E."""
     hub = make_hub(tmp_path)
     b = feed(hub, 0, 200, 101000.0)
     assert b["state"] == "ok" and b["tendency_word"] == "steady" and b["tendency_pa_3h"] == 0.0
     assert b["msl_pa"] == pytest.approx(101000.0) and b["set_pa"] == pytest.approx(101000.0)
-    assert b["outlook"] == "K" and b["rapid_fall"] is False and b["reduction"] == "temperature" and b["approx"] == "ok"
+    assert b["outlook"] == "E" and b["rapid_fall"] is False and b["reduction"] == "temperature" and b["approx"] == "ok"
 
 
 @pytest.mark.parametrize("delta_pa, word, rapid", [
@@ -274,11 +276,43 @@ def test_a_gap_over_15_minutes_restarts_the_wait(tmp_path):
     assert b["state"] == "ok" and b["tendency_word"] == "steady"
 
 
-def test_a_gap_of_14_minutes_is_not_a_gap(tmp_path):
+def test_one_missed_reading_is_not_a_gap_but_four_minutes_of_silence_is(tmp_path):
+    """The gap limit is 3 minutes. Readings 2 minutes apart are bridged; 5 minutes apart is a gap."""
+    assert bm.GAP_S == 180.0
     hub = make_hub(tmp_path)
     feed(hub, 0, 100, 101000.0)
-    b = feed(hub, 114, 200, 101000.0)         # minutes 101-113 missing: 14 min between readings
+    b = feed(hub, 102, 200, 101000.0)         # minute 101 missing: 2 minutes between readings
     assert b["state"] == "ok"
+    hub = make_hub(sub(tmp_path, "g"))
+    feed(hub, 0, 100, 101000.0)
+    b = feed(hub, 105, 110, 101000.0)         # minutes 101-104 missing: 5 minutes between readings
+    assert b["state"] == "gap" and b["gap"] == [T0 + 100 * MIN, T0 + 105 * MIN]
+
+
+def test_too_few_readings_in_a_window_is_not_enough_data_never_a_guess(tmp_path):
+    """Readings every 3 minutes are unbroken (3 minutes is the limit) but the last 10 minutes hold only
+    4 of them (192, 195, 198, 201), under the 5 needed: no trend, the card says so."""
+    hub = make_hub(tmp_path)
+    block = None
+    for m in range(0, 202, 3):
+        block = hub.baro.update(T0 + m * MIN, 101000.0 - m, 15.0)
+    assert block["state"] == "sparse" and block["tendency_word"] is None and block["outlook"] is None
+    assert block["rapid_fall"] is False and block["tendency_pa_3h"] is None
+    # readings every 2 minutes put 6 in the window: fine
+    hub = make_hub(sub(tmp_path, "two"))
+    for m in range(0, 202, 2):
+        block = hub.baro.update(T0 + m * MIN, 101000.0, 15.0)
+    assert block["state"] == "ok" and block["tendency_word"] == "steady"
+
+
+def test_the_window_edge_is_five_readings_in_each_window():
+    now = T0 + 20000.0
+    ref = [bm.Sample(now - 10800 + i * 60, 100000.0, 15.0) for i in range(-4, 5)]
+    cur = lambda n: [bm.Sample(now - i * 60.0, 100000.0, 15.0) for i in range(n)]
+    assert bm.BarometerService._change(ref + cur(4), now, 10800.0) is None
+    assert bm.BarometerService._change(ref + cur(5), now, 10800.0) is not None
+    assert bm.BarometerService._change(ref[:4] + cur(10), now, 10800.0) is None
+    assert bm.BarometerService._change(ref[:5] + cur(10), now, 10800.0) is not None
 
 
 def test_a_reference_eleven_minutes_away_is_not_good_enough(tmp_path):
@@ -431,11 +465,14 @@ def test_rapid_fall_notice_is_silent_with_one_marker_and_hysteresis(tmp_path):
     # below 70 % it clears
     svc._rapid_fall({"state": "ok", "rapid_fall": False, "tendency_pa_3h": -250.0}, T0 + 120)
     assert "barometer:rapid_fall" not in hub.alarms.active
-    # raised again within 30 minutes: the alarm returns, but no second marker
+    # it cannot raise again within 10 minutes of clearing
     svc._rapid_fall(ok, T0 + 600)
+    assert "barometer:rapid_fall" not in hub.alarms.active
+    # after 10 minutes it can: the alarm returns, but no second marker within 30 minutes of the first
+    svc._rapid_fall(ok, T0 + 720)
     assert "barometer:rapid_fall" in hub.alarms.active
     assert len([m for m in hub.recorder.markers() if m.source == "barometer"]) == 1
-    svc._rapid_fall({"state": "ok", "rapid_fall": False, "tendency_pa_3h": -100.0}, T0 + 700)
+    svc._rapid_fall({"state": "ok", "rapid_fall": False, "tendency_pa_3h": -100.0}, T0 + 800)
     svc._rapid_fall(ok, T0 + 2000)                              # more than 30 minutes after the first marker
     assert len([m for m in hub.recorder.markers() if m.source == "barometer"]) == 2
     assert not hub.alarms.sounding
@@ -702,9 +739,14 @@ def test_put_barometer_validates_and_saves(tmp_path):
     assert r.status_code == 200 and hub.config.barometer.hemisphere == "south" and hub.config.barometer.rapid_fall_alarm
     on_disk = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
     assert on_disk["barometer"] == {"hemisphere": "south", "rapid_fall_alarm": True, "rapid_fall_hpa_3h": 4.0}
-    for bad in ({"hemisphere": "east"}, {"rapid_fall_hpa_3h": 1.0}, {"rapid_fall_hpa_3h": 11}, {"rapid_fall_alarm": "perhaps"}):
+    for bad in ({"hemisphere": "east"}, {"rapid_fall_hpa_3h": 1.0}, {"rapid_fall_hpa_3h": 11}, {"rapid_fall_alarm": "perhaps"},
+                {"rapid_fall_alarm": "yes"}, {"rapid_fall_alarm": 1}, {"rapid_fall_alarm": "true"},
+                {"rapid_fall_hpa_3h": "3.6"}, {"rapid_fall_hpa_3h": None}, {"unknown_key": 1}):
         r = c.put("/api/admin/barometer", json=bad)
-        assert r.status_code == 422 and "perhaps" not in r.text and "east" not in r.text
+        assert r.status_code == 422 and "perhaps" not in r.text and "east" not in r.text and "yes" not in r.text
+    for raw in ('{"rapid_fall_hpa_3h": NaN}', '{"rapid_fall_hpa_3h": Infinity}'):
+        r = c.put("/api/admin/barometer", content=raw, headers={"Content-Type": "application/json"})
+        assert r.status_code == 422
     assert hub.config.barometer.hemisphere == "south"
     state = c.get("/api/admin/state").json()
     assert state["config"]["barometer"]["rapid_fall_hpa_3h"] == 4.0 and state["emulate"] is False
@@ -738,7 +780,11 @@ def test_the_public_snapshot_has_the_block_and_no_private_fields(tmp_path):
         baro = snap["site"]["baro"]
         assert baro["state"] == "ok" and baro["tendency_word"] == "falling_quickly" and baro["rapid_fall"] is True
         assert baro["outlook"] in "ABDHORUVX"          # falling: that row of the Zambretti table
-        assert not re.search(r"sim_|\.pressure|02:5e", json.dumps(baro))
+        text = json.dumps(baro)
+        assert not re.search(r"sim_|foh|stage|\.pressure|02:5e|\d+\.\d+\.\d+\.\d+|esphome|hw_id", text, re.I)
+        assert set(baro) <= {"state", "msl_pa", "set_pa", "tendency_pa_3h", "tendency_word", "rapid_fall", "outlook",
+                             "ready_ts", "first_ts", "last_ts", "gap", "last_hour_pa", "approx", "reduction"}
+        assert all(isinstance(v, (int, float, bool, str, list, type(None))) for v in baro.values())
         assert snap["site"]["pressure_source"] == "measured"
 
 
@@ -770,3 +816,79 @@ def test_js_view_cases_run_in_node():
         pytest.skip("node is not installed")
     r = subprocess.run([node, str(ROOT / "tests" / "js" / "barometer_test.js")], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# --------------------------------------------------------------- review fixes: bad readings, salvage, limits
+BAD_PRESSURES = [float("nan"), float("inf"), float("-inf"), 0.0, -5.0, 29999.0, 110001.0, 1e300]
+
+
+@pytest.mark.parametrize("bad", BAD_PRESSURES)
+def test_an_implausible_reading_is_ignored_before_it_is_stored(tmp_path, bad):
+    """Not finite, or outside 30-110 kPa: it never becomes a sample, never reaches the reduction."""
+    hub = make_hub(tmp_path)
+    feed(hub, 0, 5, 101000.0)
+    n = len(hub.baro._all(T0 + 5 * MIN))
+    b = hub.baro.update(T0 + 6 * MIN, bad, 15.0)
+    assert b["state"] == "stale" and len(hub.baro._all(T0 + 6 * MIN)) == n
+    assert b["msl_pa"] == pytest.approx(101000.0)         # the last good figure, dimmed by the card
+
+
+def test_the_limits_of_a_plausible_reading():
+    assert [bm.plausible_pressure(p) for p in (30000.0, 110000.0, 101325, 29999.9, 110000.1)] == [True, True, True, False, False]
+    assert not bm.plausible_pressure(True) and not bm.plausible_pressure("1")
+
+
+@pytest.mark.parametrize("p", [float("nan"), float("inf"), 0.0, -1.0, 1e300, 1e-300])
+@pytest.mark.parametrize("temp", [None, 15.0, -273.15, -300.0, float("nan"), 1e9])
+@pytest.mark.parametrize("alt", [0.0, 6000.0, -500.0, float("nan"), float("inf"), 1e9])
+def test_the_reduction_and_its_inverse_never_raise_and_never_go_complex(p, temp, alt):
+    for value in (acoustics.msl_from_station_pa(p, alt, temp), acoustics.altitude_from_msl_pa(p, 101325.0, temp),
+                  acoustics.altitude_from_msl_pa(100000.0, p, temp)):
+        assert isinstance(value, float)
+
+
+def test_a_failing_tick_does_not_remove_the_block_from_the_snapshot(tmp_path):
+    hub = sensor_hub(tmp_path)
+    assert hub.site_meta["baro"]["state"] in ("collecting", "ok")
+
+    def boom(*a, **k):
+        raise RuntimeError("one bad tick")
+
+    hub.baro.update = boom
+    hub.compute_site(time.time())
+    assert hub.site_meta["baro"]["state"] in ("stale", "collecting")      # still there, no longer live
+    assert "baro" in hub.snapshot()["site"]
+
+
+def test_helper_refuses_an_implausible_station_reading(tmp_path):
+    for p in (20000.0, 130000.0):
+        hub = sensor_hub(sub(tmp_path, f"p{int(p)}"), pressures=(p,))
+        r = admin_client(hub).post(HELPER, json={"qnh_hpa": 1013.2})
+        assert r.status_code == 409 and r.json()["detail"].startswith("The pressure reading is not plausible")
+        assert hub.config.site.altitude_m == 0.0
+        assert hub.site_meta["baro"]["state"] in bm.STATES
+
+
+def test_salvage_keeps_the_fields_of_a_damaged_section_that_are_fine(tmp_path):
+    path = tmp_path / "config.yaml"
+    cfg = Config()
+    cfg.admin.pin_hash = hash_pin("1234")
+    store = ConfigStore(path)
+    store.config = cfg
+    store.save()
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["barometer"] = {"hemisphere": "south", "rapid_fall_alarm": True, "rapid_fall_hpa_3h": 99}
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    loaded = ConfigStore(path).load()
+    assert verify_pin("1234", loaded.admin.pin_hash)
+    assert loaded.barometer.hemisphere == "south" and loaded.barometer.rapid_fall_alarm is True
+    assert loaded.barometer.rapid_fall_hpa_3h == 3.6                     # only the bad field went back to its default
+
+
+def test_series_never_reads_more_than_a_day(tmp_path):
+    hub = make_hub(tmp_path)
+    now = math.ceil(time.time() / 60) * 60
+    for hours_ago in (30, 20, 1):
+        hub.recorder.record_state("site.pressure", 101000.0 + hours_ago, now - hours_ago * 3600)
+    rows = hub.recorder.series("site.pressure", now - 400 * 3600, now)
+    assert [round(r[1]) for r in rows] == [101020, 101001]               # the 30 h old one is not read

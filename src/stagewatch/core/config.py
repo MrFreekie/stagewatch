@@ -528,7 +528,10 @@ def salvage(raw: object, text: str = "") -> tuple[Config, list[str]]:
                 kept = {}
                 for k, item in val.items():
                     try:
-                        kept.update(getattr(Config.model_validate({key: {k: item}}), key))
+                        got = getattr(Config.model_validate({key: {k: item}}), key)
+                        if isinstance(got, BaseModel):    # a model section, field by field: only what was set
+                            got = got.model_dump(exclude_unset=True)
+                        kept.update(got)
                     except Exception:
                         pass
             if kept:

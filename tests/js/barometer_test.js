@@ -128,6 +128,10 @@ v = baro.view({ state: "gap", msl_pa: 101300, gap: [t1410, t1505], ready_ts: t15
 eq(v.notes, ["Pressure gap 14:10 to 15:05, trend ready about 18:05"], "gap");
 eq([v.tendency, v.outlook, v.flag], [null, null, null], "no word, outlook or flag in a gap");
 
+// sparse: readings too thin for a trend: say so, no word, outlook or flag
+v = baro.view({ ...base, state: "sparse", ready_ts: null }, NOW);
+eq([v.state, v.notes, v.tendency, v.outlook, v.flag, v.msl], ["sparse", ["Not enough readings to give a trend yet."], null, null, null, "1,013.0"], "sparse");
+
 // stale: dim, with its age, never a flag or an outlook, even if the payload still carries them
 v = baro.view({ ...base, state: "stale", last_ts: NOW - 240 }, NOW);
 eq([v.dim, v.notes, v.tendency, v.outlook, v.flag, v.msl], [true, ["▲ Pressure last seen 4m ago"], null, null, null, "1,013.0"], "stale");

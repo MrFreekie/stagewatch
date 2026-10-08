@@ -111,7 +111,7 @@ SW.baro = (function () {
     const v = { state: "waiting", dim: false, msl: "—", angle: null, setAngle: null, offScale: false, setLabel: "",
       tendency: null, flag: null, outlook: null, notes: [], approx: "", tempNote: "" };
     if (!b || typeof b !== "object") { v.notes.push("Waiting for a pressure reading."); return v; }
-    v.state = ["ok", "collecting", "gap", "stale", "no_sensor"].indexOf(b.state) >= 0 ? b.state : "waiting";
+    v.state = ["ok", "collecting", "gap", "sparse", "stale", "no_sensor"].indexOf(b.state) >= 0 ? b.state : "waiting";
     if (v.state === "no_sensor") { v.dim = true; v.notes.push(baro.NO_SENSOR); return v; }
     if (v.state === "waiting") { v.notes.push("Waiting for a pressure reading."); return v; }
     if (isNum(b.msl_pa)) {
@@ -129,6 +129,10 @@ SW.baro = (function () {
     else if (b.approx === "approx" && b.reduction === "isa") v.approx = "Sea-level pressure is approximate: there is no temperature reading.";
     else if (b.approx === "approx") v.approx = "Sea-level pressure here is approximate above about 500 m.";
     if (b.reduction === "temperature") v.tempNote = baro.TEMP_NOTE;
+    if (v.state === "sparse") {   // readings are too thin to measure a change: say so, never guess
+      v.notes.push("Not enough readings to give a trend yet.");
+      return v;
+    }
     if (v.state === "collecting" || v.state === "gap") {
       if (v.state === "gap" && Array.isArray(b.gap) && b.gap.length === 2) {
         v.notes.push(`Pressure gap ${SW.fmtTime(b.gap[0])} to ${SW.fmtTime(b.gap[1])}${isNum(b.ready_ts) ? `, trend ready about ${SW.fmtTime(b.ready_ts)}` : ""}`);

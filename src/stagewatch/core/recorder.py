@@ -606,6 +606,7 @@ class Recorder:
         Only what was recorded: gaps stay gaps."""
         self.flush()
         until = until if until is not None else time.time()
+        since = max(since, until - 24 * 3600.0)     # one call never reads more than a day
         out: list[tuple[float, float]] = []
         for show in self.shows():
             if show["started"] > until or (show["ended"] is not None and show["ended"] < since):

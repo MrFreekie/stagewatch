@@ -87,6 +87,7 @@ class Hub:
         self.integrations: dict[str, Integration] = {}
         self.site_meta: dict = {"sensors": {}, "pressure_source": "altitude",
                                 "c_out_of_range": False, "c_out_of_range_bounds": []}
+        self._baro_block: dict = {"state": "stale"}
         self._emas: dict[str, Ema] = {}
         self._ema_sigs: dict[str, tuple] = {}
         self._tasks: list[asyncio.Task] = []
@@ -403,9 +404,12 @@ class Hub:
             if rh is not None:
                 values["site.dew_point"] = acoustics.dew_point_c(temp, rh)
         try:
-            self.site_meta["baro"] = self.baro.update(now, pressure, temp)
+            self._baro_block = self.baro.update(now, pressure, temp)
         except Exception:  # noqa: BLE001 - never stop the tick over the barometer
             log.exception("Barometer update failed")
+            if self._baro_block.get("state") == "ok":
+                self._baro_block = {**self._baro_block, "state": "stale"}   # the block stays; it just is not live
+        self.site_meta["baro"] = self._baro_block
         self.site_meta["c_out_of_range"] = bool(range_issues)
         self.site_meta["c_out_of_range_bounds"] = range_issues
         for entity_id, value in values.items():

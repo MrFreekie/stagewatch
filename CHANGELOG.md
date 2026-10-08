@@ -25,7 +25,8 @@ them into a dated release section and tags the commit.
   wind, lightning and the forecast. The card is a guide from pressure at this site only. It is not a forecast and
   never replaces the Met Office forecast and warnings or your event's weather plan. The wall layout shows big
   numbers instead of a dial. It says "Collecting pressure history, trend ready about 21:30" until 3 hours of unbroken readings exist, and
-  shows a gap (never a guess) if the sensor or Stagewatch stopped for more than 15 minutes. Tick it under
+  shows a gap (never a guess) if the sensor or Stagewatch stopped for more than 3 minutes, and says "Not enough readings to give a trend yet" when readings are too thin.
+  The Pressure hint uses the Zambretti method, which has odd corners at low pressure and in winter (see the user guide); it is never a forecast. Pressure readings that are not plausible are ignored. Tick it under
   **Admin → User dashboards → Edit cards**; it is never switched on by default. Pressure is shown in hPa only.
   The sea-level figure uses the measured temperature and the altitude in **Admin → Site**.
 - Admin: **Set altitude from today's sea-level pressure** (in the Site card). Type the sea-level pressure

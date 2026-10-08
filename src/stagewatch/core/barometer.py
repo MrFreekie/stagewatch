@@ -33,7 +33,10 @@ HOUR_S = 3600.0
 TENDENCY_S = 3 * HOUR_S
 CURRENT_WINDOW_S = 600.0       # "now" is the mean of the last 10 minutes of samples
 REFERENCE_HALF_S = 600.0       # the reference is the mean within 10 minutes of 3 h ago
-GAP_S = 15 * 60.0              # no samples for longer than this is a gap
+GAP_S = 3 * 60.0               # no samples for longer than this is a gap (nothing is assumed across it)
+MIN_WINDOW_SAMPLES = 5         # each 10-minute window needs at least this many minute samples
+PRESSURE_MIN_PA, PRESSURE_MAX_PA = 30000.0, 110000.0   # a station reading outside this is not weather
+REARM_S = 10 * 60.0            # the silent notice cannot raise again sooner than this after it cleared
 KEEP_S = 4 * HOUR_S            # how long samples are kept (and how far back the recorder is read)
 TEMP_MEAN_S = HOUR_S           # the sea-level reduction uses the site temperature mean of this long
 TEMP_MAX_AGE_S = 30 * 60.0     # ... if its newest reading is not older than this
@@ -49,12 +52,18 @@ ZAMBRETTI_TREND_TENTHS = 16    # 1.6 hPa in 3 h: the original instrument's risin
 DEFAULT_RAPID_FALL_HPA = 3.6
 
 OUTLOOK_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-STATES = ("ok", "collecting", "gap", "stale", "no_sensor")
+STATES = ("ok", "collecting", "gap", "sparse", "stale", "no_sensor")
 WORDS = ("steady", "rising_slowly", "rising", "rising_quickly", "rising_very_rapidly",
          "falling_slowly", "falling", "falling_quickly", "falling_very_rapidly")
 
 
 # ------------------------------------------------------------------ pure maths
+def plausible_pressure(pa) -> bool:
+    """True for a finite station pressure between 30 and 110 kPa (anything else is a broken reading)."""
+    return isinstance(pa, (int, float)) and not isinstance(pa, bool) and math.isfinite(pa) \
+        and PRESSURE_MIN_PA <= pa <= PRESSURE_MAX_PA
+
+
 def tenths(delta_hpa: float) -> int:
     """A change in hPa as whole tenths of a hPa, rounded half away from zero (so 1.55 is 16, -1.55
     is -16, whatever the float noise of 1.55 * 10)."""
@@ -85,18 +94,19 @@ def zambretti_trend(delta_tenths: int) -> int:
 
 
 # Zambretti forecaster, northern hemisphere, pinned version. Number Z from the sea-level pressure P
-# in hPa, by trend (the constants of the Negretti & Zambra instrument as published in the
-# descriptions at en.wikipedia.org/wiki/Zambretti_Forecaster and in the openHAB community
-# implementation), rounded half up:
-#     falling  Z = 127 - 0.12 P     Z 1..9    (P about 985..1050)
-#     steady   Z = 144 - 0.13 P     Z 10..19  (P about 960..1033)
-#     rising   Z = 185 - 0.16 P     Z 20..32  (P about 947..1030)
-# Outside April-September ("winter") a falling Z is lowered by 1 and a rising Z raised by 1. Z is
-# kept inside the trend's own range and looked up in that trend's row of letters. The letters A to
-# Z are the 26 outcomes of the original disc (A settled fine ... Z stormy, much rain). Not copied
-# from any GPL source: the constants and rows are the published facts of the instrument, written
-# out here. ASSUMPTION TO CONFIRM (see the report): the exact seasonal rule differs between
-# published versions; this is the one that matches the openHAB description.
+# in hPa, by trend, with floor() (not rounding):
+#     falling  Z = 127 - 0.12 P     Z 1..9
+#     steady   Z = 144 - 0.13 P     Z 10..19
+#     rising   Z = 185 - 0.16 P     Z 20..32
+# Z is kept inside the trend own range and looked up in that trend row of letters (falling
+# ABDHORUVX, steady ABEKNPSWXZ, rising ABCFGIJLMQTYZ; the 26 outcomes A settled fine ... Z stormy,
+# much rain). The constants, the floor() and the Z 1-32 letter rows are from the README of
+# github.com/sassoftware/iot-zambretti-weather-forcasting. Only the winter rule is from an openHAB
+# community post: outside April-September a falling Z is lowered by 1 and a rising Z raised by 1.
+# Written out here as facts of the instrument, no source code copied. Quirk of the published
+# winter rule (documented in docs/using-stagewatch.md): near 965 and 980 hPa a falling trend can
+# read better than steady, and a rising trend can read worse than steady between about 966 and
+# 1034 hPa. The card says it is not a forecast.
 _ZAMBRETTI = {
     -1: (127.0, 0.12, 0, "ABDHORUVX"),
     0: (144.0, 0.13, 9, "ABEKNPSWXZ"),
@@ -116,7 +126,7 @@ def zambretti(msl_hpa: float, trend: int, month: int, hemisphere: str = "north",
     """The outlook letter A..Z for a sea-level pressure, a trend (-1, 0, +1) and the month.
     ``wind_deg`` is accepted for later (the full forecaster uses wind) and ignored now."""
     a, b, offset, row = _ZAMBRETTI[trend]
-    z = math.floor(a - b * msl_hpa + 0.5)
+    z = math.floor(a - b * msl_hpa + 1e-9)     # floor; the 1e-9 only stops 13.999999999 for a true 14
     if not is_summer(month, hemisphere):
         z += -1 if trend < 0 else (1 if trend > 0 else 0)
     index = min(max(z - offset, 1), len(row))
@@ -149,6 +159,7 @@ class BarometerService:
         self._last_reduction = "isa"
         self._rapid_on = False
         self._last_marker_ts: float | None = None
+        self._cleared_ts: float | None = None
         self.demo: EmulatedWeather | None = None
 
     # ---- samples
@@ -225,6 +236,10 @@ class BarometerService:
         and return the ``baro`` block."""
         hub = self.hub
         has_sensor = any(e.kind == Kind.PRESSURE and not e.derived for e in hub.entities.values())
+        if pressure_pa is not None and not plausible_pressure(pressure_pa):
+            pressure_pa = None            # not weather: ignored, never stored or reduced
+        if temp_c is not None and not (isinstance(temp_c, (int, float)) and math.isfinite(temp_c) and -90.0 <= temp_c <= 70.0):
+            temp_c = None
         if pressure_pa is not None:
             self.add_reading(now, pressure_pa, temp_c)
         block: dict = {"state": "no_sensor"}
@@ -244,6 +259,10 @@ class BarometerService:
                         reduction=self._last_reduction)
             return base
         msl, reduction = self.msl_pa(pressure_pa, now)
+        if not math.isfinite(msl):
+            base.update(msl_pa=self._last_msl, last_ts=self._last_ts, approx=self.approx(self._last_reduction),
+                        reduction=self._last_reduction)
+            return base
         self._last_msl, self._last_ts, self._last_reduction = msl, now, reduction
         base.update(msl_pa=msl, approx=self.approx(reduction), reduction=reduction, last_ts=now)
 
@@ -266,9 +285,9 @@ class BarometerService:
                 base["last_hour_pa"] = tenths(hour[0] / 100.0) * 10.0
             return base
         change = self._change(samples, now, TENDENCY_S)
-        if change is None:           # cannot happen inside an unbroken run; be safe, never guess
-            base["state"] = "collecting"
-            base["ready_ts"] = now + 600.0
+        if change is None:           # too few readings in a window: not enough data, never a guess
+            base["state"] = "sparse"
+            base["ready_ts"] = None
             return base
         delta_pa, ref_pa = change
         t = tenths(delta_pa / 100.0)
@@ -289,7 +308,7 @@ class BarometerService:
         time between the two means so the 10-minute windows add no bias."""
         cur = [s for s in samples if s.ts >= now - CURRENT_WINDOW_S]
         ref = [s for s in samples if abs(s.ts - (now - span_s)) <= REFERENCE_HALF_S]
-        if not cur or not ref:
+        if len(cur) < MIN_WINDOW_SAMPLES or len(ref) < MIN_WINDOW_SAMPLES:
             return None
         sep = _mean(s.ts for s in cur) - _mean(s.ts for s in ref)
         if sep <= 0:
@@ -319,6 +338,10 @@ class BarometerService:
             want = bool(block.get("rapid_fall"))
         if want == self._rapid_on:
             return
+        if want and self._cleared_ts is not None and now - self._cleared_ts < REARM_S:
+            return                           # just cleared: wait before it can raise again
+        if not want:
+            self._cleared_ts = now
         self._rapid_on = want
         text = f"Pressure falling quickly: {signed_hpa(-fall)} hPa in 3 h (advisory)"
         change = hub.alarms.set_condition("barometer:rapid_fall", want, 1, text, now, silent=True)

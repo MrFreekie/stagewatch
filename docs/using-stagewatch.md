@@ -513,18 +513,26 @@ sensor, such as a BME280 node. With none, the card says "No pressure sensor" (an
   the pressure, the 3-hour change and the month (the Zambretti method). It is a guide from pressure at this site
   only. It is not a forecast.
 
+**Odd corners of the hint.** The Zambretti method is a century-old paper calculator and has odd corners. At very low
+pressure (below about 962 hPa) and at a few other pressures a falling trend can give a better-sounding hint than a steady
+one. In winter, a rising trend can give a worse-sounding hint than a steady one at about 962 to 968 hPa and about 1008 to
+1031 hPa (in summer, in a few narrow bands). Pressure readings that are not plausible (outside 30 to 110 kPa) are ignored.
+This is one more reason the hint is not a forecast: treat it as a nudge to go and look.
+
 **What it is not.** Stagewatch makes no claim that the hint is right. It can miss fast-moving fronts that pass in
 under 3 hours, summer thunderstorms under high pressure (use the lightning plan for those) and local wind. Always
 check the Met Office forecast and warnings, and follow your event's weather plan.
 
 **What you'll see while it waits**
 
-- "Collecting, ready about 21:30": the card needs 3 hours of unbroken readings before it gives a change and a hint.
+- "Collecting pressure history, trend ready about 21:30": the card needs 3 hours of unbroken readings before it gives a change and a hint.
   After an hour it also shows "Last hour: −0.6 hPa" as a first idea, without a word.
-- "Pressure gap 14:10 to 15:05, ready about 18:05": the sensors or Stagewatch were off for more than 15 minutes.
-  Stagewatch does not guess what happened in between, so it starts counting 3 hours again. A restart of a minute or
+- "Pressure gap 14:10 to 15:05, ready about 18:05": the sensors or Stagewatch were off for more than 3 minutes.
+  Stagewatch does not guess what happened in between, so it starts counting 3 hours again. A restart of under 3 minutes, or one missed reading,
   two does not cause this: Stagewatch reads its own history back when it starts.
 - "▲ Pressure last seen 4m ago": the readings have stopped. The figure is dimmed and the hint is hidden.
+- "Not enough readings to give a trend yet": the sensor is reporting too rarely (less often than about every 2 minutes) to
+  measure a 3-hour change reliably. Stagewatch will not guess; it shows no trend and no hint until there is enough.
 - "Sea-level pressure here is approximate above about 500 m": above that height the conversion is less accurate.
   It also says so when there is no temperature reading.
 
