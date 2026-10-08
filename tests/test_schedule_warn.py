@@ -15,7 +15,7 @@ from stagewatch.web.server import create_app
 
 def test_default_reproduces_the_old_fixed_steps():
     s = SiteConfig()
-    assert s.schedule_warn_minutes == [15, 5] and s.schedule_warn_flash is False
+    assert s.schedule_warn_minutes == [15, 5] and s.schedule_warn_flash_minutes == []
 
 
 def test_valid_lists_are_sorted_descending():
@@ -35,18 +35,18 @@ def test_old_config_without_the_keys_loads_with_defaults_and_no_schema_bump(tmp_
     path = tmp_path / "config.yaml"
     path.write_text(yaml.safe_dump({"schema_version": CONFIG_SCHEMA_VERSION, "site": {"name": "Old"}}), encoding="utf-8")
     cfg = ConfigStore(path).load()
-    assert cfg.site.name == "Old" and cfg.site.schedule_warn_minutes == [15, 5] and cfg.site.schedule_warn_flash is False
+    assert cfg.site.name == "Old" and cfg.site.schedule_warn_minutes == [15, 5] and cfg.site.schedule_warn_flash_minutes == []
 
 
 def test_keys_are_saved_and_survive_a_reload(tmp_path):
     store = ConfigStore(tmp_path / "config.yaml")
     cfg = store.load()
     cfg.site.schedule_warn_minutes = [20, 10, 5]
-    cfg.site.schedule_warn_flash = True
+    cfg.site.schedule_warn_flash_minutes = [5]
     store.config = cfg
     store.save()
     again = ConfigStore(tmp_path / "config.yaml").load()
-    assert again.site.schedule_warn_minutes == [20, 10, 5] and again.site.schedule_warn_flash is True
+    assert again.site.schedule_warn_minutes == [20, 10, 5] and again.site.schedule_warn_flash_minutes == [5]
 
 
 def test_older_build_ignores_the_new_keys():
@@ -54,7 +54,7 @@ def test_older_build_ignores_the_new_keys():
     class OldSite(_Model):
         name: str = "x"
 
-    old = OldSite.model_validate({"name": "n", "schedule_warn_minutes": [15, 10, 5], "schedule_warn_flash": True})
+    old = OldSite.model_validate({"name": "n", "schedule_warn_minutes": [15, 10, 5], "schedule_warn_flash_minutes": [5]})
     assert old.name == "n" and not hasattr(old, "schedule_warn_minutes")
 
 
@@ -83,24 +83,60 @@ SITE = {"name": "Field", "altitude_m": 10, "reference_distance_m": 30, "stale_af
 
 
 def test_public_payload_carries_the_steps(client):
-    assert client.get("/api/info").json()["schedule_warn"] == {"minutes": [15, 5], "flash": False}
-    assert client.get("/api/snapshot").json()["site"]["schedule_warn"] == {"minutes": [15, 5], "flash": False}
+    assert client.get("/api/info").json()["schedule_warn"] == {"minutes": [15, 5], "flash_minutes": []}
+    assert client.get("/api/snapshot").json()["site"]["schedule_warn"] == {"minutes": [15, 5], "flash_minutes": []}
 
 
 def test_admin_site_endpoint_rules(client):
     assert client.put("/api/admin/site", json=SITE).status_code == 401
     assert client.post("/api/admin/setup", json={"pin": "1234"}).status_code == 200
-    body = {**SITE, "schedule_warn_minutes": [5, 15, 10], "schedule_warn_flash": True}
+    body = {**SITE, "schedule_warn_minutes": [5, 15, 10], "schedule_warn_flash_minutes": [5, 10]}
     assert client.put("/api/admin/site", json=body, headers={"Origin": "http://evil.example"}).status_code == 403
     assert client.hub.config.site.schedule_warn_minutes == [15, 5]
     r = client.put("/api/admin/site", json=body)
     assert r.status_code == 200 and r.json()["schedule_warn_minutes"] == [15, 10, 5]
-    assert client.get("/api/info").json()["schedule_warn"] == {"minutes": [15, 10, 5], "flash": True}
+    assert client.get("/api/info").json()["schedule_warn"] == {"minutes": [15, 10, 5], "flash_minutes": [10, 5]}
     # callers that don't send the keys keep them
     assert client.put("/api/admin/site", json=SITE).status_code == 200
-    assert client.hub.config.site.schedule_warn_minutes == [15, 10, 5] and client.hub.config.site.schedule_warn_flash is True
+    assert client.hub.config.site.schedule_warn_minutes == [15, 10, 5] and client.hub.config.site.schedule_warn_flash_minutes == [10, 5]
     for bad in ([], [0], [241], [5, 5], list(range(1, 10)), ["x"]):
         r = client.put("/api/admin/site", json={**SITE, "schedule_warn_minutes": bad})
         assert r.status_code == 422, bad
         assert "schedule_warn_minutes" in r.text
     assert client.hub.config.site.schedule_warn_minutes == [15, 10, 5]
+
+
+@pytest.mark.parametrize("bad", [[3], [5, 5], [True], ["5"], list(range(1, 10)), "5", [0]])
+def test_flash_minutes_must_be_warning_times(bad):
+    with pytest.raises(ValueError):
+        SiteConfig(schedule_warn_minutes=[15, 5], schedule_warn_flash_minutes=bad)
+    assert SiteConfig(schedule_warn_minutes=[15, 5, 1], schedule_warn_flash_minutes=[1, 15]).schedule_warn_flash_minutes == [15, 1]
+
+
+def test_endpoint_refuses_flash_time_not_in_the_list(client):
+    assert client.post("/api/admin/setup", json={"pin": "1234"}).status_code == 200
+    r = client.put("/api/admin/site", json={**SITE, "schedule_warn_minutes": [15, 5], "schedule_warn_flash_minutes": [3]})
+    assert r.status_code == 422
+    assert client.hub.config.site.schedule_warn_flash_minutes == []
+
+
+def test_nightly_flash_tick_becomes_flash_at_the_smallest_step(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump({"schema_version": CONFIG_SCHEMA_VERSION, "site": {
+        "name": "N", "schedule_warn_minutes": [20, 10, 5], "schedule_warn_flash": True}}), encoding="utf-8")
+    site = ConfigStore(path).load().site
+    assert site.schedule_warn_flash_minutes == [5] and site.name == "N"
+    assert "schedule_warn_flash:" not in yaml.safe_dump(site.model_dump())
+    # off, or default minutes, or an explicit new list wins
+    assert SiteConfig.model_validate({"schedule_warn_flash": False}).schedule_warn_flash_minutes == []
+    assert SiteConfig.model_validate({"schedule_warn_flash": True}).schedule_warn_flash_minutes == [5]
+    assert SiteConfig.model_validate({"schedule_warn_flash": True, "schedule_warn_flash_minutes": [15]}).schedule_warn_flash_minutes == [15]
+
+
+def test_flash_list_that_does_not_fit_is_salvaged_without_losing_the_pin(tmp_path):
+    pin = "pbkdf2_sha256$600000$" + "a" * 32 + "$" + "b" * 64
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump({"schema_version": CONFIG_SCHEMA_VERSION, "admin": {"pin_hash": pin},
+                                    "site": {"schedule_warn_flash_minutes": [99]}}), encoding="utf-8")
+    cfg = ConfigStore(path).load()
+    assert cfg.admin.pin_hash == pin and cfg.site.schedule_warn_flash_minutes == []

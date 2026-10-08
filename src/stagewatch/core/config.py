@@ -109,11 +109,39 @@ class SiteConfig(_Model):
     # "Add markers from the schedule" (schedule page): a marker at doors, soundchecks and act
     # changes as they happen. Additive with a default: no config schema bump.
     schedule_auto_markers: bool = True
-    # Schedule card warning steps, in minutes before an item ends (NOW) or starts (NEXT). The last
-    # (smallest) step is orange, earlier ones amber. One list for the whole site. Additive with a
-    # default that reproduces the old fixed 15 / 5: no config schema bump. Visual only.
+    # Schedule card warning steps, in minutes before an item ends (NOW) or starts (NEXT). The first
+    # (largest) step is amber, every later one orange. One list for the whole site. Additive with
+    # a default that reproduces the old fixed 15 / 5: no config schema bump. Visual only.
     schedule_warn_minutes: list[int] = Field(default_factory=lambda: [15, 5])
-    schedule_warn_flash: bool = False  # slow pulse on the last step (never on NEXT)
+    # The steps (a subset of the minutes above) that pulse slowly; NEXT never does.
+    schedule_warn_flash_minutes: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_warn_flash(cls, data):
+        """Nightly builds had one ``schedule_warn_flash: true`` tick box: flash at the smallest step."""
+        if isinstance(data, dict) and "schedule_warn_flash" in data:
+            data = dict(data)
+            old = data.pop("schedule_warn_flash")
+            mins = data.get("schedule_warn_minutes", [15, 5])
+            if (old is True and "schedule_warn_flash_minutes" not in data and isinstance(mins, list)
+                    and mins and all(isinstance(n, int) and not isinstance(n, bool) for n in mins)):
+                data["schedule_warn_flash_minutes"] = [min(mins)]
+        return data
+
+    @field_validator("schedule_warn_flash_minutes", mode="before")
+    @classmethod
+    def _warn_flash(cls, v):
+        if (not isinstance(v, list) or len(v) > 8 or len(set(map(repr, v))) != len(v)
+                or any(isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 240 for n in v)):
+            raise ValueError("flashing times must be some of the warning times")
+        return sorted(v, reverse=True)
+
+    @model_validator(mode="after")
+    def _flash_is_a_warning_time(self):
+        if not set(self.schedule_warn_flash_minutes) <= set(self.schedule_warn_minutes):
+            raise ValueError("flashing times must be some of the warning times")
+        return self
 
     @field_validator("schedule_warn_minutes", mode="before")
     @classmethod

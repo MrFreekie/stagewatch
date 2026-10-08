@@ -926,7 +926,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # Set on the schedule page; the Site card doesn't send it, so keep it as it is.
             body = body.model_copy(update={"schedule_auto_markers": hub.config.site.schedule_auto_markers})
         # Callers that don't send the warning times keep what is set.
-        keep = {k: getattr(hub.config.site, k) for k in ("schedule_warn_minutes", "schedule_warn_flash")
+        keep = {k: getattr(hub.config.site, k) for k in ("schedule_warn_minutes", "schedule_warn_flash_minutes")
                 if k not in body.model_fields_set}
         if keep:
             body = body.model_copy(update=keep)

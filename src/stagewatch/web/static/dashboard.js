@@ -552,8 +552,8 @@
     const left = ownEnd ? nn.currentEnd - now : null;
     const lvl = SW.nowLevel(left);
     const step = SW.nowStep(left);
-    // Optional slow pulse in the last (orange) step only; NEXT never flashes.
-    const fl = lvl === "alert" && SW.scheduleWarn.flash ? " flash" : "";
+    // Optional slow pulse in the steps marked with ! in the Site card; NEXT never flashes.
+    const fl = SW.nowFlash(left) ? " flash" : "";
     setClass(ui.now.el, `sched-block now${lvl ? ` lvl-${lvl}` : ""}${fl}`);
     for (const tag of [ui.now.tag, ui.stripTag]) {
       const text = step ? `${step} MIN` : "";
