@@ -1,20 +1,25 @@
-"""Ontime integration: the show clock for the Wall Clock card.
+"""Ontime integration: the show clock for the Wall Clock card and the countdown for the Ontime
+Timer card.
 
 Read-only. It listens to an Ontime server (https://github.com/cpvalente/ontime) for the time of
-day and nothing else, and sends nothing to it. It does not read the rundown, timers or messages.
+day and the main timer (with the title and warning times of the loaded event) and sends nothing
+to it. It does not read the rest of the rundown, notes, messages or aux timers.
 
-It runs only while a dashboard has the Wall Clock card: the Wall Clock service
-(core/wallclock.py) starts and stops its clock source. The "Ontime" device appears under
-Integrations in the admin page while the source runs; if Ontime can't be reached it goes
-MISSING with a *silent* alarm (an on-screen notice, never a sound).
+There is one connection. It runs only while at least one dashboard has a card that needs it: the
+Wall Clock card (when the Wall Clock source is Ontime) or the Ontime Timer card. Each card's
+service "acquires" the source under its own name; it starts with the first and stops with the
+last. The "Ontime" device appears under Integrations in the admin page while the source runs; if
+Ontime can't be reached it goes MISSING with a *silent* alarm (an on-screen notice, never a sound).
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from ...core.model import Device, Status
 from ...core.plugin import Integration, Manifest
+from ...core.ontimetimer import TimerReading
 from ...core.wallclock import ClockReading
 from .client import OntimeSource
 from .emulate import EmulatedClock
@@ -26,11 +31,14 @@ DEVICE_ID = "ontime"
 MANIFEST = Manifest(
     domain="ontime",
     name="Ontime",
-    version="0.1.0",
-    description="Reads the time of day from an Ontime server (WebSocket, falling back to HTTP "
-                "polling) so the Wall Clock card can show it and warn if it differs from "
-                "Stagewatch. Read-only: sends nothing to Ontime and does not read the rundown, "
-                "timers or messages. Runs only while a dashboard has the Wall Clock card.",
+    version="0.2.0",
+    description="Reads the time of day and the main timer (countdown, playback state, and the "
+                "title and warning times of the loaded event) from an Ontime server over one "
+                "WebSocket connection, falling back to HTTP polling, so the Wall Clock and Ontime "
+                "Timer cards can show them. Read-only: sends nothing to Ontime and does not read "
+                "the rest of the rundown, notes, messages or aux timers. Runs only while a "
+                "dashboard has one of those cards. Tested against Ontime 4.14.0 in the 'roll' "
+                "state only; other states are handled but not yet checked against a real Ontime.",
     tier="experimental",
     direction="in",
     protocols=("WebSocket", "HTTP"),
@@ -38,23 +46,61 @@ MANIFEST = Manifest(
 
 
 class _ManagedSource:
-    """What the Wall Clock service sees: the clock source, plus the "Ontime" device that exists
-    only while it runs."""
+    """What the card services see: the shared Ontime source, reference counted by consumer name
+    ("wall_clock", "ontime_timer"), plus the "Ontime" device that exists only while it runs."""
 
     def __init__(self, owner: "OntimeIntegration", inner) -> None:
         self._owner, self._inner = owner, inner
         self.name, self.label = inner.name, inner.label
+        self._holders: set[str] = set()
+        self._url = ""                    # the address the running source was started with
+        self._lock = asyncio.Lock()
 
+    @property
+    def holders(self) -> frozenset[str]:
+        return frozenset(self._holders)
+
+    def _current_url(self) -> str:
+        return self._owner.hub.config.wall_clock.ontime_url
+
+    async def acquire(self, consumer: str) -> None:
+        """Hold the source for ``consumer`` (idempotent). Starts it if nobody held it; if it is
+        running against an old address (the admin changed it), restarts it on the new one."""
+        async with self._lock:
+            url = self._current_url()
+            first = not self._holders
+            self._holders.add(consumer)
+            if first:
+                self._owner._register()
+                await self._inner.start()
+                self._url = url
+            elif url != self._url:
+                await self._inner.stop()
+                await self._inner.start()
+                self._url = url
+
+    async def release(self, consumer: str) -> None:
+        """Let go for ``consumer``. The source stops when the last holder lets go."""
+        async with self._lock:
+            if consumer not in self._holders:
+                return
+            self._holders.discard(consumer)
+            if not self._holders:
+                await self._inner.stop()
+                self._owner._unregister()
+
+    # The Wall Clock service's view (core/wallclock.py ClockSource): start/stop hold/release it.
     async def start(self) -> None:
-        self._owner._register()
-        await self._inner.start()
+        await self.acquire("wall_clock")
 
     async def stop(self) -> None:
-        await self._inner.stop()
-        self._owner._unregister()
+        await self.release("wall_clock")
 
     def latest(self) -> ClockReading:
         return self._inner.latest()
+
+    def latest_timer(self) -> TimerReading:
+        return self._inner.latest_timer()
 
     def details(self) -> dict:
         return self._inner.details()
@@ -72,10 +118,11 @@ class OntimeIntegration(Integration):
                 inner = OntimeSource(lambda: hub.config.wall_clock.ontime_url, on_change=self._on_reading)
         else:
             inner._on_change = self._on_reading
+        self._inner = inner
         self.clock_source = _ManagedSource(self, inner)
         self._registered = False
 
-    # The source is started and stopped by the Wall Clock service, not by the hub.
+    # The source is started and stopped by the card services, not by the hub.
     async def start(self) -> None:
         return None
 
@@ -90,7 +137,7 @@ class OntimeIntegration(Integration):
     # ------------------------------------------------------------- device
     def _register(self) -> None:
         self.hub.register_device(Device(
-            DEVICE_ID, "Ontime", "ontime", "Ontime", "Show clock",
+            DEVICE_ID, "Ontime", "ontime", "Ontime", "Show clock and timer",
             status=Status.INITIALIZING, status_detail="Connecting", category="service"))
         self._registered = True
 
@@ -102,8 +149,14 @@ class OntimeIntegration(Integration):
     def _on_reading(self, reading: ClockReading) -> None:
         if not self._registered:
             return
-        if reading.status == "ok":
-            self.hub.set_device_status(DEVICE_ID, Status.OK, reading.detail)
+        # Healthy if either the clock or the timer is arriving: a bad value in one must not hide the other.
+        timer = None
+        try:
+            timer = self._inner.latest_timer()
+        except Exception:  # noqa: BLE001
+            log.debug("no timer reading", exc_info=True)
+        if reading.status == "ok" or (timer is not None and timer.status == "ok"):
+            self.hub.set_device_status(DEVICE_ID, Status.OK, reading.detail if reading.status == "ok" else timer.detail)
         else:
             # An on-screen notice only: a venue without Ontime running must never beep.
             self.hub.set_device_status(DEVICE_ID, Status.MISSING, reading.detail, silent_alarm=True)

@@ -16,6 +16,30 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Ontime Timer: a new dashboard card that shows the countdown **Ontime** is running, with the
+  event's title, so the stage manager's timer sits next to your alarms and readings. It shows the
+  time left (m:ss, or h:mm:ss from an hour), a progress bar, and the state in words with a symbol:
+  ▶ RUNNING, ▶ ROLLING, ⏸ PAUSED, ● READY or ■ STOPPED. Tablets also show time added or removed,
+  when the item finishes and how long it has run. The card turns amber and then orange using
+  **Ontime's own warning and danger times** for that event, with words such as "UNDER 2 MIN". If
+  Ontime doesn't send them, it uses the warning minutes you set under **Admin → Site**. When the time
+  is up it counts on as -0:01, -0:02 in orange with "▲ OVER" (never red). If nothing arrives from
+  Ontime the time is struck through and says "▲ STALE", and if Ontime is gone it says "▲ OFFLINE";
+  an old countdown is never shown as live. Tick **Ontime Timer** under **Admin → User dashboards →
+  Edit cards**. It uses the same **Ontime address** as the Wall Clock (the address box and
+  **Test connection** now show whenever either card is switched on) and shares the one connection:
+  Stagewatch still only listens and never sends anything to Ontime, and it reads only the main
+  timer and the loaded event's title and warning times, not your rundown, notes or messages. The
+  event title is shown on every dashboard by default; untick **Admin → Ontime Timer → Show the event
+  title on dashboards** to hide it. This is Ontime's timer on a screen, not a Stagewatch timer and
+  not a cue. It is **experimental**: only the "rolling" state has been checked against a real Ontime
+  (4.14.0); pause, ready, stopped, running over and added time are built and tested but still to
+  be checked against the real thing. If Ontime stops, a quiet notice appears in the alarm bar (never
+  a sound), the same one the Wall Clock uses. `--emulate` puts the card on the wall dashboard and
+  runs a three-minute story: running, paused, time added, running over, stopped, ready, stale and
+  offline. Action needed: none. If you go back to an older version of Stagewatch after ticking this
+  card, the older version doesn't know the card: the next time you save dashboards there it is
+  taken off, and the title setting is forgotten, so you would tick it again.
 - Wall Clock: the card now has **three looks**, chosen for each dashboard: plain digits (as
   before), an **LED ring** (60 lights round a circle with a brighter light for each hour, and
   the time in the middle) and **7-segment digits** like a studio clock. The ring and 7-segment looks

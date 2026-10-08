@@ -7,7 +7,8 @@
 * Asks only for ``/api/version``, ``/api/poll`` and ``/ws``; never a control endpoint.
 * Reconnects with a bounded backoff (1 s to 30 s). Nothing here can stop the hub.
 
-Only the clock (and the version string) is read from what Ontime sends.
+What is read from what Ontime sends: the clock, the main timer with a few fields of the loaded
+event (for the Ontime Timer card), and the version string. One connection serves both cards.
 """
 
 from __future__ import annotations
@@ -24,8 +25,10 @@ from typing import Callable
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidURI
 
-from ...core.wallclock import ClockReading
-from .parse import HTTP_OK, HTTP_PATHS, MAX_BYTES, parse_poll, parse_version, parse_ws_message, split_url, ws_url
+from ...core.ontimetimer import TimerReading, TimerState
+from ...core.wallclock import ClockReading, valid_clock_ms
+from .parse import (HTTP_OK, HTTP_PATHS, MAX_BYTES, parse_timer, parse_version, parse_ws_runtime, poll_payload,
+                    split_url, ws_url)
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +45,7 @@ TEXT = {
     "not_ontime": "That address did not answer like Ontime",
     "too_large": "Ontime sent more data than we accept",
     "bad_clock": "Ontime sent a time we can't read",
+    "bad_timer": "Ontime sent a timer we can't read",
     "closed": "Ontime closed the connection",
 }
 
@@ -158,6 +162,8 @@ class OntimeSource:
         self._no_data, self._open_timeout = no_data_s, open_timeout_s
         self._task: asyncio.Task | None = None
         self._reading = ClockReading(None, clock(), "offline", "Connecting")
+        self._timer = TimerReading(None, clock(), "offline", "Connecting")
+        self._merged: TimerState | None = None   # the last good timer state, for merging partial messages
         self.version = ""
         self.transport = ""
         self._got = False
@@ -166,6 +172,8 @@ class OntimeSource:
     async def start(self) -> None:
         if self._task is None:
             self._reading = ClockReading(None, self._time(), "offline", "Connecting")
+            self._timer = TimerReading(None, self._time(), "offline", "Connecting")
+            self._merged = None
             self.version = self.transport = ""
             self._task = asyncio.create_task(self._run(), name="ontime-client")
 
@@ -177,6 +185,9 @@ class OntimeSource:
 
     def latest(self) -> ClockReading:
         return self._reading
+
+    def latest_timer(self) -> TimerReading:
+        return self._timer
 
     def details(self) -> dict:
         return {"version": self.version, "transport": self.transport}
@@ -195,14 +206,40 @@ class OntimeSource:
         self._set(ClockReading(ms, self._time(), "ok", "WebSocket" if transport == "websocket" else "Polling"))
 
     def _lost(self, category: str) -> None:
+        """The connection or the data is gone: both the clock and the timer have nothing to show."""
         self.transport = ""
+        self._merged = None
+        self._timer = TimerReading(None, self._time(), "offline", TEXT.get(category, TEXT["unreachable"]))
         self._set(ClockReading(None, self._time(), "offline" if category != "bad_clock" else "error",
                                TEXT.get(category, TEXT["unreachable"])))
+
+    def _ingest(self, payload: dict | None, transport: str) -> bool:
+        """One runtime-data payload (WebSocket message or poll answer): update the timer and the
+        clock separately, so a bad value in one never hides the other. True if either was valid."""
+        if payload is None:
+            self._lost("bad_clock")
+            return False
+        timer_ok = False
+        if "timer" in payload:
+            state = parse_timer(payload, self._merged)
+            if state is None:
+                self._timer = TimerReading(None, self._time(), "error", TEXT["bad_timer"])
+            else:
+                self._merged, timer_ok = state, True
+                self._timer = TimerReading(state, self._time(), "ok", "WebSocket" if transport == "websocket" else "Polling")
+        ms = valid_clock_ms(payload.get("clock"))
+        if ms is not None:
+            self._good(ms, transport)
+        else:
+            self.transport = transport if timer_ok else ""
+            self._set(ClockReading(None, self._time(), "error", TEXT["bad_clock"]))
+        return ms is not None or timer_ok
 
     async def _run(self) -> None:
         backoff = self._bmin
         while True:
             self._got = False
+            self._merged = None   # a new connection starts with a full message
             try:
                 await self._read_version()
                 await self._ws_session()
@@ -234,13 +271,12 @@ class OntimeSource:
                 if left <= 0:
                     raise TimeoutError("no valid clock")
                 raw = await asyncio.wait_for(ws.recv(), left)
-                kind, ms = parse_ws_message(raw)
-                if kind == "clock":
+                kind, _ms, payload = parse_ws_runtime(raw)
+                if kind == "ignored":
+                    continue
+                if self._ingest(payload, "websocket"):
                     last_valid = time.monotonic()
                     self._got = True
-                    self._good(ms, "websocket")
-                elif kind == "invalid":
-                    self._lost("bad_clock")
 
     async def _poll_for(self, seconds: float) -> None:
         """Poll ``/api/poll`` every second for about ``seconds`` (at least once), then return so
@@ -249,11 +285,7 @@ class OntimeSource:
         while True:
             try:
                 body = await asyncio.to_thread(http_get_json, self._url_fn(), "/api/poll")
-                ms = parse_poll(body)
-                if ms is None:
-                    self._lost("bad_clock")
-                else:
-                    self._good(ms, "polling")
+                self._ingest(poll_payload(body), "polling")
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001

@@ -473,3 +473,39 @@ body.layout-wall .wc-ring { max-width: 58vh; }
 body.layout-wall .wc-segments { max-width: none; }
 body.layout-wall .wc-date { font-size: 36px; }
 @media (prefers-reduced-motion: reduce) { .wc-face * { transition: none; animation: none; } }
+
+/* Ontime Timer card: Ontime's own countdown. Level and state always come with words and a symbol
+   (UNDER 2 MIN, a triangle with OVER, RUNNING, PAUSED...), never colour alone. Overtime is orange,
+   never red. */
+#ontime-timer-card [hidden] { display: none; }
+.ot-title { font-size: 20px; font-weight: 600; margin-bottom: 2px; overflow-wrap: anywhere; }
+.ot-main { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 16px; }
+.ot-count { font-size: 64px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.05; }
+.ot-added { font-size: 18px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ot-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-top: 2px; }
+.ot-badge { font-size: 15px; font-weight: 800; letter-spacing: .04em; }
+.ot-type { font-size: 14px; }
+.ot-extra { margin: 6px 0 0; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ot-note { margin: 6px 0 0; font-size: 15px; color: var(--muted); }
+.ot-note.warn { color: var(--warn); font-weight: 600; }
+.ot-foot { margin: 8px 0 0; font-size: 12px; }
+#ontime-timer-card.lvl-warn { border-left: 6px solid var(--warn); }
+#ontime-timer-card.lvl-alert, #ontime-timer-card.ot-over { border-left: 6px solid var(--alert); }
+#ontime-timer-card.lvl-warn .ot-count { color: var(--warn); }
+#ontime-timer-card.lvl-alert .ot-count, #ontime-timer-card.ot-over .ot-count { color: var(--alert); }
+#ontime-timer-card.ot-s-paused .ot-count { opacity: .6; }
+#ontime-timer-card.ot-s-ready .ot-count, #ontime-timer-card.ot-s-stopped .ot-count,
+#ontime-timer-card.ot-s-unknown .ot-count { color: var(--muted); }
+#ontime-timer-card.ot-s-off, #ontime-timer-card.ot-s-error, #ontime-timer-card.ot-s-stale { border-left: 6px solid var(--warn); }
+#ontime-timer-card.ot-s-off, #ontime-timer-card.ot-s-error { opacity: .75; }
+#ontime-timer-card.ot-s-off .ot-count, #ontime-timer-card.ot-s-error .ot-count,
+#ontime-timer-card.ot-s-stale .ot-count { color: var(--muted); }
+#ontime-timer-card.ot-s-stale .ot-count { text-decoration: line-through; text-decoration-thickness: 4px; }
+body.layout-phone .ot-count { font-size: 52px; }
+body.layout-phone .ot-added, body.layout-phone .ot-extra { display: none; }
+body.layout-wall .ot-count { font-size: min(240px, 20vw); }
+body.layout-wall .ot-title { font-size: 40px; }
+body.layout-wall .ot-badge { font-size: 32px; }
+body.layout-wall .ot-type, body.layout-wall .ot-note { font-size: 32px; }
+body.layout-wall .ot-added, body.layout-wall .ot-extra, body.layout-wall .ot-foot { display: none; }
+body.layout-wall #ontime-timer-card > h2 { font-size: 24px; }

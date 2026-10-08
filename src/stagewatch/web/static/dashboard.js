@@ -690,6 +690,41 @@
     setClass(card, `card${v.cls ? ` ${v.cls}` : ""} wc-style-${style}`);
     wc.timer = setTimeout(tickWallClock, SW.wc.nextDelayMs(m, now));
   }
+
+  // ------------------------------------------------------- ontime timer
+  // Ontime's own countdown, as the server received it (an "ontime_timer" message about once a
+  // second). Between messages the countdown runs on from the server-corrected clock, re-anchored
+  // to Ontime's value on every message. What to show is decided in SW.ot.view (ontimetimer.js).
+  // The timer runs only while the card is on this dashboard and ticks just after each shown
+  // second. Nothing here sounds, raises an alarm or sends anything to Ontime.
+  const ot = { timer: null, ui: null };
+  function stopOntimeTimer() { if (ot.timer) { clearTimeout(ot.timer); ot.timer = null; } }
+
+  function renderOntimeTimer() {
+    const card = $("ontime-timer-card");
+    if (!has("ontime_timer") || !state.ontimeTimer) {
+      stopOntimeTimer();
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    if (!ot.ui) {
+      ot.ui = SW.ot.createUi();
+      card.replaceChildren(card.querySelector("h2") || h("h2", {}, "Ontime Timer"), ...ot.ui.nodes);
+    }
+    tickOntimeTimer();
+  }
+
+  function tickOntimeTimer() {
+    stopOntimeTimer();
+    const m = state.ontimeTimer, ui = ot.ui;
+    if (!m || !ui || !has("ontime_timer")) return;
+    const now = serverNow();
+    const v = SW.ot.view(m, now);
+    ui.update(v);
+    setClass($("ontime-timer-card"), `card ${v.cls}${v.level ? ` lvl-${v.level}` : ""}${v.over ? " ot-over" : ""}`);
+    ot.timer = setTimeout(tickOntimeTimer, SW.ot.nextDelayMs(m, now));
+  }
   // --------------------------------------------------------------- cards
   // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists
   // which cards it shows and in what order (dash.cards); ids this build doesn't know (from a
@@ -707,6 +742,8 @@
     sensors: { el: cardEl("sensors"), render: renderSensors },
     // The time from Ontime. Hidden until the first message arrives (the server sends one with the snapshot).
     wall_clock: { el: cardEl("wall_clock"), wide: true, render: renderWallClock, empty: () => !state.wallClock },
+    // Ontime's countdown. Hidden until the first message arrives (the server sends one with the snapshot).
+    ontime_timer: { el: cardEl("ontime_timer"), wide: true, render: renderOntimeTimer, empty: () => !state.ontimeTimer },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
     connect_footer: { el: cardEl("connect_footer"), footer: true, render: renderConnectFooter },
   };
@@ -757,6 +794,7 @@
     state.show = msg.show;
     state.scheduleMeta = msg.schedule || null;   // {show_id, day, revision}: the items are fetched
     state.wallClock = msg.wall_clock || null;    // null until a dashboard has the card and the source is running
+    state.ontimeTimer = msg.ontime_timer || null; // likewise
     state.isAdmin = msg.is_admin;
     state.dash = msg.dashboard;
     state.now = msg.now;
@@ -779,6 +817,7 @@
     }
     if (!has("schedule")) stopScheduleTimer();
     if (!has("wall_clock")) stopWallClockTimer();
+    if (!has("ontime_timer")) stopOntimeTimer();
     syncSchedule();
   }
 
@@ -839,6 +878,7 @@
         syncSchedule();
         break;
       case "wall_clock": state.wallClock = msg; if (has("wall_clock")) renderWallClock(); break;
+      case "ontime_timer": state.ontimeTimer = msg; if (has("ontime_timer")) renderOntimeTimer(); break;
       case "alarms": state.alarms = msg.alarms; state.sounding = msg.sounding; renderAlarms(); break;
       case "reload": location.reload(); break;
     }

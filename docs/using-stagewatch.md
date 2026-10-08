@@ -417,8 +417,8 @@ Good to know:
 
 - A **new** dashboard starts with a sensible set for its layout. If you change its **Layout**
   before saving, the ticks change to that layout's set.
-- **Wall Clock** is never switched on by default. Tick it if you want it, then choose its time
-  source and look (see below).
+- **Wall Clock** and **Ontime Timer** are never switched on by default. Tick them if you want them,
+  then choose the time source and look (see below).
 - **Schedule** stays hidden until the show has a schedule, even when it is ticked. Add the
   schedule under **Admin → Schedule → Open schedule editor**.
 - **Open on a tablet** is always at the bottom of the screen, wherever it is in the list. Tick
@@ -440,7 +440,8 @@ choose it in **Admin → Wall Clock → Time source**:
   Stagewatch.
 - **Ontime**: the time from [Ontime](https://github.com/cpvalente/ontime), the free rundown and
   show timer, so everyone sees the same clock as the stage manager. Stagewatch only listens to
-  Ontime. It never sends anything to it, and it does not read your rundown, timers or messages.
+  Ontime. It never sends anything to it. For the time of day it reads only the clock. (The separate
+  [Ontime Timer card](#show-ontimes-countdown-ontime-timer-card) reads the countdown.)
 
 If you already use Ontime, Stagewatch keeps using it after the update. Stagewatch never switches to
 the other source by itself: if Ontime stops, the card says so.
@@ -486,10 +487,76 @@ the time, as well as colour:
   not live. Don't trust it.
 
 The Stagewatch PC source never shows "Differs", because it is Stagewatch's own time.
-Stagewatch only contacts Ontime while a dashboard has the Wall Clock card and Ontime is the source.
+Stagewatch only contacts Ontime while a dashboard has the Ontime Timer card, or has the Wall Clock card
+with Ontime as the source.
 
 **If it didn't work:** see [Troubleshooting](troubleshooting.md).
 
+### Show Ontime's countdown (Ontime Timer card)
+
+The **Ontime Timer** card shows the countdown that [Ontime](https://github.com/cpvalente/ontime) is
+running, with the name of the event, next to your alarms and readings. Use it when the stage manager
+runs the show from Ontime and you want the same "time left" on the FOH tablet, the monitor desk or the
+wall without another browser tab. It is Ontime's timer on a screen. It is not a Stagewatch timer, and
+you should not use it as a cue.
+
+Stagewatch only listens to Ontime. It never starts, pauses or changes anything in Ontime. It reads the
+main timer and the title and warning times of the loaded event, and nothing else: not your rundown,
+notes or messages. It uses the same **Ontime address** as the Wall Clock, and the two cards share one
+connection.
+
+1. Open **Admin** and find the **Wall Clock** card. Type the **Ontime address** and click **Test
+   connection** (the address box shows when a dashboard has the Ontime Timer card, even if the clock
+   itself uses the Stagewatch PC). **What you'll see:** "Ontime 4.14.0 answered." (your version).
+   Click **Save**.
+2. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Ontime Timer** and click
+   **Save dashboards**.
+3. Optional: in the **Ontime Timer** card on the Admin page, untick **Show the event title on
+   dashboards** and click **Save**. The title is the event's name in Ontime, often an artist. Dashboards
+   have no password, so untick this if the name should stay off the screens.
+
+**What you'll see:** the event title, the time left in large digits (`m:ss`, or `h:mm:ss` from an
+hour), a progress bar and the state in words. Tablets also show time added or removed, when the item
+finishes and how long it has run. A phone shows the countdown, the state and the title. A wall screen
+shows a very large countdown, the title, the state and the bar.
+
+What the card tells you. Every state has words and a symbol as well as colour:
+
+- **▶ RUNNING** or **▶ ROLLING**: the time is counting down. Rolling means Ontime is following the
+  clock.
+- **⏸ PAUSED**: the time is frozen and dimmed.
+- **● READY**: an item is loaded but has not started. It shows the length of the item.
+- **■ STOPPED**: nothing is running. It shows `--:--`, or "No event loaded".
+- **UNDER 2 MIN** (amber) then **UNDER 1 MIN** (orange): the time left has reached the event's own
+  warning and danger times from Ontime. If Ontime doesn't send them, the card uses the warning
+  minutes under **Admin → Site** (such as "15 MIN" and "5 MIN"), as the Schedule card does. A
+  warning time that is longer than the whole item is ignored.
+- **▲ OVER** (orange): the time is up. The digits count on as `-0:01`, `-0:02` and the card says
+  "Over by". It is orange, never red, because running over is not a stop.
+- **▲ STALE**: nothing has arrived from Ontime for a few seconds. The time is frozen with a line
+  through it. Don't trust it.
+- **▲ OFFLINE**: Stagewatch can't hear Ontime. The digits show `--:--` and a quiet notice appears in
+  the alarm bar. It never makes a sound. Check Ontime is running and the address is right.
+
+If a timer counts up, or Ontime shows a clock instead of a timer, the card shows the number it was
+given and says so ("Counting up", "Clock").
+
+The countdown comes from the numbers Ontime sends, not from clocks, so a wrong clock or time zone on
+Ontime's computer or on the tablet can't change it. Times such as "Finishes 16:30" are worked out
+from the time left, in Stagewatch's site time.
+
+**This card is experimental.** Only the rolling state has been checked against a real Ontime
+(version 4.14.0). Pause, ready, stopped, running over and added time are built and tested, but not
+yet checked against the real thing. If one looks wrong, please say which one.
+
+The Schedule card and the Ontime Timer card do different jobs. The Ontime Timer follows what the
+stage manager is running in Ontime right now. The Schedule card shows Stagewatch's own times and the
+whole running order, and doesn't need Ontime. You can have both on one dashboard.
+
+In the Stagewatch emulate mode the card runs a three-minute story on the wall dashboard: running,
+paused, time added, running over, stopped, ready, then stale and offline.
+
+**If it didn't work:** see [Troubleshooting](troubleshooting.md).
 ---
 
 **Something not right?** [Troubleshooting](troubleshooting.md).
