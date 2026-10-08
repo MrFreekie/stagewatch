@@ -140,7 +140,7 @@ SW.wc = (function () {
   // brighter), the time as SVG text in the middle (viewBox 220 x 220). The seconds fill up:
   // second s lights LEDs 0..s-1, so every earlier second of the minute stays lit and the whole
   // ring is dark at :00, which makes the minute rollover unmistakable.
-  const RING_R = 102, MARK_R = 78;
+  const RING_R = 102, MARK_R = 91.3;  // hour marks: same size as a seconds LED, one seconds-spacing (~10.7) inside it
   function ringFace() {
     const leds = [];
     const svg = S("svg", { viewBox: "0 0 220 220", width: "220", height: "220", role: "img", class: "wc-svg" });
@@ -150,7 +150,7 @@ SW.wc = (function () {
       leds.push(c);
       svg.append(c);
     }
-    for (let i = 0; i < 12; i++) svg.append(S("circle", Object.assign(at(MARK_R, i, 12), { r: "4.2", class: "led mark" })));    const parts = { hh: S("tspan"), c1: S("tspan", { class: "colon" }), mm: S("tspan"), c2: S("tspan", { class: "colon" }), ss: S("tspan") };
+    for (let i = 0; i < 12; i++) svg.append(S("circle", Object.assign(at(MARK_R, i, 12), { r: "2.6", class: "led mark" })));    const parts = { hh: S("tspan"), c1: S("tspan", { class: "colon" }), mm: S("tspan"), c2: S("tspan", { class: "colon" }), ss: S("tspan") };
     setText(parts.c1, ":"); setText(parts.c2, ":");
     const text = S("text", { x: "110", y: "120", "text-anchor": "middle", class: "wc-digits" },
       parts.hh, parts.c1, parts.mm, parts.c2, parts.ss);
