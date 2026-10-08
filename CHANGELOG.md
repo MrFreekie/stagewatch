@@ -16,6 +16,7 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- Admin page: **Connect a tablet** now has one fold-out section per dashboard, plus one for the home page, each with its QR code and addresses (up to 3 start open, otherwise only the first). **Software** is folded into **Installed**, **Updates**, **History**, **Data backups** and **Displaced data**, each with a one-line status; **Updates** stays open while an update is available or running. Both cards have **Expand all** and **Collapse all**, and Stagewatch remembers your choices in this browser.
 - Admin page: **Sensors: calibration & averaging** now has one fold-out section per node, showing its status, how many sensors it has and any offset (for example "offset: Pressure -1.0 hPa"). Nodes with an offset, or that are not ok, start open. Stagewatch remembers which you open in this browser, and **Expand all** and **Collapse all** sit at the top of the card.
 - Dashboards: a sensor with a calibration offset now shows a `*` after its value in the **Sensors** table, with a note under the table such as "* Calibration offset applied: Feather S3 -1.0 hPa". The chart key marks the sensor too, and the Site average line when a sensor in that average has an offset. The change appears on open dashboards straight away.
 - ESPHome nodes: two new all-in-one environment node files (S3 Feather or XIAO ESP32C6, with a DPS310 and a Sensirion SHT45) report pressure, air temperature and humidity from one box; the pressure nodes guide covers parts, wiring and where to place the SHT45. Not yet tested on hardware.
@@ -315,7 +316,6 @@ them into a dated release section and tags the commit.
   virtual machine; still not tested on real Raspberry Pi hardware.
 
 ### Fixed
-- Admin: the **Connect a tablet** card can be folded away (**Show or hide the addresses**). It stays open until you close it, and your choice is remembered in that browser.
 - XIAO ESP32C6 nodes: an optional external-antenna block (off by default; the built-in antenna stays
   the default) and a guide section on when to use it. Not yet tested on hardware.
 - Admin: the adopted ESPHome nodes list now has an **Address** column: the IP address each node is

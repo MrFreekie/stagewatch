@@ -603,3 +603,13 @@ body.layout-wall .baro-foot { font-size: 20px; }
 .sensor-group td button.small, .sensor-group td input.num { min-height: 44px; }
 .sensor-group td input[type="checkbox"] { width: 24px; height: 24px; margin: 10px; }
 .sg-buttons { margin: 8px 0; }
+
+/* Connect a tablet and Software folds share the Sensors fold look */
+.connect-fold > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 44px; padding: 4px 0; cursor: pointer; }
+.connect-fold .cf-name { font-weight: 600; }
+.connect-fold .cf-url { font-size: 12px; overflow-wrap: anywhere; }
+.connect-fold .connect-item { padding: 4px 0 12px; }
+.connect-fold { border: 1px solid var(--grid); border-radius: 8px; padding: 0 10px; }
+.sw-fold > summary { min-width: 0; }
+.sw-fold .sw-fold-body { padding-bottom: 10px; overflow-wrap: anywhere; }
+.sw-fold .sw-flag { font-weight: 600; }
