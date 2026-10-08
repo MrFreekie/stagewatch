@@ -131,6 +131,9 @@ Get-NetFirewallRule -DisplayName "Stagewatch*" | Select-Object DisplayName, Enab
 | An **EMULATE MODE** banner at the top | This is a demo with fake sensors, not the real install. |
 | Times are wrong | The times come from the Stagewatch computer. On a Raspberry Pi with no internet, its clock may be out ([Pi guide](install-raspberry-pi.md#the-pi-has-no-clock-battery)). |
 | Temperature or speed of sound looks silly | Check each sensor in the **Sensors** card. One sensor in the sun or by a lamp can be wrong. Untick **Average** for it in Admin, or move it. |
+| The **Barometer** says **No pressure sensor** | No pressure sensor is reporting. Add a node with a BME280 (see the [first sensor node guide](first-sensor-node.md)) and check it shows in the **Sensors** card. |
+| The **Barometer** says **Collecting** or **Pressure gap** | It needs 3 hours of unbroken readings for the 3-hour change and the hint. A gap of more than 3 minutes (a sensor or Stagewatch stopped) starts the wait again. It does not guess what it missed. The card says when it will be ready. |
+| The **Barometer** reads a few hPa away from the Met Office figure | Check the **Altitude** in **Admin → Site**, or use **Set altitude from today's sea-level pressure…** there. The card uses the measured temperature, so a hPa or so of difference from an airport figure is normal. |
 
 ---
 

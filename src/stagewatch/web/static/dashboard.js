@@ -725,6 +725,74 @@
     setClass($("ontime-timer-card"), `card ${v.cls}${v.level ? ` lvl-${v.level}` : ""}${v.over ? " ot-over" : ""}`);
     ot.timer = setTimeout(tickOntimeTimer, SW.ot.nextDelayMs(m, now));
   }
+  // --------------------------------------------------------- barometer
+  // Sea-level pressure, the 3-hour change and a rough outlook, from site.baro (Pa, a state, a
+  // tendency word and an outlook letter; SW.baro.view decides the words). Advisory only. The dial
+  // (tablet, phone) is drawn once and only its needle and two texts change; the wall shows big
+  // numbers instead (a needle cannot be read at 5 m), and hides the card when there is no sensor.
+  // Old readings are dimmed and say how old they are. Nothing here sounds or flashes.
+  const baroUi = { ui: null, letter: null };
+  const isWall = () => !!state.dash && state.dash.layout === "wall";
+  function renderBarometer() {
+    const card = $("barometer-card");
+    if (!has("barometer")) { card.hidden = true; return; }
+    const v = SW.baro.view(state.site.baro, state.now);
+    card.hidden = isWall() && v.state === "no_sensor";
+    if (!baroUi.ui) {
+      const u = baroUi.ui = {
+        dial: SW.baro.createDial(),
+        flag: h("div", { class: "baro-flag", role: "status", hidden: true }, h("strong", { class: "baro-flag-text" }), h("span", { class: "baro-flag-line" })),
+        msl: h("span", { class: "baro-num" }), off: h("span", { class: "baro-off" }),
+        arrow: h("span", { class: "baro-arrow", "aria-hidden": "true" }), word: h("span", { class: "baro-tword" }), figure: h("span", { class: "baro-figure" }),
+        iconHost: h("span", { class: "baro-icon-host" }), outText: h("span", { class: "baro-outlook-text" }), outWay: h("span", { class: "baro-way" }),
+        notes: h("p", { class: "baro-notes", role: "status" }), info: h("p", { class: "baro-info muted" }), temp: h("p", { class: "baro-temp muted" }),
+      };
+      u.tend = h("div", { class: "baro-tend" }, u.arrow, u.word, u.figure);
+      u.outlook = h("div", { class: "baro-outlook" }, u.iconHost, u.outText, u.outWay);
+      u.hint = h("div", { class: "baro-hint" }, h("div", { class: "baro-label" }, "Pressure hint"), u.outlook,
+        h("p", { class: "baro-disclaimer" }, SW.baro.DISCLAIMER));
+      u.figures = h("div", { class: "baro-figures" },
+        h("div", { class: "baro-label" }, "Sea-level pressure"),
+        h("div", { class: "baro-value" }, u.msl, h("span", { class: "baro-unit" }, "hPa")), u.off, u.tend, u.hint);
+      u.body = h("div", { class: "baro-body" }, h("div", { class: "baro-dial-host" }, u.dial.el), u.figures);
+      card.append(u.flag, u.notes, u.body, u.info, u.temp, h("p", { class: "baro-foot muted" }, SW.baro.FOOTER));
+    }
+    const u = baroUi.ui;
+    setClass(card, `card baro baro-${v.state}${v.dim ? " dim" : ""}`);
+    u.dial.update(v);
+    setText(u.msl, v.msl);
+    setText(u.off, v.offScale ? "▲ Off the scale" : "");
+    u.off.hidden = !v.offScale;
+    u.flag.hidden = !v.flag;
+    if (v.flag) {
+      setClass(u.flag, `baro-flag lvl-${v.flag.level}`);
+      setText(u.flag.firstChild, v.flag.text);
+      setText(u.flag.lastChild, v.flag.line);
+    }
+    u.tend.hidden = !v.tendency;
+    if (v.tendency) {
+      setClass(u.tend, `baro-tend${v.tendency.level ? ` lvl-${v.tendency.level}` : ""}`);
+      setText(u.arrow, v.tendency.arrow);
+      setText(u.word, v.tendency.word);
+      setText(u.figure, v.tendency.figure);
+    }
+    u.hint.hidden = !v.outlook;
+    if (v.outlook) {
+      if (baroUi.letter !== v.outlook.letter) {
+        baroUi.letter = v.outlook.letter;
+        u.iconHost.replaceChildren(v.outlook.icon ? SW.baro.icon(v.outlook.icon) : "");
+      }
+      setText(u.outText, v.outlook.text);
+      setText(u.outWay, v.outlook.arrow ? `${v.outlook.arrow} ${v.outlook.wayText}` : "");
+    }
+    setText(u.notes, v.notes.join(" · "));
+    u.notes.hidden = !v.notes.length;
+    setText(u.info, v.approx);
+    u.info.hidden = !v.approx;
+    setText(u.temp, v.tempNote);      // tablets only (style.css)
+    u.temp.hidden = !v.tempNote;
+  }
+
   // --------------------------------------------------------------- cards
   // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists
   // which cards it shows and in what order (dash.cards); ids this build doesn't know (from a
@@ -744,6 +812,8 @@
     wall_clock: { el: cardEl("wall_clock"), wide: true, render: renderWallClock, empty: () => !state.wallClock },
     // Ontime's countdown. Hidden until the first message arrives (the server sends one with the snapshot).
     ontime_timer: { el: cardEl("ontime_timer"), wide: true, render: renderOntimeTimer, empty: () => !state.ontimeTimer },
+    // Hidden on the wall while there is no pressure sensor (renderBarometer keeps it in step).
+    barometer: { el: cardEl("barometer"), render: renderBarometer, empty: () => isWall() && !!state.site.baro && state.site.baro.state === "no_sensor" },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
     connect_footer: { el: cardEl("connect_footer"), footer: true, render: renderConnectFooter },
   };
@@ -858,6 +928,7 @@
         }
         if (has("env_tiles")) renderTiles();
         if (has("sensors")) renderSensors();
+        if (has("barometer")) renderBarometer();
         if (has("chart")) updateChartSeries();
         break;
       }
@@ -911,5 +982,5 @@
   // Re-bucket history so long views stay tidy; refresh the sensors' "Updated" ages. Each only
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); }, 5000);
 })();

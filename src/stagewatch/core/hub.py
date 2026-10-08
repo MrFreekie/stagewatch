@@ -14,6 +14,7 @@ from .. import __version__, acoustics
 from ..boottime import system_boot_time
 from . import sitetime
 from .alarms import AlarmChange, AlarmEngine
+from .barometer import BarometerService
 from .bus import EventBus
 from .calibration import calibration_for as _calibration_for
 from .config import Calibration, ConfigStore, EntitySettings
@@ -77,6 +78,7 @@ class Hub:
         self.alarms = AlarmEngine()
         self.schedule = ScheduleService(self)
         self.schedule_markers = ScheduleMarkers(self)
+        self.baro = BarometerService(self)  # 3-hour tendency from one averaged sample a minute
         self.wall_clock = WallClockService(self)  # runs a clock source only while a dashboard has the card
         self.ontime_timer = OntimeTimerService(self)  # holds the shared Ontime source while a dashboard has its card
         # Active alarm id -> the marker it added, hidden again if the alarm is acknowledged.
@@ -87,6 +89,7 @@ class Hub:
         self.integrations: dict[str, Integration] = {}
         self.site_meta: dict = {"sensors": {}, "pressure_source": "altitude",
                                 "c_out_of_range": False, "c_out_of_range_bounds": []}
+        self._baro_block: dict = {"state": "stale"}
         self._emas: dict[str, Ema] = {}
         self._ema_sigs: dict[str, tuple] = {}
         self._tasks: list[asyncio.Task] = []
@@ -138,6 +141,12 @@ class Hub:
     async def start(self) -> None:
         if self.emulate:
             self._emulate_demo_day()
+            self.baro.start_demo("front", time.time())
+        else:
+            try:
+                self.baro.seed(time.time())
+            except Exception:  # noqa: BLE001 - no history just means the barometer collects afresh
+                log.exception("Could not read the pressure history for the barometer")
         self.check_schedule_markers()  # moments that passed while Stagewatch was off are recorded as missed (no marker)
         for integration in self.integrations.values():
             try:
@@ -290,6 +299,10 @@ class Hub:
         if change:
             self._alarm_changed([change])
 
+    def remove_entity(self, entity_id: str) -> None:
+        """Forget an entity (emulate scenarios that take a sensor away). Its history stays."""
+        self.entities.pop(entity_id, None)
+
     def register_entity(self, entity: Entity) -> Entity:
         existing = self.entities.get(entity.id)
         if existing:
@@ -394,6 +407,13 @@ class Hub:
             range_issues = acoustics.speed_of_sound_range_issues(temp, p)
             if rh is not None:
                 values["site.dew_point"] = acoustics.dew_point_c(temp, rh)
+        try:
+            self._baro_block = self.baro.update(now, pressure, temp)
+        except Exception:  # noqa: BLE001 - never stop the tick over the barometer
+            log.exception("Barometer update failed")
+            if self._baro_block.get("state") == "ok":
+                self._baro_block = {**self._baro_block, "state": "stale"}   # the block stays; it just is not live
+        self.site_meta["baro"] = self._baro_block
         self.site_meta["c_out_of_range"] = bool(range_issues)
         self.site_meta["c_out_of_range_bounds"] = range_issues
         for entity_id, value in values.items():

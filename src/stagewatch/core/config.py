@@ -406,6 +406,15 @@ class UpdaterConfig(_Model):
 MAX_IGNORED = 200
 
 
+class BarometerConfig(_Model):
+    """Barometer card settings. Additive with defaults: no config schema bump. An older build
+    ignores the section and forgets it on its next save."""
+    hemisphere: Literal["north", "south"] = "north"   # which months count as summer for the outlook
+    # Optional silent notice (never audible) plus one marker when pressure is falling quickly.
+    rapid_fall_alarm: bool = False
+    rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10)   # Met Office "quickly": 3.6 hPa in 3 h
+
+
 class Config(_Model):
     schema_version: int = CONFIG_SCHEMA_VERSION
     site: SiteConfig = Field(default_factory=SiteConfig)
@@ -427,6 +436,7 @@ class Config(_Model):
     updater: UpdaterConfig = Field(default_factory=UpdaterConfig)
     wall_clock: WallClockConfig = Field(default_factory=WallClockConfig)
     ontime_timer: OntimeTimerConfig = Field(default_factory=OntimeTimerConfig)
+    barometer: BarometerConfig = Field(default_factory=BarometerConfig)
 
     @field_validator("wall_clock", mode="before")
     @classmethod
@@ -526,7 +536,10 @@ def salvage(raw: object, text: str = "") -> tuple[Config, list[str]]:
                 kept = {}
                 for k, item in val.items():
                     try:
-                        kept.update(getattr(Config.model_validate({key: {k: item}}), key))
+                        got = getattr(Config.model_validate({key: {k: item}}), key)
+                        if isinstance(got, BaseModel):    # a model section, field by field: only what was set
+                            got = got.model_dump(exclude_unset=True)
+                        kept.update(got)
                     except Exception:
                         pass
             if kept:

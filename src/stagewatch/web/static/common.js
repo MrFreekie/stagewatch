@@ -30,6 +30,21 @@ SW.h = function (tag, attrs, ...children) {
   return el;
 };
 
+// SVG element builder, the same shape as SW.h: svg("circle", {cx: 5, r: 2}, child...). Built with
+// createElementNS and setAttribute (no innerHTML).
+SW.svg = function (tag, attrs, ...children) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return el;
+};
+
 SW.api = async function (method, url, body) {
   const opts = { method, headers: {}, credentials: "same-origin" };
   if (body !== undefined) {

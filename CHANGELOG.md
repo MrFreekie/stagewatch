@@ -43,6 +43,26 @@ them into a dated release section and tags the commit.
   taken off, and the title setting is forgotten (event titles go back to being shown), so you would
   tick the card and untick the title option again. When Ontime doesn't send its own warning times, the
   card says "Warning times from Stagewatch settings" so you know where the colours come from.
+- Dashboards: a new **Barometer** card, for outdoor events and anywhere with a pressure sensor (a BME280
+  node). It shows the **sea-level pressure** on an old-style dial (the words Stormy, Rain, Change, Fair and
+  Very dry sit at their traditional places), how the pressure has **changed over the last 3 hours** in the Met
+  Office's words (steady, rising or falling slowly, quickly or very rapidly), a small hand for where it was
+  3 hours ago, and a rough **Pressure hint** with a weather picture. When pressure falls by 3.6 hPa or more in
+  3 hours (the Met Office's "falling quickly") the card shows **FALLING QUICKLY** with ▼▼ and a reminder to check
+  wind, lightning and the forecast. The card is a guide from pressure at this site only. It is not a forecast and
+  never replaces the Met Office forecast and warnings or your event's weather plan. The wall layout shows big
+  numbers instead of a dial. It says "Collecting pressure history, trend ready about 21:30" until 3 hours of unbroken readings exist, and
+  shows a gap (never a guess) if the sensor or Stagewatch stopped for more than 3 minutes, and says "Not enough readings to give a trend yet" when readings are too thin.
+  The Pressure hint uses the Zambretti method, which has odd corners at low pressure and in winter (see the user guide); it is never a forecast. Pressure readings that are not plausible are ignored. Tick it under
+  **Admin → User dashboards → Edit cards**; it is never switched on by default. Pressure is shown in hPa only.
+  The sea-level figure uses the measured temperature and the altitude in **Admin → Site**.
+- Admin: **Set altitude from today's sea-level pressure** (in the Site card). Type the sea-level pressure
+  from the Met Office, a weather app or the nearest airport (QNH); Stagewatch works out the altitude that makes
+  the barometer read that figure and asks you to confirm before it saves anything. **Admin → Barometer** sets the
+  hemisphere (for the summer and winter months of the hint) and an optional silent alarm and marker when pressure
+  falls quickly (off by default, never sounds). `--emulate` has demo weather buttons (settled high, slow fall,
+  front arriving, storm, clearing, sensor dropout, no sensor).
+  If you go back to an older version of Stagewatch, it forgets the Barometer settings; nothing else changes.
 - Wall Clock: the card now has **three looks**, chosen for each dashboard: plain digits (as
   before), an **LED ring** (an outer ring of 60 lights for the seconds, an inner ring of 12 brighter lights for the hours,
   and the time in the middle) and **7-segment digits** like a studio clock. The ring and 7-segment looks
@@ -220,6 +240,8 @@ them into a dated release section and tags the commit.
   key on every node to stop other devices pretending to be yours.
 
 ### Changed
+- Admin → Site: the altitude label now says the altitude is also used for the barometer's sea-level figure
+  (it used to say it was only used without a pressure sensor).
 - Wall Clock LED ring: the 60 lights for the seconds are now an outer ring, and the 12 hour marks
   are a separate inner ring that is always lit. The seconds fill up: every second that has passed
   in the minute stays lit, and all the lights go out at the start of the next minute (none are lit

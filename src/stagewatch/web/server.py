@@ -31,16 +31,17 @@ import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
-from .. import __version__
+from .. import __version__, acoustics
 from ..core.config import (
-    CLOCK_STYLES, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig, SiteConfig, Threshold,
-    WallClockConfig,
+    CLOCK_STYLES, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
+    SiteConfig, Threshold, WallClockConfig,
 )
 from ..core.calibration import set_calibration
 from ..core.hub import Hub
-from ..core.model import Device, Entity, Marker, slugify
+from ..core.model import Device, Entity, Kind, Marker, slugify
 from ..core.recorder import clean_note, valid_day
 from .. import diagnostics, netinfo
+from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
 from ..core import schedule as sched
 from ..integrations.ontime.client import check_connection
@@ -248,6 +249,37 @@ class WallClockTestBody(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     ontime_url: str | None = Field(None, max_length=300)
+
+
+class AltitudeFromPressureBody(BaseModel):
+    """POST /api/admin/site/altitude-from-pressure: today's sea-level pressure (QNH) in hPa."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    qnh_hpa: float = Field(allow_inf_nan=False)
+
+
+class BarometerBody(BaseModel):
+    """PUT /api/admin/barometer: strict (no coercion, no unknown keys). BarometerConfig itself stays
+    lenient so an older or damaged file still loads."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    hemisphere: Literal["north", "south"] = "north"
+    rapid_fall_alarm: StrictBool = False
+    rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10, allow_inf_nan=False, strict=True)
+
+
+class BaroDemoBody(BaseModel):
+    """POST /api/admin/barometer/demo (emulate only)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    scenario: Literal["steady", "slow_fall", "front", "storm", "rising", "dropout", "none"]
+
+
+QNH_MIN_HPA, QNH_MAX_HPA = 940.0, 1060.0   # record extremes are about 870 and 1,085 hPa: a typo is caught
+ALTITUDE_RANGE_M = (-500.0, 6000.0)        # the same as SiteConfig.altitude_m
 
 
 WALL_CLOCK_TEST_TEXT = {
@@ -870,6 +902,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         esp = hub.integrations.get("esphome")
         return {
             "config": cfg,
+            "emulate": hub.emulate,
             "hardware": hardware_state(esp),
             "integrations": [i.info() for i in hub.integrations.values()],
             "discovered": esp.discovered_list() if esp else [],
@@ -1072,6 +1105,59 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         body = hub.config.ontime_timer
         hub.save_config()
         return body
+    # Barometer card settings (hemisphere, optional silent rapid-fall notice).
+    @app.put("/api/admin/barometer", dependencies=admin_deps)
+    async def put_barometer(body: BarometerBody):
+        hub.config.barometer = BarometerConfig(**body.model_dump())
+        hub.save_config()
+        return hub.config.barometer
+
+    @app.post("/api/admin/barometer/demo", dependencies=admin_deps)
+    async def barometer_demo(body: BaroDemoBody):
+        """Emulate only: start a weather scenario (the card is complete at once)."""
+        if not hub.emulate:
+            raise HTTPException(409, "Demo weather only works in emulate mode. Nothing has been changed.")
+        hub.baro.start_demo(body.scenario, time.time())
+        hub.bus.publish("config", None)   # open screens reload: a sensor may have appeared or gone
+        return {"ok": True}
+
+    @app.post("/api/admin/site/altitude-from-pressure", dependencies=admin_deps)
+    async def altitude_from_pressure(body: AltitudeFromPressureBody):
+        """Preview only, nothing is saved: the altitude that makes the barometer read the sea-level
+        pressure the admin typed, with the same reduction the card uses (so saving it makes the
+        dial show that figure). The admin page then saves it with PUT /api/admin/site."""
+        if not QNH_MIN_HPA <= body.qnh_hpa <= QNH_MAX_HPA:
+            raise HTTPException(422, "Sea-level pressure must be between 940 and 1,060 hPa. Nothing has been changed.")
+        now = time.time()
+        site = hub.site_meta
+        entity = hub.entities.get("site.pressure")
+        if site.get("pressure_source") != "measured" or entity is None or entity.value is None:
+            raise HTTPException(409, "No pressure sensor reading, so there is nothing to work from. Nothing has been changed.")
+        age = now - (entity.updated or 0.0)
+        if age > hub.config.site.stale_after_s:
+            raise HTTPException(409, f"The pressure reading is {round(age)} s old. Wait for a fresh reading. Nothing has been changed.")
+        station_pa = entity.value
+        if not baro_mod.plausible_pressure(station_pa):
+            raise HTTPException(409, "The pressure reading is not plausible. Check the pressure sensors. Nothing has been changed.")
+        temp = hub.baro.temp_mean_c(now)
+        altitude = acoustics.altitude_from_msl_pa(station_pa, body.qnh_hpa * 100.0, temp)
+        lo, hi = ALTITUDE_RANGE_M
+        if not (isinstance(altitude, float) and altitude == altitude and lo <= altitude <= hi):
+            raise HTTPException(422, "That pressure gives an altitude outside -500 to 6,000 m. Check the figure. Nothing has been changed.")
+        altitude_m = round(altitude)
+        warnings: list[str] = []
+        if altitude_m > 2000 or altitude_m < -50:
+            warnings.append("This altitude is unusual for an event site. Check the figure you typed.")
+        current = hub.config.site.altitude_m
+        if abs(altitude_m - current) > 50:
+            warnings.append("This differs from the saved altitude by more than 50 m. A slip of 1 hPa is about 8 m.")
+        values = [e.value for e in hub._env_inputs(Kind.PRESSURE, now)]
+        spread = (max(values) - min(values)) / 100.0 if len(values) > 1 else 0.0
+        if spread > 2.0:
+            warnings.append("The pressure sensors disagree by more than 2 hPa. Check them first.")
+        return {"altitude_m": altitude_m, "current_altitude_m": current, "station_hpa": round(station_pa / 100.0, 1),
+                "station_age_s": round(age), "sensors_used": len(values), "spread_hpa": round(spread, 1),
+                "warnings": warnings}
 
     test_lock = asyncio.Lock()
 

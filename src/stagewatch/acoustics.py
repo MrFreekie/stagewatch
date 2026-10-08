@@ -52,6 +52,55 @@ def pressure_at_altitude_pa(altitude_m: float) -> float:
     return STANDARD_PRESSURE_PA * base ** (_ISA_G * _ISA_M / (_ISA_R * _ISA_LAPSE))
 
 
+_R_DRY_AIR = _ISA_R / _ISA_M
+"""Specific gas constant of dry air, J/(kg K) (287.053)."""
+
+
+def _finite(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def msl_from_station_pa(station_pa: float, altitude_m: float, temp_c: float | None = None) -> float:
+    """Mean sea-level pressure from the pressure at the station, Pa.
+
+    With a measured temperature this is the hypsometric reduction: the pressure ratio is
+    ``exp(g h / (Rd Tm))``, where Tm is the mean temperature of the air column between the
+    station and sea level, taken as the measured temperature plus half the standard lapse over
+    the height (``Tm = T + L h / 2``). Humidity is ignored. Without a temperature it falls back to
+    the International Standard Atmosphere (the "QNH" style reduction), which is the exact inverse
+    of :func:`pressure_at_altitude_pa`. The caller says which one applied.
+    """
+    if not (_finite(station_pa) and station_pa > 0 and _finite(altitude_m)):
+        return math.nan
+    if temp_c is not None and _finite(temp_c):
+        tm = temp_c + 273.15 + _ISA_LAPSE * altitude_m / 2.0
+        if tm > 100.0:
+            return station_pa * math.exp(_ISA_G * altitude_m / (_R_DRY_AIR * tm))
+    return station_pa * STANDARD_PRESSURE_PA / pressure_at_altitude_pa(altitude_m)
+
+
+def altitude_from_msl_pa(station_pa: float, msl_pa: float, temp_c: float | None = None) -> float:
+    """The altitude at which :func:`msl_from_station_pa` turns ``station_pa`` into ``msl_pa``, m.
+
+    Exact inverse of the reduction, for the same temperature. Hypsometric: with
+    ``x = ln(msl/p) Rd / g`` the height is ``h = x T / (1 - x L / 2)`` (T in kelvin). ISA:
+    ``h = (T0 / L) (1 - (p / msl)^(Rd L / g))``.
+    """
+    if not (_finite(station_pa) and _finite(msl_pa) and station_pa > 0 and msl_pa > 0):
+        return math.nan
+    if temp_c is not None and (not _finite(temp_c) or temp_c + 273.15 <= 100.0):
+        temp_c = None
+    if temp_c is None:
+        expo = _R_DRY_AIR * _ISA_LAPSE / _ISA_G
+        ratio = station_pa / msl_pa   # pressure_at_altitude_pa(h) / 101325 Pa
+        return (_ISA_T0 / _ISA_LAPSE) * (1.0 - ratio ** expo)
+    x = math.log(msl_pa / station_pa) * _R_DRY_AIR / _ISA_G
+    denom = 1.0 - x * _ISA_LAPSE / 2.0
+    if denom <= 0:
+        return math.nan
+    return x * (temp_c + 273.15) / denom
+
+
 def speed_of_sound(temp_c: float, rh_pct: float = 50.0,
                    pressure_pa: float = STANDARD_PRESSURE_PA) -> float:
     """Speed of sound in air, m/s (Cramer 1993)."""

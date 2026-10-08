@@ -419,6 +419,7 @@ Good to know:
   before saving, the ticks change to that layout's set.
 - **Wall Clock** and **Ontime Timer** are never switched on by default. Tick them if you want them,
   then choose the time source and look (see below).
+- **Barometer** is never switched on by default either. It needs a pressure sensor (see below).
 - **Schedule** stays hidden until the show has a schedule, even when it is ticked. Add the
   schedule under **Admin → Schedule → Open schedule editor**.
 - **Open on a tablet** is always at the bottom of the screen, wherever it is in the list. Tick
@@ -556,6 +557,81 @@ In the Stagewatch emulate mode the card runs a three-minute story on the wall da
 paused, time added, running over, stopped, ready, then stale and offline.
 
 **If it didn't work:** see [Troubleshooting](troubleshooting.md).
+### Read the pressure (Barometer card)
+
+The **Barometer** card shows what the air pressure at your site is doing. It is for the question "is the
+weather turning, and how fast?", on a tablet, a phone or the production wall. It needs at least one pressure
+sensor, such as a BME280 node. With none, the card says "No pressure sensor" (and the wall hides it).
+
+**What the card shows**
+
+- **Sea-level pressure**, in hPa, on a dial (tablet and phone) and as a large number. Pressure drops with
+  height, so Stagewatch converts what the sensors read to sea level, using the altitude in **Admin → Site** and the
+  site temperature averaged over the last hour. The old words (Stormy, Rain, Change, Fair, Very dry) are only
+  printed on the dial, as on an old barometer. The thin blue hand is where the pressure was 3 hours ago. If the
+  value is off the dial, it says "Off the scale".
+- **The 3-hour change**, as an arrow, a word and a figure, for example "▼ Falling quickly −3.9 hPa in 3 h". The
+  words are the Met Office's: steady, slowly (0.1 to 1.5 hPa in 3 hours), plain (1.6 to 3.5), quickly (3.6 to 6.0)
+  and very rapidly (more than 6.0).
+- **FALLING QUICKLY** at the top of the card, with ▼▼ and "Weather may turn soon: check wind, lightning and
+  forecasts", when pressure has fallen by 3.6 hPa or more in 3 hours. It is amber, or orange for "very rapidly".
+  It is a hint to go and look, never an alarm.
+- **Pressure hint**: a short phrase and a picture for the next few hours, such as "Showers likely", worked out from
+  the pressure, the 3-hour change and the month (the Zambretti method). It is a guide from pressure at this site
+  only. It is not a forecast.
+
+**Odd corners of the hint.** The Zambretti method is a century-old paper calculator and has odd corners. At very low
+pressure (below about 962 hPa) and at a few other pressures a falling trend can give a better-sounding hint than a steady
+one. In winter, a rising trend can give a worse-sounding hint than a steady one at about 962 to 968 hPa and about 1008 to
+1031 hPa (in summer, in a few narrow bands). Pressure readings that are not plausible (outside 30 to 110 kPa) are ignored.
+This is one more reason the hint is not a forecast: treat it as a nudge to go and look.
+
+**What it is not.** Stagewatch makes no claim that the hint is right. It can miss fast-moving fronts that pass in
+under 3 hours, summer thunderstorms under high pressure (use the lightning plan for those) and local wind. Always
+check the Met Office forecast and warnings, and follow your event's weather plan.
+
+**What you'll see while it waits**
+
+- "Collecting pressure history, trend ready about 21:30": the card needs 3 hours of unbroken readings before it gives a change and a hint.
+  After an hour it also shows "Last hour: −0.6 hPa" as a first idea, without a word.
+- "Pressure gap 14:10 to 15:05, ready about 18:05": the sensors or Stagewatch were off for more than 3 minutes.
+  Stagewatch does not guess what happened in between, so it starts counting 3 hours again. A restart of under 3 minutes, or one missed reading,
+  two does not cause this: Stagewatch reads its own history back when it starts.
+- "▲ Pressure last seen 4m ago": the readings have stopped. The figure is dimmed and the hint is hidden.
+- "Not enough readings to give a trend yet": the sensor is reporting too rarely (less often than about every 2 minutes) to
+  measure a 3-hour change reliably. Stagewatch will not guess; it shows no trend and no hint until there is enough.
+- "Sea-level pressure here is approximate above about 500 m": above that height the conversion is less accurate.
+  It also says so when there is no temperature reading.
+
+**Set it up**
+
+1. In **Admin → Site**, check the **Altitude** is right for your site (see the next steps for an easy way).
+2. In **Admin → User dashboards → Edit cards**, tick **Barometer** and click **Save dashboards**.
+3. Optional: in **Admin → Barometer**, choose the hemisphere (it decides which months count as summer for the
+   hint) and, if you want it, tick the quiet notice. That adds a silent line to the alarm list and one marker when
+   pressure falls quickly. It never sounds.
+
+**Set the altitude from today's sea-level pressure**
+
+1. Look up today's pressure at sea level: the Met Office, a weather app, or the nearest airport's METAR (the
+   figure after "Q", for example Q1013). Use one from the last hour and within about 20 km.
+2. In **Admin → Site**, click **Set altitude from today's sea-level pressure…**.
+3. Type the figure in hPa, for example `1,013.2`, and click **Work out altitude**.
+4. Read the answer. It looks like "That gives an altitude of 110 m (now set to 0 m). Save 110 m?" Click **Save 110 m**,
+   or **Cancel** to change nothing.
+
+**What you'll see:** "Site saved", and the dial reads the figure you typed (within about 0.1 hPa). The altitude it
+finds can differ a little from the surveyed height: it also soaks up any small error in the pressure sensor. If you
+know your true height and the readings are off, use the pressure offset in the sensor settings instead. The card's
+sea-level figure uses the measured temperature, so it can differ from an airport's QNH by a hPa or so.
+
+**If it didn't work:** "No pressure sensor reading" means no pressure sensor is reporting right now. "Sea-level
+pressure must be between 940 and 1,060 hPa" usually means a slipped decimal point. See
+[Troubleshooting](troubleshooting.md).
+
+A cheap BME280 is good at spotting a change but can be about 1 hPa out in absolute terms, and strong sun on its
+box can fake a small change. Keep the sensor in the shade.
+
 ---
 
 **Something not right?** [Troubleshooting](troubleshooting.md).
