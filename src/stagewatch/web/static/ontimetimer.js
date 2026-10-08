@@ -90,7 +90,7 @@ SW.ot = (function () {
   ot.view = function (m, now) {
     const name = (m && m.label) || "Ontime";
     const v = { state: "off", digits: "--:--", over: false, badge: "▲ OFFLINE", level: "", tag: "", title: "",
-      added: "", extra: [], barPct: null, note: "", noteLevel: "warn", typeNote: "", cls: "ot-s-off", flash: false };
+      added: "", thrNote: "", extra: [], barPct: null, note: "", noteLevel: "warn", typeNote: "", cls: "ot-s-off", flash: false };
     if (!m || m.status !== "ok" || typeof m.playback !== "string") {
       if (m && m.status === "error") {
         v.state = "error"; v.cls = "ot-s-error"; v.badge = "▲ CAN'T READ";
@@ -123,6 +123,7 @@ SW.ot = (function () {
       if (v.over) { v.level = "alert"; v.tag = "▲ OVER"; }
       else { const lv = ot.level(r, m); v.level = lv.level; v.tag = lv.tag; }
     }
+    if (live && m.thresholds === "site") v.thrNote = "Warning times from Stagewatch settings";
     v.flash = v.level === "alert" && SW.scheduleWarn.flash === true;
 
     // Progress: how much of the timer (with any added time) has gone.
@@ -152,7 +153,7 @@ SW.ot = (function () {
       const ago = a < 10 ? "a few seconds" : a < 60 ? `${Math.round(a / 10) * 10} s` : `${Math.round(a / 60)} min`;
       v.state = "stale"; v.badge = "▲ STALE"; v.cls = "ot-s-stale";
       v.note = `▲ STALE: nothing from ${name} for ${ago}. Don't trust this time.`;
-      v.extra = []; v.level = ""; v.tag = ""; v.flash = false;
+      v.extra = []; v.level = ""; v.tag = ""; v.flash = false; v.thrNote = "";
       return v;
     }
     v.cls = `ot-s-${v.state}`;
@@ -190,10 +191,11 @@ SW.ot = (function () {
       type: h("span", { class: "ot-type muted" }),
       extra: h("p", { class: "ot-extra" }),
       note: h("p", { class: "ot-note", hidden: true, role: "status" }),
+      thr: h("p", { class: "ot-thr muted", hidden: true }),
       foot: h("p", { class: "ot-foot muted" }, "From Ontime, not a Stagewatch timer."),
     };
     ui.nodes = [ui.title, h("div", { class: "ot-main" }, ui.count, ui.added), ui.bar,
-      h("div", { class: "ot-tags" }, ui.badge, ui.tag, ui.type), ui.extra, ui.note, ui.foot];
+      h("div", { class: "ot-tags" }, ui.badge, ui.tag, ui.type), ui.extra, ui.note, ui.thr, ui.foot];
     ui.update = function (v) {
       setText(ui.title, v.title);
       setHidden(ui.title, !v.title);
@@ -207,6 +209,8 @@ SW.ot = (function () {
       setHidden(ui.tag, !v.tag);
       setText(ui.type, v.typeNote);
       setHidden(ui.type, !v.typeNote);
+      setText(ui.thr, v.thrNote);
+      setHidden(ui.thr, !v.thrNote);
       setText(ui.extra, v.extra.join(" · "));
       setHidden(ui.extra, v.extra.length === 0);
       setText(ui.note, v.note);

@@ -46,7 +46,7 @@ const S = 1000;
 // A synthetic "ontime_timer" message: a 30 minute count-down, running, 10 minutes left, received at NOW.
 const msg = (o) => Object.assign({ status: "ok", label: "Ontime", received_at: NOW, playback: "play", phase: "default",
   current_ms: 600 * S, duration_ms: 1800 * S, elapsed_ms: 1200 * S, added_ms: 0, finish_in_ms: 600 * S, has_event: true,
-  title: "Support act", timer_type: "count-down", warn_ms: 120 * S, danger_ms: 60 * S }, o || {});
+  title: "Support act", timer_type: "count-down", warn_ms: 120 * S, danger_ms: 60 * S, thresholds: "ontime" }, o || {});
 
 // ---- m:ss
 eq([0, 1, 59, 60, 61, 599, 3599, 3600, 3661, 36000].map(ot.fmtClock),
@@ -208,5 +208,17 @@ eq(ui.title.hidden, true, "no title: the line is hidden");
 ui.update(ot.view(msg({ title: "<img src=x onerror=alert(1)>" }), NOW));
 eq([ui.title.textContent, ui.title.children.length], ["<img src=x onerror=alert(1)>", 0], "a title is text, never markup");
 
+
+// ---- where the warning times come from (review fix)
+v = ot.view(msg({ thresholds: "site", warn_ms: null, danger_ms: null, current_ms: 100 * S }), NOW);
+eq(v.thrNote, "Warning times from Stagewatch settings", "fallback is said on the card");
+eq(ot.view(msg(), NOW).thrNote, "", "Ontime's own times: no note");
+eq(ot.view(msg({ thresholds: "site", warn_ms: null, danger_ms: null }), NOW + 20).thrNote, "", "no note when stale");
+eq(ot.view(msg({ thresholds: "site", playback: "stop", current_ms: null }), NOW).thrNote, "", "no note when nothing counts");
+const ui2 = ot.createUi();
+ui2.update(ot.view(msg({ thresholds: "site", warn_ms: null, danger_ms: null }), NOW));
+eq([ui2.thr.textContent, ui2.thr.hidden], ["Warning times from Stagewatch settings", false], "the note is shown");
+ui2.update(ot.view(msg(), NOW));
+eq(ui2.thr.hidden, true, "and hidden again");
 console.log(`${count} checks, ${fails} failed`);
 process.exit(fails ? 1 : 0);

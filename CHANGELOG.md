@@ -39,7 +39,9 @@ them into a dated release section and tags the commit.
   runs a three-minute story: running, paused, time added, running over, stopped, ready, stale and
   offline. Action needed: none. If you go back to an older version of Stagewatch after ticking this
   card, the older version doesn't know the card: the next time you save dashboards there it is
-  taken off, and the title setting is forgotten, so you would tick it again.
+  taken off, and the title setting is forgotten (event titles go back to being shown), so you would
+  tick the card and untick the title option again. When Ontime doesn't send its own warning times, the
+  card says "Warning times from Stagewatch settings" so you know where the colours come from.
 - Wall Clock: the card now has **three looks**, chosen for each dashboard: plain digits (as
   before), an **LED ring** (60 lights round a circle with a brighter light for each hour, and
   the time in the middle) and **7-segment digits** like a studio clock. The ring and 7-segment looks

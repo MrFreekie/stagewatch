@@ -478,7 +478,8 @@ body.layout-wall .wc-date { font-size: 36px; }
    (UNDER 2 MIN, a triangle with OVER, RUNNING, PAUSED...), never colour alone. Overtime is orange,
    never red. */
 #ontime-timer-card [hidden] { display: none; }
-.ot-title { font-size: 20px; font-weight: 600; margin-bottom: 2px; overflow-wrap: anywhere; }
+.ot-title { font-size: 20px; font-weight: 600; margin-bottom: 2px; overflow-wrap: anywhere; overflow: hidden; }
+.ot-thr { margin: 4px 0 0; font-size: 12px; }
 .ot-main { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 16px; }
 .ot-count { font-size: 64px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.05; }
 .ot-added { font-size: 18px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }

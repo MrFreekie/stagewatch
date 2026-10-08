@@ -33,6 +33,7 @@ CARD_ID = "ontime_timer"
 CONSUMER = "ontime_timer"      # the name this service holds the shared Ontime source under
 PUBLISH_EVERY_S = 1.0
 TITLE_MAX = 80
+MAX_MARKS = 2                  # combining marks kept per base character
 
 # Values Stagewatch understands. Anything else is passed on as "unknown" and shown neutral.
 PLAYBACKS = ("play", "roll", "pause", "armed", "stop")
@@ -75,12 +76,20 @@ class TimerReading:
 
 def clean_title(value: object) -> str:
     """Rundown text from Ontime, made safe to show: no control, format (bidi, zero-width) or
-    line-break characters, runs of spaces collapsed, at most TITLE_MAX characters."""
+    line-break characters (so a zero-width joiner is dropped and a joined emoji family shows as
+    separate emoji; that is accepted), at most two combining marks per character, runs of spaces collapsed, at most TITLE_MAX characters."""
     if not isinstance(value, str):
         return ""
     out = []
+    marks = 0   # combining marks in a row after one base character
     for ch in value[:4 * TITLE_MAX]:   # bounded work on a hostile, huge string
         cat = unicodedata.category(ch)
+        if cat in ("Mn", "Me", "Mc"):
+            marks += 1
+            if marks <= MAX_MARKS:    # "Zalgo" text: keep the first few marks, drop the pile
+                out.append(ch)
+            continue
+        marks = 0
         if ch in "\t\r\n" or cat in ("Zs", "Zl", "Zp"):
             out.append(" ")
         elif cat not in ("Cc", "Cf", "Cs", "Co", "Cn"):
@@ -105,6 +114,9 @@ def timer_message(label: str, reading: TimerReading, show_title: bool = True) ->
         "added_ms": s.added_ms if s else 0,
         "finish_in_ms": s.current_ms if (s and running and s.timer_type == "count-down") else None,
         "has_event": s.has_event if s else False,
+        # Where the card's warning steps come from: Ontime's own times for the event, or (none sent)
+        # the site's warning minutes. The card says so in the second case.
+        "thresholds": (None if s is None else "ontime" if (s.warn_ms is not None or s.danger_ms is not None) else "site"),
         "title": s.title if (s and show_title) else "",
         "timer_type": s.timer_type if s else None,
         "warn_ms": s.warn_ms if s else None,
@@ -133,6 +145,7 @@ class OntimeTimerService:
         self._source = None
         self._task: asyncio.Task | None = None
         self._apply_task: asyncio.Task | None = None
+        self._dirty = False   # a config save arrived that the running apply may not have seen
         self._lock = asyncio.Lock()
         self._last_sent: dict | None = None
         self._stopped = True
@@ -167,8 +180,15 @@ class OntimeTimerService:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
+        self._dirty = True
         if self._apply_task is None or self._apply_task.done():
-            self._apply_task = loop.create_task(self.evaluate(), name="ontime-timer-apply")
+            self._apply_task = loop.create_task(self._apply_loop(), name="ontime-timer-apply")
+
+    async def _apply_loop(self) -> None:
+        """Evaluate until no save arrived meanwhile, so a second save during a slow start is not lost."""
+        while self._dirty and not self._stopped:
+            self._dirty = False
+            await self.evaluate()
 
     async def evaluate(self) -> None:
         """Hold or release the shared source to match the config. Never raises."""
@@ -180,10 +200,16 @@ class OntimeTimerService:
                 source = self._source or _ontime_source(self.hub)
                 if source is None:
                     return
-                await source.acquire(CONSUMER)   # idempotent; also restarts it if the address changed
                 if self._source is None:
                     self._last_sent = None
+                # Remember it BEFORE acquiring: if we are cancelled part-way, stop() still releases it.
                 self._source = source
+                try:
+                    await source.acquire(CONSUMER)   # idempotent; also restarts it if the address changed
+                except Exception:
+                    self._source = None
+                    await source.release(CONSUMER)
+                    raise
             except Exception:  # noqa: BLE001 - a timer card must never stop the hub
                 log.exception("Could not start or stop the Ontime timer")
 

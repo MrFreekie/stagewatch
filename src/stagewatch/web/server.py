@@ -232,6 +232,15 @@ class DevicePatch(BaseModel):
         return v if v is None else clean_host(v)
 
 
+class OntimeTimerBody(BaseModel):
+    """PUT /api/admin/ontime-timer. The field is required and must be a real true/false, so an empty
+    body or a misspelt name is refused instead of silently turning the titles back on."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    show_title: StrictBool
+
+
 class WallClockTestBody(BaseModel):
     """POST /api/admin/wall-clock/test. ``ontime_url`` tries an address that is not saved yet;
     left out, the saved one is used."""
@@ -1058,8 +1067,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     # Ontime Timer card options (today only: show the event title). The address is the Wall
     # Clock's. Saving goes through the config topic like every save.
     @app.put("/api/admin/ontime-timer", dependencies=admin_deps)
-    async def put_ontime_timer(body: OntimeTimerConfig):
-        hub.config.ontime_timer = body
+    async def put_ontime_timer(body: OntimeTimerBody):
+        hub.config.ontime_timer = OntimeTimerConfig(show_title=body.show_title)
+        body = hub.config.ontime_timer
         hub.save_config()
         return body
 

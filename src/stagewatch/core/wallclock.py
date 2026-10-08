@@ -151,7 +151,7 @@ def seed_emulate_demo(config) -> bool:
     if card_assigned(config) or {d.slug for d in config.dashboards} != set(stock):
         return False
     for d in config.dashboards:
-        d.cards = [*d.cards[:1], "wall_clock", *(["ontime_timer"] if d.slug == "wall" else []), *d.cards[1:]]
+        d.cards = [*d.cards[:1], *(["ontime_timer"] if d.slug == "wall" else []), "wall_clock", *d.cards[1:]]
         d.clock_style = stock[d.slug]
     config.wall_clock.source = "ontime"
     return True
@@ -167,6 +167,7 @@ class WallClockService:
         self._source_key: tuple | None = None   # what the running source was started with
         self._task: asyncio.Task | None = None
         self._apply_task: asyncio.Task | None = None
+        self._dirty = False   # a config save arrived that the running apply may not have seen
         self._lock = asyncio.Lock()
         self._last_sent: dict | None = None
         self._stopped = True
@@ -212,8 +213,15 @@ class WallClockService:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
+        self._dirty = True
         if self._apply_task is None or self._apply_task.done():
-            self._apply_task = loop.create_task(self.evaluate(), name="wall-clock-apply")
+            self._apply_task = loop.create_task(self._apply_loop(), name="wall-clock-apply")
+
+    async def _apply_loop(self) -> None:
+        """Evaluate until no save arrived meanwhile, so a second save during a slow start is not lost."""
+        while self._dirty and not self._stopped:
+            self._dirty = False
+            await self.evaluate()
 
     async def evaluate(self) -> None:
         """Start, restart or stop the source to match the config. Never raises."""
@@ -227,8 +235,13 @@ class WallClockService:
                     source = self._find_source()
                     if source is None:
                         return
-                    await source.start()
-                    self._source, self._source_key = source, key
+                    self._source, self._source_key = source, key   # before start: a cancel part-way still stops it
+                    try:
+                        await source.start()
+                    except Exception:
+                        self._source = self._source_key = None
+                        await source.stop()
+                        raise
                     self._last_sent = None
             except Exception:  # noqa: BLE001 - a clock must never stop the hub
                 log.exception("Could not start or stop the wall clock source")

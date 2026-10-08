@@ -220,9 +220,11 @@ class OntimeSource:
             self._lost("bad_clock")
             return False
         timer_ok = False
-        if "timer" in payload:
+        if "timer" in payload or "eventNow" in payload:
             state = parse_timer(payload, self._merged)
-            if state is None:
+            if state is None and "timer" not in payload:
+                pass   # an event change before any timer: nothing to merge into yet
+            elif state is None:
                 self._timer = TimerReading(None, self._time(), "error", TEXT["bad_timer"])
             else:
                 self._merged, timer_ok = state, True

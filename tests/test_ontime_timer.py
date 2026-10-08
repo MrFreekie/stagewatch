@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "src" / "stagewatch" / "web" / "static"
 UTC = SiteConfig(timezone="UTC")
 
-PUBLIC_KEYS = {"status", "label", "received_at", "playback", "phase", "current_ms", "duration_ms", "elapsed_ms",
+PUBLIC_KEYS = {"thresholds", "status", "label", "received_at", "playback", "phase", "current_ms", "duration_ms", "elapsed_ms",
                "added_ms", "finish_in_ms", "has_event", "title", "timer_type", "warn_ms", "danger_ms"}
 
 
@@ -669,3 +669,132 @@ def test_timer_logic_in_node():
         pytest.skip("node is not installed")
     r = subprocess.run([node, str(ROOT / "tests" / "js" / "ontime_timer_test.js")], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ------------------------------------------------------------------ review fixes
+class SlowProbe(Probe):
+    """An emulated source whose start waits for the test to let it go."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.gate = asyncio.Event()
+        self.entered = asyncio.Event()
+
+    async def start(self):
+        self.starts += 1
+        self.entered.set()
+        await self.gate.wait()
+        await EmulatedClock.start(self)
+
+
+async def slow_hub(tmp_path, source="pc"):
+    hub = Hub(tmp_path, emulate=True)
+    hub.config.wall_clock.source = source
+    probe = SlowProbe(lambda: hub.config.site, cycle=True)
+    hub.add_integration(OntimeIntegration(hub, emulate=True, inner=probe))
+    await hub.start()
+    return hub, probe
+
+
+async def test_a_second_save_during_a_slow_start_is_not_lost_for_the_timer(tmp_path):
+    hub, probe = await slow_hub(tmp_path)
+    try:
+        set_cards(hub, "ontime_timer")
+        await asyncio.wait_for(probe.entered.wait(), 3)       # the first apply is stuck starting the source
+        set_cards(hub)                                          # the card is taken off meanwhile
+        probe.gate.set()
+        await until(lambda: not hub.ontime_timer.active and probe.stops == 1)
+        assert "ontime" not in hub.devices and hub.integrations["ontime"].clock_source.holders == frozenset()
+    finally:
+        await hub.stop()
+
+
+async def test_a_second_save_during_a_slow_start_is_not_lost_for_the_wall_clock(tmp_path):
+    hub, probe = await slow_hub(tmp_path, "ontime")
+    try:
+        set_cards(hub, "wall_clock")
+        await asyncio.wait_for(probe.entered.wait(), 3)
+        set_cards(hub)
+        probe.gate.set()
+        await until(lambda: not hub.wall_clock.active and probe.stops == 1)
+        assert "ontime" not in hub.devices
+    finally:
+        await hub.stop()
+
+
+async def test_cancelling_during_start_leaves_no_holder_and_stops_the_client(tmp_path):
+    hub, probe = await slow_hub(tmp_path)
+    src = hub.integrations["ontime"].clock_source
+    set_cards(hub, "ontime_timer")
+    await asyncio.wait_for(probe.entered.wait(), 3)            # inside acquire, before it has finished
+    await hub.stop()                                            # cancels the apply, then releases by name
+    assert src.holders == frozenset() and probe.stops >= 1 and "ontime" not in hub.devices
+
+
+async def test_cancelling_the_wall_clock_during_start_leaves_no_holder(tmp_path):
+    hub, probe = await slow_hub(tmp_path, "ontime")
+    src = hub.integrations["ontime"].clock_source
+    set_cards(hub, "wall_clock")
+    await asyncio.wait_for(probe.entered.wait(), 3)
+    await hub.stop()
+    assert src.holders == frozenset() and probe.stops >= 1
+
+
+def test_an_event_change_without_a_timer_merges_into_the_last_state():
+    """SYNTHETIC payloads (hand-made, not Ontime output)."""
+    prev = parse.parse_timer(synthetic(event=synthetic_event()))
+    changed = parse.parse_timer({"clock": 1, "eventNow": synthetic_event(title="Headliner", timeWarning=30_000, timeDanger=10_000)}, prev)
+    assert (changed.title, changed.warn_ms, changed.danger_ms) == ("Headliner", 30_000, 10_000)
+    assert (changed.playback, changed.current_ms, changed.duration_ms) == (prev.playback, prev.current_ms, prev.duration_ms)
+    cleared = parse.parse_timer({"eventNow": None}, prev)
+    assert cleared.has_event is False and cleared.current_ms == prev.current_ms
+    assert parse.parse_timer({"eventNow": synthetic_event()}, None) is None     # nothing to merge into yet
+
+
+async def test_the_source_applies_an_event_only_message(tmp_path):
+    inner = fast_source("http://127.0.0.1:1")
+    inner._ingest(synthetic(event=synthetic_event()), "websocket")
+    inner._ingest({"clock": 5, "eventNow": synthetic_event(title="Next one")}, "websocket")   # SYNTHETIC
+    assert inner.latest_timer().state.title == "Next one" and inner.latest_timer().state.current_ms == 600_000
+    inner2 = fast_source("http://127.0.0.1:1")
+    inner2._ingest({"clock": 5, "eventNow": synthetic_event()}, "websocket")
+    assert inner2.latest_timer().status == "offline"        # not an error: no timer yet
+
+
+def test_the_option_body_is_strict_and_required(client):
+    admin(client)
+    assert client.put("/api/admin/ontime-timer", json={"show_title": False}).status_code == 200
+    for bad in ({}, {"showTitle": True}, {"showTitle": False}, {"show_title": "false"}, {"show_title": 0},
+                {"show_title": None}, {"show_title": True, "extra": 1}):
+        assert client.put("/api/admin/ontime-timer", json=bad).status_code == 422, bad
+    assert client.hub.config.ontime_timer.show_title is False      # never silently reset to shown
+
+
+def test_combining_mark_piles_are_capped():
+    zalgo = "a" + "̀́̂̃̄̅" + "b"
+    assert clean_title(zalgo) == "à́b"
+    assert clean_title("é café") == "é café"                  # normal accents are kept
+    assert clean_title("a" + "̀" * 500) == "à̀"
+    assert clean_title("̀́̂x") == "̀́x"                     # marks with no base too
+    assert clean_title("\U0001F468‍\U0001F469") == "\U0001F468\U0001F469"      # ZWJ is dropped (documented)
+
+
+def test_the_message_says_where_the_warning_times_come_from():
+    assert timer_message("Ontime", reading())["thresholds"] == "ontime"
+    assert timer_message("Ontime", reading(warn_ms=None))["thresholds"] == "ontime"       # one of the two is enough
+    assert timer_message("Ontime", reading(warn_ms=None, danger_ms=None))["thresholds"] == "site"
+    assert timer_message("Ontime", TimerReading(None, 1.0, "offline"))["thresholds"] is None
+    s = parse.parse_timer(synthetic(event=synthetic_event(timeWarning=None, timeDanger=None)))
+    assert timer_message("Ontime", TimerReading(s, 1.0, "ok"))["thresholds"] == "site"
+
+
+def test_the_emulate_demo_puts_the_timer_above_the_clock_on_the_wall():
+    cfg = Config()
+    assert seed_emulate_demo(cfg)
+    wall = cfg.dashboard("wall").cards
+    assert wall.index("ontime_timer") < wall.index("wall_clock") and wall.index("ontime_timer") == 1
+
+
+def test_the_title_clips():
+    css = (STATIC / "style.css").read_text(encoding="utf-8")
+    assert re.search(r"\.ot-title \{[^}]*overflow: hidden", css)

@@ -17,6 +17,7 @@ messages or other events. The first message is full; later ones carry only ``tim
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from typing import Literal
@@ -111,7 +112,8 @@ def _event_fields(event: object) -> dict:
 def parse_timer(payload: object, prev: TimerState | None = None) -> TimerState | None:
     """Merge one ``runtime-data`` payload into the last timer state.
 
-    * No ``timer`` key (a clock-only message): ``prev`` unchanged.
+    * No ``timer`` key (a clock-only message): ``prev`` unchanged; with an ``eventNow`` key the
+      event fields (title, thresholds) are merged into ``prev``.
     * ``timer`` present and valid: its fields replace the old ones; the event part comes from
       ``eventNow`` if the message has that key (null clears it), else from ``prev``.
     * ``timer`` present but unreadable (not an object, or a number out of range, a float, a bool,
@@ -119,7 +121,12 @@ def parse_timer(payload: object, prev: TimerState | None = None) -> TimerState |
 
     Unseen ``playback`` / ``phase`` / ``timerType`` values become "unknown" (shown neutral).
     Real Ontime 4.14.0 output has only been seen with playback "roll" and phase "default"."""
-    if not isinstance(payload, dict) or "timer" not in payload:
+    if not isinstance(payload, dict):
+        return prev
+    if "timer" not in payload:
+        # An event change without a timer: merge just the event fields into the last state.
+        if "eventNow" in payload and prev is not None:
+            return dataclasses.replace(prev, **_event_fields(payload["eventNow"]))
         return prev
     timer = payload["timer"]
     if not isinstance(timer, dict):
