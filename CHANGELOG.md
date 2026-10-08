@@ -16,6 +16,7 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Added
+- ESPHome nodes: two new all-in-one environment node files (S3 Feather or XIAO ESP32C6, with a DPS310 and a Sensirion SHT45) report pressure, air temperature and humidity from one box; the pressure nodes guide covers parts, wiring and where to place the SHT45. Not yet tested on hardware.
 - ESPHome nodes: four new pressure (barometer) node files and a build guide, [Pressure nodes](docs/pressure-nodes.md), for an ESP32-S3 Feather or a XIAO ESP32C6 with a DPS310, and a Feather HUZZAH with an MPL3115A2 or a BME280/BMP280. They are checked by ESPHome but not yet tested on real boards.
 - Ontime Timer: a new dashboard card that shows the countdown **Ontime** is running, with the
   event's title, so the stage manager's timer sits next to your alarms and readings. It shows the

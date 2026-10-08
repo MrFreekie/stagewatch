@@ -10,11 +10,15 @@ does for temperature. Several nodes in different places also let you spot one th
 Time needed: about 30 to 45 minutes for the first node. Most of that is waiting for the first
 build.
 
-> **Test status.** All four node files have been checked by ESPHome (it reads them without
-> errors). The **XIAO ESP32C6 with a DPS310** has run on a real board and been adopted in
-> Stagewatch: the sensor answered at `0x76` (address jumper bridged) and the status light stayed
-> off while everything was well. The other three boards have not been seen working yet, so treat
-> their steps as unproven and tell us what you find.
+> **Test status.** All six node files have been checked by ESPHome (it reads them without
+> errors). The **XIAO ESP32C6 with a DPS310** (pressure only) has run on a real board and been
+> adopted in Stagewatch: the sensor answered at `0x76` (address jumper bridged) and the status
+> light stayed off while everything was well. The other boards have not been seen working yet,
+> so treat their steps as unproven and tell us what you find.
+>
+> **The two all-in-one files (DPS310 plus SHT45) are tested on hardware: pending.** That means
+> the SHT45 additions have not run on a real board yet. Check their readings against a
+> thermometer and a barometer you trust before you rely on them.
 
 > Stagewatch is an advisory tool with no warranty. Check your node's readings against a
 > reference before you trust it. See the [main README](../README.md#stagewatch).
@@ -24,12 +28,30 @@ back to it for the steps that are the same.
 
 ---
 
+## Pressure only, or all-in-one?
+
+There are two build options for the DPS310 nodes.
+
+- **Option 1: pressure only.** A DPS310 and nothing else. Smallest and simplest. Use it when the
+  site already has good air temperature and humidity sensors.
+- **Option 2: all-in-one environment node.** The same DPS310 plus a **Sensirion SHT45**. One
+  box then reports **pressure, air temperature and humidity**, and all three feed the site
+  average.
+
+**Why add the SHT45?** The speed of sound depends mostly on the **air temperature**, and only a
+little on pressure and humidity. The DPS310 does report a temperature, but that is the
+temperature of the **chip**, not of the air. It reads warm, so it is switched off in the files.
+The SHT45 measures the real air temperature (about 0.1 °C) and humidity (about 1 %RH). Choose
+option 2 if you want the speed of sound to come from the same box.
+
 ## Which board do I build?
 
 | Board | Sensor | Soldering | File |
 |---|---|---|---|
 | Adafruit ESP32-S3 Feather, 4 MB flash and 2 MB PSRAM (product 5477) | Adafruit DPS310 (product 4494), on a STEMMA QT cable | None | `stagewatch-feather-s3-dps310.yaml` |
 | Seeed XIAO ESP32C6 | Adafruit DPS310 (4494) on four jumper wires | Header pins on the XIAO | `stagewatch-xiao-esp32c6-dps310.yaml` |
+| Adafruit ESP32-S3 Feather (5477) | DPS310 (4494) **and** Adafruit SHT45 (product 5665), both on STEMMA QT cables | None | `stagewatch-feather-s3-dps310-sht45.yaml` |
+| Seeed XIAO ESP32C6 | DPS310 (4494) **and** SHT45 (5665), sharing the same four jumper wires | Header pins on the XIAO | `stagewatch-xiao-esp32c6-dps310-sht45.yaml` |
 | Adafruit Feather HUZZAH ESP8266 (product 2821) | Adafruit MPL3115A2 (product 1893) | Headers on both | `stagewatch-feather-esp8266-mpl3115a2.yaml` |
 | Adafruit Feather HUZZAH ESP8266 (2821) | BME280 or BMP280 breakout | Headers on the HUZZAH | `stagewatch-feather-esp8266-bme280.yaml` |
 
@@ -72,6 +94,14 @@ Then the parts for your board, from the table above. For the S3 Feather, also a 
 cable, 100 mm or longer**. For the XIAO, **four female-to-female jumper wires, 10 to 20 cm
 long**, in red, black, blue and yellow if you can get them.
 
+**Extra parts for the all-in-one option (DPS310 plus SHT45):**
+
+| Board | Extra parts |
+|---|---|
+| S3 Feather | The **Adafruit SHT45 breakout (product 5665)** and a **second STEMMA QT cable, 100 to 200 mm**, to go from the DPS310 to the SHT45. The first cable (Feather to DPS310) is 100 mm or longer. |
+| XIAO ESP32C6 | The **Adafruit SHT45 breakout (5665)** and **four more jumper wires** (or one Qwiic / STEMMA QT cable) to go from the DPS310's pins to the SHT45's pins. |
+| Outdoors, either board | A small **radiation shield** (a louvred, Stevenson-type screen) for the SHT45. |
+
 > **LiPo warning.** Never leave a charging pack in a hot flight case or under lamps.
 
 ---
@@ -103,6 +133,34 @@ Jumper wires are for bench use and testing. For a permanent node, solder the lea
 Qwiic or STEMMA QT cable, and put the pair in a vented housing with the USB lead held so it
 cannot be pulled out.
 
+### Adding the SHT45 (all-in-one option)
+
+Both sensors share one **I²C bus** (the two data wires, SDA and SCL). They do not clash,
+because each has its own address: the DPS310 answers at `0x77` (or `0x76` if you bridged its
+address jumper) and the SHT45 at `0x44`, which cannot be changed. Every wire is simply passed
+on from one board to the next.
+
+**S3 Feather (no soldering).**
+
+1. Plug the first STEMMA QT cable into the Feather's **STEMMA QT port** and the DPS310, as above.
+2. Plug the second STEMMA QT cable (100 to 200 mm) into the DPS310's **second STEMMA QT socket**.
+3. Plug the other end of that cable into the SHT45.
+
+**XIAO ESP32C6.** Wire the DPS310 to the XIAO with the four wires in the table above. Then join
+the SHT45 to the **DPS310's pins**, one wire each, matching names:
+
+| DPS310 pin | SHT45 pin | Wire colour |
+|---|---|---|
+| **VIN** | **VIN** (use 3V3) | Red |
+| **GND** | **GND** | Black |
+| **SDA** | **SDA** | Blue |
+| **SCL** | **SCL** | Yellow |
+
+The Adafruit 5665 takes 3.3 V or 5 V on VIN. Use the **3.3 V** from the XIAO's 3V3 pin. You can
+use a Qwiic or STEMMA QT cable between the two breakouts instead of the four wires. Keep the
+DPS310's leads to the XIAO short (10 to 20 cm). The SHT45 lead is longer on purpose: see "Where
+to put the SHT45" below.
+
 ### HUZZAH and MPL3115A2 or BME280 / BMP280
 
 Solder the headers on, then join the boards with four wires. The wiring is the same for both
@@ -130,14 +188,14 @@ A **secrets file** holds your Wi-Fi password and the keys that lock your node. Y
 copy, called `secrets.yaml`, and fill it in.
 
 First, get the node files. Open a normal **PowerShell** window (Start, type `powershell`,
-Enter), paste this and press Enter. It downloads all four node files, so you can build any of
+Enter), paste this and press Enter. It downloads all six node files, so you can build any of
 them:
 
 ```powershell
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $d = "$HOME\Documents\stagewatch-node"; New-Item -ItemType Directory -Force $d | Out-Null; foreach ($f in "stagewatch-feather-s3-dps310.yaml","stagewatch-xiao-esp32c6-dps310.yaml","stagewatch-feather-esp8266-mpl3115a2.yaml","stagewatch-feather-esp8266-bme280.yaml","secrets.example.yaml") { Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/MrFreekie/stagewatch/main/esphome/$f" -OutFile "$d\$f" }; if (-not (Test-Path "$d\secrets.yaml")) { Copy-Item "$d\secrets.example.yaml" "$d\secrets.yaml" }; explorer $d
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $d = "$HOME\Documents\stagewatch-node"; New-Item -ItemType Directory -Force $d | Out-Null; foreach ($f in "stagewatch-feather-s3-dps310.yaml","stagewatch-xiao-esp32c6-dps310.yaml","stagewatch-feather-s3-dps310-sht45.yaml","stagewatch-xiao-esp32c6-dps310-sht45.yaml","stagewatch-feather-esp8266-mpl3115a2.yaml","stagewatch-feather-esp8266-bme280.yaml","secrets.example.yaml") { Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/MrFreekie/stagewatch/main/esphome/$f" -OutFile "$d\$f" }; if (-not (Test-Path "$d\secrets.yaml")) { Copy-Item "$d\secrets.example.yaml" "$d\secrets.yaml" }; explorer $d
 ```
 
-**What you should see:** a folder window opens with the four node files, `secrets.example.yaml`
+**What you should see:** a folder window opens with the six node files, `secrets.example.yaml`
 (an example, leave it alone) and `secrets.yaml` (**your** copy). If you already have a
 `secrets.yaml` from another node, the command leaves it as it is.
 
@@ -166,7 +224,7 @@ each line.
 
 | Line | What it does |
 |---|---|
-| `node_name` | The node's network name, no spaces. The files start with `stagewatch-baro-s3-1`, `stagewatch-baro-c6-1`, `stagewatch-baro-esp8266-1` and `stagewatch-env-esp8266-1`. |
+| `node_name` | The node's network name, no spaces. The files start with `stagewatch-baro-s3-1`, `stagewatch-baro-c6-1`, `stagewatch-env-s3-1` (S3 Feather with SHT45), `stagewatch-env-c6-1` (XIAO with SHT45), `stagewatch-baro-esp8266-1` and `stagewatch-env-esp8266-1`. |
 | `friendly_name` | The longer name shown in tools. |
 
 **Building a second board of the same type?** Make a copy of the file, give it a new name such
@@ -176,7 +234,7 @@ nodes: nothing else needs changing in the copy.
 
 ### The sensor's I²C address (DPS310 files)
 
-The DPS310 files have a third line, `dps310_address`. Leave it at `"0x77"` for a normal Adafruit
+The DPS310 files (all four) have a third line, `dps310_address`. Leave it at `"0x77"` for a normal Adafruit
 4494. If you bridge the address jumper on the breakout (or tie its SDO pin low), the sensor
 answers at `0x76` and you must change the line to `"0x76"`. Do this only if you changed the
 breakout.
@@ -212,6 +270,14 @@ cd "$HOME\Documents\stagewatch-node"; esphome run stagewatch-feather-s3-dps310.y
 
 ```powershell
 cd "$HOME\Documents\stagewatch-node"; esphome run stagewatch-xiao-esp32c6-dps310.yaml
+```
+
+```powershell
+cd "$HOME\Documents\stagewatch-node"; esphome run stagewatch-feather-s3-dps310-sht45.yaml
+```
+
+```powershell
+cd "$HOME\Documents\stagewatch-node"; esphome run stagewatch-xiao-esp32c6-dps310-sht45.yaml
 ```
 
 ```powershell
@@ -275,13 +341,17 @@ finds. Look for the sensor's address:
 
 | Node | You should see |
 |---|---|
-| DPS310 (S3 Feather and XIAO) | `0x77` (or `0x76` if you changed the address jumper) |
+| DPS310 (S3 Feather and XIAO, with or without the SHT45) | `0x77` (or `0x76` if you changed the address jumper) |
+| SHT45 (all-in-one files) | `0x44` as well as the DPS310 address. You should see **both**. |
 | MPL3115A2 | `0x60` (it cannot be changed) |
 | BME280 or BMP280 | `0x76` or `0x77` |
 | S3 Feather also | `0x36` (battery gauge, boards from early 2023) or `0x0B` (older boards) |
 
-Then you should see readings for **Pressure** and **WiFi signal** (and, on the BME280 file,
-**Temperature** and **Humidity**).
+Then you should see readings for **Pressure** and **WiFi signal** (and, on the BME280 file
+and the two all-in-one files, **Temperature** and **Humidity**).
+
+On an all-in-one node, check the **Temperature** is close to a thermometer you trust. If it
+reads several degrees warm, the SHT45 is too close to the board (see "Where to put the SHT45").
 
 **If no address is listed**, the sensor is not talking to the board. Check the wires or cable
 (see "If it didn't work").
@@ -360,6 +430,20 @@ A pressure sensor reads the **still air pressure** around it, and it drifts if i
 | Power it from a **stable 5 V USB supply**, with the USB lead supported so it cannot be pulled out. | Don't rely on a battery for a whole show. Don't leave a charging pack in a hot case. |
 | Keep it dry. None of these sensors is waterproof. | Don't expose it to rain. |
 
+### Where to put the SHT45 (all-in-one nodes)
+
+The board, its regulator and any battery warm the air around them. Warm air also reads
+**drier**, so heat spoils both temperature and humidity.
+
+- Put the SHT45 on a **short lead, 5 to 10 cm away** from the board and its regulator.
+- Let it hang in **free, shaded air**, below or beside the board, not above it.
+- Keep it **out of direct sun** and away from lamps and amp heat.
+- **Outdoors**, put it in a **small radiation shield**. Do not seal it in a box: a sealed box
+  gives wrong readings.
+- Keep the DPS310 out of fan and blower airflow, as in the table above.
+
+The SHT45's heater is switched off in the files, because it would raise the temperature reading.
+
 ### Checking and correcting the readings (calibration)
 
 Every pressure sensor has its own small error. The DPS310 is about 1 hPa out in absolute terms.
@@ -376,6 +460,10 @@ a reference at your own height if you can.
    that disagrees with the others and you do not yet know why.
 
 Use the offset in Admin. Do not also add an offset in the node file.
+
+On an all-in-one node, the **Temperature** and **Humidity** readings have their own **Offset**
+and **Average** boxes in the same card. Trim them against a reference thermometer and hygrometer
+in the same way.
 
 Stagewatch ties the calibration to the **board itself**, so it stays with the board if its IP
 address changes.
@@ -416,6 +504,8 @@ learns the new one.
 | The log says the address is `0x76` but the file uses `0x77` (or the other way round) | The DPS310 or BME280 answers at a different address from the one in the file. | Change the address in the file to match the scan and flash again. |
 | BME280 file: the log shows a chip-id error, and there is no **Humidity** | You have a BMP280, not a BME280. | Do the BMP280 swap marked in the file. See "Which chip is it?". |
 | MPL3115A2: the first reading is missing, or readings seem one step behind | A known quirk of the driver. | Harmless at a 2-second update. Wait a few seconds. |
+| All-in-one node: the log lists the DPS310 address but not `0x44`, and there is no **Temperature** or **Humidity** | The SHT45 is not connected or has no power. | Check the second STEMMA QT cable or the four SHT45 wires. Check the DPS310 and SHT45 pins match by name. |
+| All-in-one node: **Temperature** reads several degrees warm, or **Humidity** reads low | The SHT45 is heated by the board, the sun or a lamp. | Move it 5 to 10 cm or more from the board, into shade. See "Where to put the SHT45". |
 | The node is not in Stagewatch's **Discovered** list | It is on a different network, or the network blocks node discovery (mDNS). | Check it is on the same 2.4 GHz network as the Stagewatch computer, not a guest network. Turn off "client isolation" on the router. Then use **Add by host / IP**. |
 | Status shows **fault**: "encryption key missing or wrong" | The key in Stagewatch is not the key on the node. | Paste the exact key from `secrets.yaml` that was there when you flashed. If you lost it, put a new key in `secrets.yaml`, flash the node again, then remove and adopt it again. |
 | Status shows **fault**: "different hardware at this address" | A different board now answers at that node's address (for example you swapped boards). Stagewatch holds its readings back so one board's calibration is not applied to another. | In Admin, under **Adopted**, click **Remove** next to the node (history is kept), then adopt the new board with **Adopt…**. Set its **Offset** again. |
@@ -435,13 +525,15 @@ For installers. Crew can skip this.
 
 | Board | I²C | Other |
 |---|---|---|
-| ESP32-S3 Feather (5477) | SDA GPIO3, SCL GPIO4, 100 kHz | `I2C_POWER` GPIO7 switches the STEMMA QT port's 3.3 V and is driven on at boot. NeoPixel data GPIO33, its power enable GPIO21. Boot button GPIO0. |
-| XIAO ESP32C6 | SDA GPIO22 (D4), SCL GPIO23 (D5), 100 kHz | User LED GPIO15, active low. |
+| ESP32-S3 Feather (5477), with or without SHT45 | SDA GPIO3, SCL GPIO4, 100 kHz | `I2C_POWER` GPIO7 switches the STEMMA QT port's 3.3 V and is driven on at boot. NeoPixel data GPIO33, its power enable GPIO21. Boot button GPIO0. |
+| XIAO ESP32C6 (with or without SHT45) | SDA GPIO22 (D4), SCL GPIO23 (D5), 100 kHz | User LED GPIO15, active low. |
 | HUZZAH ESP8266 (both files) | SDA GPIO4, SCL GPIO5, 100 kHz | Blue LED GPIO2, active low. |
 
 ### Settings worth knowing
 
 - Pressure is reported in hPa. Stagewatch converts it to pascals.
+- The SHT45 reads every 5 seconds at high precision, with its heater off (`heater_max_duty: 0.0`).
+  Its address is `0x44`. The two all-in-one files share the bus with the DPS310 at 100 kHz.
 - The DPS310 and MPL3115A2 files average the last 5 readings (10 seconds) before sending. The
   DPS310 and MPL3115A2 have no oversampling setting in ESPHome. The BME280 file reads every 5
   seconds with 16x oversampling.
