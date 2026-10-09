@@ -236,12 +236,12 @@
         const name = r.src.value || ins[0];
         if (!r.met.value || !name || seen.has(name)) continue;
         seen.add(name);
-        const inp = h("input", { class: "touch", maxlength: "40", autocomplete: "off", value: locs[name] || "", "aria-label": `Location for ${name}`, oninput: () => { locs[name] = inp.value; } });
+        const inp = h("input", { class: "touch", maxlength: "40", autocomplete: "off", value: locs[name] || "", placeholder: "Uses the default location", "aria-label": `Location for ${name}`, oninput: () => { locs[name] = inp.value; } });
         kids.push(h("div", { class: "row" }, field(`Location for this input (${name})`, inp)));
       }
       for (const name of Object.keys(locs).filter((n) => locs[n] && !ins.includes(n))) {
-        const note = h("span", { class: "muted" }, `Not listed now: ${name} → ${locs[name]} `);
-        kids.push(h("p", {}, note, h("button", { type: "button", class: "touch", onclick: () => { delete locs[name]; renderLocs(curInputs); } }, "Remove")));
+        const note = h("span", { class: "muted" }, `Not listed now: ${name} → ${locs[name]}. Kept in case the input comes back. `);
+        kids.push(h("div", { class: "row" }, note, h("button", { type: "button", class: "touch", "aria-label": `Remove the location for ${name}`, onclick: () => { delete locs[name]; renderLocs(curInputs); } }, "Remove")));
       }
       locBox.replaceChildren(...kids);
     };
