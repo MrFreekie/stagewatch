@@ -755,6 +755,39 @@
     setClass($("ontime-timer-card"), `card ${v.cls}${v.level ? ` lvl-${v.level}` : ""}${v.over ? " ot-over" : ""}`);
     ot.timer = setTimeout(tickOntimeTimer, SW.ot.nextDelayMs(m, now));
   }
+
+  // ------------------------------------------------------ ontime rundown
+  // Ontime's running-order position and ahead/behind, as the server received it (an
+  // "ontime_rundown" message about once a second). What to show is decided in SW.rd.view
+  // (ontimerundown.js). A one-second tick keeps the stale check honest between messages. Nothing
+  // here sounds, raises an alarm or sends anything to Ontime.
+  const rdc = { timer: null, ui: null };
+  function stopOntimeRundown() { if (rdc.timer) { clearTimeout(rdc.timer); rdc.timer = null; } }
+
+  function renderOntimeRundown() {
+    const card = $("ontime-rundown-card");
+    if (!has("ontime_rundown") || !state.ontimeRundown) {
+      stopOntimeRundown();
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    if (!rdc.ui) {
+      rdc.ui = SW.rd.createUi();
+      card.replaceChildren(card.querySelector("h2") || h("h2", {}, "Ontime Rundown"), ...rdc.ui.nodes);
+    }
+    tickOntimeRundown();
+  }
+
+  function tickOntimeRundown() {
+    stopOntimeRundown();
+    const m = state.ontimeRundown, ui = rdc.ui;
+    if (!m || !ui || !has("ontime_rundown")) return;
+    const v = SW.rd.view(m, serverNow());
+    ui.update(v);
+    setClass($("ontime-rundown-card"), `card ${v.cls}${v.level ? ` rd-lvl-${v.level}` : ""}`);
+    rdc.timer = setTimeout(tickOntimeRundown, 1000);
+  }
   // --------------------------------------------------------- equipment
   // Readings from sensors whose role is Equipment (an amp rack, a power supply): never part of
   // any site average. Grouped by node; each reading shows its value with the unit, goes dim with
@@ -975,6 +1008,8 @@
     wall_clock: { el: cardEl("wall_clock"), wide: true, render: renderWallClock, empty: () => !state.wallClock },
     // Ontime's countdown. Hidden until the first message arrives (the server sends one with the snapshot).
     ontime_timer: { el: cardEl("ontime_timer"), wide: true, render: renderOntimeTimer, empty: () => !state.ontimeTimer },
+    // Ontime's position in the running order and ahead/behind. Hidden until the first message arrives.
+    ontime_rundown: { el: cardEl("ontime_rundown"), wide: true, render: renderOntimeRundown, empty: () => !state.ontimeRundown },
     // Hidden on the wall while there is no pressure sensor (renderBarometer keeps it in step).
     barometer: { el: cardEl("barometer"), render: renderBarometer, empty: () => isWall() && !!state.site.baro && state.site.baro.state === "no_sensor" },
     // Hidden while no sensor has the Equipment role (renderEquipment keeps it in step).
@@ -1032,6 +1067,7 @@
     state.scheduleMeta = msg.schedule || null;   // {show_id, day, revision}: the items are fetched
     state.wallClock = msg.wall_clock || null;    // null until a dashboard has the card and the source is running
     state.ontimeTimer = msg.ontime_timer || null; // likewise
+    state.ontimeRundown = msg.ontime_rundown || null; // likewise
     state.isAdmin = msg.is_admin;
     state.dash = msg.dashboard;
     state.now = msg.now;
@@ -1055,6 +1091,7 @@
     if (!has("schedule")) stopScheduleTimer();
     if (!has("wall_clock")) stopWallClockTimer();
     if (!has("ontime_timer")) stopOntimeTimer();
+    if (!has("ontime_rundown")) stopOntimeRundown();
     syncSchedule();
   }
 
@@ -1121,6 +1158,7 @@
         break;
       case "wall_clock": state.wallClock = msg; if (has("wall_clock")) renderWallClock(); break;
       case "ontime_timer": state.ontimeTimer = msg; if (has("ontime_timer")) renderOntimeTimer(); break;
+      case "ontime_rundown": state.ontimeRundown = msg; if (has("ontime_rundown")) renderOntimeRundown(); break;
       case "alarms": state.alarms = msg.alarms; state.sounding = msg.sounding; renderAlarms(); break;
       case "reload": location.reload(); break;
     }

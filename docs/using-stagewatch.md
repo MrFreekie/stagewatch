@@ -501,7 +501,7 @@ Good to know:
 
 - A **new** dashboard starts with a sensible set for its layout. If you change its **Layout**
   before saving, the ticks change to that layout's set.
-- **Wall Clock** and **Ontime Timer** are never switched on by default. Tick them if you want them,
+- **Wall Clock**, **Ontime Timer** and **Ontime Rundown** are never switched on by default. Tick them if you want them,
   then choose the time source and look (see below).
 - **Equipment** is never switched on by default either. It shows the readings of Equipment sensors (see
   above) and stays hidden while there are none.
@@ -643,6 +643,66 @@ In the Stagewatch emulate mode the card runs a three-minute story on the wall da
 paused, time added, running over, stopped, ready, then stale and offline.
 
 **If it didn't work:** see [Troubleshooting](troubleshooting.md).
+### Show where Ontime is in the day (Ontime Rundown card)
+
+The **Ontime Rundown** card shows how the whole running order is doing: "Event 4 of 12", whether
+[Ontime](https://github.com/cpvalente/ontime) is running ahead or behind, the planned start and end, when it
+now expects to finish, and when it actually started. The Ontime Timer answers "how long is left in this
+item"; this card answers "are we on time?". It is for the stage manager's wall, the FOH tablet or the monitor
+desk, without another browser tab. It shows Ontime's own numbers. It does not copy Ontime's rundown into
+Stagewatch.
+
+Stagewatch only listens to Ontime. It never starts, pauses or changes anything in Ontime. This card reads
+event counters, times and the ahead/behind figure, and nothing else: **no event names, no list of events and
+no "next" item** (those would need a request Stagewatch doesn't make). It uses the same **Ontime address** as
+the Wall Clock and the Ontime Timer, and all the cards share one connection.
+
+1. Open **Admin**, find the **Wall Clock** card, type the **Ontime address** and click **Test connection**
+   (the address box shows when a dashboard has any Ontime card). Click **Save**.
+2. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Ontime Rundown** and click **Save
+   dashboards**. It is never switched on by default.
+
+**What you'll see:** a large figure with words and a triangle, then the position, a bar and the times.
+
+- **▼ 4:10 BEHIND** / **▲ 1:30 AHEAD**: Ontime's offset, in minutes and seconds (hours from one hour). Behind
+  is amber, then orange once it passes the last warning step of the Schedule card (set under **Admin → Site**,
+  5 minutes if you haven't set any). Ahead stays calm. It is never red, and never colour alone.
+- **ON TIME**: within 30 seconds either way.
+- A small label says which offset Ontime reports: **vs plan** (measured against the planned times) or **since
+  start**. Stagewatch shows whichever Ontime is set to.
+- **Planned 11:30 to 22:30**, **Expected end 22:34 (planned 22:30)** and **Started 11:30**. A line is left out
+  when Ontime doesn't send it; the planned end is never shown as a guess for the expected end.
+- The bar shows how far Ontime's clock is through the day, with a mark at the planned end when the expected
+  end is later. A show that runs past midnight is handled; times after midnight say "+1 day".
+- **Not started**, **Finished**, **NO RUNDOWN** ("Ontime has no rundown loaded") and "has not sent rundown
+  information yet" are shown in words.
+- **▲ CAN'T READ**: Ontime sent something Stagewatch couldn't read. The last good figures stay, struck through, until a readable update arrives. Nothing is guessed.
+- **▲ STALE**: nothing has arrived for a few seconds; the figures are struck through. **▲ OFFLINE**: Stagewatch
+  can't hear Ontime; the figures show `--` (a gap, never a zero) and a quiet notice appears in the alarm bar
+  (never a sound).
+
+The times are **Ontime time**: Ontime's own computer clock, shown exactly as Ontime shows them and not
+converted to Stagewatch's time zone. Ahead/behind comes only from Ontime's own offset, so a wrong clock or
+time zone cannot make the show look late.
+
+**This card is experimental.** Only one situation has been recorded from a real Ontime (4.14.0): running event
+9 of 16, offset 0. These assumptions have not been checked against the real thing, and each is one setting in
+the card's code, so they are easy to correct. If one looks wrong, please say which:
+
+- Which way the offset runs. Ontime's documentation suggests a positive offset means running early (ahead).
+- Whether the event number counts from 0 (the card adds 1 to show "Event N") or from 1. If it can't place
+  the number in the rundown it says so instead of guessing.
+- That "Finished" means a start time exists and no event is selected, and "Not started" means neither.
+- Whether the event count includes groups, and what "a later day" does in a multi-day rundown.
+- The documented layout (offset and expected end inside the rundown) is also read, in case a newer Ontime
+  uses it.
+
+In the Stagewatch emulate mode (`--emulate`) the card appears on the wall dashboard and runs a story:
+not started, on time, falling behind into amber and orange, catching up, ahead, finished, then stale and
+offline.
+
+**If it didn't work:** see [Troubleshooting](troubleshooting.md).
+
 ### Read the pressure (Barometer card)
 
 The **Barometer** card shows what the air pressure at your site is doing. It is for the question "is the

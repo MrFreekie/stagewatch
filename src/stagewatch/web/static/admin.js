@@ -571,6 +571,7 @@
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
     wall_clock: ["Wall Clock", "The time of day, as plain digits, an LED ring or 7-segment digits. Choose the source in the Wall Clock settings."],
     ontime_timer: ["Ontime Timer", "The countdown Ontime is running, with the event title. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings."],
+    ontime_rundown: ["Ontime Rundown", "Which event Ontime is on (Event 4 of 12) and whether it is running ahead or behind, with the planned and expected end. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings."],
     equipment: ["Equipment", "Readings from Equipment sensors (amp racks, power supplies), by node. Never part of the site average. Stays hidden until a sensor has the Equipment role."],
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
@@ -726,7 +727,9 @@
     // The address and the test serve both Ontime cards: show them when the clock uses Ontime or
     // any dashboard has the Ontime Timer card. The warning limit is the clock's alone.
     const timerOn = (admin.config.dashboards || []).some((x) => (x.cards || []).indexOf("ontime_timer") >= 0);
-    const addressField = field(timerOn ? "Ontime address (also used by the Ontime Timer card)" : "Ontime address", url);
+    const rundownOn = (admin.config.dashboards || []).some((x) => (x.cards || []).indexOf("ontime_rundown") >= 0);
+    const addressField = field(timerOn ? "Ontime address (also used by the Ontime Timer card)"
+      : rundownOn ? "Ontime address (also used by the Ontime Rundown card)" : "Ontime address", url);
     const warnField = field("Warn if more than this many seconds out", warn);
     const ontimeOnly = [addressField, warnField];
     const result = h("p", { class: "muted", role: "status" });

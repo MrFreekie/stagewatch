@@ -13,6 +13,11 @@ From ``runtime-data`` we keep the clock and, for the Ontime Timer card, the main
 danger times). Nothing else in a message is read or kept: no notes, cues, colours, custom fields,
 messages or other events. The first message is full; later ones carry only ``timer`` and
 ``clock``, so the timer state is merged with the last ``eventNow`` we saw.
+
+For the Ontime Rundown card we also keep the counters and times of the ``rundown`` block and the
+``offset`` block (never a title, id or list), merged the same way. The documented shape
+(``rundown.offset``, ``rundown.expectedEnd``) and the one real 4.14.0 sends (a top-level ``offset``
+block) are both read.
 """
 
 from __future__ import annotations
@@ -23,6 +28,8 @@ import re
 from typing import Literal
 from urllib.parse import urlsplit
 
+from ...core.ontimerundown import (MAX_DAY, MAX_EVENTS, MAX_OFFSET_MS, MAX_TIME_MS, OFFSET_MODES,
+                                   RundownState)
 from ...core.ontimetimer import PHASES, PLAYBACKS, TIMER_TYPES, TimerState, clean_title
 from ...core.wallclock import valid_clock_ms
 
@@ -148,6 +155,93 @@ def parse_timer(payload: object, prev: TimerState | None = None) -> TimerState |
     return TimerState(
         playback=_choice(timer.get("playback"), PLAYBACKS), phase=_choice(timer.get("phase"), PHASES),
         current_ms=current, duration_ms=duration, elapsed_ms=elapsed, added_ms=added or 0, **ev)
+
+
+# ---------------------------------------------------------------- the Ontime Rundown
+_RUNDOWN_KEYS = {   # Ontime key -> (RundownState field, lo, hi)
+    "selectedEventIndex": ("selected_index", 0, MAX_EVENTS),
+    "numEvents": ("num_events", 0, MAX_EVENTS),
+    "plannedStart": ("planned_start_ms", 0, MAX_TIME_MS),
+    "plannedEnd": ("planned_end_ms", 0, MAX_TIME_MS),
+    "actualStart": ("actual_start_ms", 0, MAX_TIME_MS),
+    "currentDay": ("current_day", 0, MAX_DAY),
+    "offset": ("doc_offset_ms", -MAX_OFFSET_MS, MAX_OFFSET_MS),          # documented shape
+    "expectedEnd": ("doc_expected_end_ms", 0, MAX_TIME_MS),              # documented shape
+}
+_OFFSET_KEYS = {    # the real 4.14.0 shape: the top-level "offset" block
+    "absolute": ("offset_absolute_ms", -MAX_OFFSET_MS, MAX_OFFSET_MS),
+    "relative": ("offset_relative_ms", -MAX_OFFSET_MS, MAX_OFFSET_MS),
+    "expectedRundownEnd": ("offset_expected_end_ms", 0, MAX_TIME_MS),
+}
+_RUNDOWN_FIELDS = tuple(v[0] for v in _RUNDOWN_KEYS.values())
+_OFFSET_FIELDS = tuple(v[0] for v in _OFFSET_KEYS.values()) + ("offset_mode",)
+
+
+def _merge_block(block: dict, keys: dict) -> dict | None:
+    """The fields a block sets (only the keys it contains; null clears), or None if any is unreadable."""
+    out = {}
+    for key, (field, lo, hi) in keys.items():
+        if key in block:
+            ok, value = _int_or_none(block[key], lo, hi)
+            if not ok:
+                return None
+            out[field] = value
+    return out
+
+
+def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownState | None:
+    """Merge one ``runtime-data`` payload into the last rundown state.
+
+    * Neither a ``rundown`` nor an ``offset`` key (the usual clock-and-timer message): ``prev``
+      unchanged (which may be None).
+    * A block merges key by key into ``prev`` (a key it lacks keeps its old value; null clears it).
+      ``"rundown": null`` or ``"offset": null`` clears that block.
+    * Anything unreadable (not an object, a float or bool or string where a whole number belongs,
+      a number out of range, a selected index past ``numEvents``): None. The caller shows
+      "can't read the rundown". A mode other than absolute/relative is kept as no mode, so the
+      offset it labels is not used (never guessed).
+
+    Real Ontime 4.14.0 output has only been seen with the first message carrying both blocks."""
+    if not isinstance(payload, dict) or ("rundown" not in payload and "offset" not in payload):
+        return prev
+    state = prev or RundownState()
+    changes: dict = {}
+    if "rundown" in payload:
+        block = payload["rundown"]
+        if block is None:
+            changes.update({f: None for f in _RUNDOWN_FIELDS})
+        elif isinstance(block, dict):
+            got = _merge_block(block, _RUNDOWN_KEYS)
+            if got is None:
+                return None
+            changes.update(got)
+        else:
+            return None
+    if "offset" in payload:
+        block = payload["offset"]
+        if block is None:
+            changes.update({f: None for f in _OFFSET_FIELDS})
+        elif isinstance(block, dict):
+            got = _merge_block(block, _OFFSET_KEYS)
+            if got is None:
+                return None
+            changes.update(got)
+            if "mode" in block:
+                changes["offset_mode"] = block["mode"] if block["mode"] in OFFSET_MODES else None
+        else:
+            # A bare number (a layout we have not seen): treat it like the documented rundown.offset.
+            ok, value = _int_or_none(block, -MAX_OFFSET_MS, MAX_OFFSET_MS)
+            if not ok:
+                return None
+            changes.update({f: None for f in _OFFSET_FIELDS})
+            changes["doc_offset_ms"] = value
+    new = dataclasses.replace(state, **changes)
+    # Deliberately strict until a real capture shows whether selectedEventIndex is 0- or 1-based
+    # (and what Ontime sends when it is finished): an index past numEvents is treated as unreadable
+    # rather than guessed. Revisit after the owner's capture session.
+    if new.selected_index is not None and new.num_events is not None and new.selected_index > new.num_events:
+        return None
+    return new
 
 
 def parse_version(body: object) -> str | None:

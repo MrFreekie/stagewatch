@@ -1,12 +1,14 @@
 """Ontime integration: the show clock for the Wall Clock card and the countdown for the Ontime
-Timer card.
+Timer card and the running-order position and offset for the Ontime Rundown card.
 
 Read-only. It listens to an Ontime server (https://github.com/cpvalente/ontime) for the time of
 day and the main timer (with the title and warning times of the loaded event) and sends nothing
-to it. It does not read the rest of the rundown, notes, messages or aux timers.
+to it. It also reads the rundown counters, planned and expected times and the ahead/behind
+offset. It does not read event lists, notes, messages or aux timers.
 
 There is one connection. It runs only while at least one dashboard has a card that needs it: the
-Wall Clock card (when the Wall Clock source is Ontime) or the Ontime Timer card. Each card's
+Wall Clock card (when the Wall Clock source is Ontime), the Ontime Timer card or the Ontime
+Rundown card. Each card's
 service "acquires" the source under its own name; it starts with the first and stops with the
 last. The "Ontime" device appears under Integrations in the admin page while the source runs; if
 Ontime can't be reached it goes MISSING with a *silent* alarm (an on-screen notice, never a sound).
@@ -19,6 +21,7 @@ import logging
 
 from ...core.model import Device, Status
 from ...core.plugin import Integration, Manifest
+from ...core.ontimerundown import RundownReading
 from ...core.ontimetimer import TimerReading
 from ...core.wallclock import ClockReading
 from .client import OntimeSource
@@ -35,8 +38,10 @@ MANIFEST = Manifest(
     description="Reads the time of day and the main timer (countdown, playback state, and the "
                 "title and warning times of the loaded event) from an Ontime server over one "
                 "WebSocket connection, falling back to HTTP polling, so the Wall Clock and Ontime "
-                "Timer cards can show them. Read-only: sends nothing to Ontime and does not read "
-                "the rest of the rundown, notes, messages or aux timers. Runs only while a "
+                "Timer cards can show them. For the Ontime Rundown card it also reads the rundown "
+                "position (event number and count), planned start and end, expected end, actual "
+                "start and the ahead/behind offset. Read-only: sends nothing to Ontime and does "
+                "not read event titles or lists, notes, messages or aux timers. Runs only while a "
                 "dashboard has one of those cards. Tested against Ontime 4.14.0 in the 'roll' "
                 "state only; other states are handled but not yet checked against a real Ontime.",
     tier="experimental",
@@ -47,7 +52,7 @@ MANIFEST = Manifest(
 
 class _ManagedSource:
     """What the card services see: the shared Ontime source, reference counted by consumer name
-    ("wall_clock", "ontime_timer"), plus the "Ontime" device that exists only while it runs."""
+    ("wall_clock", "ontime_timer", "ontime_rundown"), plus the "Ontime" device that exists only while it runs."""
 
     def __init__(self, owner: "OntimeIntegration", inner) -> None:
         self._owner, self._inner = owner, inner
@@ -101,6 +106,9 @@ class _ManagedSource:
 
     def latest_timer(self) -> TimerReading:
         return self._inner.latest_timer()
+
+    def latest_rundown(self) -> RundownReading:
+        return self._inner.latest_rundown()
 
     def details(self) -> dict:
         return self._inner.details()

@@ -25,6 +25,7 @@ from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
 from .recorder import REASON_POWER_OR_RESTART, Recorder
 from .schedule import DemoDoesNotFit, ScheduleMarkers, ScheduleService
+from .ontimerundown import OntimeRundownService
 from .ontimetimer import OntimeTimerService
 from .wallclock import WallClockService
 
@@ -83,6 +84,7 @@ class Hub:
         self.baro = BarometerService(self)  # 3-hour tendency from one averaged sample a minute
         self.wall_clock = WallClockService(self)  # runs a clock source only while a dashboard has the card
         self.ontime_timer = OntimeTimerService(self)  # holds the shared Ontime source while a dashboard has its card
+        self.ontime_rundown = OntimeRundownService(self)  # likewise for the rundown card (same shared source)
         # Active alarm id -> the marker it added, hidden again if the alarm is acknowledged.
         self._alarm_markers: dict[str, int] = {}
         self._site_before = None  # the site settings just replaced (set_site), for the rebase
@@ -158,6 +160,7 @@ class Hub:
                 log.exception("Integration %s failed to start", integration.manifest.domain)
         await self.wall_clock.start()
         await self.ontime_timer.start()
+        await self.ontime_rundown.start()
         self._tasks = [
             asyncio.create_task(self._periodic(1.0, self.tick), name="hub-tick"),
             asyncio.create_task(self._periodic(2.0, self.recorder.flush), name="hub-flush"),
@@ -167,6 +170,7 @@ class Hub:
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
+        await self.ontime_rundown.stop()
         await self.ontime_timer.stop()
         await self.wall_clock.stop()
         for integration in self.integrations.values():
@@ -741,6 +745,7 @@ class Hub:
             "schedule": self.schedule_snapshot(),
             "wall_clock": self.wall_clock.snapshot(),  # None while no dashboard has the card
             "ontime_timer": self.ontime_timer.snapshot(),  # likewise
+            "ontime_rundown": self.ontime_rundown.snapshot(),  # likewise
             "devices": [d.to_dict() for d in self.devices.values()],
             "entities": [self.entity_dict(e, now, stale_after) for e in self.entities.values()],
             "markers": [m.to_dict() for m in self.recorder.markers()],

@@ -14,6 +14,7 @@ import time
 from typing import Callable
 
 from ...core import sitetime
+from ...core.ontimerundown import RundownReading, RundownState
 from ...core.ontimetimer import TimerReading, TimerState
 from ...core.wallclock import ClockReading
 
@@ -72,6 +73,59 @@ def emulated_timer_state(t: float) -> TimerState:
     return state("armed", TIMER_DURATION_MS, 0, 0)
 
 
+# The emulated rundown repeats a 240 second story (seconds into the cycle). 12 events, planned
+# 11:30 to 22:30 on Ontime's clock. Ontime's offset sign is taken from its documentation (positive
+# is ahead, negative is behind); a real capture has not confirmed it.
+#   0-20 not started | 20-50 on time (a few seconds out) | 50-85 falling behind, 0 to 6:00
+#   (amber after 0:30, orange after the default 5 minute step) | 85-100 holding 6:00 behind
+#   | 100-115 nothing arrives (stale, still orange underneath) | 115-155 catching up, 6:00 behind
+#   to 1:30 ahead | 155-175 ahead, easing back to 0 | 175-195 Ontime has no rundown loaded
+#   | 195-225 finished | 225-240 Ontime offline.
+RUNDOWN_CYCLE_S = 240.0
+RUNDOWN_EVENTS = 12
+RUNDOWN_PLANNED_START_MS = 41_400_000     # 11:30
+RUNDOWN_PLANNED_END_MS = 81_000_000       # 22:30
+RUNDOWN_PEAK_BEHIND_MS = 360_000          # 6:00 behind, past the default 5 minute orange step
+RUNDOWN_STALE = (100.0, 115.0)
+RUNDOWN_OFFLINE = (225.0, 240.0)
+
+
+def emulated_rundown_clock(t: float) -> int:
+    """Ontime's clock in the emulated story: the planned day squeezed into one cycle."""
+    span = RUNDOWN_PLANNED_END_MS - RUNDOWN_PLANNED_START_MS
+    return RUNDOWN_PLANNED_START_MS + int((t % RUNDOWN_CYCLE_S) / RUNDOWN_CYCLE_S * span)
+
+
+def emulated_rundown_state(t: float) -> RundownState:
+    """The emulated rundown ``t`` seconds into its 240 s cycle. Pure and deterministic.
+    Offset in ms: negative is behind."""
+    t = t % RUNDOWN_CYCLE_S
+    base = dict(num_events=RUNDOWN_EVENTS, planned_start_ms=RUNDOWN_PLANNED_START_MS,
+                planned_end_ms=RUNDOWN_PLANNED_END_MS, current_day=0, offset_mode="absolute")
+
+    def state(index: int | None, offset: int | None, started: bool = True) -> RundownState:
+        return RundownState(
+            selected_index=index, actual_start_ms=RUNDOWN_PLANNED_START_MS if started else None,
+            offset_absolute_ms=offset, offset_relative_ms=offset,
+            offset_expected_end_ms=None if offset is None else RUNDOWN_PLANNED_END_MS - offset, **base)
+
+    if t < 20:
+        return state(None, None, started=False)
+    if t < 50:
+        return state(1, int((t - 35) * 1000))                          # within a few seconds either way
+    if t < 85:
+        return state(3 + int((t - 50) // 12), -int((t - 50) / 35 * RUNDOWN_PEAK_BEHIND_MS))
+    if t < 115:
+        return state(6, -RUNDOWN_PEAK_BEHIND_MS)
+    if t < 155:
+        return state(7 + int((t - 115) // 20), int(-RUNDOWN_PEAK_BEHIND_MS + (t - 115) / 40 * (RUNDOWN_PEAK_BEHIND_MS + 90_000)))
+    if t < 175:
+        return state(9, int(90_000 - (t - 155) / 20 * 90_000))
+    if t < 195:
+        return RundownState(num_events=0, current_day=0)               # Ontime has no rundown loaded
+    return state(None, 0)                                              # finished
+
+
 class EmulatedClock:
     name = "ontime"
     label = "Ontime"
@@ -122,6 +176,24 @@ class EmulatedClock:
         if self.latest().status != "ok":
             return TimerReading(None, now, "offline", "Emulated dropout")
         return TimerReading(emulated_timer_state((now - self._t0) % TIMER_CYCLE_S), now, "ok", "Emulated")
+
+    def latest_rundown(self) -> RundownReading:
+        """The emulated Ontime rundown (see RUNDOWN_* above). With ``cycle`` it also goes stale and
+        offline in its own windows; without, it is offline whenever the clock drops out."""
+        now = self._time()
+        if self._cycle:
+            t = (now - self._t0) % RUNDOWN_CYCLE_S
+            if RUNDOWN_OFFLINE[0] <= t < RUNDOWN_OFFLINE[1]:
+                return RundownReading(None, now, "offline", "Emulated dropout")
+            if RUNDOWN_STALE[0] <= t < RUNDOWN_STALE[1]:
+                age = t - RUNDOWN_STALE[0]
+                return RundownReading(emulated_rundown_state(RUNDOWN_STALE[0]), now - age, "ok", "Emulated",
+                                      emulated_rundown_clock(RUNDOWN_STALE[0]))
+            return RundownReading(emulated_rundown_state(t), now, "ok", "Emulated", emulated_rundown_clock(t))
+        if self.latest().status != "ok":
+            return RundownReading(None, now, "offline", "Emulated dropout")
+        t = (now - self._t0) % RUNDOWN_CYCLE_S
+        return RundownReading(emulated_rundown_state(t), now, "ok", "Emulated", emulated_rundown_clock(t))
 
     def _cycle_reading(self, now: float) -> ClockReading:
         t = (now - self._t0) % CYCLE_S

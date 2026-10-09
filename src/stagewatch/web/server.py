@@ -668,6 +668,8 @@ class LiveFeed:
             self._send_all({"type": "wall_clock", **payload})
         elif topic == "ontime_timer" and isinstance(payload, dict):
             self._send_all({"type": "ontime_timer", **payload})
+        elif topic == "ontime_rundown" and isinstance(payload, dict):
+            self._send_all({"type": "ontime_rundown", **payload})
         elif topic == "schedule" and isinstance(payload, dict):
             # Small on purpose: clients fetch GET /api/schedule?stage= for the list itself.
             self._send_all({"type": "schedule", "show_id": payload.get("show_id"),
@@ -940,6 +942,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # Wall Clock card: is the source running, and what is it saying (no addresses).
             "wall_clock": hub.wall_clock.admin_status(),
             "ontime_timer": hub.ontime_timer.admin_status(),
+            "ontime_rundown": hub.ontime_rundown.admin_status(),
             # Sound level card: the values that can be chosen, and what is running (no addresses).
             "spl": spl_admin(),
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
