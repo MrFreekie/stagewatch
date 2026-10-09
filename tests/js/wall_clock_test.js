@@ -74,7 +74,7 @@ const NOW = 1790000000;
 const msg = (o) => Object.assign({ source: "ontime", label: "Ontime", clock_ms: at(14, 5, 9) * 1000, received_at: NOW, status: "ok",
   offset_s: 0.5, warn: false, display: {} }, o || {});
 let v = wc.view(msg(), NOW);
-eq([v.state, v.digits, v.suffix, v.level, v.cls, v.note, v.date], ["live", "14:05:09", "", "", "", "Matches Stagewatch", ""], "live");
+eq([v.state, v.digits, v.suffix, v.level, v.cls, v.note, v.date], ["live", "14:05:09", "", "", "", "", ""], "live: nothing is said while Ontime agrees with Stagewatch");
 v = wc.view(msg(), NOW + 2.4);
 eq([v.state, v.digits], ["live", "14:05:11"], "live time runs on from the reading (age 2.4 s)");
 v = wc.view(msg({ source: "pc", label: "Stagewatch PC", offset_s: 0 }), NOW);

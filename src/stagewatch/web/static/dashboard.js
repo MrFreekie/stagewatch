@@ -716,6 +716,7 @@
     setText(ui.date, v.date);
     ui.date.hidden = !v.date;
     setText(ui.note, v.note);
+    ui.note.hidden = !v.note;
     setClass(ui.note, `wc-note${v.level ? ` ${v.level}` : ""}`);
     setClass(card, `card${v.cls ? ` ${v.cls}` : ""} wc-style-${style}`);
     wc.timer = setTimeout(tickWallClock, SW.wc.nextDelayMs(m, now));
