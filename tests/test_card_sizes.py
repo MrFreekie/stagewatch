@@ -20,7 +20,7 @@ from stagewatch.web.server import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "stagewatch" / "web" / "static"
-DASHBOARD_FIELDS = {"slug", "title", "layout", "allow_marker", "allow_ack", "cards", "stage", "clock_style", "card_sizes"}
+DASHBOARD_FIELDS = {"slug", "title", "layout", "allow_marker", "allow_ack", "cards", "stage", "clock_style", "card_sizes", "globcon"}
 
 
 def test_default_is_full_everywhere_and_the_allow_list_is_small():

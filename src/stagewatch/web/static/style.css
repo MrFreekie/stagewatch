@@ -828,3 +828,45 @@ body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-listnote { fo
 body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-notstarted .rd-big, body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-finished .rd-big,
 body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-empty .rd-big, body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-nodata .rd-big,
 body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-off .rd-big, body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-error .rd-big { font-size: min(80px, 6vw); }
+
+/* GLOBCON levels card. Colour is always paired with a word or symbol (LIVE / FROZEN / OFFLINE, ▲ and ▲▲). */
+.gc-title { font-size: 20px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; text-transform: none; letter-spacing: 0; }
+.gc-sub { font-size: 13px; font-weight: 500; }
+.gc-top { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 10px; }
+.gc-layer { font-size: 20px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.gc-badge { font-size: 15px; font-weight: 800; letter-spacing: .04em; margin-left: auto; }
+.gc-strips { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 10px; }
+.gc-strips[data-n="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.gc-col { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
+.gc-label { font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; min-height: 2.6em; line-height: 1.3; overflow: hidden; overflow-wrap: anywhere; }
+.gc-bar { position: relative; height: 180px; background: var(--panel-2); border: 1px solid var(--grid); border-radius: 6px; overflow: hidden; display: flex; align-items: flex-end; }
+.gc-fill { width: 100%; height: 0; background: var(--ok); }
+.gc-high .gc-fill { background: var(--warn); }
+.gc-hot .gc-fill { background: var(--alert); }
+.gc-none .gc-fill { height: 0 !important; }
+.gc-reading { display: flex; justify-content: center; align-items: baseline; gap: 4px; margin-top: 4px; }
+.gc-value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gc-none .gc-value { color: var(--muted); }
+.gc-mark { font-size: 16px; font-weight: 800; min-width: 1.6em; }
+.gc-note { margin: 10px 0 0; font-size: 15px; color: var(--text); font-weight: 600; }
+.gc-foot { margin: 8px 0 0; font-size: 12px; }
+#globcon-card.gc-s-frozen, #globcon-card.gc-s-offline, #globcon-card.gc-s-locked { border-left: 6px solid var(--warn); }
+#globcon-card.gc-s-frozen .gc-strips, #globcon-card.gc-s-offline .gc-strips { opacity: .45; }
+#globcon-card.gc-s-frozen .gc-value, #globcon-card.gc-s-offline .gc-value { text-decoration: line-through; text-decoration-thickness: 3px; }
+#globcon-card.gc-s-frozen .gc-fill, #globcon-card.gc-s-offline .gc-fill { background: var(--muted); }
+body.layout-phone .gc-strips { gap: 6px; }
+body.layout-phone .gc-strips:not([data-n="4"]) { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 14px; }
+body.layout-phone .gc-bar { height: 120px; }
+body.layout-phone .gc-value { font-size: 20px; }
+body.layout-phone .gc-foot { display: none; }
+body.layout-wall .gc-title { font-size: 40px; }
+body.layout-wall .gc-layer { font-size: 36px; }
+body.layout-wall .gc-badge { font-size: 28px; }
+body.layout-wall .gc-strips { gap: 18px; }
+body.layout-wall .gc-label { font-size: 26px; }
+body.layout-wall .gc-bar { height: 30vh; border-radius: 10px; }
+body.layout-wall .gc-value { font-size: 48px; }
+body.layout-wall .gc-mark { font-size: 32px; }
+body.layout-wall .gc-note { font-size: 32px; }
+body.layout-wall .gc-sub { font-size: 24px; }
+body.layout-wall .gc-foot { display: none; }

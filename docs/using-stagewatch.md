@@ -901,3 +901,57 @@ knows Smaart's `/api/v4/` address; check the API is on and the port is right).
   card to screens where that is fine.
 - Limits and alarms for the level are planned for a later version. Until then the card is a display and a
   record only.
+
+### Watch the levels on a DirectOut GLOBCON controller (GLOBCON levels card)
+
+The **GLOBCON levels** card shows live level meters from DirectOut's **GLOBCON** for one controller, for the
+question "is the signal there, and roughly how loud is each strip?". It shows **4 or 8 strips** as tall bars
+with the level in dB underneath, the controller's name and the **layer** it is on now, and it says **as
+reported by GLOBCON**. The numbers are GLOBCON's own: Stagewatch does not average, smooth, hold or convert
+them, and it does not say whether they are peak or RMS (GLOBCON does not say). A strip GLOBCON reports as
+"no signal" shows as an empty bar and a dash, never as zero.
+
+> **Not yet tested on a real GLOBCON beyond one recording.** The connection was written from GLOBCON's own
+> web page and checked against one recording of that page talking to a real GLOBCON. Stagewatch has never
+> run against a live GLOBCON. Please check the levels against GLOBCON's own screen before you rely on them.
+> The card works in emulate mode (`--emulate`) with simulated controllers. It is a convenience view, not a
+> metering standard, and it is not a way to run the mix.
+
+**Read-only.** Stagewatch only listens. It asks GLOBCON for names, strip labels, the layer and the meter
+levels, and nothing else: it can never move a fader, mute, solo, change a layer, press a button or run a
+function. If you save a GLOBCON password, it is sent only to log in, and only when GLOBCON asks for one.
+It crosses the show network as readable text, so use a password you use nowhere else.
+
+**Set it up (admin).**
+
+1. Open **Admin → DirectOut GLOBCON**. The address starts as this computer (`127.0.0.1`) and port `9091`,
+   which is where GLOBCON's remote controller page was on the machine we looked at. Change them if GLOBCON
+   runs on another computer on your network. If a controller needs a password, type it; leave it empty
+   otherwise. Save.
+2. Add the card to a dashboard under **User dashboards → Edit cards**. Beside the card, choose the
+   **GLOBCON controller** (1 to 16) and **how many strips** (4 or 8). The card shows the first strips that
+   GLOBCON says have a level.
+3. Stagewatch only connects to GLOBCON while some dashboard has the card.
+
+**Controllers and layers.** A GLOBCON controller has several layers, but it shows one at a time, and its
+strips and meters always follow the layer it is on. Stagewatch cannot change the layer (that would change
+what the engineer sees), so a card cannot be set to "layer 2". To show two layers on two screens, set up
+two controllers in GLOBCON and leave each on its own layer, then point each dashboard at one. The card's
+heading shows the controller's name and the layer's name as GLOBCON reports them right now, so if someone
+changes the layer in GLOBCON, the heading and strip names change with it.
+
+**What the card says.**
+
+- **● LIVE**: levels are arriving. A bar from about -9 dB up has one triangle (▲) and from -3 dB up two
+  (▲▲), with colour as well. That is a display guide only, not a statement about clipping or headroom.
+- **▲ FROZEN**: no new levels for a few seconds, or GLOBCON is not connected. The last levels stay on the
+  screen, dimmed and struck through, with how long ago they arrived. Nothing is shown as zero, and nothing
+  is filled in afterwards.
+- **▲ PASSWORD NEEDED**: GLOBCON wants a password for this controller. Enter it in Admin.
+- **… WAITING**: the card has not heard from GLOBCON yet.
+
+When GLOBCON goes quiet or away, Stagewatch raises a quiet (never sounding) notice and clears it when GLOBCON is
+back. Nothing is recorded: the card is live only, so there is no history and no marker.
+
+**For the wall.** The bars and numbers grow to be read from across the room. Colour is always paired with
+a word or a symbol.

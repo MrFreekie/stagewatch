@@ -358,6 +358,24 @@ class OntimeTimerConfig(_Model):
     show_title: bool = True
 
 
+class GlobconConfig(_Model):
+    """Where the DirectOut GLOBCON remote-controller interface is (read-only: levels and names only).
+    Additive with defaults, so no schema bump; an older build ignores the section and forgets it on its
+    next save. Used only while a dashboard has the GLOBCON levels card. ``password`` is GLOBCON's
+    controller password, if it has one: a secret, kept like the Smaart one (admin write-only, shown only
+    as set / not set, never logged)."""
+    host: str = Field("127.0.0.1", max_length=253)
+    port: int | None = Field(9091, ge=1, le=65535)
+    password: str = Field("", max_length=128, repr=False)
+
+    @model_serializer(mode="wrap")
+    def _compact(self, handler):
+        data = handler(self)
+        if not data.get("password"):
+            data.pop("password", None)
+        return data
+
+
 class Threshold(_Model):
     id: str
     entity: str
@@ -368,6 +386,27 @@ class Threshold(_Model):
     hysteresis: float = Field(0.0, ge=0)
     hold_s: float = Field(0.0, ge=0, le=3600)
     enabled: bool = True
+
+
+class GlobconCardOptions(_Model):
+    """Which GLOBCON controller (1 to 16) and how many strips (4 or 8) this dashboard's GLOBCON
+    levels card shows. Loading is lenient (anything unusable falls back to the default, with a warning
+    that never carries the value); the API is strict."""
+    controller: int = Field(1, ge=1, le=16)
+    strips: Literal[4, 8] = 8
+
+    @model_validator(mode="before")
+    @classmethod
+    def _lenient(cls, data):
+        if not isinstance(data, dict):
+            return {}
+        out = {}
+        c, s = data.get("controller", 1), data.get("strips", 8)
+        out["controller"] = c if isinstance(c, int) and not isinstance(c, bool) and 1 <= c <= 16 else 1
+        out["strips"] = s if isinstance(s, int) and not isinstance(s, bool) and s in (4, 8) else 8
+        if out["controller"] != c or out["strips"] != s:
+            log.warning("A dashboard's GLOBCON card options were not usable and were reset to the defaults")
+        return out
 
 
 class Dashboard(_Model):
@@ -383,6 +422,8 @@ class Dashboard(_Model):
     clock_style: str = "digits"
     # Optional card id -> "full" | "half" (core/cards.py HALF_CAPABLE).  Empty = every card full width.
     card_sizes: dict[str, str] = Field(default_factory=dict)
+    # The GLOBCON levels card's controller and strip count on this screen.
+    globcon: GlobconCardOptions = Field(default_factory=GlobconCardOptions)
 
     @field_validator("slug")
     @classmethod
@@ -714,6 +755,23 @@ class Config(_Model):
     barometer: BarometerConfig = Field(default_factory=BarometerConfig)
     alarms: AlarmsConfig = Field(default_factory=AlarmsConfig)
     spl: SplConfig = Field(default_factory=SplConfig)
+    globcon: GlobconConfig = Field(default_factory=GlobconConfig)
+
+    @field_validator("globcon", mode="before")
+    @classmethod
+    def _lenient_globcon(cls, v):
+        """On load (the API is strict): an address or password that is not acceptable is cleared with a
+        warning, so one bad value never sends the whole file through salvage. Never logs the value."""
+        if isinstance(v, dict) and "host" in v and (not v["host"] or spl_host_error(v["host"])):
+            if v["host"]:
+                log.warning("GLOBCON: the saved address is not usable and was cleared")
+            v = {**v, "host": ""}
+        if isinstance(v, dict) and isinstance(v.get("password"), (int, float)) and not isinstance(v["password"], bool):
+            v = {**v, "password": str(v["password"])}
+        if isinstance(v, dict) and v.get("password") not in (None, "") and spl_password_error(v["password"]):
+            log.warning("GLOBCON: the saved password is not usable and was cleared")
+            v = {**v, "password": ""}
+        return v
 
     @field_validator("spl", mode="before")
     @classmethod
