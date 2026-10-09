@@ -485,8 +485,10 @@ class SplConfig(_Model):
     save. The address is admin only. Nothing here is a secret: no password is stored because
     Stagewatch does not log in to Smaart yet (the log-in is not documented in what we have)."""
     enabled: bool = False
-    host: str = Field("", max_length=253)
-    port: int | None = Field(None, ge=1, le=65535)
+    # Defaults: Smaart on this computer (127.0.0.1), port 26000 (the owner's figure; not yet verified
+    # against Smaart's documentation). Both can be changed in Admin.
+    host: str = Field("127.0.0.1", max_length=253)
+    port: int | None = Field(26000, ge=1, le=65535)
     # Up to three values (core/spl.py METRICS keys) recorded together on one timeline.
     slots: list[str] = Field(default_factory=lambda: list(spl.DEFAULT_SLOTS))
 

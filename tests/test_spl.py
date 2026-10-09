@@ -421,7 +421,7 @@ async def test_a_new_address_restarts_the_source_and_switching_off_removes_the_d
 
 
 async def test_enabled_without_an_address_does_not_start_a_real_source(hub):
-    hub.config.spl = SplConfig(enabled=True)
+    hub.config.spl = SplConfig(enabled=True, host="", port=None)      # the defaults are 127.0.0.1:26000
     integ = SmaartIntegration(hub, source_factory=FakeSource)
     await integ.apply()
     assert integ._source is None and "spl" not in hub.devices
@@ -713,7 +713,7 @@ def test_older_config_without_the_section_loads_with_defaults_and_no_schema_bump
     assert CONFIG_SCHEMA_VERSION == 2 and DB_SCHEMA_VERSION == 3      # additive config, no table change: no bump
     old = yaml.safe_load((ROOT / "tests" / "fixtures" / "v1" / "config.yaml").read_text(encoding="utf-8"))
     cfg = Config.model_validate(migrate(old))
-    assert cfg.spl == SplConfig() and cfg.spl.enabled is False and cfg.spl.host == "" and cfg.spl.port is None
+    assert cfg.spl == SplConfig() and cfg.spl.enabled is False and cfg.spl.host == "127.0.0.1" and cfg.spl.port == 26000
     assert cfg.spl.slots == ["a_slow", "c_slow", "laeq_15m"]
     assert cfg.site.name == old["site"]["name"]
 
@@ -752,11 +752,11 @@ def test_a_damaged_section_resets_only_itself(tmp_path, caplog):
            "barometer": {"hemisphere": "south"}}
     cfg, notes = salvage(raw, "")
     assert cfg.site.name == "Keep Me" and cfg.barometer.hemisphere == "south"
-    assert cfg.spl.host == "" and cfg.spl.port is None and cfg.spl.slots == list(spl.DEFAULT_SLOTS) and any("spl" in n for n in notes)
+    assert cfg.spl.host == "" and cfg.spl.port == 26000 and cfg.spl.slots == list(spl.DEFAULT_SLOTS) and any("spl" in n for n in notes)   # bad address cleared, bad port back to the default
     p = tmp_path / "config.yaml"
     p.write_text(yaml.safe_dump(raw), encoding="utf-8")
     loaded = ConfigStore(p).load()
-    assert loaded.site.name == "Keep Me" and loaded.spl.host == "" and loaded.spl.port is None
+    assert loaded.site.name == "Keep Me" and loaded.spl.host == "" and loaded.spl.port == 26000
     assert "http://x" not in caplog.text
 
 
