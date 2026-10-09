@@ -77,6 +77,10 @@ def normalise_mac(value: object) -> str | None:
     return mac if _HEX12.fullmatch(mac) else None
 
 
+# The only extra public fields a device may carry (the sound level graph range).
+PUBLIC_EXTRA = frozenset({"chart_range", "chart_min_db", "chart_max_db"})
+
+
 @dataclass
 class Device:
     id: str
@@ -117,7 +121,7 @@ class Device:
         }
         if self.input_name:
             out["input_name"] = self.input_name
-        out.update(self.public)
+        out.update({k: v for k, v in self.public.items() if k in PUBLIC_EXTRA and k not in out})
         return out
 
 

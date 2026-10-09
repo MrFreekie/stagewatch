@@ -39,6 +39,25 @@ SW.spl = (function () {
     return e && typeof e.location === "string" ? e.location.trim() : "";
   };
 
+  // The tile's own location line: none when the card title already shows the one every tile shares.
+  spl.tileLocation = function (e, entities) {
+    const shared = (entities || []).length > 0 && spl.title(entities) !== "Sound level";
+    return shared ? "" : spl.location(e);
+  };
+
+  // Saved per-input locations as a Map (an input may be called "constructor" or "__proto__") and back
+  // to a plain object for the save. Only non-empty text is kept.
+  spl.locMap = function (obj) {
+    const m = new Map();
+    if (obj && typeof obj === "object") for (const [k, v] of Object.entries(obj)) if (typeof v === "string" && v.trim()) m.set(k, v);
+    return m;
+  };
+  spl.locObject = function (map) {
+    const out = {};
+    for (const [k, v] of map) if (typeof v === "string" && v.trim()) Object.defineProperty(out, k, { value: v, enumerable: true, writable: true, configurable: true });
+    return out;
+  };
+
   // The card title: "Sound level · FOH" only when every shown value has the same non-empty location;
   // otherwise "Sound level" (each value then carries its own location). Plain text for textContent.
   spl.title = function (entities) {

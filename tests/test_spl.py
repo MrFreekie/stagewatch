@@ -1007,7 +1007,7 @@ def test_put_spl_locations_reach_the_public_entities_and_the_admin_state(client_
     admin(c)
     a, b = INPUT_LABELS[0], INPUT_LABELS[1]
     meters = [{"source": "", "metric": "SPL A Slow"}, {"source": b, "metric": "SPL C Slow"}, {"source": b, "metric": "SPL A Slow"}]
-    r = put(c, meters=meters, location="Desk", locations={a: "FOH", b: "  Stage \n left "})
+    r = put(c, meters=meters, location="Desk", locations={a: "FOH", b: "  Stage   left "})
     assert r.status_code == 200
     ents = [e for e in c.get("/api/snapshot").json()["entities"] if e["kind"] == "sound_level"]
     poll(lambda: [e.get("location") for e in c.get("/api/snapshot").json()["entities"] if e["kind"] == "sound_level"] == ["FOH", "Stage left", "Stage left"])
@@ -1146,3 +1146,41 @@ def test_put_spl_chart_range_validation_public_fields_and_no_restart(client_app)
         r = put(c, **body)
         assert r.status_code == 422 and marker not in r.text, body
     assert c.hub.config.spl.chart_range == "auto"
+
+
+# ------------------------------------------------------------------------- review fixes
+def test_salvage_keeps_a_valid_custom_range_when_another_key_is_bad(caplog):
+    cfg, notes = salvage({"schema_version": 2, "site": {"name": "Keep Me"},
+                          "spl": {"port": "abc", "chart_range": "custom", "chart_min_db": 150, "chart_max_db": 190}}, "")
+    assert (cfg.spl.chart_range, cfg.spl.chart_min_db, cfg.spl.chart_max_db) == ("custom", 150.0, 190.0)
+    assert cfg.site.name == "Keep Me" and "not usable" not in caplog.text
+    cfg, _ = salvage({"schema_version": 2, "spl": {"port": "abc", "chart_range": "custom", "chart_min_db": 190, "chart_max_db": 150}}, "")
+    assert cfg.spl.chart_range == "auto" and cfg.spl.chart_min_db == 22.0 and "not usable" in caplog.text
+    assert "190" not in caplog.text
+
+
+def test_huge_whole_numbers_are_one_bad_value_never_an_error(client_app, caplog):
+    assert spl.chart_range_error(10 ** 400, 5) and spl.chart_range_error(5, -10 ** 400)
+    got = SplConfig.model_validate({"chart_range": "custom", "chart_min_db": 10 ** 400, "chart_max_db": 99})
+    assert got.chart_range == "auto"
+    c = client_app
+    admin(c)
+    for body in ({"chart_min_db": 10 ** 400}, {"chart_max_db": 10 ** 400}, {"chart_range": "custom", "chart_min_db": -10 ** 400, "chart_max_db": 10 ** 400}):
+        r = put(c, **body)
+        assert r.status_code == 422 and "graph range" in r.text, body
+
+
+def test_put_refuses_hidden_characters_before_tidying_and_keeps_plain_spaces(client_app):
+    c = client_app
+    admin(c)
+    for bad in ("a\tb", "a\nb", "a\u00a0\u200bb", "a\ue000b", "a\u0378b", "a\ud800b".encode("utf-16", "surrogatepass").decode("utf-16", "ignore") + "\x00"):
+        assert put(c, location=bad).status_code == 422, repr(bad)
+        assert put(c, locations={INPUT_LABELS[0]: bad}).status_code == 422, repr(bad)
+    assert put(c, location="  Stage   left ").status_code == 200 and c.hub.config.spl.location == "Stage left"
+
+
+def test_device_public_extras_are_whitelisted_and_never_overwrite_base_keys():
+    d = Device("x", "Name", "int")
+    d.public = {"chart_range": "auto", "chart_min_db": 22.0, "id": "evil", "status": "evil", "other": 1}
+    out = d.to_dict()
+    assert out["id"] == "x" and out["status"] == d.status.value and "other" not in out and out["chart_range"] == "auto"

@@ -113,5 +113,20 @@ eq(SW.spl.rangeNote({ above: true, below: false }), "Some readings are above the
 eq(SW.spl.rangeNote({ above: true, below: true }), "Some readings are above the range, drawn at the top edge and some are below the range, drawn at the bottom edge.", "note both");
 eq(SW.spl.rangeNote({ above: false, below: false }), "", "no note");
 
+// ---- tile location is not repeated when the title shows it
+eq(SW.spl.tileLocation(atLoc("FOH"), [atLoc("FOH"), atLoc("FOH")]), "", "shared: only in the title");
+eq(SW.spl.tileLocation(atLoc("FOH"), [atLoc("FOH"), atLoc("Stage left")]), "FOH", "different: on the tile");
+eq(SW.spl.tileLocation(atLoc("FOH"), [atLoc("FOH"), {}]), "FOH", "only some have one: on the tile");
+eq(SW.spl.tileLocation({}, [atLoc("FOH"), {}]), "", "none on this tile");
+// ---- input names that are also object property names
+const nasty = JSON.parse('{"constructor": "A", "__proto__": "B", "toString": "C", "Empty": "  "}');
+const lm = SW.spl.locMap(nasty);
+eq([lm.get("constructor"), lm.get("__proto__"), lm.get("toString"), lm.has("Empty"), lm.get("hasOwnProperty")], ["A", "B", "C", false, undefined], "map keeps odd names");
+eq(SW.spl.locMap({}).get("constructor"), undefined, "empty: nothing for constructor");
+lm.set("Real", "FOH");
+const back = SW.spl.locObject(lm);
+eq(JSON.stringify(back), '{"constructor":"A","__proto__":"B","toString":"C","Real":"FOH"}', "saved back as own keys");
+eq(Object.getPrototypeOf(back), Object.prototype, "no prototype change");
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("spl ok");

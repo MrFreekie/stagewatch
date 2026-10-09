@@ -864,7 +864,7 @@
     for (const e of ents) {
       const v = SW.spl.view(e, dev, state.now), r = splUi.rows[e.id];
       setText(r.name, SW.spl.label(e));
-      const loc = SW.spl.location(e);
+      const loc = SW.spl.tileLocation(e, ents);
       setText(r.loc, loc);
       r.loc.hidden = !loc;
       setText(r.value, v.text);

@@ -211,7 +211,7 @@
     };
     // Locations are labels only. A default for the whole card, plus one per Smaart input (saved by the
     // input's name, so slots that read the same input share one field). They never change what is recorded.
-    const locs = { ...(s.locations || {}) };
+    const locs = SW.spl.locMap(s.locations);   // a Map: input names are Smaart's text, never property names
     const defLoc = h("input", { class: "touch", maxlength: "40", autocomplete: "off", value: s.location || "", placeholder: "FOH" });
     const locBox = h("div", {});
     // Graph range: automatic fits the readings; custom is fixed. The numbers stay filled in (22 and 145 to begin with).
@@ -236,12 +236,12 @@
         const name = r.src.value || ins[0];
         if (!r.met.value || !name || seen.has(name)) continue;
         seen.add(name);
-        const inp = h("input", { class: "touch", maxlength: "40", autocomplete: "off", value: locs[name] || "", placeholder: "Uses the default location", "aria-label": `Location for ${name}`, oninput: () => { locs[name] = inp.value; } });
+        const inp = h("input", { class: "touch", maxlength: "40", autocomplete: "off", value: locs.get(name) || "", placeholder: "Uses the default location", "aria-label": `Location for ${name}`, oninput: () => { locs.set(name, inp.value); } });
         kids.push(h("div", { class: "row" }, field(`Location for this input (${name})`, inp)));
       }
-      for (const name of Object.keys(locs).filter((n) => locs[n] && !ins.includes(n))) {
-        const note = h("span", { class: "muted" }, `Not listed now: ${name} → ${locs[name]}. Kept in case the input comes back. `);
-        kids.push(h("div", { class: "row" }, note, h("button", { type: "button", class: "touch", "aria-label": `Remove the location for ${name}`, onclick: () => { delete locs[name]; renderLocs(curInputs); } }, "Remove")));
+      for (const name of [...locs.keys()].filter((n) => locs.get(n) && !ins.includes(n))) {
+        const note = h("span", { class: "muted" }, `Not listed now: ${name} → ${locs.get(name)}. Kept in case the input comes back. `);
+        kids.push(h("div", { class: "row" }, note, h("button", { type: "button", class: "touch", "aria-label": `Remove the location for ${name}`, onclick: () => { locs.delete(name); renderLocs(curInputs); } }, "Remove")));
       }
       locBox.replaceChildren(...kids);
     };
@@ -305,7 +305,7 @@
         location: defLoc.value,
         chart_range: rangeMode.value,
         ...(rangeMode.value === "custom" ? { chart_min_db: Number(rangeMin.value), chart_max_db: Number(rangeMax.value) } : {}),
-        locations: Object.fromEntries(Object.entries(locs).filter(([, v]) => v.trim())),
+        locations: SW.spl.locObject(locs),
       }), "Sound level saved").then(refresh, () => {}) }, "Save")),
       ...notes.map((n) => h("p", { class: "notice" }, n)),
       h("p", { class: "muted hint" }, "Normally SPL A Slow, SPL C Slow and an LAeq figure. The LAeq is Smaart's own number; Stagewatch cannot check which period it covers beyond the name Smaart gives it. Stagewatch is not a calibrated compliance record. The Smaart log or report is the record that counts."),

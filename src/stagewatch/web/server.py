@@ -333,7 +333,7 @@ WALL_CLOCK_TEST_TEXT = {
 
 def _has_hidden_chars(text: str) -> bool:
     """Control or format characters (newlines, zero-width, bidi overrides such as U+202E)."""
-    return any(unicodedata.category(ch) in ("Cc", "Cf") for ch in text)
+    return any(unicodedata.category(ch).startswith("C") for ch in text)
 
 
 class DashboardBody(Dashboard):
@@ -1235,9 +1235,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 raise HTTPException(422, "The password must be 1 to 128 characters, with no control characters")
             password = body.password
         def tidy_location(text: str) -> str:
-            text = " ".join(text.split())
-            if _has_hidden_chars(text):
+            if _has_hidden_chars(text):   # before any tidying: a tab or newline is refused, not rewritten
                 raise HTTPException(422, "A location can't contain hidden or control characters")
+            text = " ".join(text.split())
             if len(text) > spl_mod.LOCATION_MAX:
                 raise HTTPException(422, f"A location can be up to {spl_mod.LOCATION_MAX} characters")
             return text
@@ -1255,12 +1255,13 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             if len(locations) > spl_mod.LOCATIONS_MAX:
                 raise HTTPException(422, f"Locations can be set for up to {spl_mod.LOCATIONS_MAX} inputs")
         chart_range = old.chart_range if body.chart_range is None else body.chart_range
-        chart_min = old.chart_min_db if body.chart_min_db is None else float(body.chart_min_db)
-        chart_max = old.chart_max_db if body.chart_max_db is None else float(body.chart_max_db)
+        chart_min = old.chart_min_db if body.chart_min_db is None else body.chart_min_db
+        chart_max = old.chart_max_db if body.chart_max_db is None else body.chart_max_db
         if body.chart_min_db is not None or body.chart_max_db is not None or chart_range == "custom":
-            err = spl_mod.chart_range_error(chart_min, chart_max)
+            err = spl_mod.chart_range_error(chart_min, chart_max)   # on the raw numbers: a huge whole number is refused, not converted
             if err:
                 raise HTTPException(422, err)
+        chart_min, chart_max = float(chart_min), float(chart_max)
         try:
             # an empty port means Smaart's usual one (the page shows 26000 as its placeholder)
             new = SplConfig(enabled=body.enabled, host=body.host, port=body.port or 26000, password=password,

@@ -817,6 +817,9 @@ def valid_pin_hash(value) -> bool:
         return False
 
 
+_SPL_RANGE_KEYS = ("chart_range", "chart_min_db", "chart_max_db")
+
+
 def salvage(raw: object, text: str = "") -> tuple[Config, list[str]]:
     """Best-effort config from a config that failed to load as a whole.
 
@@ -856,9 +859,14 @@ def salvage(raw: object, text: str = "") -> tuple[Config, list[str]]:
                         pass
             elif isinstance(val, dict):
                 kept = {}
-                for k, item in val.items():
+                # the three graph range keys are only meaningful together: check them as one item
+                group = {k: v for k, v in val.items() if key == "spl" and k in _SPL_RANGE_KEYS}
+                items = [(k, v) for k, v in val.items() if k not in group]
+                if group:
+                    items.append((None, group))
+                for k, item in items:
                     try:
-                        got = getattr(Config.model_validate({key: {k: item}}), key)
+                        got = getattr(Config.model_validate({key: item if k is None else {k: item}}), key)
                         if isinstance(got, BaseModel):    # a model section, field by field: only what was set
                             got = got.model_dump(exclude_unset=True)
                         kept.update(got)

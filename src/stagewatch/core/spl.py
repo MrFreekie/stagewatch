@@ -153,8 +153,12 @@ CHART_MIN_SPAN = 10.0
 
 def chart_range_error(lo: object, hi: object) -> str | None:
     """Fixed-text problem with a custom graph range, or None. Real numbers only (no bool, text, NaN)."""
-    nums = [v for v in (lo, hi) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)]
-    if len(nums) != 2:
+    def real(v: object) -> bool:
+        try:
+            return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)   # 10**400 overflows
+        except (OverflowError, ValueError):
+            return False
+    if not (real(lo) and real(hi)):
         return "The graph range must be two numbers"
     if not (CHART_LIMIT_MIN <= lo <= CHART_LIMIT_MAX and CHART_LIMIT_MIN <= hi <= CHART_LIMIT_MAX):
         return f"The graph range must be between {CHART_LIMIT_MIN:g} and {CHART_LIMIT_MAX:g} dB"
