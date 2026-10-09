@@ -427,15 +427,16 @@ body.disconnected .chart-wrap, body.disconnected [data-live] { opacity: .4; filt
 .wall-address strong { color: var(--text); user-select: all; }
 
 /* Wall Clock card: the time as received from Ontime. Colour always comes with a text note. */
-.wc-time { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.wc-time { font-size: min(88px, 11vw); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; text-align: center; }   /* centred in the card */
 .wc-note { margin: 6px 0 0; font-size: 15px; color: var(--muted); }
+.wc-style-digits .wc-note { text-align: center; }
 .wc-note.warn { color: var(--warn); font-weight: 600; }
 #wall-clock-card.wc-off .wc-time, #wall-clock-card.wc-stale .wc-time { color: var(--muted); }
-body.layout-phone .wc-time { font-size: 40px; }
+body.layout-phone .wc-time { font-size: min(56px, 13vw); }
 /* A coloured edge as well as the note, so a warning is seen from across the room. */
 #wall-clock-card.wc-off, #wall-clock-card.wc-stale, #wall-clock-card.wc-differs { border-left: 6px solid var(--warn); }
 #wall-clock-card.wc-stale .wc-time { text-decoration: line-through; text-decoration-thickness: 3px; }
-body.layout-wall .wc-time { font-size: min(150px, 12vw); }   /* never wider than a narrow screen (12 h "10:25:49 pm") */
+body.layout-wall .wc-time { font-size: min(220px, 13vw); }   /* never wider than a narrow screen (12 h "10:25:49 pm") */
 body.layout-wall .wc-note { font-size: 32px; }
 body.layout-wall #wall-clock-card > h2 { font-size: 24px; }
 
@@ -444,7 +445,7 @@ body.layout-wall #wall-clock-card > h2 { font-size: 24px; }
    on this colour: they also have words (with a triangle) and a dashed outline or strike-through. */
 :root { --led-bg: #000; --led-on: #ff2b1c; --led-dim: #b8382b; --led-off: #2b0906; }
 .wc-host { display: flex; }
-.wc-style-ring .wc-host, .wc-style-segments .wc-host { justify-content: center; }
+.wc-style-digits .wc-host, .wc-style-ring .wc-host, .wc-style-segments .wc-host { justify-content: center; }
 .wc-date { margin: 8px 0 0; font-size: 18px; font-weight: 600; text-align: center; }
 .wc-date[hidden] { display: none; }
 .wc-face { width: 100%; background: var(--led-bg); border-radius: 14px; padding: 14px; }
@@ -787,10 +788,10 @@ body.layout-wall .spl-note { font-size: 16px; }
 }
 main > [data-size="half"] { min-width: 0; overflow-wrap: anywhere; }
 /* Wall Clock at half width: the digits shrink with the card, the ring and segments already fill the card width. */
-main > [data-size="half"] .wc-time { font-size: min(56px, 6vw); }
+main > [data-size="half"] .wc-time { font-size: min(72px, 6.5vw); }
 main > [data-size="half"] .wc-date { font-size: 16px; }
 main > [data-size="half"] .wc-face { padding: 10px; }
-body.layout-wall main > [data-size="half"] .wc-time { font-size: min(150px, 6.4vw); }
+body.layout-wall main > [data-size="half"] .wc-time { font-size: min(136px, 7vw); }
 body.layout-wall main > [data-size="half"] .wc-date { font-size: 28px; }
 body.layout-wall main > [data-size="half"] .wc-note { font-size: 26px; }
 body.layout-wall main > [data-size="half"] .wc-ring { max-width: min(58vh, 100%); }
