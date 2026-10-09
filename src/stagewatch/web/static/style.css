@@ -762,3 +762,28 @@ body.layout-wall .spl-note { font-size: 16px; }
 .spl-slot { align-items: flex-start; }
 .spl-slot label.field { flex: 1 1 220px; min-width: 0; }
 .spl-slot select { width: 100%; min-width: 0; max-width: 100%; text-overflow: ellipsis; }
+
+/* ---- Half-size cards (Dashboard.card_sizes). Tablet and wall: the main grid has two columns; every
+   card spans both unless it has data-size="half" (set by dashboard.js; never on a phone). Hidden cards take no
+   space. Under 900 px wide it is one column again. */
+@media (min-width: 900px) {
+  body.layout-tablet main, body.layout-wall main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body.layout-tablet main > *, body.layout-wall main > * { grid-column: 1 / -1; }
+  body.layout-tablet main > [data-size="half"], body.layout-wall main > [data-size="half"] { grid-column: auto; }
+}
+main > [data-size="half"] { min-width: 0; overflow-wrap: anywhere; }
+/* Wall Clock at half width: the digits shrink with the card, the ring and segments already fill the card width. */
+main > [data-size="half"] .wc-time { font-size: min(56px, 6vw); }
+main > [data-size="half"] .wc-date { font-size: 16px; }
+main > [data-size="half"] .wc-face { padding: 10px; }
+body.layout-wall main > [data-size="half"] .wc-time { font-size: min(150px, 6.4vw); }
+body.layout-wall main > [data-size="half"] .wc-date { font-size: 28px; }
+body.layout-wall main > [data-size="half"] .wc-note { font-size: 26px; }
+body.layout-wall main > [data-size="half"] .wc-ring { max-width: min(58vh, 100%); }
+/* Ontime Timer at half width. */
+main > [data-size="half"] .ot-count { font-size: min(56px, 6vw); }
+main > [data-size="half"] .ot-title { font-size: 26px; }
+body.layout-wall main > [data-size="half"] .ot-count { font-size: min(160px, 9.5vw); }
+body.layout-wall main > [data-size="half"] .ot-title { font-size: 40px; }
+body.layout-wall main > [data-size="half"] .ot-badge, body.layout-wall main > [data-size="half"] .ot-type, body.layout-wall main > [data-size="half"] .ot-note { font-size: 26px; }
+body.layout-wall main > [data-size="half"] .ot-tags .sched-tag { font-size: 24px; padding: 2px 12px; }

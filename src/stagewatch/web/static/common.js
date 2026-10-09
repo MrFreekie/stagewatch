@@ -821,3 +821,13 @@ SW.qrSvg = function (text, size = 176) {
   svg.append(path);
   return svg;
 };
+
+// Card size (Dashboard.card_sizes, core/cards.py HALF_CAPABLE). A card is half width only when
+// the dashboard says "half" for it, the card is allowed to be half, and the layout is not the
+// phone (a phone always shows full width). Anything else is full.
+SW.HALF_CAPABLE = ["wall_clock", "ontime_timer"];
+SW.cardIsHalf = function (dash, id, layout) {
+  if (layout === "phone" || SW.HALF_CAPABLE.indexOf(id) < 0) return false;
+  const sizes = dash && dash.card_sizes;
+  return !!sizes && typeof sizes === "object" && Object.prototype.hasOwnProperty.call(sizes, id) && sizes[id] === "half";
+};

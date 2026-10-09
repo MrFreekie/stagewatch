@@ -503,6 +503,10 @@ Good to know:
   before saving, the ticks change to that layout's set.
 - **Wall Clock**, **Ontime Timer** and **Ontime Rundown** are never switched on by default. Tick them if you want them,
   then choose the time source and look (see below).
+- **Half-size cards.** Beside **Wall Clock** and **Ontime Timer** in **Edit cards** there is a **Size** choice, **Full** or
+  **Half**. Half-size cards sit side by side with another half-size card on tablets and wall screens (put the two next to
+  each other in the order). A half-size card with no partner stays half width. On a phone, and on any screen narrower than
+  900 px, every card is full width. Every card is Full until you choose Half.
 - **Equipment** is never switched on by default either. It shows the readings of Equipment sensors (see
   above) and stays hidden while there are none.
 - **Barometer** is never switched on by default either. It needs a pressure sensor (see below).

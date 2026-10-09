@@ -355,6 +355,14 @@ class DashboardBody(Dashboard):
             raise ValueError("Clock style must be digits, ring or segments")
         return v
 
+    @field_validator("card_sizes", mode="before")
+    @classmethod
+    def _card_sizes(cls, v):
+        problem = cards_mod.strict_card_sizes_error(v)
+        if problem:
+            raise ValueError(problem)
+        return v
+
     @field_validator("cards", mode="before")
     @classmethod
     def _cards(cls, v):
@@ -965,7 +973,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "spl": spl_admin(),
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
             # defaults a new dashboard gets for each layout.
-            "cards": {"known": list(cards_mod.KNOWN_CARDS),
+            "cards": {"known": list(cards_mod.KNOWN_CARDS), "half_capable": list(cards_mod.HALF_CAPABLE),
                       "defaults": {layout: cards_mod.default_cards(layout) for layout in cards_mod.LAYOUT_DEFAULTS}},
             "stages": known_stages(),
             # For the Schedule card (WP8): the limits the server enforces, and whether
@@ -1153,9 +1161,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         for d in body:
             existing = hub.config.dashboard(d.slug)
             data = d.model_dump()
-            # A save that doesn't send cards/stage/clock_style (today's admin page) keeps what the
+            # A save that doesn't send cards/stage/clock_style/card_sizes (today's admin page) keeps what the
             # dashboard has; only a new dashboard gets its layout's default cards.
-            for key in ("cards", "stage", "clock_style"):
+            for key in ("cards", "stage", "clock_style", "card_sizes"):
                 if key not in d.model_fields_set and existing is not None:
                     data[key] = getattr(existing, key)
             if "cards" not in d.model_fields_set and existing is None:
