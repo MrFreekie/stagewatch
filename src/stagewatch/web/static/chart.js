@@ -232,20 +232,24 @@ class TimeChart {
       ctx.fillText(SW.fmtTime(t), xx, pad.t + ph + 6);
     }
 
-    // series (break the line across gaps > 5 minutes: sensor offline)
+    // series (break the line across gaps > 5 minutes: sensor offline). A series may set its own
+    // gap length in seconds (s.gap) and a dash pattern (s.dash) so lines differ by more than colour.
     ctx.save();
     ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
     for (const s of this.series) {
       ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 2; ctx.lineJoin = "round";
+      ctx.setLineDash(s.dash || []);
+      const gap = s.gap || 300;
       ctx.beginPath();
       let prev = null;
       for (const [t, v] of s.points) {
         if (v === null) { prev = null; continue; }
-        if (prev === null || t - prev > 300) ctx.moveTo(x(t), y(v)); else ctx.lineTo(x(t), y(v));
+        if (prev === null || t - prev > gap) ctx.moveTo(x(t), y(v)); else ctx.lineTo(x(t), y(v));
         prev = t;
       }
       ctx.stroke();
     }
+    ctx.setLineDash([]);
     ctx.restore();
 
     this._drawMarkers(ctx, pad, ph, text);

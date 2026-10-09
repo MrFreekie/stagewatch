@@ -164,6 +164,41 @@
       panel);
   }
 
+  // ------------------------------------------------------- sound level
+  // Settings for the Sound level card: where Smaart is and which (up to three) values to record. The
+  // card itself is added to a dashboard under User dashboards → Edit cards. Read-only toward Smaart.
+  function splCard() {
+    const s = admin.config.spl || {}, st = admin.spl || {};
+    const metrics = st.metrics || [], max = st.max_slots || 3;
+    const on = h("input", { type: "checkbox", checked: !!s.enabled });
+    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", value: s.host || "", placeholder: "Name or address of the Smaart computer" });
+    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: s.port || "" });
+    const slots = [];
+    for (let i = 0; i < max; i++) {
+      const sel = h("select", { class: "touch" }, h("option", { value: "" }, "(none)"), ...metrics.map((m) => h("option", { value: m.key, title: m.hint }, m.name)));
+      sel.value = (s.slots || [])[i] || "";
+      slots.push(sel);
+    }
+    const lines = [];
+    if (!st.running) lines.push("Not running. Tick the box and Save to start.");
+    else lines.push(st.status === "ok" ? (st.detail || "Receiving values") : `▲ ${st.status}${st.detail ? `: ${st.detail}` : ""}`);
+    if (st.running && st.source) lines.push(st.source);
+    if (st.version) lines.push(`Version ${st.version}`);
+    return card("Sound level (Smaart)",
+      h("p", { class: "muted" }, "Records up to three sound level values you choose from Smaart, exactly as Smaart reports them, and shows them on dashboards that have the Sound level card (User dashboards → Edit cards). Stagewatch only listens: it never sends anything to Smaart, never starts or stops measuring, and changes no calibration, gain, logging or alarm. It does no sound-level maths: nothing is averaged, smoothed or rounded, and a value Smaart does not give shows as a dash, never zero."),
+      admin.emulate ? h("p", { class: "notice" }, "Emulate mode: these are simulated values, so no Smaart or address is needed. Choosing a Z-weighted or Peak value shows how \"not available\" looks.")
+        : h("p", { class: "notice" }, "Not tested against a real Smaart yet. Stagewatch was written without the Smaart developer kit, so it can connect to Smaart but cannot read a value until that kit has been read. Turn on Smaart's API under Options → Preferences → API first."),
+      h("div", { class: "row" }, field("Record sound level", on),
+        admin.emulate ? null : field("Smaart computer", host), admin.emulate ? null : field("Port", port)),
+      h("div", { class: "row" }, ...slots.map((sel, i) => field(`Value ${i + 1}`, sel))),
+      h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/spl", {
+        enabled: on.checked, host: host.value.trim(), port: port.value ? Number(port.value) : null,
+        slots: slots.map((x) => x.value).filter((x) => x),
+      }), "Sound level saved").then(refresh, () => {}) }, "Save")),
+      h("p", { class: "muted hint" }, "Normally A Slow, C Slow and the LAeq 15 min figure. The LAeq is Smaart's own number, and is a 15 minute figure only if Smaart's Leq period is set to 15 minutes: Stagewatch cannot check that. Stagewatch is not a calibrated compliance record. The Smaart log or report is the record that counts."),
+      h("p", { class: "muted" }, lines.join(" · ")));
+  }
+
   // ------------------------------------------------------------ barometer
   // Settings for the Barometer card. The card itself is added to a dashboard under User dashboards →
   // Edit cards. Advisory only.
@@ -538,6 +573,7 @@
     ontime_timer: ["Ontime Timer", "The countdown Ontime is running, with the event title. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings."],
     equipment: ["Equipment", "Readings from Equipment sensors (amp racks, power supplies), by node. Never part of the site average. Stays hidden until a sensor has the Equipment role."],
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
+    spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
   const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
@@ -949,7 +985,7 @@
         h("tbody", {}, admin.integrations.map((i) => h("tr", {},
           h("td", {}, h("strong", {}, i.manifest.name), h("div", { class: "muted", style: "font-size:12px" }, i.manifest.description)),
           h("td", {}, i.manifest.tier), h("td", {}, i.manifest.direction), h("td", {}, i.manifest.protocols.join(", ")),
-          h("td", { class: "muted" }, Object.entries(i).filter(([k]) => k !== "manifest").map(([k, v]) => `${k}: ${v}`).join(" · "))))))));
+          h("td", { class: "muted" }, Object.entries(i).filter(([k]) => k !== "manifest").map(([k, v]) => `${k}: ${v !== null && typeof v === "object" ? JSON.stringify(v) : v}`).join(" · "))))))));
   }
 
   function alarmLogCard() {
@@ -1250,6 +1286,7 @@
       wallClockCard(),
       ontimeTimerCard(),
       barometerCard(),
+      splCard(),
       alarmLogCard(),
       supportCard(),
       catalogCard());
