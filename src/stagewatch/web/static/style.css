@@ -699,6 +699,8 @@ body.layout-wall .eq-grid { grid-template-columns: repeat(auto-fit, minmax(260px
 #spl-span-seg button { min-height: 44px; min-width: 44px; }
 .spl-tile.spl-na .value, .spl-tile.spl-wait .value { color: var(--muted); }
 .spl-note { font-size: 13px; margin: 6px 0 0; }
+.spl-input { font-size: 13px; margin: 6px 0 0; overflow-wrap: anywhere; }
+body.layout-wall .spl-input { font-size: 16px; }
 .spl-chart-wrap { height: 220px; }
 body.layout-phone .spl-chart-wrap { height: 170px; }
 body.layout-phone .spl-rows { grid-template-columns: 1fr 1fr; gap: 8px; }

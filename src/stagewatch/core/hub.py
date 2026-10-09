@@ -308,6 +308,14 @@ class Hub:
         if change:
             self._alarm_changed([change])
 
+    def set_device_input_name(self, device_id: str, name: str) -> None:
+        """Set the (already cleaned) input name a measurement source reports; tells clients on change."""
+        device = self.devices.get(device_id)
+        if device is None or device.input_name == name:
+            return
+        device.input_name = name
+        self.bus.publish("device", device)
+
     def remove_entity(self, entity_id: str) -> None:
         """Forget an entity (emulate scenarios that take a sensor away). Its history stays."""
         self.entities.pop(entity_id, None)

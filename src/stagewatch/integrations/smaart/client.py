@@ -139,6 +139,7 @@ class SmaartSource(SplSource):
     async def start(self) -> None:
         if self._task is None:
             self.version = ""
+            self.input_name = ""   # the real field name is unverified, so it stays unknown
             self._task = asyncio.create_task(self._run(), name="smaart-client")
 
     async def stop(self) -> None:

@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 
 OFFERED = ("a_slow", "c_slow", "a_fast", "c_fast", "laeq_15m", "lceq_15m")   # the rest are "not available"
 VERSION = "9.0 (emulated)"
+INPUT_NAME = "ASIO MADIface USB : Channel 7 (1)"   # as Smaart shows a meter's input
 
 
 class EmulatedSplSource(SplSource):
@@ -49,6 +50,7 @@ class EmulatedSplSource(SplSource):
             self._t0 = self._time()
             self._up = False
             self.version = VERSION
+            self.input_name = INPUT_NAME
             self._task = asyncio.create_task(self._run(), name="smaart-emulated")
 
     async def stop(self) -> None:

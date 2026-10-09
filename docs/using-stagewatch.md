@@ -818,6 +818,7 @@ calibration, gain, logging, alarms or the mix.
 
 - **LAeq 15 min** is Smaart's own figure. It is a 15 minute figure only if Smaart's Leq period is set to
   15 minutes, and Stagewatch cannot check that.
+- When Smaart names the input a meter is tied to, the card shows it as a small line of plain text (emulate mode shows an example; the real connection cannot read it yet), and nothing is shown when it is unknown.
 - Sound levels are **never** part of the site averages and cannot be given a calibration offset.
 - Dashboards are not password protected, so anyone on the show network can see these numbers. Only add the
   card to screens where that is fine.

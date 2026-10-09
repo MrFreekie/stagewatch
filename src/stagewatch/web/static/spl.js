@@ -19,6 +19,20 @@ SW.spl = (function () {
       .sort((a, b) => (Number((a.labels || {}).slot) || 9) - (Number((b.labels || {}).slot) || 9));
   };
 
+  // The label as Smaart writes it for a time-weighted level ("SPL C Slow"); anything else keeps
+  // its own name (the LAeq wording is unconfirmed). Display only: ids and stored data are untouched.
+  spl.label = function (e) {
+    const l = e.labels || {};
+    if (l.metric === "SPL" && l.weighting && l.time_constant) return `SPL ${l.weighting} ${l.time_constant}`;
+    return e.name || e.id;
+  };
+
+  // The input the meter is tied to, as the software names it, or "" (then nothing is shown).
+  spl.inputLine = function (device) {
+    const n = device && typeof device.input_name === "string" ? device.input_name.trim() : "";
+    return n ? `Input: ${n}` : "";
+  };
+
   // "A-weighted, Slow response" / "A-weighted Leq over 15 min" / "A-weighted peak"
   spl.describe = function (e) {
     const l = e.labels || {};
