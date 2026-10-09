@@ -191,7 +191,8 @@ class _NodeConnection:
             self.hub.set_device_status(self.cfg.id, Status.MISSING, phrase)
         if phrase != self._last_error:
             self._last_error = phrase
-            log.warning("ESPHome %s: %s (%s: %s)", self.cfg.id, phrase, type(err).__name__, err)
+            log.warning("ESPHome %s: %s (%s)", self.cfg.id, phrase, type(err).__name__)
+            log.debug("ESPHome %s: full error: %s", self.cfg.id, err)   # may hold an address: debug only
 
     def _on_state(self, state) -> None:
         mapping = self._keys.get(state.key)

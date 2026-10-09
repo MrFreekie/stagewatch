@@ -279,8 +279,8 @@ class AlarmsBody(BaseModel):
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
-    hide_acked_min: int = Field(2, ge=0, le=1440, strict=True)
-    fold_old_min: int = Field(30, ge=0, le=10080, strict=True)
+    hide_acked_min: int = Field(ge=0, le=1440, strict=True)
+    fold_old_min: int = Field(ge=0, le=10080, strict=True)
 
 
 class SplSlotBody(BaseModel):

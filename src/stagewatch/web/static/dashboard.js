@@ -95,27 +95,34 @@
 
   // Alarm notice timers: the server says how long is left on each (see SW.splitAlarms); this page
   // adds the time since the list arrived and works the list out again when the next one is due.
-  let alarmsAt = Date.now(), alarmTimer = null, olderOpen = false;
+  // performance.now() is a steady clock: a change of the device clock cannot hide or fold early.
+  const steadyNow = () => (window.performance && performance.now ? performance.now() : Date.now());
+  let alarmsAt = steadyNow(), alarmTimer = null, olderOpen = false;
   function setAlarms(list) {
     state.alarms = list;
-    alarmsAt = Date.now();
+    alarmsAt = steadyNow();
   }
   function renderAlarms() {
     clearTimeout(alarmTimer);
     const bar = $("alarms");
-    const split = SW.splitAlarms(state.alarms, Math.max(0, (Date.now() - alarmsAt) / 1000));
+    const split = SW.splitAlarms(state.alarms, Math.max(0, (steadyNow() - alarmsAt) / 1000));
     const active = split.shown, older = split.older;
     if (split.next !== null) alarmTimer = setTimeout(renderAlarms, Math.min(2147000000, Math.max(1000, split.next * 1000 + 250)));
-    const loud = active.filter((a) => !a.silent);
+    // Styled from everything still listed, folded lines too: a sounding notice is never left unstyled.
+    const loud = active.concat(older).filter((a) => !a.silent);
     // Only silent alarms: a calm "notice" style, no level colour, no Ack.
     bar.className = "alarm-bar" + (loud.length ? ` show l${Math.max(...loud.map((a) => a.level))}` : (active.length || older.length ? " show notice" : ""))
       + (state.sounding ? " sounding" : "");
-    const line = (a) => h("li", { class: a.silent ? "silent" : "" }, h("span", { class: "lvl" }, a.silent ? "notice" : a.level_name), a.message, a.acked ? h("span", { class: "muted" }, " (acknowledged)") : null);
+    const line = (a) => h("li", { class: a.silent ? "silent" : "" }, h("span", { class: "lvl" }, a.silent ? "notice" : a.level_name), h("span", { class: "sr-only" }, ": "), a.message, a.acked ? h("span", { class: "muted" }, " (acknowledged)") : null);
     const fold = older.length ? h("li", { class: "older" },
       h("details", { open: olderOpen, ontoggle: (ev) => { olderOpen = ev.target.open; } },
         h("summary", {}, `Older notices (${older.length})`),
         h("ul", {}, older.map(line)))) : null;
-    $("alarm-list").replaceChildren(...active.map(line), ...(fold ? [fold] : []));
+    // The wall shows at most three lines (alerts sort first); the rest become one "+N more" line.
+    const cap = (state.dash && state.dash.layout) === "wall" ? 3 : Infinity;
+    const lines = active.slice(0, cap).map(line);
+    if (active.length > cap) lines.push(h("li", { class: "more" }, `+${active.length - cap} more`));
+    $("alarm-list").replaceChildren(...lines, ...(fold ? [fold] : []));
     const canAck = state.isAdmin || (state.dash && state.dash.allow_ack);
     $("ack").hidden = !(canAck && state.sounding);
     sounder.set(state.sounding);

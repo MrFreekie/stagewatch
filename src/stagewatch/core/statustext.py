@@ -8,6 +8,7 @@ phrases. The full technical text belongs in the log and the admin-only state.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 
 CANT_REACH = "Can't reach the node"
@@ -25,7 +26,11 @@ _NAME = ("resolving", "resolve", "name or service", "getaddrinfo", "nodename nor
          "errno -2", "errno -3", "errno 11001", "winerror 11001")
 
 _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
-_IPV6 = re.compile(r"(?i)(?:[0-9a-f]{0,4}:){2,}[0-9a-f]{0,4}")
+_IPV6_CANDIDATE = re.compile(r"[0-9A-Fa-f:.]{3,}")
+_PATH = re.compile(r"(?:^|\s)/[^\s/]+/|[A-Za-z]:\\|\\\\")
+_SECRETISH = re.compile(r"(?i)\b(?:pass(?:word)?|key|secret|token|psk)\s*=")
+_URL = re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://")
+_TOKEN = re.compile(r"(?:^|\s)[A-Za-z0-9+/=_-]{20,}(?=\s|$)")
 _HOSTISH = re.compile(r"(?i)\b[a-z0-9-]+\.(?:local|lan|home|internal|com|net|org|io)\b")
 MAX_DETAIL = 200
 
@@ -57,16 +62,33 @@ def describe_connect_error(err: BaseException) -> str:
     return FALLBACK
 
 
+def _has_ipv6(text: str) -> bool:
+    for m in _IPV6_CANDIDATE.finditer(text):
+        tok = m.group(0).strip(".")
+        if ":" in tok:
+            try:
+                ipaddress.IPv6Address(tok.split("%")[0])
+                return True
+            except ValueError:
+                pass
+    return False
+
+
 def safe_status_detail(detail: object) -> str:
     """Last line of defence for a device's public status text: anything that looks like a raw
     exception, an address or a host name, or that is long or not plain text, becomes the fixed
-    fallback. Short fixed phrases pass through unchanged."""
+    fallback. Short fixed phrases pass through unchanged.
+
+    This is a BLOCKLIST, a last line of defence only. A new integration must not rely on it: it
+    must pass its status text from a fixed table of phrases (like the ones above), never text
+    built from an exception, a reply from the device or a configured address."""
     if not isinstance(detail, str) or detail == "":
         return ""
     text = detail.strip()
     if (len(text) > MAX_DETAIL or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in text)
             or "AddrInfo" in text or "Traceback" in text or "sockaddr" in text
-            or _IPV4.search(text) or _IPV6.search(text) or _HOSTISH.search(text)
+            or _IPV4.search(text) or _has_ipv6(text) or _HOSTISH.search(text)
+            or _PATH.search(text) or _SECRETISH.search(text) or _URL.search(text) or _TOKEN.search(text)
             or ("[" in text and "]" in text)):
         return FALLBACK
     return text

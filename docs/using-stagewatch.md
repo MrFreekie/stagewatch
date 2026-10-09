@@ -226,8 +226,9 @@ So the bar does not fill up with old news, advisory notices (the amber ones, inc
 that has gone offline) time out **on the dashboard only**:
 
 - An **acknowledged** notice disappears from the bar **2 minutes** after it was acknowledged.
-- A notice nobody has acknowledged and that has not changed for **30 minutes** moves into a
+- A quiet notice (one that never beeps) that has not changed for **30 minutes** moves into a
   **Older notices (n)** fold-out under the bar. Tap it to read them. Nothing is hidden silently.
+- A notice that is still **beeping** stays until someone acknowledges it.
 - **Alert** and **Stop** alarms never time out. They stay until the problem clears.
 - If the problem changes or comes back, the notice is shown again straight away and its timer
   starts again.

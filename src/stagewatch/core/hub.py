@@ -306,7 +306,7 @@ class Hub:
         change = self.alarms.set_condition(
             f"device:{device_id}", offline, DEVICE_OFFLINE_LEVEL,
             f"{device.name}: {status.value}{' (' + alarm_detail(detail) + ')' if detail else ''}", time.time(),
-            silent=silent_alarm)
+            silent=silent_alarm, status=status.value)
         if change:
             self._alarm_changed([change])
 

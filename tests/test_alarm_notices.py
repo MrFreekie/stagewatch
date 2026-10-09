@@ -60,13 +60,20 @@ def test_acknowledged_advisory_leaves_the_list_two_minutes_after_the_ack():
     assert "device:a" in eng.active and eng.active["device:a"].acked           # state untouched
 
 
-def test_unacknowledged_advisory_folds_after_thirty_minutes_but_stays_listed():
+def test_quiet_unacknowledged_advisory_folds_after_thirty_minutes_but_stays_listed():
     eng = AlarmEngine()
-    eng.set_condition("device:a", True, 1, "A: missing", 1000.0)
+    eng.set_condition("device:a", True, 1, "A: missing", 1000.0, silent=True)
     n = notices(eng, 2799.0)["device:a"]
     assert n["old"] is False and n["fold_in"] == pytest.approx(1.0)
     n = notices(eng, 2800.0)["device:a"]                                       # 1000 + 1800
     assert n["old"] is True and n["fold_in"] is None and n["hide_in"] is None
+
+
+def test_a_sounding_unacknowledged_advisory_is_never_folded():
+    eng = AlarmEngine()
+    eng.set_condition("device:a", True, 1, "A: missing", 0.0)
+    n = notices(eng, 10 ** 6)["device:a"]
+    assert n["old"] is False and n["fold_in"] is None and n["hide_in"] is None and eng.sounding
 
 
 def test_alert_and_stop_never_time_out():
@@ -90,23 +97,61 @@ def test_a_cleared_and_returned_condition_gets_a_fresh_timer():
     eng.set_condition("device:a", False, 1, "", 600.0)                         # node came back
     eng.set_condition("device:a", True, 1, "A: missing", 700.0)                # and went again
     n = notices(eng, 700.0)["device:a"]
-    assert n["acked"] is False and n["fold_in"] == FOLD and n["old"] is False
+    assert n["acked"] is False and n["hide_in"] is None and n["old"] is False
+    assert eng.sounding
 
 
 def test_a_changed_condition_shows_again_at_once_with_a_fresh_timer():
     eng = AlarmEngine()
-    eng.set_condition("device:a", True, 1, "A: missing (timed out)", 0.0)
+    eng.set_condition("device:a", True, 1, "A: missing (timed out)", 0.0, status="missing")
     eng.ack_all(5.0)
     assert "device:a" not in notices(eng, 500.0)
-    eng.set_condition("device:a", True, 1, "A: fault (wrong encryption key)", 500.0)
+    eng.set_condition("device:a", True, 1, "A: fault (wrong encryption key)", 500.0, status="fault")
     n = notices(eng, 500.0)["device:a"]
     assert n["message"].startswith("A: fault") and n["hide_in"] == HIDE and n["acked"] is True
     assert "device:a" not in notices(eng, 620.0)
     # unacknowledged old one: a change brings it out of the fold-out
-    eng.set_condition("device:z", True, 1, "Z: missing", 0.0)
+    eng.set_condition("device:z", True, 1, "Z: missing", 0.0, silent=True, status="missing")
     assert notices(eng, 2000.0)["device:z"]["old"] is True
-    eng.set_condition("device:z", True, 1, "Z: fault", 2000.0)
+    eng.set_condition("device:z", True, 1, "Z: fault", 2000.0, silent=True, status="fault")
     assert notices(eng, 2000.0)["device:z"]["old"] is False
+
+
+def test_a_change_of_phrase_alone_updates_the_line_but_keeps_the_timers():
+    eng = AlarmEngine()
+    eng.set_condition("device:a", True, 1, "A: missing (timed out)", 0.0, status="missing")
+    eng.ack_all(10.0)
+    ch = eng.set_condition("device:a", True, 1, "A: missing (can't reach the node)", 100.0, status="missing")
+    assert ch is not None and ch.event == "change"
+    n = notices(eng, 100.0)["device:a"]
+    assert n["message"].endswith("(can't reach the node)") and n["hide_in"] == pytest.approx(30.0)   # 10 + 120 - 100
+    assert "device:a" not in notices(eng, 130.0)
+    assert eng.set_condition("device:a", True, 1, "A: missing (can't reach the node)", 140.0, status="missing") is None
+
+
+def test_a_rising_level_sounds_again():
+    eng = AlarmEngine()
+    eng.set_condition("device:a", True, 1, "A", 0.0, status="missing")
+    eng.ack_all(1.0)
+    assert not eng.sounding
+    eng.set_condition("device:a", True, 2, "A worse", 5.0, status="missing")
+    assert eng.sounding and eng.active["device:a"].acked is False
+    eng.ack_all(6.0)
+    eng.set_condition("device:a", True, 1, "A better", 7.0, status="missing")     # falling: stays acknowledged
+    assert not eng.sounding
+
+
+def test_bus_publishes_on_raise_change_status_change_and_clear(hub):
+    seen = []
+    hub.bus.subscribe("alarms", lambda _t, payload: seen.append([a["message"] for a in payload]))
+    hub.set_device_status("n1", Status.MISSING, st.TIMED_OUT)
+    hub.set_device_status("n1", Status.MISSING, st.CANT_REACH)                 # phrase only
+    hub.set_device_status("n1", Status.FAULT, st.BAD_KEY)                      # status
+    hub.set_device_status("n1", Status.OK)
+    assert len(seen) == 4
+    assert seen[0][0].endswith("missing (timed out)") and seen[1][0].endswith("missing (can't reach the node)")
+    assert seen[2][0].endswith("fault (wrong encryption key)") and seen[3] == []
+    assert [e["event"] for e in hub.recorder.alarm_log()] == ["clear", "change", "change", "raise"]
 
 
 def test_a_threshold_value_moving_does_not_restart_the_timer():
@@ -120,7 +165,9 @@ def test_a_threshold_value_moving_does_not_restart_the_timer():
     values["a.temperature"] = 32.5
     eng.evaluate([t], lookup, 1700.0)
     assert eng.active["threshold:t1"].message.endswith("32.5 above 30") or "32.5" in eng.active["threshold:t1"].message
-    assert notices(eng, 1801.0)["threshold:t1"]["old"] is True                 # 0 + 1800 passed
+    assert notices(eng, 1801.0)["threshold:t1"]["old"] is False               # sounding: never folded
+    eng.ack_all(1800.0)                                                        # a threshold notice hides like any advisory
+    assert "threshold:t1" in notices(eng, 1919.0) and "threshold:t1" not in notices(eng, 1920.0)
 
 
 def test_zero_means_never():
@@ -207,7 +254,7 @@ def test_hub_condition_returning_and_changing_reappears(hub, clock):
     hub.ack_alarms("test")
     clock.t += 200
     assert ids(hub) == []
-    hub.set_device_status("n1", Status.MISSING, st.REFUSED)                    # the reason changed
+    hub.set_device_status("n1", Status.FAULT, st.REFUSED)                      # the status changed
     assert ids(hub) == ["device:n1"]
     assert hub.snapshot()["alarms"][0]["message"].endswith("(connection refused)")
     clock.t += 200
@@ -216,7 +263,7 @@ def test_hub_condition_returning_and_changing_reappears(hub, clock):
     assert "device:n1" not in hub.alarms.active
     hub.set_device_status("n1", Status.MISSING, st.REFUSED)                    # and comes back
     a = hub.snapshot()["alarms"][0]
-    assert a["acked"] is False and a["fold_in"] == FOLD
+    assert a["acked"] is False and a["hide_in"] is None and a["old"] is False
 
 
 def test_the_list_sent_after_an_ack_carries_the_timers(hub, clock):
@@ -240,7 +287,7 @@ def test_websocket_snapshot_carries_the_timers(tmp_path, clock):
         with c.websocket_connect("/ws?dashboard=foh") as ws:
             snap = ws.receive_json()
             a = snap["alarms"][0]
-            assert a["fold_in"] == pytest.approx(FOLD - 100) and a["old"] is False
+            assert a["fold_in"] is None and a["old"] is False and a["acked"] is False
             assert "since" in a and "hide_in" in a
     hub.recorder.close()
 
@@ -344,6 +391,13 @@ def test_put_alarms_refuses_cross_origin_and_bad_values(admin):
     assert admin.hub.config.alarms == AlarmsConfig()
 
 
+def test_put_alarms_needs_both_fields(admin):
+    assert admin.put("/api/admin/alarms", json={"hide_acked_min": 3}).status_code == 422
+    assert admin.put("/api/admin/alarms", json={"fold_old_min": 3}).status_code == 422
+    assert admin.put("/api/admin/alarms", json={}).status_code == 422
+    assert admin.hub.config.alarms == AlarmsConfig()
+
+
 def test_put_alarms_saves_and_admin_state_shows_it(admin):
     r = admin.put("/api/admin/alarms", json={"hide_acked_min": 0, "fold_old_min": 45})
     assert r.status_code == 200 and r.json() == {"hide_acked_min": 0, "fold_old_min": 45}
@@ -387,6 +441,22 @@ def test_hostile_status_text_never_survives(text):
     assert st.safe_status_detail(text) == st.FALLBACK
 
 
+PROBES = ["QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=", "/home/pi/x/secret.key", "pass=hunter2", "ws://mixer:4001",
+          "key=abc", "C:\\Users\\x\\key.txt", "https://example.test/x", "fe80::1", "::1", "10.0.0.1"]
+
+
+@pytest.mark.parametrize("text", PROBES)
+def test_blocklist_guard_refuses_secrets_paths_urls_and_addresses(text):
+    assert st.safe_status_detail(text) == st.FALLBACK
+
+
+@pytest.mark.parametrize("text", ["Next cue at 19:30:00", "Timed out", "Smaart / Ontime are not answering",
+                                  "Wrong encryption key", "No signal for 12:05"])
+def test_ordinary_phrases_and_times_pass(text):
+    """New integrations must pass phrases from a fixed table: this guard is only a last line."""
+    assert st.safe_status_detail(text) == text
+
+
 def test_short_fixed_phrases_pass_and_non_text_is_dropped():
     for ok in (st.CANT_REACH, st.REFUSED, "Connection lost", "Connecting", "Connected, but no values are arriving",
                "emulated dropout", "API password not supported", "Smaart is not running"):
@@ -421,6 +491,7 @@ async def test_node_connection_error_keeps_the_ip_out_of_every_public_place(tmp_
     # the full technical text is for the log, once per change of phrase
     lines = [r for r in caplog.records if "can't reach the node" in r.getMessage().lower()]
     assert len(lines) == 1
+    assert not IP_RE.search(caplog.text) and "AddrInfo" not in caplog.text and "feather-node" not in caplog.text
     hub.recorder.close()
 
 
@@ -459,3 +530,4 @@ def test_dashboard_script_uses_the_server_timers_and_the_fold_out():
     js = (root / "dashboard.js").read_text(encoding="utf-8")
     assert "SW.splitAlarms" in js and "Older notices" in js and "setAlarms(msg.alarms)" in js
     assert 'case "alarms": setAlarms(msg.alarms)' in js
+    assert "performance.now" in js and "Date.now() - alarmsAt" not in js and 'class: "sr-only"' in js

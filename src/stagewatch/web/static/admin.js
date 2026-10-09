@@ -319,15 +319,25 @@
     const a = admin.config.alarms || {};
     const mins = (v, dflt) => h("input", { class: "num touch", type: "number", step: "1", min: "0", value: v === undefined ? dflt : v });
     const hide = mins(a.hide_acked_min, 2), fold = mins(a.fold_old_min, 30);
+    const msg = h("p", { class: "muted", role: "alert" });
+    const save = () => {
+      if (hide.value.trim() === "" || fold.value.trim() === "") {
+        msg.textContent = "Type a number in both boxes. Type 0 for never.";
+        return;
+      }
+      msg.textContent = "";
+      run(() => api("PUT", "/api/admin/alarms", {
+        hide_acked_min: Math.round(Number(hide.value)), fold_old_min: Math.round(Number(fold.value)),
+      }), "Alarm notices saved").then(refresh, () => {});
+    };
     return card("Alarm notices",
       h("p", { class: "muted" }, "Keeps the alarm list on dashboards short. Advisory notices only: alert and stop alarms stay until they clear. The sensor list and this page still show what is wrong. 0 means never."),
       h("div", { class: "row" },
         field("Hide acknowledged notices after (minutes, 0 = never)", hide),
         field("Move old notices into \"Older notices\" after (minutes, 0 = never)", fold),
-        h("button", { class: "primary touch", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/alarms", {
-          hide_acked_min: Math.round(Number(hide.value)), fold_old_min: Math.round(Number(fold.value)),
-        }), "Alarm notices saved").then(refresh, () => {}) }, "Save")),
-      h("p", { class: "muted hint" }, "An acknowledged notice leaves the list that long after it was acknowledged (up to 1,440 minutes). A notice nobody has acknowledged and that has not changed moves into \"Older notices\" (up to 10,080 minutes); it is not removed. If the problem changes or comes back, the notice is shown again straight away."));
+        h("button", { class: "primary touch", style: "align-self:flex-end", onclick: save }, "Save")),
+      msg,
+      h("p", { class: "muted hint" }, "An acknowledged notice leaves the list that long after it was acknowledged (up to 1,440 minutes); the sensor list still shows the condition, for example a node marked Missing. A quiet notice (one that never beeps) that has not changed moves into \"Older notices\" (up to 10,080 minutes); it is not removed. A notice that is still beeping stays on the list until someone acknowledges it. If the problem changes or comes back, the notice is shown again straight away."));
   }
 
   // ------------------------------------------------------------ barometer
