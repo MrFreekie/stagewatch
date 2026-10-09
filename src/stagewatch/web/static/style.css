@@ -548,16 +548,20 @@ body.layout-wall #ontime-timer-card > h2 { font-size: 24px; }
 #ontime-rundown-card.rd-s-off, #ontime-rundown-card.rd-s-error { opacity: .75; }
 #ontime-rundown-card.rd-s-off .rd-big, #ontime-rundown-card.rd-s-error .rd-big,
 #ontime-rundown-card.rd-s-stale .rd-big { color: var(--muted); }
-#ontime-rundown-card.rd-s-stale .rd-big { text-decoration: line-through; text-decoration-thickness: 4px; }
+#ontime-rundown-card.rd-s-stale .rd-word { color: var(--muted); }
+#ontime-rundown-card.rd-s-stale .rd-big, #ontime-rundown-card.rd-s-stale .rd-word { text-decoration: line-through; text-decoration-thickness: 4px; }
 body.layout-phone .rd-big { font-size: 46px; }
-body.layout-phone .rd-planned, body.layout-phone .rd-started, body.layout-phone .rd-day { display: none; }
+body.layout-phone .rd-planned, body.layout-phone .rd-started, body.layout-phone .rd-day, body.layout-phone .rd-foot { display: none; }
 body.layout-wall .rd-big { font-size: min(220px, 18vw); }
 body.layout-wall .rd-word { font-size: min(96px, 8vw); }
-body.layout-wall .rd-mode { font-size: 32px; }
+body.layout-wall .rd-mode { font-size: 40px; }
 body.layout-wall .rd-badge, body.layout-wall .rd-note { font-size: 32px; }
 body.layout-wall .rd-phrase { font-size: 40px; }
 body.layout-wall .rd-pos { font-size: min(110px, 9vw); margin-top: 8px; }
-body.layout-wall .rd-line { font-size: 32px; }
+body.layout-wall .rd-line { font-size: 44px; }
+body.layout-wall #ontime-rundown-card.rd-s-notstarted .rd-big, body.layout-wall #ontime-rundown-card.rd-s-finished .rd-big,
+body.layout-wall #ontime-rundown-card.rd-s-empty .rd-big, body.layout-wall #ontime-rundown-card.rd-s-nodata .rd-big,
+body.layout-wall #ontime-rundown-card.rd-s-off .rd-big, body.layout-wall #ontime-rundown-card.rd-s-error .rd-big { font-size: min(150px, 12vw); }
 body.layout-wall .rd-planned, body.layout-wall .rd-started, body.layout-wall .rd-day, body.layout-wall .rd-foot { display: none; }
 body.layout-wall .rd-bar { height: 24px; margin: 16px 0 8px; }
 body.layout-wall #ontime-rundown-card > h2 { font-size: 24px; }

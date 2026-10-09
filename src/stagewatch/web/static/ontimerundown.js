@@ -96,7 +96,9 @@ SW.rd = (function () {
     const ahead = rd.aheadMs(offsetMs), b = rd.band(ahead), t = rd.fmtOffset(ahead);
     if (b.kind === "ontime") return { big: "ON TIME", sym: "●", word: "", phrase: "On time", level: "" };
     if (b.kind === "ahead") return { big: `▲ ${t}`, sym: "▲", word: "AHEAD", phrase: `Running ${t} ahead`, level: "" };
-    return { big: `▼ ${t}`, sym: "▼", word: "BEHIND", phrase: `Running ${t} behind`, level: b.level };
+    // Orange (far behind) gets a double triangle, so the step shows without colour too.
+    const sym = b.level === "alert" ? "▼▼" : "▼";
+    return { big: `${sym} ${t}`, sym, word: "BEHIND", phrase: `Running ${t} behind`, level: b.level };
   };
 
   const ago = (a) => (a < 10 ? "a few seconds" : a < 60 ? `${Math.round(a / 10) * 10} s` : `${Math.round(a / 60)} min`);
