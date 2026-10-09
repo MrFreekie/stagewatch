@@ -1,4 +1,4 @@
-// Node test for the Sound level card's pure helpers (spl.js: SW.spl.entities, describe, view,
+﻿// Node test for the Sound level card's pure helpers (spl.js: SW.spl.entities, describe, view,
 // gapSeconds, chartNote). Run: node tests/js/spl_test.js
 "use strict";
 const fs = require("fs");
@@ -36,7 +36,7 @@ eq(SW.spl.describe(ent("p", 1, { weighting: "Z", metric: "Peak" })), "Unweighted
 eq(SW.spl.describe({ labels: {} }), "", "no labels, no words");
 
 // view: live value to one decimal, the number itself not changed
-eq(SW.spl.view(A, { status: "ok" }, 1001), { state: "live", text: "94.3", sub: "A-weighted, Slow response", note: "Updated 1s ago" }, "live");
+eq(SW.spl.view(A, { status: "ok" }, 1001), { state: "live", text: "94.3", sub: "A-weighted, Slow response", note: "" }, "live: no updated time");
 eq(SW.spl.view(ent("v", 1, {}, { value: 94.35 }), null, 1001).text, "94.3", "display only: one decimal");
 // not available is a dash, never zero
 const na = SW.spl.view(ent("n", 1, { weighting: "A", metric: "SPL", time_constant: "Slow" }, { value: null }), { status: "ok" }, 1001);
@@ -75,6 +75,58 @@ eq(SW.spl.gapSeconds(undefined), 10, "bad bucket");
 eq(SW.spl.chartNote(450, 500), "Each point is a reading exactly as Smaart sent it.", "short span: every reading");
 eq(SW.spl.chartNote(3600, 500), "Each point is the last reading in about 7.2 s. Nothing is averaged.", "long span: last reading, labelled");
 eq(SW.spl.chartNote(43200, 500), "Each point is the last reading in about 86 s. Nothing is averaged.", "very long span");
+
+const atLoc = (location) => ({ location });
+eq(SW.spl.title([atLoc("FOH"), atLoc("FOH")]), "Sound level · FOH", "all the same: in the header");
+eq(SW.spl.title([atLoc("FOH"), atLoc("Stage left")]), "Sound level", "different: header stays plain");
+eq(SW.spl.title([atLoc("FOH"), {}]), "Sound level", "one without a location: header stays plain");
+eq([SW.spl.title([]), SW.spl.title(undefined), SW.spl.title([{}])], ["Sound level", "Sound level", "Sound level"], "none: plain");
+eq(SW.spl.location({ location: "  Monitor desk " }), "Monitor desk", "tile location trimmed");
+eq([SW.spl.location({}), SW.spl.location({ location: 5 }), SW.spl.location(undefined)], ["", "", ""], "bad location: nothing");
+eq(SW.spl.title([atLoc("<b>x</b>")]), "Sound level · <b>x</b>", "markup stays plain text");
+
+// ---- graph range
+eq(SW.spl.niceRange(30, 34), [20, 40], "quiet room: 20 dB minimum, tidy");
+eq(SW.spl.niceRange(100, 100), [90, 110], "one value");
+eq(SW.spl.niceRange(95, 118), [90, 120], "loud show");
+eq(SW.spl.niceRange(90, 95), [80, 100], "small span widened to 20");
+eq(SW.spl.niceRange(88, 130), [85, 135], "spike: 2 dB room, multiples of 5");
+eq(SW.spl.autoRange([], 0, 100, null), null, "no series: nothing to fit");
+eq(SW.spl.autoRange([[[10, null], [20, null]]], 0, 100, [0, 50]), null, "only gaps: nothing to fit, never zero");
+eq(SW.spl.autoRange([[[10, 95], [20, null], [30, 118]]], 0, 100, null), [90, 120], "gap ignored");
+eq(SW.spl.autoRange([[[10, 95], [200, 40]]], 0, 100, null), [85, 105], "outside the window ignored");
+eq(SW.spl.autoRange([[[10, 100], [20, 104]]], 0, 100, [90, 120]), [90, 120], "fits the current axis: no jump");
+eq(SW.spl.autoRange([[[10, 100], [20, 125]]], 0, 100, [90, 120]), [95, 130], "leaves the axis: re-fit");
+eq(SW.spl.autoRange([[[10, 90], [20, 95]]], 0, 100, [85, 135]), [80, 100], "far too tall: shrink");
+eq(SW.spl.chartRange({ chart_range: "custom", chart_min_db: 22, chart_max_db: 145 }), { mode: "custom", min: 22, max: 145 }, "custom");
+eq(SW.spl.chartRange({ chart_range: "auto", chart_min_db: 22, chart_max_db: 145 }), { mode: "auto" }, "auto");
+for (const bad of [undefined, {}, { chart_range: "custom" }, { chart_range: "custom", chart_min_db: 90, chart_max_db: 80 }, { chart_range: "custom", chart_min_db: 50, chart_max_db: 55 },
+  { chart_range: "custom", chart_min_db: "22", chart_max_db: 145 }, { chart_range: "custom", chart_min_db: -1, chart_max_db: 145 }, { chart_range: "custom", chart_min_db: 22, chart_max_db: 201 }]) {
+  eq(SW.spl.chartRange(bad), { mode: "auto" }, "bad custom range falls back to auto");
+}
+const pts = [[[10, 20], [20, 150], [30, null], [40, 100]]];
+eq(SW.spl.clipFlags(pts, 0, 100, [22, 145]), { above: true, below: true }, "both ends");
+eq(SW.spl.clipFlags(pts, 15, 100, [22, 145]), { above: true, below: false }, "window respected");
+eq(SW.spl.clipFlags(pts, 0, 100, [0, 200]), { above: false, below: false }, "all inside");
+eq(SW.spl.clipFlags(pts, 0, 100, null), { above: false, below: false }, "no fixed range");
+eq(SW.spl.rangeNote({ above: true, below: false }), "Some readings are above the range, drawn at the top edge.", "note above");
+eq(SW.spl.rangeNote({ above: true, below: true }), "Some readings are above the range, drawn at the top edge and some are below the range, drawn at the bottom edge.", "note both");
+eq(SW.spl.rangeNote({ above: false, below: false }), "", "no note");
+
+// ---- tile location is not repeated when the title shows it
+eq(SW.spl.tileLocation(atLoc("FOH"), [atLoc("FOH"), atLoc("FOH")]), "", "shared: only in the title");
+eq(SW.spl.tileLocation(atLoc("FOH"), [atLoc("FOH"), atLoc("Stage left")]), "FOH", "different: on the tile");
+eq(SW.spl.tileLocation(atLoc("FOH"), [atLoc("FOH"), {}]), "FOH", "only some have one: on the tile");
+eq(SW.spl.tileLocation({}, [atLoc("FOH"), {}]), "", "none on this tile");
+// ---- input names that are also object property names
+const nasty = JSON.parse('{"constructor": "A", "__proto__": "B", "toString": "C", "Empty": "  "}');
+const lm = SW.spl.locMap(nasty);
+eq([lm.get("constructor"), lm.get("__proto__"), lm.get("toString"), lm.has("Empty"), lm.get("hasOwnProperty")], ["A", "B", "C", false, undefined], "map keeps odd names");
+eq(SW.spl.locMap({}).get("constructor"), undefined, "empty: nothing for constructor");
+lm.set("Real", "FOH");
+const back = SW.spl.locObject(lm);
+eq(JSON.stringify(back), '{"constructor":"A","__proto__":"B","toString":"C","Real":"FOH"}', "saved back as own keys");
+eq(Object.getPrototypeOf(back), Object.prototype, "no prototype change");
 
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("spl ok");

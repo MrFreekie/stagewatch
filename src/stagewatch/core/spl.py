@@ -142,6 +142,39 @@ def clean_input_name(value: object) -> str:
     return _clean_text(value, INPUT_NAME_MAX)
 
 
+LOCATION_MAX = 40
+LOCATIONS_MAX = 8   # per-input locations kept
+
+# The timeline's vertical range: "auto" fits the data, "custom" is exactly min..max (dB).
+CHART_MIN_DEFAULT, CHART_MAX_DEFAULT = 22.0, 145.0   # the prefilled custom values
+CHART_LIMIT_MIN, CHART_LIMIT_MAX = 0.0, 200.0
+CHART_MIN_SPAN = 10.0
+
+
+def chart_range_error(lo: object, hi: object) -> str | None:
+    """Fixed-text problem with a custom graph range, or None. Real numbers only (no bool, text, NaN)."""
+    def real(v: object) -> bool:
+        try:
+            return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)   # 10**400 overflows
+        except (OverflowError, ValueError):
+            return False
+    if not (real(lo) and real(hi)):
+        return "The graph range must be two numbers"
+    if not (CHART_LIMIT_MIN <= lo <= CHART_LIMIT_MAX and CHART_LIMIT_MIN <= hi <= CHART_LIMIT_MAX):
+        return f"The graph range must be between {CHART_LIMIT_MIN:g} and {CHART_LIMIT_MAX:g} dB"
+    if hi - lo < CHART_MIN_SPAN:
+        return f"The graph range must span at least {CHART_MIN_SPAN:g} dB, with Min below Max"
+    return None
+
+
+def clean_location(value: object) -> str:
+    """The owner's own label for where the meter is ("FOH", "Stage left"): plain text, control and
+    format characters removed, spaces tidied, at most LOCATION_MAX characters, "" if not text. Markup
+    is not stripped because it is only ever shown as plain text (textContent). Display only: it is
+    never part of an entity id, a stored key or a series."""
+    return _clean_text(value, LOCATION_MAX)
+
+
 def clean_metric_name(value: object) -> str:
     """A metric name as the software wrote it ("SPL A Slow"), made safe in the same way as an input
     name, at most METRIC_NAME_MAX characters. The cleaned text is what is stored and compared, on both

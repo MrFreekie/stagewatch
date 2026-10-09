@@ -539,14 +539,43 @@ class SplConfig(_Model):
     # read when there are no ``meters``, and still written for the older form of a first-input slot.
     meters: list[SplSlot] | None = None
     slots: list[str] = Field(default_factory=lambda: list(spl.DEFAULT_SLOTS))
+    # The owner's label for where the meter is ("FOH"). A label only: never part of an id or key.
+    location: str = Field("", max_length=spl.LOCATION_MAX)
+    # Per-input locations: Smaart's exact input text -> label. Labels only, at most LOCATIONS_MAX.
+    locations: dict[str, str] = Field(default_factory=dict)
+    # The timeline's vertical range: "auto" fits the data; "custom" is exactly min..max dB.
+    chart_range: Literal["auto", "custom"] = "auto"
+    chart_min_db: float = spl.CHART_MIN_DEFAULT
+    chart_max_db: float = spl.CHART_MAX_DEFAULT
+
+    @model_validator(mode="before")
+    @classmethod
+    def _chart_range_on_load(cls, data):
+        """On load: a damaged range (not a mode, not numbers, out of 0..200, min not below max, span
+        under 10 dB) falls back to automatic with the default numbers. Logs once, never the values."""
+        if not isinstance(data, dict) or not any(k in data for k in ("chart_range", "chart_min_db", "chart_max_db")):
+            return data
+        mode = data.get("chart_range", "auto")
+        lo, hi = data.get("chart_min_db", spl.CHART_MIN_DEFAULT), data.get("chart_max_db", spl.CHART_MAX_DEFAULT)
+        if mode in ("auto", "custom") and spl.chart_range_error(lo, hi) is None:
+            return data
+        log.warning("Sound level: the saved graph range was not usable and was reset to automatic")
+        return {**data, "chart_range": "auto", "chart_min_db": spl.CHART_MIN_DEFAULT, "chart_max_db": spl.CHART_MAX_DEFAULT}
 
     @model_serializer(mode="wrap")
     def _compact(self, handler):
-        """Leave an unset password and unset meters out of the saved file, so a file that never used
-        them stays exactly as it was (and no empty ``password:`` line appears)."""
+        """Leave an unset password, locations and unset meters out of the saved file, so a file that
+        never used them stays exactly as it was (and no empty ``password:`` line appears)."""
         data = handler(self)
         if not data.get("password"):
             data.pop("password", None)
+        for k in ("location", "locations"):
+            if not data.get(k):
+                data.pop(k, None)
+        if (data.get("chart_range") == "auto" and data.get("chart_min_db") == spl.CHART_MIN_DEFAULT
+                and data.get("chart_max_db") == spl.CHART_MAX_DEFAULT):
+            for k in ("chart_range", "chart_min_db", "chart_max_db"):
+                data.pop(k, None)   # defaults stay out of the file, so an unchanged file stays unchanged
         if data.get("meters") is None:
             data.pop("meters", None)
         return data
@@ -579,6 +608,37 @@ class SplConfig(_Model):
             log.warning("Sound level: %d value%s this version can't use left out", len(v) - min(len(kept), spl.MAX_SLOTS),
                         "" if len(v) - min(len(kept), spl.MAX_SLOTS) == 1 else "s")
         return kept[:spl.MAX_SLOTS]
+
+    @field_validator("location", mode="before")
+    @classmethod
+    def _location(cls, v):
+        """On load: cleaned and capped, never refused (a damaged label must not lose the section)."""
+        return spl.clean_location(v)
+
+    @field_validator("locations", mode="before")
+    @classmethod
+    def _locations(cls, v):
+        """On load: usable entries only (cleaned input name -> cleaned label, both non-empty), at most
+        LOCATIONS_MAX; the rest is dropped. Logs a count, never the text."""
+        if v is None:
+            return {}
+        if not isinstance(v, dict):
+            log.warning("Sound level: the saved locations were not usable and were reset")
+            return {}
+        out: dict[str, str] = {}
+        for k, val in v.items():
+            key, label = spl.clean_input_name(k), spl.clean_location(val)
+            if key and label and key not in out:
+                out[key] = label
+        if len(out) > spl.LOCATIONS_MAX or len(out) < len(v):
+            dropped = len(v) - min(len(out), spl.LOCATIONS_MAX)
+            log.warning("Sound level: %d location%s this version can't use left out", dropped, "" if dropped == 1 else "s")
+        return dict(list(out.items())[:spl.LOCATIONS_MAX])
+
+    def location_for(self, input_name: str) -> str:
+        """The label for a value read from this input (Smaart's resolved name): that input's own
+        location, else the default, else "". An input not yet known ("") gets the default."""
+        return (self.locations.get(input_name, "") if input_name else "") or self.location
 
     @field_validator("password", mode="before")
     @classmethod
@@ -767,6 +827,9 @@ def valid_pin_hash(value) -> bool:
         return False
 
 
+_SPL_RANGE_KEYS = ("chart_range", "chart_min_db", "chart_max_db")
+
+
 def salvage(raw: object, text: str = "") -> tuple[Config, list[str]]:
     """Best-effort config from a config that failed to load as a whole.
 
@@ -806,9 +869,14 @@ def salvage(raw: object, text: str = "") -> tuple[Config, list[str]]:
                         pass
             elif isinstance(val, dict):
                 kept = {}
-                for k, item in val.items():
+                # the three graph range keys are only meaningful together: check them as one item
+                group = {k: v for k, v in val.items() if key == "spl" and k in _SPL_RANGE_KEYS}
+                items = [(k, v) for k, v in val.items() if k not in group]
+                if group:
+                    items.append((None, group))
+                for k, item in items:
                     try:
-                        got = getattr(Config.model_validate({key: {k: item}}), key)
+                        got = getattr(Config.model_validate({key: item if k is None else {k: item}}), key)
                         if isinstance(got, BaseModel):    # a model section, field by field: only what was set
                             got = got.model_dump(exclude_unset=True)
                         kept.update(got)

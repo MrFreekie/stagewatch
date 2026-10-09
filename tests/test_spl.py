@@ -748,7 +748,8 @@ def test_put_spl_applies_at_once_and_the_snapshot_has_the_public_shape_only(clie
             "smaart_name": "SPL C Slow"}.items() <= ents[0]["labels"].items()
     assert set(ents[0]["labels"]) <= {"weighting", "metric", "slot", "time_constant", "smaart_name", "source"}
     dev = next(d for d in snap["devices"] if d["id"] == "spl")
-    assert set(dev) == {"id", "name", "integration", "category", "manufacturer", "model", "area", "status", "status_detail", "input_name"}
+    assert set(dev) == {"id", "name", "integration", "category", "manufacturer", "model", "area", "status", "status_detail", "input_name",
+                       "chart_range", "chart_min_db", "chart_max_db"}   # the graph range is the only addition
     assert dev["category"] == "service"
 
 
@@ -949,3 +950,237 @@ def test_entity_dict_sends_no_offset_for_a_sound_level_even_with_a_stale_setting
     hub.config.entities[e.id] = EntitySettings(offset=5.0)
     hub.update_state(e.id, 94.3, 1000.0)
     assert "offset" not in hub.entity_dict(e, 1001.0, 60.0)
+
+
+# ------------------------------------------------------------------------- locations (labels only)
+def test_clean_location_is_plain_capped_and_tidy():
+    assert spl.clean_location("  FOH \t desk ") == "FOH desk"
+    assert spl.clean_location("A\x00B\x1b\u202eC\r\nD") == "ABC D"
+    assert spl.clean_location("x" * 500) == "x" * spl.LOCATION_MAX
+    assert spl.clean_location("<img src=x onerror=alert(1)>")[:5] == "<img "      # text only; shown with textContent
+    assert [spl.clean_location(v) for v in (None, 5, b"x", "", " \n ")] == [""] * 5
+
+
+def test_location_resolution_input_then_default_then_none():
+    cfg = SplConfig(location="Default", locations={INPUT_LABELS[0]: "FOH"})
+    assert cfg.location_for(INPUT_LABELS[0]) == "FOH"          # its own
+    assert cfg.location_for(INPUT_LABELS[1]) == "Default"      # no own: the default
+    assert cfg.location_for("") == "Default"                   # input not known yet: the default
+    assert SplConfig(locations={INPUT_LABELS[0]: "FOH"}).location_for(INPUT_LABELS[1]) == ""
+    assert SplConfig(locations={INPUT_LABELS[0]: "FOH"}).location_for("") == ""
+
+
+def test_locations_are_optional_additive_and_not_written_when_empty(tmp_path):
+    assert SplConfig().location == "" and SplConfig().locations == {}
+    store = ConfigStore(tmp_path / "config.yaml")
+    store.config.spl = SplConfig(enabled=True)
+    store.save()
+    raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))["spl"]
+    assert "location" not in raw and "locations" not in raw
+    store.config.spl = SplConfig(enabled=True, location="FOH", locations={INPUT_LABELS[1]: "Stage left"})
+    store.save()
+    again = ConfigStore(tmp_path / "config.yaml").load().spl
+    assert again.location == "FOH" and again.locations == {INPUT_LABELS[1]: "Stage left"}
+
+
+def test_damaged_locations_are_cleaned_on_load_with_a_count_only_log(tmp_path, caplog):
+    many = {f"Input {i}": f"Place {i}" for i in range(12)}
+    cfg = SplConfig.model_validate({"locations": {**many, "": "x", "Bad": "", "Hostile\x00": "<b>\x01" + "L" * 99, 5: "n"},
+                                    "location": "A\x00" + "B" * 99})
+    assert len(cfg.locations) == spl.LOCATIONS_MAX
+    assert all(len(v) <= spl.LOCATION_MAX and "\x00" not in v and "\x01" not in v for v in cfg.locations.values())
+    assert cfg.location == "A" + "B" * (spl.LOCATION_MAX - 1)
+    assert "Place 1" not in caplog.text and "left out" in caplog.text
+    assert SplConfig.model_validate({"locations": "oops", "location": 7}).locations == {}
+    assert SplConfig.model_validate({"location": ["x"]}).location == ""
+    # a whole damaged section still resets only itself
+    raw = {"schema_version": 2, "site": {"name": "Keep Me"}, "spl": {"enabled": "maybe", "locations": 5, "location": {"a": 1}}}
+    c2, notes = salvage(raw, "")
+    assert c2.site.name == "Keep Me" and c2.spl.locations == {} and c2.spl.location == ""
+    # and a saved file that never had them loads exactly as before
+    old = yaml.safe_load((ROOT / "tests" / "fixtures" / "v1" / "config.yaml").read_text(encoding="utf-8"))
+    assert Config.model_validate(migrate(old)).spl.locations == {}
+
+
+def test_put_spl_locations_reach_the_public_entities_and_the_admin_state(client_app):
+    c = client_app
+    admin(c)
+    a, b = INPUT_LABELS[0], INPUT_LABELS[1]
+    meters = [{"source": "", "metric": "SPL A Slow"}, {"source": b, "metric": "SPL C Slow"}, {"source": b, "metric": "SPL A Slow"}]
+    r = put(c, meters=meters, location="Desk", locations={a: "FOH", b: "  Stage   left "})
+    assert r.status_code == 200
+    ents = [e for e in c.get("/api/snapshot").json()["entities"] if e["kind"] == "sound_level"]
+    poll(lambda: [e.get("location") for e in c.get("/api/snapshot").json()["entities"] if e["kind"] == "sound_level"] == ["FOH", "Stage left", "Stage left"])
+    ents = [e for e in c.get("/api/snapshot").json()["entities"] if e["kind"] == "sound_level"]
+    # entity ids and labels are untouched by locations; the only new public field is `location`
+    assert [e["id"] for e in ents] == ["spl.a_slow", "spl.c_slow.asio_madiface_usb_channel_8_2", "spl.a_slow.asio_madiface_usb_channel_8_2"]
+    assert set(ents[0]) == {"id", "device_id", "name", "kind", "unit", "decimals", "derived", "value", "raw_value",
+                            "updated", "stale", "labels", "location"}
+    assert all("FOH" not in json.dumps(e["labels"]) for e in ents)
+    st = c.get("/api/admin/state").json()["config"]["spl"]
+    assert st["location"] == "Desk" and st["locations"] == {a: "FOH", b: "Stage left"}
+    # a value whose input has no location of its own gets the default
+    assert put(c, meters=meters, location="Desk", locations={a: "FOH"}).status_code == 200
+    poll(lambda: [e.get("location") for e in c.get("/api/snapshot").json()["entities"] if e["kind"] == "sound_level"] == ["FOH", "Desk", "Desk"])
+    # cleared: the field disappears from the entity
+    assert put(c, meters=meters, location="", locations={}).status_code == 200
+    poll(lambda: all("location" not in e for e in c.get("/api/snapshot").json()["entities"] if e["kind"] == "sound_level"))
+    assert "location" not in c.get("/api/admin/state").json()["config"]["spl"]
+
+
+def test_put_spl_location_only_change_does_not_restart_smaart_and_keeps_ids_and_history(client_app):
+    c = client_app
+    admin(c)
+    assert put(c).status_code == 200
+    integ = c.hub.integrations["smaart"]
+    src = integ._source
+    ids = sorted(e.id for e in c.hub.entities.values() if e.device_id == "spl")
+    assert put(c, location="FOH", locations={INPUT_LABELS[0]: "Desk"}).status_code == 200
+    assert integ._source is src                                      # no stop/start, no new login
+    assert sorted(e.id for e in c.hub.entities.values() if e.device_id == "spl") == ids
+    assert put(c, location="Stage left").status_code == 200
+    assert integ._source is src
+    assert c.hub.config.spl.locations == {INPUT_LABELS[0]: "Desk"}   # not sent: kept
+    # leaving the fields out keeps what is saved
+    assert c.put("/api/admin/spl", json={"enabled": True, "host": "", "port": None, "slots": ["a_slow"]}).status_code == 200
+    assert c.hub.config.spl.location == "Stage left"
+
+
+def test_put_spl_refuses_bad_locations_with_fixed_text_and_no_echo(client_app):
+    c = client_app
+    admin(c)
+    a = INPUT_LABELS[0]
+    secret = "Hostile-Marker-123"
+    cases = [{"location": secret + "\x00"}, {"location": secret + "\u202e"}, {"location": secret * 10},
+             {"locations": {a: secret + "\x07"}}, {"locations": {a: secret * 10}}, {"locations": {"": "x"}},
+             {"locations": {a + "\x00": "x"}}, {"locations": {f"I{i}": "x" for i in range(9)}},
+             {"location": 5}, {"locations": "x"}, {"locations": {a: 5}}, {"location": "x" * 201}]
+    for body in cases:
+        r = put(c, **body)
+        assert r.status_code == 422, body
+        assert secret not in r.text, body
+    assert c.hub.config.spl.location == "" and c.hub.config.spl.locations == {}
+    # the existing extra-fields rule still holds
+    assert put(c, place="x").status_code == 422
+    # exactly eight is fine, and a blank label removes an input's entry
+    eight = {f"Input {i}": f"Place {i}" for i in range(8)}
+    assert put(c, locations=eight).status_code == 200 and len(c.hub.config.spl.locations) == 8
+    assert put(c, locations={**eight, "Input 0": "  "}).status_code == 200 and len(c.hub.config.spl.locations) == 7
+
+
+async def test_locations_end_to_end_through_the_hub_follow_the_resolved_first_input(tmp_path):
+    hub = Hub(tmp_path, emulate=True)
+    hub.config.spl = SplConfig(enabled=True, meters=[SplSlot(metric="SPL A Slow", source=""), SplSlot(metric="SPL C Slow", source=INPUT_LABELS[1])],
+                               slots=["a_slow"], locations={INPUT_LABELS[0]: "FOH", INPUT_LABELS[1]: "Stage left"}, location="Anywhere")
+    integ = SmaartIntegration(hub, emulate=True, source_factory=lambda o: EmulatedSplSource(
+        o._reading, o._link, o._catalog, period_s=0.01, first_outage_s=60))
+    hub.add_integration(integ)
+    try:
+        await integ.start()
+        # before Smaart has listed its inputs the first-input slot only has the default
+        await until(lambda: hub.entities["spl.a_slow"].location == "FOH")        # the first input resolved
+        assert hub.entities["spl.c_slow.asio_madiface_usb_channel_8_2"].location == "Stage left"
+        d = hub.entities["spl.a_slow"].to_dict(0, 60)
+        assert d["location"] == "FOH" and "FOH" not in json.dumps(d["labels"]) and d["id"] == "spl.a_slow"
+    finally:
+        await integ.stop()
+        hub.recorder.close()
+
+
+# ------------------------------------------------------------------------- graph range
+def test_chart_range_error_is_fixed_text_and_strict():
+    assert spl.chart_range_error(22, 145) is None and spl.chart_range_error(0, 10) is None and spl.chart_range_error(190, 200) is None
+    for lo, hi in [(50, 50), (60, 50), (50, 59.9), (-1, 50), (50, 201), (True, 50), ("22", 145), (None, 5), (float("nan"), 50), (0, float("inf"))]:
+        err = spl.chart_range_error(lo, hi)
+        assert err and "22" not in err and "nan" not in err.lower()
+
+
+def test_chart_range_defaults_older_config_and_damaged_values_fall_back_to_auto(tmp_path, caplog):
+    c = SplConfig()
+    assert (c.chart_range, c.chart_min_db, c.chart_max_db) == ("auto", 22.0, 145.0)
+    old = yaml.safe_load((ROOT / "tests" / "fixtures" / "v1" / "config.yaml").read_text(encoding="utf-8"))
+    assert Config.model_validate(migrate(old)).spl.chart_range == "auto"
+    custom = SplConfig(chart_range="custom", chart_min_db=30, chart_max_db=130)
+    assert (custom.chart_range, custom.chart_min_db, custom.chart_max_db) == ("custom", 30.0, 130.0)
+    store = ConfigStore(tmp_path / "config.yaml")
+    store.config.spl = SplConfig(enabled=True)
+    store.save()
+    assert "chart_range" not in (tmp_path / "config.yaml").read_text(encoding="utf-8")          # defaults are not written
+    store.config.spl = custom
+    store.save()
+    assert ConfigStore(tmp_path / "config.yaml").load().spl.chart_max_db == 130.0
+    for bad in ({"chart_range": "wide"}, {"chart_range": "custom", "chart_min_db": 90, "chart_max_db": 80},
+                {"chart_range": "custom", "chart_min_db": 50, "chart_max_db": 55}, {"chart_range": "custom", "chart_min_db": "x", "chart_max_db": 99},
+                {"chart_range": "custom", "chart_min_db": -5, "chart_max_db": 99}, {"chart_range": "custom", "chart_min_db": 5, "chart_max_db": 999},
+                {"chart_range": "custom", "chart_min_db": True, "chart_max_db": 99}, {"chart_min_db": None}):
+        caplog.clear()
+        got = SplConfig.model_validate({"enabled": True, **bad})
+        assert (got.chart_range, got.chart_min_db, got.chart_max_db, got.enabled) == ("auto", 22.0, 145.0, True), bad
+        assert "reset to automatic" in caplog.text and "wide" not in caplog.text
+    cfg, notes = salvage({"schema_version": 2, "site": {"name": "Keep Me"}, "spl": {"enabled": "maybe", "chart_range": 5}}, "")
+    assert cfg.site.name == "Keep Me" and cfg.spl.chart_range == "auto"
+
+
+def test_put_spl_chart_range_validation_public_fields_and_no_restart(client_app):
+    c = client_app
+    admin(c)
+    assert put(c).status_code == 200
+    integ = c.hub.integrations["smaart"]
+    src = integ._source
+    r = put(c, chart_range="custom", chart_min_db=30, chart_max_db=130.5)
+    assert r.status_code == 200 and integ._source is src                       # a display setting: no restart or login
+    dev = next(d for d in c.get("/api/snapshot").json()["devices"] if d["id"] == "spl")
+    assert (dev["chart_range"], dev["chart_min_db"], dev["chart_max_db"]) == ("custom", 30.0, 130.5)
+    st = c.get("/api/admin/state").json()["config"]["spl"]
+    assert (st["chart_range"], st["chart_min_db"], st["chart_max_db"]) == ("custom", 30.0, 130.5)
+    # not sent: kept. Only auto: the numbers stay for next time.
+    assert put(c).status_code == 200 and c.hub.config.spl.chart_range == "custom"
+    assert put(c, chart_range="auto").status_code == 200 and integ._source is src
+    assert c.hub.config.spl.chart_range == "auto" and c.hub.config.spl.chart_max_db == 130.5
+    marker = "7777.123"
+    for body in ({"chart_range": "custom", "chart_min_db": 80, "chart_max_db": 80}, {"chart_range": "custom", "chart_min_db": 90, "chart_max_db": 80},
+                 {"chart_range": "custom", "chart_min_db": 80, "chart_max_db": 85}, {"chart_range": "custom", "chart_min_db": -1, "chart_max_db": 80},
+                 {"chart_range": "custom", "chart_min_db": 10, "chart_max_db": 200.5}, {"chart_range": "custom", "chart_min_db": 125},
+                 {"chart_min_db": 130.5, "chart_max_db": 131}, {"chart_range": "wide"}, {"chart_min_db": "20"}, {"chart_min_db": True},
+                 {"chart_min_db": float(marker) * 10, "chart_max_db": 1e308}):
+        r = put(c, **body)
+        assert r.status_code == 422 and marker not in r.text, body
+    assert c.hub.config.spl.chart_range == "auto"
+
+
+# ------------------------------------------------------------------------- review fixes
+def test_salvage_keeps_a_valid_custom_range_when_another_key_is_bad(caplog):
+    cfg, notes = salvage({"schema_version": 2, "site": {"name": "Keep Me"},
+                          "spl": {"port": "abc", "chart_range": "custom", "chart_min_db": 150, "chart_max_db": 190}}, "")
+    assert (cfg.spl.chart_range, cfg.spl.chart_min_db, cfg.spl.chart_max_db) == ("custom", 150.0, 190.0)
+    assert cfg.site.name == "Keep Me" and "not usable" not in caplog.text
+    cfg, _ = salvage({"schema_version": 2, "spl": {"port": "abc", "chart_range": "custom", "chart_min_db": 190, "chart_max_db": 150}}, "")
+    assert cfg.spl.chart_range == "auto" and cfg.spl.chart_min_db == 22.0 and "not usable" in caplog.text
+    assert "190" not in caplog.text
+
+
+def test_huge_whole_numbers_are_one_bad_value_never_an_error(client_app, caplog):
+    assert spl.chart_range_error(10 ** 400, 5) and spl.chart_range_error(5, -10 ** 400)
+    got = SplConfig.model_validate({"chart_range": "custom", "chart_min_db": 10 ** 400, "chart_max_db": 99})
+    assert got.chart_range == "auto"
+    c = client_app
+    admin(c)
+    for body in ({"chart_min_db": 10 ** 400}, {"chart_max_db": 10 ** 400}, {"chart_range": "custom", "chart_min_db": -10 ** 400, "chart_max_db": 10 ** 400}):
+        r = put(c, **body)
+        assert r.status_code == 422 and "graph range" in r.text, body
+
+
+def test_put_refuses_hidden_characters_before_tidying_and_keeps_plain_spaces(client_app):
+    c = client_app
+    admin(c)
+    for bad in ("a\tb", "a\nb", "a\u00a0\u200bb", "a\ue000b", "a\u0378b", "a\ud800b".encode("utf-16", "surrogatepass").decode("utf-16", "ignore") + "\x00"):
+        assert put(c, location=bad).status_code == 422, repr(bad)
+        assert put(c, locations={INPUT_LABELS[0]: bad}).status_code == 422, repr(bad)
+    assert put(c, location="  Stage   left ").status_code == 200 and c.hub.config.spl.location == "Stage left"
+
+
+def test_device_public_extras_are_whitelisted_and_never_overwrite_base_keys():
+    d = Device("x", "Name", "int")
+    d.public = {"chart_range": "auto", "chart_min_db": 22.0, "id": "evil", "status": "evil", "other": 1}
+    out = d.to_dict()
+    assert out["id"] == "x" and out["status"] == d.status.value and "other" not in out and out["chart_range"] == "auto"

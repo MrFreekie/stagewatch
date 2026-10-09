@@ -77,6 +77,10 @@ def normalise_mac(value: object) -> str | None:
     return mac if _HEX12.fullmatch(mac) else None
 
 
+# The only extra public fields a device may carry (the sound level graph range).
+PUBLIC_EXTRA = frozenset({"chart_range", "chart_min_db", "chart_max_db"})
+
+
 @dataclass
 class Device:
     id: str
@@ -99,6 +103,9 @@ class Device:
     # The input a measurement source is tied to, as the software names it (cleaned text). Only the
     # sound level device sets it; left out of to_dict() while empty.
     input_name: str = ""
+    # Extra public fields a service device carries (the sound level graph range). Merged into
+    # to_dict(); empty for every other device.
+    public: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         out = {
@@ -114,6 +121,7 @@ class Device:
         }
         if self.input_name:
             out["input_name"] = self.input_name
+        out.update({k: v for k, v in self.public.items() if k in PUBLIC_EXTRA and k not in out})
         return out
 
 
@@ -135,6 +143,9 @@ class Entity:
     # Short text labels that describe the measurement (for sound levels: weighting, time_constant,
     # metric, period, slot). Public, plain text; absent from to_dict() when empty.
     labels: dict[str, str] = field(default_factory=dict)
+    # The owner's own label for where a sound level value is measured ("FOH"): cleaned plain text, a
+    # label only (never part of an id, key or history). Absent from to_dict() when empty.
+    location: str = ""
 
     def to_dict(self, now: float, stale_after_s: float, offset: float = 0.0, role: str = "environment") -> dict:
         data = {
@@ -160,6 +171,8 @@ class Entity:
             data["role"] = "equipment"
         if self.labels:
             data["labels"] = dict(self.labels)
+        if self.location:
+            data["location"] = self.location
         return data
 
     def is_stale(self, now: float, stale_after_s: float) -> bool:

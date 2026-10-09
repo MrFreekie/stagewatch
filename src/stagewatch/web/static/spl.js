@@ -34,6 +34,37 @@ SW.spl = (function () {
     return n ? `Input: ${n}` : "";
   };
 
+  // One value's location label ("FOH"), or "". Plain text; a label only, never a key.
+  spl.location = function (e) {
+    return e && typeof e.location === "string" ? e.location.trim() : "";
+  };
+
+  // The tile's own location line: none when the card title already shows the one every tile shares.
+  spl.tileLocation = function (e, entities) {
+    const shared = (entities || []).length > 0 && spl.title(entities) !== "Sound level";
+    return shared ? "" : spl.location(e);
+  };
+
+  // Saved per-input locations as a Map (an input may be called "constructor" or "__proto__") and back
+  // to a plain object for the save. Only non-empty text is kept.
+  spl.locMap = function (obj) {
+    const m = new Map();
+    if (obj && typeof obj === "object") for (const [k, v] of Object.entries(obj)) if (typeof v === "string" && v.trim()) m.set(k, v);
+    return m;
+  };
+  spl.locObject = function (map) {
+    const out = {};
+    for (const [k, v] of map) if (typeof v === "string" && v.trim()) Object.defineProperty(out, k, { value: v, enumerable: true, writable: true, configurable: true });
+    return out;
+  };
+
+  // The card title: "Sound level · FOH" only when every shown value has the same non-empty location;
+  // otherwise "Sound level" (each value then carries its own location). Plain text for textContent.
+  spl.title = function (entities) {
+    const locs = (entities || []).map(spl.location);
+    return locs.length && locs[0] && locs.every((l) => l === locs[0]) ? `Sound level · ${locs[0]}` : "Sound level";
+  };
+
   // "A-weighted, Slow response" / "A-weighted Leq over 15 min" / "A-weighted peak"
   spl.describe = function (e) {
     const l = e.labels || {};
@@ -60,7 +91,63 @@ SW.spl = (function () {
     }
     const text = SW.fmt("sound_level", e.value, false);
     if (e.stale) return { state: "stale", text, sub, note: `Old reading, ${SW.age(e.updated, now)}` };
-    return { state: "live", text, sub, note: `Updated ${SW.age(e.updated, now)}` };
+    return { state: "live", text, sub, note: "" };   // no updated time on a live value; an old one shows its age above
+  };
+
+  // ---- the graph's vertical range (dB). The numbers are never changed; only where the axis sits.
+  spl.AUTO_MIN_SPAN = 20;   // a quiet room does not look dramatic
+  spl.CUSTOM_MIN_SPAN = 10;
+
+  // The chosen range from the Smaart device's public fields: {mode: "auto"} or {mode: "custom", min, max}.
+  // Anything that is not a sensible custom range (numbers, 0..200, at least 10 dB) means automatic.
+  spl.chartRange = function (device) {
+    const d = device || {}, lo = d.chart_min_db, hi = d.chart_max_db;
+    const ok = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 200;
+    if (d.chart_range === "custom" && ok(lo) && ok(hi) && hi - lo >= spl.CUSTOM_MIN_SPAN) return { mode: "custom", min: lo, max: hi };
+    return { mode: "auto" };
+  };
+
+  // Tidy axis ends for data from lo to hi: 2 dB of room, then outward to multiples of 5, and at
+  // least AUTO_MIN_SPAN wide (centred on the data, still on multiples of 5).
+  spl.niceRange = function (lo, hi) {
+    let a = Math.floor((lo - 2) / 5) * 5, b = Math.ceil((hi + 2) / 5) * 5;
+    if (b - a < spl.AUTO_MIN_SPAN) { const mid = (a + b) / 2; a = Math.floor((mid - spl.AUTO_MIN_SPAN / 2) / 5) * 5; b = a + spl.AUTO_MIN_SPAN; }
+    return [a, b];
+  };
+
+  // The automatic axis for the readings in [t0, t1]. `seriesPoints` is a list of [[ts, value|null], ...].
+  // A missing value (null) or a gap never counts. `prev` is the axis in use: it is kept while the data
+  // still fits it and it is not much taller than needed, so the scale does not jump on every reading.
+  // Returns null when there is nothing to fit.
+  spl.autoRange = function (seriesPoints, t0, t1, prev) {
+    let lo = Infinity, hi = -Infinity;
+    for (const pts of seriesPoints || []) for (const p of pts || []) {
+      const v = p[1];
+      if (typeof v !== "number" || !Number.isFinite(v) || p[0] < t0 || p[0] > t1) continue;
+      lo = Math.min(lo, v); hi = Math.max(hi, v);
+    }
+    if (!Number.isFinite(lo)) return null;
+    const want = spl.niceRange(lo, hi);
+    if (Array.isArray(prev) && lo >= prev[0] && hi <= prev[1] && (prev[1] - prev[0]) - (want[1] - want[0]) <= 20) return prev;
+    return want;
+  };
+
+  // Do any readings in [t0, t1] fall outside a fixed range? {above, below}
+  spl.clipFlags = function (seriesPoints, t0, t1, range) {
+    const f = { above: false, below: false };
+    if (!range) return f;
+    for (const pts of seriesPoints || []) for (const p of pts || []) {
+      const v = p[1];
+      if (typeof v !== "number" || !Number.isFinite(v) || p[0] < t0 || p[0] > t1) continue;
+      if (v > range[1]) f.above = true;
+      if (v < range[0]) f.below = true;
+    }
+    return f;
+  };
+
+  spl.rangeNote = function (f) {
+    const parts = [f.above ? "above the range, drawn at the top edge" : "", f.below ? "below the range, drawn at the bottom edge" : ""].filter((x) => x);
+    return parts.length ? `Some readings are ${parts.join(" and some are ")}.` : "";
   };
 
   // Seconds of silence in a chart line that count as a gap: a few intervals between points, and

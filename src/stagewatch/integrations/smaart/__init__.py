@@ -159,6 +159,9 @@ class SmaartIntegration(Integration):
                 self._source.set_wanted(self._wanted_sources())
             self._sync_entities()
             self._sync_input_name()
+            cfg = self.hub.config.spl   # the graph range is a display setting: it never restarts the source
+            self.hub.set_device_public(DEVICE_ID, {"chart_range": cfg.chart_range, "chart_min_db": cfg.chart_min_db,
+                                                   "chart_max_db": cfg.chart_max_db})
 
     async def _stop_source(self) -> None:
         source, self._source, self._key = self._source, None, None
@@ -214,10 +217,13 @@ class SmaartIntegration(Integration):
         if not self._registered:
             return
         keep = set()
+        cfg = self.hub.config.spl
         for n, (eid, (source, metric)) in enumerate(self.slot_entities(), start=1):
             keep.add(eid)
+            # The location is a label on the entity only: not in its id, labels or stored key.
             self.hub.register_entity(Entity(eid, DEVICE_ID, metric, Kind.SOUND_LEVEL, UNITS[Kind.SOUND_LEVEL], 1,
-                                            labels=spl.slot_labels(n, metric, self._resolved(source))))
+                                            labels=spl.slot_labels(n, metric, self._resolved(source)),
+                                            location=cfg.location_for(self._resolved(source))))
         for e in [e for e in self.hub.entities.values() if e.device_id == DEVICE_ID and e.id not in keep]:
             self.hub.remove_entity(e.id)
         self._slot_ok = {k: v for k, v in self._slot_ok.items() if k in keep}

@@ -745,6 +745,20 @@ body.layout-wall .spl-badge, body.layout-wall .card-logo { width: 44px; height: 
 #spl-span-seg button { min-height: 44px; min-width: 44px; }
 .spl-tile.spl-na .value, .spl-tile.spl-wait .value { color: var(--muted); }
 .spl-note { font-size: 13px; margin: 6px 0 0; }
+#spl-card > h2 { flex-wrap: nowrap; }                 /* a long location shortens with an ellipsis, the header never wraps */
+#spl-card > h2 .spl-title { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#spl-card > h2 .seg, #spl-card > h2 .spl-badge { flex: none; }
+/* Narrow screens: the title takes its own line (so "Sound level" and the start of the location stay readable); the range buttons and badge sit below it */
+body.layout-phone #spl-card > h2 { flex-wrap: wrap; }
+body.layout-phone #spl-card > h2 .spl-title { flex: 1 1 100%; }
+@media (max-width: 560px) {
+  #spl-card > h2 { flex-wrap: wrap; }
+  #spl-card > h2 .spl-title { flex: 1 1 100%; }
+}
+.spl-tile .spl-note-line { min-height: 1.4em; }      /* the line is reserved, so a tile does not jump when a reading goes old */
+.spl-tile .spl-loc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spl-tile .spl-loc[hidden] { display: none; }
+body.layout-wall .spl-tile .spl-loc { font-size: 18px; }
 .spl-input { font-size: 13px; margin: 6px 0 0; overflow-wrap: anywhere; }
 body.layout-wall .spl-input { font-size: 16px; }
 .spl-chart-wrap { height: 220px; }
@@ -759,6 +773,8 @@ body.layout-wall #spl-legend { font-size: 18px; }
 body.layout-wall .spl-note { font-size: 16px; }
 
 /* Sound level settings: input and value drop-downs share a row, never wider than the card (long Smaart input names) */
+.spl-range-nums[hidden] { display: none; }
+.spl-slot, .spl-range-nums { margin-bottom: 4px; }
 .spl-slot { align-items: flex-start; }
 .spl-slot label.field { flex: 1 1 220px; min-width: 0; }
 .spl-slot select { width: 100%; min-width: 0; max-width: 100%; text-overflow: ellipsis; }

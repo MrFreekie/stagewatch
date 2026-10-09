@@ -29,7 +29,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 import unicodedata
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, ValidationError, field_validator, model_validator
 
 from .. import __version__, acoustics
 from ..core.config import (
@@ -299,6 +299,16 @@ class SplBody(BaseModel):
     meters: list[SplSlotBody] | None = Field(None, max_length=spl_mod.MAX_SLOTS)
     password: str = Field("", max_length=PASSWORD_MAX)
     clear_password: StrictBool = False
+    # A label for the card ("FOH"); checked in put_spl with fixed-text errors. Generous cap here only
+    # to bound the request; the real limit is spl_mod.LOCATION_MAX.
+    # Not sent = keep the saved one; "" clears it.
+    location: str | None = Field(None, max_length=200)
+    # Per-input labels (Smaart's input text -> label); not sent = keep, sent = replaces the whole map.
+    locations: dict[str, str] | None = Field(None, max_length=40)
+    # The graph range: not sent = keep. Real numbers only (checked in put_spl with fixed text).
+    chart_range: Literal["auto", "custom"] | None = None
+    chart_min_db: StrictInt | StrictFloat | None = None
+    chart_max_db: StrictInt | StrictFloat | None = None
 
 
 class BaroDemoBody(BaseModel):
@@ -323,7 +333,7 @@ WALL_CLOCK_TEST_TEXT = {
 
 def _has_hidden_chars(text: str) -> bool:
     """Control or format characters (newlines, zero-width, bidi overrides such as U+202E)."""
-    return any(unicodedata.category(ch) in ("Cc", "Cf") for ch in text)
+    return any(unicodedata.category(ch).startswith("C") for ch in text)
 
 
 class DashboardBody(Dashboard):
@@ -1232,9 +1242,39 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             if spl_password_error(body.password):
                 raise HTTPException(422, "The password must be 1 to 128 characters, with no control characters")
             password = body.password
+        def tidy_location(text: str) -> str:
+            if _has_hidden_chars(text):   # before any tidying: a tab or newline is refused, not rewritten
+                raise HTTPException(422, "A location can't contain hidden or control characters")
+            text = " ".join(text.split())
+            if len(text) > spl_mod.LOCATION_MAX:
+                raise HTTPException(422, f"A location can be up to {spl_mod.LOCATION_MAX} characters")
+            return text
+
+        location = old.location if body.location is None else tidy_location(body.location)
+        locations = dict(old.locations)
+        if body.locations is not None:
+            locations = {}
+            for name, label in body.locations.items():
+                if spl_mod.clean_input_name(name) != name or not name:
+                    raise HTTPException(422, "An input name has characters that cannot be used")
+                label = tidy_location(label)
+                if label:
+                    locations[name] = label
+            if len(locations) > spl_mod.LOCATIONS_MAX:
+                raise HTTPException(422, f"Locations can be set for up to {spl_mod.LOCATIONS_MAX} inputs")
+        chart_range = old.chart_range if body.chart_range is None else body.chart_range
+        chart_min = old.chart_min_db if body.chart_min_db is None else body.chart_min_db
+        chart_max = old.chart_max_db if body.chart_max_db is None else body.chart_max_db
+        if body.chart_min_db is not None or body.chart_max_db is not None or chart_range == "custom":
+            err = spl_mod.chart_range_error(chart_min, chart_max)   # on the raw numbers: a huge whole number is refused, not converted
+            if err:
+                raise HTTPException(422, err)
+        chart_min, chart_max = float(chart_min), float(chart_max)
         try:
             # an empty port means Smaart's usual one (the page shows 26000 as its placeholder)
-            new = SplConfig(enabled=body.enabled, host=body.host, port=body.port or 26000, password=password, **extra)
+            new = SplConfig(enabled=body.enabled, host=body.host, port=body.port or 26000, password=password,
+                            location=location, locations=locations,
+                            chart_range=chart_range, chart_min_db=chart_min, chart_max_db=chart_max, **extra)
         except ValidationError:
             raise HTTPException(422, "The address must be a host name or an IP address on the local network") from None
         if new.enabled and not hub.emulate and not (new.host and new.port):
