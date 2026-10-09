@@ -322,8 +322,8 @@
     return card("Alarm notices",
       h("p", { class: "muted" }, "Keeps the alarm list on dashboards short. Advisory notices only: alert and stop alarms stay until they clear. The sensor list and this page still show what is wrong. 0 means never."),
       h("div", { class: "row" },
-        field("Hide acknowledged notices after (minutes)", hide),
-        field("Move old notices into the fold-out after (minutes)", fold),
+        field("Hide acknowledged notices after (minutes, 0 = never)", hide),
+        field("Move old notices into \"Older notices\" after (minutes, 0 = never)", fold),
         h("button", { class: "primary touch", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/alarms", {
           hide_acked_min: Math.round(Number(hide.value)), fold_old_min: Math.round(Number(fold.value)),
         }), "Alarm notices saved").then(refresh, () => {}) }, "Save")),

@@ -119,7 +119,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .alarm-bar ul { margin: 0; padding: 0; list-style: none; flex: 1; }
 .alarm-bar li { font-weight: 600; }
 .alarm-bar li.older { font-weight: 400; margin-top: 4px; }
-.alarm-bar li.older summary { cursor: pointer; min-height: 32px; display: list-item; }
+.alarm-bar li.older summary { cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 10px 0; display: list-item; }
+.alarm-bar li.older summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .alarm-bar li.older ul { margin-top: 4px; }
 .alarm-bar li .lvl { text-transform: uppercase; font-size: 12px; margin-right: 8px; opacity: .85; }
 
@@ -284,6 +285,9 @@ body.layout-phone .chart-wrap { height: 240px; }
 body.layout-wall { font-size: 18px; }
 body.layout-wall header.top .title { font-size: 32px; }
 body.layout-wall header.top .sub { font-size: 26px; }   /* dashboard, event and day: readable at 5 m */
+body.layout-wall .alarm-bar { font-size: 30px; }   /* alarm and notice wording readable from the back */
+body.layout-wall .alarm-bar li .lvl { font-size: 20px; }
+body.layout-wall .alarm-bar li.older summary { min-height: 56px; }
 body.layout-wall .tile .value { font-size: 64px; }
 body.layout-wall .tile .label { font-size: 18px; }
 body.layout-wall .tile .foot { font-size: 16px; }
