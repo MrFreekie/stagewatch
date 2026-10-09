@@ -172,8 +172,8 @@
     const max = st.max_slots || 3, inputs = st.inputs || [], metrics = st.metrics || [];
     const defaults = st.default_metrics || {};
     const on = h("input", { type: "checkbox", checked: !!s.enabled });
-    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", value: s.host || "", placeholder: "Name or address of the Smaart computer" });
-    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: s.port || "" });
+    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", value: s.host || "", placeholder: "127.0.0.1" });
+    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: s.port || "", placeholder: "26000" });
     // Smaart's API password: write-only. The saved one is never shown, only whether there is one.
     const pw = h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: st.password_set ? "Saved" : "None" });
     const clearPw = h("input", { type: "checkbox" });
@@ -184,11 +184,11 @@
     for (let i = 0; i < max; i++) {
       const cur = saved[i] || { source: "", metric: "" };
       const first = inputs.length ? ` (${inputs[0]})` : "";
-      const src = h("select", { class: "touch" }, h("option", { value: "" }, `The first input Smaart lists${first}`),
+      const src = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: input` }, h("option", { value: "" }, `First input in Smaart${first}`),
         ...inputs.map((n) => h("option", { value: n }, n)));
       if (cur.source && !inputs.includes(cur.source)) src.append(h("option", { value: cur.source }, `${cur.source} (Smaart does not list this now)`));
       src.value = cur.source;
-      const met = h("select", { class: "touch" }, h("option", { value: "" }, "(none)"), ...metrics.map((n) => h("option", { value: n }, n)));
+      const met = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: value` }, h("option", { value: "" }, "(none)"), ...metrics.map((n) => h("option", { value: n }, n)));
       if (cur.metric && !metrics.includes(cur.metric)) met.append(h("option", { value: cur.metric }, metrics.length ? `${cur.metric} (Smaart does not list this)` : cur.metric));
       met.value = cur.metric;
       slotRows.push({ src, met });
@@ -208,11 +208,11 @@
       h("p", { class: "muted" }, "Records up to three sound level values from Smaart, each an input and a value that you choose from Smaart's own lists, exactly as Smaart reports them, and shows them on dashboards that have the Sound level card (User dashboards → Edit cards). Stagewatch only listens to the live figures. It sends Smaart four fixed messages and nothing else: is a password needed, the list of inputs, the password, and a request for one update a second. It never starts or stops measuring, never reads Smaart's history, and changes no calibration, gain, logging or alarm. It does no sound-level maths: nothing is averaged, smoothed or rounded, and a value Smaart does not give (or marks as overload) shows as a dash, never zero."),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated Smaart with two inputs and the values SPL A Slow, SPL C Slow, LAeq 1 and LAeq 10, so no Smaart or address is needed. It has no LAeq 15, and now and then flags one reading as overload, to show how \"not available\" looks.")
         : h("p", { class: "notice" }, "Not yet tested against a live Smaart. This was written from the script Smaart's own web page uses, and no real reading has been seen. Turn on Smaart's API under Options → Preferences → API first. The port is normally the one Smaart's SPL web page uses (26000 is the usual example); please confirm it on your Smaart."),
-      h("div", { class: "row" }, field("Record sound level", on),
-        admin.emulate ? null : field("Smaart computer", host), admin.emulate ? null : field("Port", port)),
+      h("div", { class: "row" }, h("label", { class: "field inline" }, on, " Record sound level"),
+        admin.emulate ? null : field("Smaart computer (127.0.0.1 is this computer)", host), admin.emulate ? null : field("Port (26000 unless Smaart says otherwise)", port)),
       admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "Smaart API password: one is saved, type here to replace it" : "Smaart API password (leave empty if Smaart has none)", pw),
-        field(st.password_set ? "Remove the saved password" : "No password saved", clearPw)),
-      ...slotRows.map((r, i) => h("div", { class: "row" }, field(`Value ${i + 1}: input`, r.src), field(`Value ${i + 1}: value`, r.met))),
+        st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
+      ...slotRows.map((r, i) => h("div", { class: "row spl-slot" }, field(`Value ${i + 1}: input`, r.src), field(`Value ${i + 1}: value`, r.met))),
       h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/spl", {
         enabled: on.checked, host: host.value.trim(), port: port.value ? Number(port.value) : null,
         meters: slotRows.filter((r) => r.met.value).map((r) => ({ source: r.src.value, metric: r.met.value })),
