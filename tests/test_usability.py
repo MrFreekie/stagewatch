@@ -185,3 +185,14 @@ def test_dashboard_has_permanent_sound_toggle_and_banner_hooks():
 def test_static_vendor_is_served(client):
     r = client.get("/static/vendor/qrcode.js")
     assert r.status_code == 200 and "qrcode" in r.text
+
+
+def test_connect_a_tablet_card_folds_away_using_the_shared_fold_store():
+    admin = (STATIC / "admin.js").read_text(encoding="utf-8")
+    body = admin[admin.index("function connectCard()"):admin.index("// ---------", admin.index("function connectCard()"))]
+    # one <details> around the card, opened by the same remembered-open store, open by default
+    assert 'h("details", { class: "card-fold"' in body and 'h("summary", {}, head)' in body
+    assert 'connectFolds.bind(whole, "_card", true)' in body
+    css = (STATIC / "style.css").read_text(encoding="utf-8")
+    assert ".card > .card-fold > summary { min-height: 44px;" in css
+    assert ".card > .card-fold > summary:focus-visible { outline: 2px solid var(--accent)" in css

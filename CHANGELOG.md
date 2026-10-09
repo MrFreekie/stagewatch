@@ -17,6 +17,7 @@ them into a dated release section and tags the commit.
 
 ### Changed
 
+- The **Connect a tablet** card in Admin can now be folded away by tapping its heading (open by default, and Stagewatch remembers your choice in that browser).
 - The plain-digits **Wall Clock** is centred in its card and larger (up to 88 px on tablets, 56 px on phones, 220 px on the wall), with the note under it centred too.
 
 - The **Ontime Rundown** card can also be set to half width (**Card width** in Edit cards), with a single-column list and smaller type.

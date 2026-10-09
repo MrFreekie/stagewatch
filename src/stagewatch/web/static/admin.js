@@ -1373,6 +1373,13 @@
       h("p", { class: "muted" }, "On the tablet, join the same Wi-Fi as this computer, then scan a QR code or type the address into the browser."),
       body);
     c.id = "connect";
+    // The whole card folds away under its heading. Open unless the person has closed it; the
+    // remembered choice uses the same store as the folds inside (key "_card" cannot be a slug).
+    const head = c.firstChild, rest = Array.from(c.childNodes).slice(1);
+    const whole = h("details", { class: "card-fold", id: "connect-card-fold" }, h("summary", {}, head));
+    whole.append(...rest);
+    c.append(whole);
+    connectFolds.bind(whole, "_card", true);
     api("GET", "/api/admin/connect").then((r) => {
       if (!r.addresses.length) {
         body.replaceChildren(h("p", { class: "warn-text" }, "This computer does not seem to be on a network. Connect it to the show network (Wi-Fi or cable) and reload this page."));

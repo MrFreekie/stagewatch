@@ -721,6 +721,11 @@ label.field.inline input[type="checkbox"] { width: 24px; height: 24px; margin: 0
 .connect-fold .cf-url { font-size: 12px; overflow-wrap: anywhere; }
 .connect-fold .connect-item { padding: 4px 0 12px; }
 .connect-fold { border: 1px solid var(--grid); border-radius: 8px; padding: 0 10px; }
+/* A whole card that folds away under its heading (Connect a tablet) */
+.card > .card-fold > summary { min-height: 44px; box-sizing: border-box; cursor: pointer; }
+.card > .card-fold > summary h2 { margin: 0; flex: 1; }
+.card > .card-fold[open] > summary { margin-bottom: 10px; }
+.card > .card-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sw-fold > summary { min-width: 0; }
 .sw-fold .sw-fold-body { padding-bottom: 10px; overflow-wrap: anywhere; }
 .sw-fold .sw-flag { font-weight: 600; }
