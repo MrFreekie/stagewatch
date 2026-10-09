@@ -252,6 +252,12 @@ them into a dated release section and tags the commit.
 
 ### Changed
 
+- The **Ontime Timer** and **Ontime Rundown** cards show a small Ontime logo in their header corner, the same size and place as the Stagewatch badge on the Sound level card.
+
+- The **Wall Clock** card no longer says "Matches Stagewatch" under an Ontime time that agrees; a line appears only when the time differs, is stale or offline.
+
+- The **Ontime Timer** card shows the event title larger and bolder (32 px on tablets, 24 px on phones, 64 px on the wall), in full text colour, so it stands out from the count.
+
 - The **Sound level** card shows a small Stagewatch badge in its header corner (26 px on dashboards, 44 px on the wall).
 - Admin → Site: the altitude label now says the altitude is also used for the barometer's sea-level figure
   (it used to say it was only used without a pressure sensor).
