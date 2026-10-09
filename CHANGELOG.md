@@ -85,8 +85,7 @@ them into a dated release section and tags the commit.
   and the time in the middle) and **7-segment digits** like a studio clock. The ring and 7-segment looks
   are always red on black, by day and by night. Choose the look under **Admin → User dashboards →
   Edit cards → Wall Clock look**. Under **Admin → Wall Clock** you can also choose 24-hour or
-  12-hour (am/pm), show the date and make the colons blink (they stay steady if the device asks for reduced
-  motion). A ring on a card narrower than about 280 pixels shows plain digits. "Differs",
+  12-hour (am/pm), show the date. A ring on a card narrower than about 280 pixels shows plain digits. "Differs",
   "stale" and "offline" are shown with words and a ▲ as well as a dashed outline or a line through
   the time, never colour alone. `--emulate` gives the three stock dashboards one look each, and the
   clock cycles through live, differs, stale and offline every two minutes.
@@ -393,6 +392,8 @@ them into a dated release section and tags the commit.
   colours, the alarm sound button and the spacing in the top bar no longer break on old Safari.
 
 ### Removed
+
+- The Wall Clock **Blink the colons** option is removed: it was unstable. The colons are always steady. A saved `colon_blink` setting is ignored.
 - The older Linux install, where the service ran from your own downloaded folder as your own user
   and could not be updated from the admin page.
   **Action needed** if you used it: run `bash deploy/pi/install.sh --kiosk` again from your

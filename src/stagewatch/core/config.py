@@ -312,7 +312,6 @@ class WallClockDisplay(_Model):
     hour12: bool = False          # 12-hour clock with am/pm; default 24-hour
     show_date: bool = False       # the date under the time (Stagewatch's site date)
     ring: Literal["sweep", "fill"] = "sweep"   # ring style: one moving LED, or LEDs filling up to :59
-    colon_blink: bool = False     # the colons blink once a second (never under reduced motion)
 
 
 class WallClockConfig(_Model):

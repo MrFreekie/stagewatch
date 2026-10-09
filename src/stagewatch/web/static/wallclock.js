@@ -37,7 +37,7 @@ SW.wc = (function () {
   // Options with defaults; anything unexpected falls back to the default.
   wc.options = function (d) {
     d = d && typeof d === "object" ? d : {};
-    return { hour12: d.hour12 === true, showDate: d.show_date === true, colonBlink: d.colon_blink === true };
+    return { hour12: d.hour12 === true, showDate: d.show_date === true };
   };
 
   wc.wholeHours = (off) => Math.abs(off) >= 1800 && Math.abs(Math.abs(off) - Math.round(Math.abs(off) / 3600) * 3600) < 5;
@@ -176,9 +176,8 @@ SW.wc = (function () {
         const t = v.state === "off" ? { hh: "--", mm: "--", ss: "--" } : v.parts;
         setText(parts.hh, t.hh); setText(parts.mm, t.mm); setText(parts.ss, t.ss);
         setText(suffix, v.state === "off" ? "" : v.suffix);
-        const dim = !!opts.colonBlink && !opts.reduced && v.sec !== null && v.state !== "stale" && v.sec % 2 === 1;
-        setAttr(parts.c1, "class", dim ? "colon blink-off" : "colon");
-        setAttr(parts.c2, "class", dim ? "colon blink-off" : "colon");
+        setAttr(parts.c1, "class", "colon");      // the colons never blink (removed: it was unstable)
+        setAttr(parts.c2, "class", "colon");
         const next = `${v.digits}${v.suffix ? ` ${v.suffix}` : ""}`;
         if (next !== label) { label = next; svg.setAttribute("aria-label", `Wall Clock ${next}`); }
       },
@@ -231,8 +230,7 @@ SW.wc = (function () {
           const lit = wc.SEGMENTS[chars[i]] || "";
           for (const k of Object.keys(d.segs)) setAttr(d.segs[k], "class", lit.indexOf(k) >= 0 ? "seg on" : "seg");
         }
-        const dim = !!opts.colonBlink && !opts.reduced && v.sec !== null && v.state !== "stale" && v.sec % 2 === 1;
-        const cc = v.state === "off" ? "colon" : dim ? "colon on blink-off" : "colon on";
+        const cc = v.state === "off" ? "colon" : "colon on";
         for (const c of colons) setAttr(c, "class", cc);
         setText(suffix, v.state === "off" ? "" : v.suffix);
         const next = `${v.digits}${v.suffix ? ` ${v.suffix}` : ""}`;

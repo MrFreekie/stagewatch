@@ -462,14 +462,12 @@ body.layout-wall #wall-clock-card > h2 { font-size: 24px; }
 .wc-ring .wc-suffix { fill: var(--led-on); font-size: 13px; font-weight: 700; }
 .wc-s-stale .wc-digits { fill: var(--led-dim); }
 .wc-s-off .wc-digits { fill: var(--led-dim); }
-.wc-digits .blink-off { fill-opacity: .15; }
 .seg { fill: var(--led-off); }
 .seg.on { fill: var(--led-on); }
 .wc-s-stale .seg.on { fill: var(--led-dim); }
 .colon .dot { fill: var(--led-off); }
 .colon.on .dot { fill: var(--led-on); }
 .wc-s-stale .colon.on .dot { fill: var(--led-dim); }
-.colon.on.blink-off .dot { fill: var(--led-off); }
 .wc-segments .wc-suffix { color: var(--led-on); font-size: 22px; font-weight: 700; text-align: center; }
 .wc-segments .wc-suffix:empty { display: none; }
 body.layout-phone .wc-ring { max-width: 320px; }

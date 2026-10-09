@@ -54,7 +54,7 @@ def assign_card(hub, on=True):
 def test_defaults_pc_digits_and_no_led_colour_choice():
     w = WallClockConfig()
     assert w.source == "pc" and w.display == WallClockDisplay()
-    assert w.display.model_dump() == {"hour12": False, "show_date": False, "ring": "sweep", "colon_blink": False}
+    assert w.display.model_dump() == {"hour12": False, "show_date": False, "ring": "sweep"}
     assert "led" not in WallClockDisplay.model_fields           # LED looks are fixed red on black
     assert "led" not in Dashboard.model_fields and Dashboard(slug="x").clock_style == "digits"
     assert CLOCK_STYLES == ("digits", "ring", "segments")
@@ -78,7 +78,7 @@ def test_loading_is_lenient_about_looks_this_build_does_not_know():
 
 
 def test_the_model_itself_is_strict():
-    for bad in ({"ring": "pulse"}, {"hour12": "maybe"}, {"colon_blink": 7}):
+    for bad in ({"ring": "pulse"}, {"hour12": "maybe"}):
         with pytest.raises(ValueError):
             WallClockDisplay(**bad)
     with pytest.raises(ValueError):
@@ -158,14 +158,14 @@ def test_put_dashboards_clock_style_round_trips_is_strict_and_is_kept_when_not_s
 
 def test_put_wall_clock_accepts_pc_and_validates_the_look(client):
     ok = {"source": "pc", "ontime_url": "http://127.0.0.1:4001", "warn_offset_s": 2,
-          "display": {"hour12": True, "show_date": True, "ring": "fill", "colon_blink": True}}
+          "display": {"hour12": True, "show_date": True, "ring": "fill"}}
     r = client.put("/api/admin/wall-clock", json=ok)
     assert r.status_code == 200 and r.json()["display"]["ring"] == "fill"
     assert client.hub.config.wall_clock.source == "pc" and client.hub.config.wall_clock.display.hour12 is True
     state = client.get("/api/admin/state").json()
     assert state["config"]["wall_clock"]["display"]["show_date"] is True
     for bad in ({"source": "ntp"}, {"source": "gps"}, {"display": {"ring": "pulse"}}, {"display": {"hour12": "yes please"}},
-                {"display": {"colon_blink": 3}}, {"display": "wide"}):
+                {"display": "wide"}):
         assert client.put("/api/admin/wall-clock", json={**ok, **bad}).status_code == 422, bad
     assert client.hub.config.wall_clock.display.ring == "fill"           # nothing changed by the refusals
     r = client.put("/api/admin/wall-clock", json={"source": "ontime", "display": {"ring": "x" * 500}})
@@ -312,7 +312,7 @@ def test_clock_script_uses_only_safe_dom_and_svg_and_no_animation_loop():
 
 def test_admin_has_the_source_choice_the_look_options_and_the_per_dashboard_look():
     js = (STATIC / "admin.js").read_text(encoding="utf-8")
-    assert 'value: "pc"' in js and "colon_blink" in js and "show_date" in js and "hour12" in js
+    assert 'value: "pc"' in js and "colon_blink" not in js and "show_date" in js and "hour12" in js
     assert "clock_style: clockStyle.value" in js and '"segments"' in js
 
 

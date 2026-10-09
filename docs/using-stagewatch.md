@@ -544,7 +544,7 @@ the other source by itself: if Ontime stops, the card says so.
    `http://127.0.0.1:4001`. Click **Test connection**. **What you'll see:** "Ontime 4.14.0 answered."
    (your version number). Optional: change **Warn if more than this many seconds out**. The
    default is 2 seconds.
-4. Optional: choose **24-hour** or **12-hour (am/pm)**, tick **Show the date** and tick **Colons blink**. These
+4. Optional: choose **24-hour** or **12-hour (am/pm)**, and tick **Show the date**. These
    apply to every dashboard.
 5. Click **Save**.
 6. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Wall Clock**, choose its

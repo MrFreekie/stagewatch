@@ -102,10 +102,10 @@ eq(v.state, "off", "ok without a time is offline");
 v = wc.view(msg({ status: "offline", clock_ms: null, label: "Stagewatch PC", source: "pc" }), NOW);
 eq(v.note, "▲ Stagewatch PC offline: no time to show", "offline names the source");
 eq(wc.view(null, NOW).state, "off", "no message at all is offline, not a crash");
-eq(wc.view(msg({ display: undefined }), NOW).opts, { hour12: false, showDate: false, colonBlink: false }, "no display options: defaults");
-eq(wc.view(msg({ display: { ring: "pulse", hour12: "yes" } }), NOW).opts, { hour12: false, showDate: false, colonBlink: false }, "odd options: defaults");
+eq(wc.view(msg({ display: undefined }), NOW).opts, { hour12: false, showDate: false }, "no display options: defaults");
+eq(wc.view(msg({ display: { ring: "pulse", hour12: "yes" } }), NOW).opts, { hour12: false, showDate: false }, "odd options: defaults");
 eq(wc.view(msg({ display: { ring: "fill", hour12: true, show_date: true, colon_blink: true } }), NOW).opts,
-  { hour12: true, showDate: true, colonBlink: true }, "options read");
+  { hour12: true, showDate: true }, "options read (a saved colon_blink is ignored)");
 v = wc.view(msg({ display: { hour12: true }, clock_ms: at(0, 0, 0) * 1000 }), NOW);
 eq([v.digits, v.suffix], ["12:00:00", "am"], "12 h midnight in the view");
 v = wc.view(msg({ display: { hour12: true }, status: "offline", clock_ms: null }), NOW);
@@ -131,7 +131,7 @@ eq(wc.nextDelayMs(msg({ clock_ms: 10999.9 }), NOW) >= 30, true, "never spins");
 
 // ---- faces
 const view = (m, now) => wc.view(m, now === undefined ? NOW : now);
-const O = { colonBlink: false, reduced: false };
+const O = { reduced: false };
 const ledClasses = (face) => face.el.children[0].children.filter((c) => c.tagName === "circle").map((c) => c.attrs.class);
 const litIndexes = (face, cls) => ledClasses(face).map((c, i) => (c.split(" ").indexOf(cls) >= 0 ? i : -1)).filter((i) => i >= 0);
 
@@ -170,15 +170,13 @@ ring.update(view(msg({ status: "offline", clock_ms: null })), O);
 eq(ring.el.children[0].textContent.indexOf("--:--:--") >= 0, true, "ring offline shows dashes");
 eq(ring.el.children[0].attrs["aria-label"], "Wall Clock --:--:--", "ring label follows the view");
 // colons
-ring.update(view(msg({ clock_ms: at(14, 5, 9) * 1000 })), { colonBlink: true, reduced: false });
+ring.update(view(msg({ clock_ms: at(14, 5, 9) * 1000 })), { reduced: false });
 const colonCls = () => ring.el.children[0].children.filter((c) => c.tagName === "text")[0].children.filter((c) => c.attrs.class && c.attrs.class.indexOf("colon") === 0).map((c) => c.attrs.class);
-eq(colonCls(), ["colon blink-off", "colon blink-off"], "colons blink on odd seconds");
-ring.update(view(msg({ clock_ms: at(14, 5, 10) * 1000 })), { colonBlink: true, reduced: false });
-eq(colonCls(), ["colon", "colon"], "colons lit on even seconds");
-ring.update(view(msg({ clock_ms: at(14, 5, 9) * 1000 })), { colonBlink: true, reduced: true });
-eq(colonCls(), ["colon", "colon"], "reduced motion: colons never blink");
-ring.update(view(msg({ clock_ms: at(14, 5, 9) * 1000 })), { colonBlink: false, reduced: false });
-eq(colonCls(), ["colon", "colon"], "blink off by default");
+eq(colonCls(), ["colon", "colon"], "colons are steady on an odd second");
+ring.update(view(msg({ clock_ms: at(14, 5, 10) * 1000 })), { reduced: false });
+eq(colonCls(), ["colon", "colon"], "colons are steady on an even second");
+ring.update(view(msg({ clock_ms: at(14, 5, 9) * 1000 })), { reduced: true });
+eq(colonCls(), ["colon", "colon"], "reduced motion: steady too");
 
 // segments
 const seg = wc.createFace("segments");
@@ -211,10 +209,10 @@ seg.update(view(msg(), NOW + 30), O);
 eq([seg.el.attrs.class, digitLit(5) === expectLit("9")], ["wc-face wc-segments wc-s-stale", true], "stale: frozen digits stay, struck through by the stale class");
 eq(svg.children.some((c) => c.tagName === "line" && c.attrs.class === "wc-strike"), true, "there is a strike-through line");
 const colonG = () => svg.children.filter((c) => c.tagName === "g" && c.attrs.class && c.attrs.class.indexOf("colon") === 0).map((c) => c.attrs.class);
-seg.update(view(msg({ clock_ms: at(14, 5, 9) * 1000 })), { colonBlink: true, reduced: false });
-eq(colonG(), ["colon on blink-off", "colon on blink-off"], "segments: colons blink");
-seg.update(view(msg({ clock_ms: at(14, 5, 9) * 1000 })), { colonBlink: true, reduced: true });
-eq(colonG(), ["colon on", "colon on"], "segments: reduced motion never blinks");
+seg.update(view(msg({ clock_ms: at(14, 5, 9) * 1000 })), { reduced: false });
+eq(colonG(), ["colon on", "colon on"], "segments: colons are steady");
+seg.update(view(msg({ clock_ms: at(14, 5, 10) * 1000 })), { reduced: true });
+eq(colonG(), ["colon on", "colon on"], "segments: steady under reduced motion too");
 
 // digits
 const dg = wc.createFace("digits");
