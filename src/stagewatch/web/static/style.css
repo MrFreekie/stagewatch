@@ -564,6 +564,10 @@ body.layout-wall #ontime-rundown-card.rd-s-empty .rd-big, body.layout-wall #onti
 body.layout-wall #ontime-rundown-card.rd-s-off .rd-big, body.layout-wall #ontime-rundown-card.rd-s-error .rd-big { font-size: min(150px, 12vw); }
 body.layout-wall .rd-planned, body.layout-wall .rd-started, body.layout-wall .rd-day, body.layout-wall .rd-foot { display: none; }
 body.layout-wall .rd-bar { height: 24px; margin: 16px 0 8px; }
+body.layout-wall .rd-phrase.dup { display: none; }
+/* A fixed minimum height on the wall, so the card does not jump between its states (about 290 px
+   for "not started" up to about 730 px with every line). */
+body.layout-wall #ontime-rundown-card { min-height: 730px; }
 body.layout-wall #ontime-rundown-card > h2 { font-size: 24px; }
 /* ---- dashboard: Barometer card ----
    Tablet: the dial beside the figures. Phone: a smaller dial above them. Wall: big numbers, no dial

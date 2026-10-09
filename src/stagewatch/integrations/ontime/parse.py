@@ -236,6 +236,9 @@ def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownS
             changes.update({f: None for f in _OFFSET_FIELDS})
             changes["doc_offset_ms"] = value
     new = dataclasses.replace(state, **changes)
+    # Deliberately strict until a real capture shows whether selectedEventIndex is 0- or 1-based
+    # (and what Ontime sends when it is finished): an index past numEvents is treated as unreadable
+    # rather than guessed. Revisit after the owner's capture session.
     if new.selected_index is not None and new.num_events is not None and new.selected_index > new.num_events:
         return None
     return new

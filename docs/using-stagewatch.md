@@ -676,6 +676,7 @@ the Wall Clock and the Ontime Timer, and all the cards share one connection.
   end is later. A show that runs past midnight is handled; times after midnight say "+1 day".
 - **Not started**, **Finished**, **NO RUNDOWN** ("Ontime has no rundown loaded") and "has not sent rundown
   information yet" are shown in words.
+- **▲ CAN'T READ**: Ontime sent something Stagewatch couldn't read. The last good figures stay, struck through, until a readable update arrives. Nothing is guessed.
 - **▲ STALE**: nothing has arrived for a few seconds; the figures are struck through. **▲ OFFLINE**: Stagewatch
   can't hear Ontime; the figures show `--` (a gap, never a zero) and a quiet notice appears in the alarm bar
   (never a sound).

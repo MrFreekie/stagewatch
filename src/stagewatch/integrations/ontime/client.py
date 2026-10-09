@@ -252,20 +252,25 @@ class OntimeSource:
 
     def _ingest_rundown(self, payload: dict, transport: str, alive: bool, clock_ms: int | None) -> None:
         """Merge the rundown and offset blocks. A message without them (the usual one) just proves
-        the connection is alive, so the reading's age restarts; one that carries an unreadable
-        block turns the card to "can't read" until a readable block arrives."""
+        the connection is alive, so the reading's age restarts. A block that cannot be read keeps
+        the last good figures (nothing is guessed) but marks the reading ``unreadable``, until the
+        next readable block merges into them."""
         how = "WebSocket" if transport == "websocket" else "Polling"
         if "rundown" in payload or "offset" in payload:
             state = parse_rundown(payload, self._merged_rd)
             if state is None:
-                self._merged_rd = None
-                self._rundown = RundownReading(None, self._time(), "error", TEXT["bad_rundown"])
+                if self._merged_rd is None:   # nothing readable yet: nothing to keep
+                    self._rundown = RundownReading(None, self._time(), "error", TEXT["bad_rundown"])
+                else:
+                    self._rundown = RundownReading(self._merged_rd, self._time(), "ok", TEXT["bad_rundown"],
+                                                   clock_ms, unreadable=True)
             else:
                 self._merged_rd = state
                 self._rundown = RundownReading(state, self._time(), "ok", how, clock_ms)
         elif alive and self._rundown.status != "error":
             # Alive, no new blocks: same state, newer time. (With nothing seen yet it stays "no data".)
-            self._rundown = RundownReading(self._merged_rd, self._time(), "ok", how, clock_ms)
+            self._rundown = RundownReading(self._merged_rd, self._time(), "ok", how, clock_ms,
+                                           unreadable=self._rundown.unreadable)
 
     async def _run(self) -> None:
         backoff = self._bmin

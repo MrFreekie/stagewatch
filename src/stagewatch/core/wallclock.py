@@ -151,7 +151,7 @@ def seed_emulate_demo(config) -> bool:
     if card_assigned(config) or {d.slug for d in config.dashboards} != set(stock):
         return False
     for d in config.dashboards:
-        d.cards = [*d.cards[:1], *(["ontime_timer", "ontime_rundown"] if d.slug == "wall" else []), "wall_clock", *d.cards[1:]]
+        d.cards = [*d.cards[:1], *(["ontime_rundown", "ontime_timer"] if d.slug == "wall" else []), "wall_clock", *d.cards[1:]]
         d.clock_style = stock[d.slug]
     config.wall_clock.source = "ontime"
     return True

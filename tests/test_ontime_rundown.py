@@ -39,7 +39,8 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "src" / "stagewatch" / "web" / "static"
 
 PUBLIC_KEYS = {"status", "label", "received_at", "position", "offset_ms", "offset_mode", "planned_start_ms",
-               "planned_end_ms", "expected_end_ms", "actual_start_ms", "current_day", "ontime_clock_ms"}
+               "planned_end_ms", "expected_end_ms", "actual_start_ms", "current_day", "ontime_clock_ms", "unreadable"}
+# current_day (only to say "a later day") and ontime_clock_ms (Ontime's clock, for the day bar) are public on purpose.
 
 
 def ws_messages(name="ws_connect_1.json"):
@@ -217,6 +218,7 @@ def test_message_shape_has_only_the_agreed_fields():
     assert set(msg) == PUBLIC_KEYS
     assert msg["position"] == {"index": 8, "total": 16} and msg["offset_mode"] == "absolute"
     assert msg["planned_start_ms"] == 41_400_000 and msg["expected_end_ms"] == 81_000_000 and msg["ontime_clock_ms"] == 58_994_023
+    assert msg["current_day"] == 0 and msg["unreadable"] is False   # listed on purpose
     assert "WebSocket" not in json.dumps(msg)       # the detail text is not public
 
 
@@ -278,17 +280,36 @@ async def test_a_connection_that_is_lost_clears_the_rundown():
         await src.stop()
 
 
-def test_ingest_turns_an_unreadable_rundown_into_an_error_until_a_good_one_arrives():
+def test_an_unreadable_block_keeps_the_last_good_figures_and_marks_them():
+    """SYNTHETIC messages. One bad block must not blank the card until Ontime resends."""
     src = fast_source("http://127.0.0.1:1")
     good = {"clock": 1000, "rundown": rundown_block(), "offset": offset_block()}
     assert src._ingest(good, "websocket")
-    assert src.latest_rundown().status == "ok" and src.latest_rundown().state.selected_index == 3
+    r = src.latest_rundown()
+    assert r.status == "ok" and r.state.selected_index == 3 and r.unreadable is False
     assert src._ingest({"clock": 2000, "rundown": rundown_block(numEvents=1.5)}, "websocket")
-    assert src.latest_rundown().status == "error" and src.latest_rundown().state is None
-    assert src.latest().status == "ok" and src.latest().clock_ms == 2000
-    src._ingest({"clock": 3000}, "websocket")           # a plain message does not clear the error
+    r = src.latest_rundown()
+    assert r.status == "ok" and r.unreadable is True                     # marked, not blanked
+    assert (r.state.selected_index, r.state.num_events, r.state.offset_ms) == (3, 12, -250_000)   # last good, nothing guessed
+    assert rundown_message("Ontime", r)["unreadable"] is True
+    assert src.latest().status == "ok" and src.latest().clock_ms == 2000   # the clock is untouched
+    src._ingest({"clock": 3000}, "websocket")                            # a plain message keeps the mark, and stays alive
+    r2 = src.latest_rundown()
+    assert r2.unreadable is True and r2.state == r.state and r2.received_at >= r.received_at
+    src._ingest({"clock": 4000, "rundown": {"selectedEventIndex": 5}}, "websocket")   # the next good block merges into the last good
+    r3 = src.latest_rundown()
+    assert r3.unreadable is False and (r3.state.selected_index, r3.state.num_events, r3.state.offset_ms) == (5, 12, -250_000)
+    assert rundown_message("Ontime", r3)["unreadable"] is False
+
+
+def test_a_first_block_that_is_unreadable_has_nothing_to_keep():
+    src = fast_source("http://127.0.0.1:1")
+    src._ingest({"clock": 1000, "rundown": rundown_block(numEvents=1.5)}, "websocket")
+    r = src.latest_rundown()
+    assert r.status == "error" and r.state is None
+    src._ingest({"clock": 2000}, "websocket")                            # still an error after a plain message
     assert src.latest_rundown().status == "error"
-    src._ingest({"clock": 4000, "rundown": rundown_block(selectedEventIndex=5)}, "websocket")
+    src._ingest({"clock": 3000, "rundown": rundown_block(selectedEventIndex=5)}, "websocket")
     assert src.latest_rundown().status == "ok" and src.latest_rundown().state.selected_index == 5
 
 
@@ -388,16 +409,19 @@ def test_the_emulated_rundown_cycles_through_every_state():
     assert s.selected_index is None and s.actual_start_ms is None and s.num_events == 12            # not started
     on_time = emulated_rundown_state(35)
     assert abs(on_time.offset_ms) <= 30_000 and on_time.selected_index is not None
-    behind = emulated_rundown_state(89)
-    assert behind.offset_ms < -300_000                                                              # past the orange step
     amber = emulated_rundown_state(60)
-    assert -300_000 < amber.offset_ms < -60_000
-    ahead = emulated_rundown_state(129)
+    assert -300_000 < amber.offset_ms < -30_000
+    peak = emulated_rundown_state(90)
+    assert peak.offset_ms == -360_000 and peak.offset_ms < -300_000                                 # past the default 5 minute step
+    ahead = emulated_rundown_state(154)
     assert ahead.offset_ms > 60_000
-    done = emulated_rundown_state(170)
+    none_loaded = emulated_rundown_state(180)
+    assert none_loaded.num_events == 0 and none_loaded.selected_index is None                       # no rundown loaded
+    done = emulated_rundown_state(210)
     assert done.selected_index is None and done.actual_start_ms is not None                         # finished
     assert emulated_rundown_state(10 + RUNDOWN_CYCLE_S) == s
-    assert all(emulated_rundown_state(t / 2).planned_end_ms == 81_000_000 for t in range(0, int(RUNDOWN_CYCLE_S * 2)))
+    assert all(emulated_rundown_state(t / 2).planned_end_ms == 81_000_000
+               for t in range(0, int(RUNDOWN_CYCLE_S * 2)) if emulated_rundown_state(t / 2).num_events)
     assert 41_400_000 <= emulated_rundown_clock(0) < emulated_rundown_clock(100) < 81_000_000
 
 
@@ -447,7 +471,7 @@ def test_the_emulate_demo_puts_the_rundown_on_the_wall_dashboard_only():
     assert seed_emulate_demo(cfg) is True
     assert {d.slug: "ontime_rundown" in d.cards for d in cfg.dashboards} == {"foh": False, "phone": False, "wall": True}
     wall = cfg.dashboard("wall").cards
-    assert wall.index("ontime_timer") < wall.index("ontime_rundown") < wall.index("wall_clock")
+    assert wall.index("ontime_rundown") == 1 and wall.index("ontime_rundown") < wall.index("ontime_timer") < wall.index("wall_clock")   # high on the wall
 
 
 # ------------------------------------------------------------------ config and web

@@ -95,10 +95,16 @@ class RundownReading:
     status: Status
     detail: str = ""
     clock_ms: int | None = None
+    # True when Ontime's latest rundown or offset block could not be read. ``state`` then still
+    # holds the last readable figures (nothing is guessed), and the card shows them struck
+    # through with "can't read" until a readable block merges in.
+    unreadable: bool = False
 
 
 def rundown_message(label: str, reading: RundownReading) -> dict:
-    """The public shape (snapshot and live feed). No address, error text, ids or event text."""
+    """The public shape (snapshot and live feed). No address, error text, ids or event text.
+    ``current_day`` (only used to say "a later day") and ``ontime_clock_ms`` (Ontime's own clock, for
+    the day bar) are sent on purpose; both are plain numbers."""
     s = reading.state if reading.status == "ok" else None
     has_total = s is not None and s.num_events is not None
     return {
@@ -114,6 +120,7 @@ def rundown_message(label: str, reading: RundownReading) -> dict:
         "actual_start_ms": s.actual_start_ms if s else None,
         "current_day": s.current_day if s else None,
         "ontime_clock_ms": reading.clock_ms if s else None,
+        "unreadable": bool(s is not None and reading.unreadable),
     }
 
 

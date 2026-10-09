@@ -793,7 +793,7 @@ def test_the_emulate_demo_puts_the_timer_above_the_clock_on_the_wall():
     cfg = Config()
     assert seed_emulate_demo(cfg)
     wall = cfg.dashboard("wall").cards
-    assert wall.index("ontime_timer") < wall.index("wall_clock") and wall.index("ontime_timer") == 1
+    assert wall.index("ontime_timer") < wall.index("wall_clock") and wall.index("ontime_timer") == 2   # after the rundown card
 
 
 def test_the_title_clips():

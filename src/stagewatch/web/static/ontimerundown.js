@@ -94,7 +94,7 @@ SW.rd = (function () {
   // The words, symbol and level for an offset in Ontime's own sign. Never colour alone.
   rd.offsetView = function (offsetMs) {
     const ahead = rd.aheadMs(offsetMs), b = rd.band(ahead), t = rd.fmtOffset(ahead);
-    if (b.kind === "ontime") return { big: "ON TIME", sym: "●", word: "", phrase: "On time", level: "" };
+    if (b.kind === "ontime") return { big: "ON TIME", sym: "●", word: "", phrase: "", level: "" };
     if (b.kind === "ahead") return { big: `▲ ${t}`, sym: "▲", word: "AHEAD", phrase: `Running ${t} ahead`, level: "" };
     // Orange (far behind) gets a double triangle, so the step shows without colour too.
     const sym = b.level === "alert" ? "▼▼" : "▼";
@@ -110,7 +110,7 @@ SW.rd = (function () {
   //   planned, expected, started, day (short facts), barPct / tickPct (null = hide), note, badge, cls
   rd.view = function (m, now) {
     const name = (m && m.label) || "Ontime";
-    const v = { state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", position: "",
+    const v = { phraseDup: false, unreadable: false, state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", position: "",
       modeNote: "", planned: "", expected: "", started: "", day: "", barPct: null, tickPct: null, note: "", stale: false };
     if (!m || m.status !== "ok") {
       if (m && m.status === "error") {
@@ -135,11 +135,11 @@ SW.rd = (function () {
       v.state = "empty"; v.cls = "rd-s-empty"; v.big = "NO RUNDOWN"; v.note = `${name} has no rundown loaded`;
     } else if (pos.index === null || pos.index === undefined) {
       if (isNum(as)) {   // started, and no event is selected now
-        v.state = "finished"; v.cls = "rd-s-finished"; v.big = "FINISHED"; v.phrase = "Rundown finished";
+        v.state = "finished"; v.cls = "rd-s-finished"; v.big = "FINISHED";
         v.planned = isNum(pe) ? `Planned end ${rd.fmtOntimeTime(pe)}` : "";
         v.started = `Started ${rd.fmtOntimeTime(as)}`;
       } else {
-        v.state = "notstarted"; v.cls = "rd-s-notstarted"; v.big = "NOT STARTED"; v.phrase = "Not started";
+        v.state = "notstarted"; v.cls = "rd-s-notstarted"; v.big = "NOT STARTED";
         v.planned = plannedText;
       }
     } else {
@@ -153,6 +153,7 @@ SW.rd = (function () {
       if (isNum(m.offset_ms)) {
         const o = rd.offsetView(m.offset_ms);
         v.big = o.big; v.word = o.word; v.phrase = o.phrase; v.level = o.level;
+        v.phraseDup = !!o.phrase;   // "Running 4:10 behind" repeats the big figure and word (the wall hides it)
         v.modeNote = MODE_NOTE[m.offset_mode] || "";
       } else {
         v.big = "--"; v.phrase = "Ahead or behind not sent";
@@ -165,10 +166,14 @@ SW.rd = (function () {
     }
     if (isNum(m.current_day) && m.current_day > 0) v.day = `${name} marks this as a later day of the rundown`;
 
-    // Stale: nothing arrived for a while. Keep the figures but strike them through, and never
-    // show a colour step for them.
-    if (a > rd.STALE_S) {
-      v.stale = true; v.state = "stale"; v.cls = "rd-s-stale"; v.badge = "▲ STALE"; v.level = "";
+    // Unreadable: Ontime's latest rundown block could not be read, so these are the last good
+    // figures. Stale: nothing arrived for a while. Either way keep the figures but strike them
+    // through, say so once in words, and never show a colour step for them.
+    if (m.unreadable === true) {
+      v.unreadable = true; v.stale = true; v.state = "unreadable"; v.cls = "rd-s-stale"; v.level = "";
+      v.note = `▲ CAN'T READ: ${name} sent a rundown block we can't read. These are the last figures that made sense.`;
+    } else if (a > rd.STALE_S) {
+      v.stale = true; v.state = "stale"; v.cls = "rd-s-stale"; v.level = "";
       v.note = `▲ STALE: nothing from ${name} for ${ago(a)}. Don't trust these figures.`;
     }
     return v;
@@ -212,6 +217,7 @@ SW.rd = (function () {
       setHidden(ui.badge, !v.badge);
       setText(ui.phrase, v.phrase);
       setHidden(ui.phrase, !v.phrase);
+      setClass(ui.phrase, v.phraseDup ? "rd-phrase dup" : "rd-phrase");
       setText(ui.position, v.position);
       setHidden(ui.position, !v.position);
       for (const k of ["planned", "expected", "started", "day"]) {
