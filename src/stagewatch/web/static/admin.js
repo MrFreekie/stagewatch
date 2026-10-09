@@ -167,6 +167,20 @@
   // ------------------------------------------------------- sound level
   // Settings for the Sound level card: where Smaart is and which (up to three) values to record. The
   // card itself is added to a dashboard under User dashboards → Edit cards. Read-only toward Smaart.
+  let splFill = null;   // fills the drop-downs of the Sound level card on screen from new lists
+  // Read the current lists from the admin state and, if Smaart's names changed, update the drop-downs
+  // in place (what is chosen and typed stays; nothing is rebuilt).
+  async function pullSplLists() {
+    if (!admin || !splFill) return;
+    try {
+      const st = (await api("GET", "/api/admin/state")).spl || {};
+      const ins = st.inputs || [], mets = st.metrics || [], old = admin.spl || {};
+      if (JSON.stringify([ins, mets]) === JSON.stringify([old.inputs || [], old.metrics || []])) return;
+      admin.spl = { ...old, inputs: ins, metrics: mets };
+      splFill(ins, mets);
+    } catch (err) { if (err.status === 401) start(); }
+  }
+
   function splCard() {
     const s = admin.config.spl || {}, st = admin.spl || {};
     const max = st.max_slots || 3, inputs = st.inputs || [], metrics = st.metrics || [];
@@ -181,18 +195,43 @@
     // "the first input Smaart lists").
     const saved = (s.meters || (s.slots || []).map((k) => ({ source: "", metric: defaults[k] || k }))).slice(0, max);
     const slotRows = [];
+    // (Re)build the options of every drop-down from Smaart's current lists, keeping what is chosen.
+    // A chosen name Smaart no longer lists stays selected and says so; it is never swapped for another.
+    const fillLists = (ins, mets) => {
+      for (const r of slotRows) {
+        const curSrc = r.src.value, curMet = r.met.value;
+        const first = ins.length ? ` (${ins[0]})` : "";
+        r.src.replaceChildren(h("option", { value: "" }, `First input in Smaart${first}`), ...ins.map((n) => h("option", { value: n }, n)));
+        if (curSrc && !ins.includes(curSrc)) r.src.append(h("option", { value: curSrc }, `${curSrc} (Smaart does not list this now)`));
+        r.src.value = curSrc;
+        r.met.replaceChildren(h("option", { value: "" }, "(none)"), ...mets.map((n) => h("option", { value: n }, n)));
+        if (curMet && !mets.includes(curMet)) r.met.append(h("option", { value: curMet }, mets.length ? `${curMet} (Smaart does not list this)` : curMet));
+        r.met.value = curMet;
+      }
+    };
     for (let i = 0; i < max; i++) {
       const cur = saved[i] || { source: "", metric: "" };
-      const first = inputs.length ? ` (${inputs[0]})` : "";
-      const src = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: input` }, h("option", { value: "" }, `First input in Smaart${first}`),
-        ...inputs.map((n) => h("option", { value: n }, n)));
-      if (cur.source && !inputs.includes(cur.source)) src.append(h("option", { value: cur.source }, `${cur.source} (Smaart does not list this now)`));
-      src.value = cur.source;
-      const met = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: value` }, h("option", { value: "" }, "(none)"), ...metrics.map((n) => h("option", { value: n }, n)));
-      if (cur.metric && !metrics.includes(cur.metric)) met.append(h("option", { value: cur.metric }, metrics.length ? `${cur.metric} (Smaart does not list this)` : cur.metric));
-      met.value = cur.metric;
+      const src = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: input` }, h("option", { value: cur.source }, cur.source));
+      const met = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: value` }, h("option", { value: cur.metric }, cur.metric));
+      src.value = cur.source; met.value = cur.metric;
       slotRows.push({ src, met });
     }
+    fillLists(inputs, metrics);
+    splFill = fillLists;
+    const refreshStatus = h("span", { class: "muted", role: "status" });
+    const refreshBtn = h("button", { class: "touch", type: "button", onclick: async () => {
+      refreshBtn.disabled = true;
+      refreshStatus.textContent = "";
+      try {
+        const r = await api("POST", "/api/admin/spl/refresh");
+        refreshStatus.textContent = r.result || "Refreshed";
+        toast(refreshStatus.textContent);
+      } catch (err) {
+        refreshStatus.textContent = err.message;
+        toast(err.message, true);
+      } finally { refreshBtn.disabled = false; }
+      await pullSplLists();
+    } }, "Refresh");
     const lines = [];
     if (!st.running) lines.push("Not running. Tick the box and Save to start.");
     else lines.push(st.status === "ok" ? (st.detail || "Receiving values") : `▲ ${st.status}${st.detail ? `: ${st.detail}` : ""}`);
@@ -216,6 +255,7 @@
       admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "Smaart API password: one is saved, type here to replace it" : "Smaart API password (leave empty if Smaart has none)", pw),
         st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
       ...slotRows.map((r, i) => h("div", { class: "row spl-slot" }, field(`Value ${i + 1}: input`, r.src), field(`Value ${i + 1}: value`, r.met))),
+      h("div", { class: "row" }, refreshBtn, h("span", { class: "muted hint" }, "Re-reads the input and metric names from Smaart"), refreshStatus),
       h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/spl", {
         enabled: on.checked, host: host.value.trim(), port: port.value ? Number(port.value) : null,
         meters: slotRows.filter((r) => r.met.value).map((r) => ({ source: r.src.value, metric: r.met.value })),
@@ -1375,6 +1415,8 @@
         try { await loadSchedule(); } catch (_) { /* keep the last summary */ }
       }
       rerenderScheduleSummary();
+      // The Sound level drop-downs follow Smaart's lists (a renamed or new input) without a rebuild.
+      if (pollN % 3 === 1 && admin.spl && admin.spl.running) await pullSplLists();
       // Software status changes on its own (history entry once a new build is confirmed healthy,
       // background check finds an update): re-render that card only when it actually changed.
       if (++pollN % 3 === 0 && canRebuild && !document.querySelector("dialog[open]") && !watching) {

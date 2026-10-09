@@ -106,6 +106,13 @@ class EmulatedSplSource(SplSource):
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
 
+    async def refresh(self) -> bool:
+        """The simulated Smaart "answers" at once while it is up (its lists never change)."""
+        if not self._up:
+            return False
+        self._call(self._catalog, list(INPUT_LABELS), [m for m in RAW_METRICS if m.lower() not in mapping.DROPPED_METRICS])
+        return True
+
     def in_outage(self, elapsed: float) -> bool:
         """True while the simulated Smaart is unreachable (elapsed seconds since start)."""
         if elapsed < self._first:
@@ -184,6 +191,7 @@ class FakeSmaartServer:
         self.stream_frames = stream_frames
         self.probe_frames = probe_frames
         self.metrics = metrics
+        self.channel_names: tuple[str, ...] | None = None
         self.received: list[tuple[str, str]] = []
         self.paths: list[str] = []
         self._dropped = False
@@ -192,7 +200,8 @@ class FakeSmaartServer:
 
     # ---- protocol
     def inputs_reply(self) -> str:
-        chans = [{"channelName": CHANNELS[n], "streamEndpoint": f"/stream/{n}",
+        names = self.channel_names or CHANNELS   # a test may rename an input while the server runs
+        chans = [{"channelName": names[n], "streamEndpoint": f"/stream/{n}",
                   "logEndpointPrefix": f"/log/{n}", "alarms": [{"level": "red", "metric": "SPL A Slow"}]}
                  for n in range(self.inputs)]
         devices = [{"deviceName": DEVICE_NAME, "activeCalibratedChannels": chans}] if chans else []

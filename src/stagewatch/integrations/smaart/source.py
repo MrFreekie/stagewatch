@@ -50,6 +50,12 @@ class SplSource(ABC):
         """The input sources the chosen values need ("" = the first input listed). Sources that read
         from every input anyway (the simulated one) may ignore it."""
 
+    async def refresh(self) -> bool:
+        """Ask the software for its input and metric names again, now (the admin Refresh button).
+        True once fresh lists have arrived; False if the link is down or the software did not answer.
+        A source that cannot do this says False."""
+        return False
+
     def _catalog(self, inputs: list[str], metrics: list[str]) -> None:
         self.inputs, self.metrics = list(inputs), list(metrics)
         if self._on_catalog is not None:

@@ -1247,6 +1247,19 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                  "" if n == 1 else "s", "set" if new.password else "not set")
         return {"ok": True, "changed": old != new, "password_set": bool(new.password)}
 
+    @app.post("/api/admin/spl/refresh", dependencies=admin_deps)
+    async def refresh_spl():
+        """The Refresh button on the Sound level card: ask Smaart for its input and metric names again.
+        No body. Fixed-text result only (no addresses, passwords or Smaart text). Changes nothing in
+        Smaart; the drop-downs read the new lists from /api/admin/state."""
+        integ = hub.integrations.get("smaart")
+        if integ is None:
+            raise HTTPException(409, "Sound level is not switched on")
+        done, text = await integ.refresh_catalog()
+        if not done:
+            raise HTTPException(429 if text == "Refreshed too recently" else 409, text)
+        return {"ok": True, "result": text}
+
     @app.post("/api/admin/barometer/demo", dependencies=admin_deps)
     async def barometer_demo(body: BaroDemoBody):
         """Emulate only: start a weather scenario (the card is complete at once)."""
