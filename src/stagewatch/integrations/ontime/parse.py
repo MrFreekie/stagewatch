@@ -171,7 +171,7 @@ _RUNDOWN_KEYS = {   # Ontime key -> (RundownState field, lo, hi)
 _OFFSET_KEYS = {    # the real 4.14.0 shape: the top-level "offset" block
     "absolute": ("offset_absolute_ms", -MAX_OFFSET_MS, MAX_OFFSET_MS),
     "relative": ("offset_relative_ms", -MAX_OFFSET_MS, MAX_OFFSET_MS),
-    "expectedRundownEnd": ("offset_expected_end_ms", 0, MAX_TIME_MS),
+    "expectedRundownEnd": ("offset_expected_end_ms", -MAX_TIME_MS, MAX_TIME_MS),   # real Ontime sent a NEGATIVE value (-4729221) while the show ran 8 min off plan
 }
 _RUNDOWN_FIELDS = tuple(v[0] for v in _RUNDOWN_KEYS.values())
 _OFFSET_FIELDS = tuple(v[0] for v in _OFFSET_KEYS.values()) + ("offset_mode",)

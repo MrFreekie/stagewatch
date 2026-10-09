@@ -326,6 +326,8 @@ them into a dated release section and tags the commit.
 
 ### Fixed
 
+- **Ontime Rundown card: "can't read" when the show ran off plan.** A real Ontime sends a negative "expected rundown end" while the rundown is running early or late; the card refused it. It is now read. Checked against a real Ontime 4.14.0 capture.
+
 - **Sound level (Smaart): an input with brackets in its name was dropped.** Smaart names its streams with percent-encoding and brackets (for example `Channel 7 (1)`), and the first live test showed the card stuck on "Connected, but no values are arriving" because the only input was refused. Brackets and a few other harmless characters are now accepted; paths that could change the host (a leading `//`, `@`, `?`, `#`, `\`, `..`) are still refused. Checked against a real capture from Smaart Suite 9.6.4.
 - XIAO ESP32C6 nodes: an optional external-antenna block (off by default; the built-in antenna stays
   the default) and a guide section on when to use it. Not yet tested on hardware.

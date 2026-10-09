@@ -1,0 +1,34 @@
+{
+ "_note": "REAL Ontime 4.14.0 runtime-data payload captured 09/10/2026 (browser HAR, localhost:4001) while the rundown was running 8:49 off plan. Only clock, timer, offset and rundown kept (no event titles). Not synthetic.",
+ "payload": {
+  "clock": 52773022,
+  "timer": {
+   "addedTime": 0,
+   "current": 1897985,
+   "duration": 2100000,
+   "elapsed": 202015,
+   "expectedFinish": 54670779,
+   "phase": "default",
+   "playback": "play",
+   "secondaryTimer": null,
+   "startedAt": 52570779
+  },
+  "offset": {
+   "absolute": -529221,
+   "relative": -529221,
+   "mode": "absolute",
+   "expectedFlagStart": null,
+   "expectedGroupEnd": null,
+   "expectedRundownEnd": -4729221
+  },
+  "rundown": {
+   "selectedEventIndex": 5,
+   "numEvents": 14,
+   "plannedStart": 0,
+   "plannedEnd": 82200000,
+   "actualStart": 0,
+   "actualGroupStart": null,
+   "currentDay": 1
+  }
+ }
+}

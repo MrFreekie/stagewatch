@@ -180,7 +180,7 @@ def test_a_bad_rundown_value_makes_the_whole_block_unreadable(block):
 
 
 @pytest.mark.parametrize("block", [{"absolute": 1.5}, {"relative": "x"}, {"absolute": True},
-                                   {"absolute": 72 * 3_600_000 + 1}, {"expectedRundownEnd": -1}])
+                                   {"absolute": 72 * 3_600_000 + 1}, {"expectedRundownEnd": -(72 * 3_600_000 + 1)}])   # a small negative end is real (see below)
 def test_a_bad_offset_value_makes_the_block_unreadable(block):
     assert parse.parse_rundown({"rundown": rundown_block(), "offset": offset_block(**block)}) is None
 
@@ -586,3 +586,16 @@ def test_rundown_logic_in_node():
         pytest.skip("node is not installed")
     r = subprocess.run([node, str(ROOT / "tests" / "js" / "ontime_rundown_test.js")], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# --- a REAL capture while the show ran off plan (tests/fixtures/ontime/real_4_14_offset_running.json) ---
+
+def test_real_message_with_a_negative_expected_end_is_readable():
+    """Real Ontime 4.14.0 sent offset.expectedRundownEnd = -4729221 (negative) while the show was
+    8:49 off plan. The parser used to refuse it (range 0 and up), so the card said "can't read"."""
+    payload = json.loads((Path(__file__).parent / "fixtures" / "ontime" / "real_4_14_offset_running.json").read_text(encoding="utf-8"))["payload"]
+    st = parse.parse_rundown(payload)
+    assert st is not None
+    assert st.offset_absolute_ms == -529221 and st.offset_relative_ms == -529221
+    assert st.offset_expected_end_ms == -4729221 and st.offset_mode == "absolute"
+    assert st.selected_index == 5 and st.num_events == 14 and st.current_day == 1
