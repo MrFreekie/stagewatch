@@ -793,8 +793,8 @@ work anything out itself.
 > (`--emulate`) with simulated numbers. This is not a calibrated compliance record: the Smaart log or
 > report is the record that counts.
 
-**Set it up (admin).** Open **Admin → Sound level (Smaart)**. Tick **Record sound level**, type the name or
-address of the Smaart computer and its port, and choose up to three values (normally **A Slow**, **C Slow**
+**Set it up (admin).** Open **Admin → Sound level (Smaart)**. Tick **Record sound level**, check the name or
+address of the Smaart computer and its port (they start as this computer, `127.0.0.1`, and port `26000`; change them if Smaart runs elsewhere), and choose up to three values (normally **A Slow**, **C Slow**
 and **LAeq 15 min**). Save. In Smaart, switch the API on under **Options → Preferences → API**. Then add the
 card to a dashboard under **User dashboards → Edit cards**. The card stays hidden until values are set up.
 Stagewatch only listens: it never sends anything to Smaart, starts or stops measuring, or changes
