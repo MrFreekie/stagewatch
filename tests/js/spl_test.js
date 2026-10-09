@@ -50,6 +50,15 @@ eq(SW.spl.view(ent("w", 1, {}, { value: null, updated: null }), null, 1001).stat
 const stale = SW.spl.view(ent("s", 1, {}, { stale: true, updated: 880 }), null, 1000);
 eq([stale.state, stale.text, stale.note], ["stale", "94.3", "Old reading, 2m ago"], "stale keeps the value and says how old");
 
+// Smaart's own wording for time-weighted levels; everything else keeps its name; ids untouched
+eq(SW.spl.label(ent("spl.c_slow", 1, { weighting: "C", metric: "SPL", time_constant: "Slow" }, { name: "C Slow" })), "SPL C Slow", "label C Slow");
+eq(SW.spl.label(ent("spl.a_fast", 1, { weighting: "A", metric: "SPL", time_constant: "Fast" }, { name: "A Fast" })), "SPL A Fast", "label A Fast");
+eq(SW.spl.label(L), L.name, "LAeq label unchanged");
+// the input line: text only, nothing when empty
+eq(SW.spl.inputLine({ input_name: "ASIO MADIface USB : Channel 7 (1)" }), "Input: ASIO MADIface USB : Channel 7 (1)", "input line");
+eq([SW.spl.inputLine({}), SW.spl.inputLine({ input_name: "  " }), SW.spl.inputLine(undefined), SW.spl.inputLine({ input_name: 5 })], ["", "", "", ""], "no name, no line");
+eq(SW.spl.inputLine({ input_name: "<b>x</b>" }), "Input: <b>x</b>", "markup stays plain text");
+
 // gaps and the chart note
 eq(SW.spl.gapSeconds(1), 10, "gap is at least 10 s");
 eq(SW.spl.gapSeconds(7.2), 21.6, "gap grows with the interval");

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 MAX_SLOTS = 3
@@ -118,6 +119,19 @@ class SplReading:
     ts: float
     values: dict[str, float | None] = field(default_factory=dict)
     version: str = ""   # the software's version as it reported it, cleaned (see clean_version)
+
+
+INPUT_NAME_MAX = 80
+
+
+def clean_input_name(value: object) -> str:
+    """The name of the input a meter is tied to, as the software wrote it, made safe to show: text
+    only, control characters removed, spaces tidied, at most INPUT_NAME_MAX characters, "" if unknown.
+    Markup is not stripped here because it is only ever shown as plain text (textContent)."""
+    if not isinstance(value, str):
+        return ""
+    text = "".join(" " if ch.isspace() else ch for ch in value if ch.isspace() or unicodedata.category(ch)[0] != "C")
+    return " ".join(text.split())[:INPUT_NAME_MAX].strip()
 
 
 def clean_version(value: object) -> str:

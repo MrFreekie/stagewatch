@@ -452,6 +452,65 @@ def test_emulated_source_offers_some_values_and_not_others_and_has_an_outage():
         [False, False, True, True, False, False, True, True, False]
 
 
+def test_input_name_is_cleaned_capped_and_empty_when_unknown():
+    assert spl.clean_input_name("ASIO MADIface USB : Channel 7 (1)") == "ASIO MADIface USB : Channel 7 (1)"
+    assert spl.clean_input_name("A\x00B\x1b[31m\u202eC\r\nD\t E") == "AB[31mC D E"
+    assert spl.clean_input_name("x" * 5000) == "x" * spl.INPUT_NAME_MAX
+    assert spl.clean_input_name("<img src=x onerror=alert(1)>") == "<img src=x onerror=alert(1)>"   # text only; shown with textContent
+    assert [spl.clean_input_name(v) for v in (None, 5, b"x", "", "  \n ")] == [""] * 5
+
+
+def test_sources_report_an_input_name_the_emulated_one_and_the_real_one_empty():
+    emu = EmulatedSplSource(lambda r: None, lambda u, d: None)
+    assert emu.input_name == ""
+    emu.input_name = "q" * 999 + "\x00"
+    assert emu.input_name == "q" * spl.INPUT_NAME_MAX
+    real = SmaartSource(lambda: None, lambda r: None, lambda u, d: None)
+    assert real.input_name == ""
+
+
+async def test_the_input_name_reaches_the_public_device_and_the_admin_status(tmp_path):
+    hub = Hub(tmp_path, emulate=True)
+    hub.config.spl = SplConfig(enabled=True, slots=["a_slow"])
+    integ = SmaartIntegration(hub, emulate=True, source_factory=lambda o: EmulatedSplSource(
+        o._reading, o._link, period_s=0.01, first_outage_s=60))
+    hub.add_integration(integ)
+    try:
+        await integ.start()
+        want = "ASIO MADIface USB : Channel 7 (1)"
+        assert hub.devices["spl"].to_dict()["input_name"] == want
+        assert integ.admin_status()["input_name"] == want and integ.admin_status()["source"] == "Simulated Smaart"
+    finally:
+        await integ.stop()
+        hub.recorder.close()
+
+
+async def test_hostile_input_name_is_cleaned_before_it_is_public_and_empty_shows_nothing(tmp_path):
+    hub = Hub(tmp_path, emulate=True)
+    hub.config.spl = SplConfig(enabled=True, slots=["a_slow"])
+    made = []
+
+    def factory(o):
+        s = EmulatedSplSource(o._reading, o._link, period_s=0.01, first_outage_s=60)
+        made.append(s)
+        return s
+
+    integ = SmaartIntegration(hub, emulate=True, source_factory=factory)
+    hub.add_integration(integ)
+    try:
+        await integ.start()
+        made[0].input_name = "<b>\x00" + "L" * 500
+        await until(lambda: values(hub)["spl.a_slow"] is not None)
+        name = hub.devices["spl"].to_dict()["input_name"]
+        assert len(name) == spl.INPUT_NAME_MAX and "\x00" not in name
+        made[0].input_name = ""
+        await until(lambda: hub.devices["spl"].input_name == "")
+        assert "input_name" not in hub.devices["spl"].to_dict()
+    finally:
+        await integ.stop()
+        hub.recorder.close()
+
+
 async def test_emulate_mode_runs_through_the_hub_with_a_dropout_and_comes_back(tmp_path):
     hub = Hub(tmp_path, emulate=True)
     hub.config.spl = SplConfig(enabled=True, slots=["a_slow", "z_slow", "laeq_15m"])
@@ -838,7 +897,7 @@ def test_put_spl_applies_at_once_and_the_snapshot_has_the_public_shape_only(clie
     assert [e["id"] for e in ents] == ["spl.c_slow", "spl.a_fast"]
     assert ents[0]["labels"] == {"weighting": "C", "metric": "SPL", "slot": "1", "time_constant": "Slow"}
     dev = next(d for d in snap["devices"] if d["id"] == "spl")
-    assert set(dev) == {"id", "name", "integration", "category", "manufacturer", "model", "area", "status", "status_detail"}
+    assert set(dev) == {"id", "name", "integration", "category", "manufacturer", "model", "area", "status", "status_detail", "input_name"}
     assert dev["category"] == "service"
 
 

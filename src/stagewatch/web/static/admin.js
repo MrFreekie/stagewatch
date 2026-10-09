@@ -182,7 +182,7 @@
     const lines = [];
     if (!st.running) lines.push("Not running. Tick the box and Save to start.");
     else lines.push(st.status === "ok" ? (st.detail || "Receiving values") : `▲ ${st.status}${st.detail ? `: ${st.detail}` : ""}`);
-    if (st.running && st.source) lines.push(st.source);
+    if (st.running && st.source) lines.push(st.input_name ? `${st.source} · ${st.input_name}` : st.source);
     if (st.version) lines.push(`Version ${st.version}`);
     return card("Sound level (Smaart)",
       h("p", { class: "muted" }, "Records up to three sound level values you choose from Smaart, exactly as Smaart reports them, and shows them on dashboards that have the Sound level card (User dashboards → Edit cards). Stagewatch only listens: it never sends anything to Smaart, never starts or stops measuring, and changes no calibration, gain, logging or alarm. It does no sound-level maths: nothing is averaged, smoothed or rounded, and a value Smaart does not give shows as a dash, never zero."),

@@ -862,12 +862,15 @@
     const dev = state.devices[ents[0].device_id];
     for (const e of ents) {
       const v = SW.spl.view(e, dev, state.now), r = splUi.rows[e.id];
-      setText(r.name, e.name || e.id);
+      setText(r.name, SW.spl.label(e));
       setText(r.value, v.text);
       setText(r.sub, v.sub);
       setText(r.note, v.note);
       setClass(r.el, `tile spl-tile spl-${v.state}`);
     }
+    const inp = $("spl-input"), line = SW.spl.inputLine(dev);
+    inp.hidden = !line;
+    setText(inp, line);
     // The state of the link to Smaart, in words (never colour alone).
     const down = dev && (dev.status === "missing" || dev.status === "fault" || dev.status === "compromised");
     const status = $("spl-status");
@@ -885,7 +888,7 @@
     const ents = SW.spl.entities(state.entities), span = splSpanS(), now = serverNow();
     const gap = SW.spl.gapSeconds(span / SPL_POINTS);
     splChart.series = ents.map((e, i) => ({
-      label: e.name || e.id, color: css(COLORS[i % COLORS.length]), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3],
+      label: SW.spl.label(e), color: css(COLORS[i % COLORS.length]), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3],
       points: state.splHistory[e.id] || [],
     }));
     splChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "spl").map((m) => ({ ...m, selected: false }));
@@ -893,7 +896,7 @@
     splChart.defaultRange = [70, 110];
     splChart.draw();
     $("spl-legend").replaceChildren(...ents.map((e, i) => h("span", {}, h("i", { class: `spl-key spl-line-${i % 3}`, style: `border-top-color:${css(COLORS[i % COLORS.length])}` }),
-      `${e.name || e.id} (${SW.spl.LINE_NAMES[i % 3]})`)));
+      `${SW.spl.label(e)} (${SW.spl.LINE_NAMES[i % 3]})`)));
     setText($("spl-note"), `${SW.spl.chartNote(span, SPL_POINTS)} Values are as Smaart reports them; this is not a compliance record.`);
   }
   async function loadSplHistory() {

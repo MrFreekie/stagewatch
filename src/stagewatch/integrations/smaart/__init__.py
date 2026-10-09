@@ -136,6 +136,7 @@ class SmaartIntegration(Integration):
                 self._key = key
                 await self._source.start()
             self._sync_entities()
+            self._sync_input_name()
 
     async def _stop_source(self) -> None:
         source, self._source, self._key = self._source, None, None
@@ -157,6 +158,10 @@ class SmaartIntegration(Integration):
             "Smaart" if not self.emulate else "Simulated Smaart",
             status=Status.INITIALIZING, status_detail="Connecting", category="service"))
         self._registered = True
+
+    def _sync_input_name(self) -> None:
+        if self._registered:
+            self.hub.set_device_input_name(DEVICE_ID, self._source.input_name if self._source else "")
 
     def slot_entities(self) -> list[tuple[str, str]]:
         """[(entity id, metric key)] for the chosen values, in slot order."""
@@ -207,6 +212,7 @@ class SmaartIntegration(Integration):
         now = self._clock()
         gap = self._gap_since
         self._last_rx, self._had_data = now, True
+        self._sync_input_name()
         self._available = {k: reading.values.get(k) is not None for k in METRIC_BY_KEY}
         given = 0
         slots = self.slot_entities()
@@ -266,6 +272,7 @@ class SmaartIntegration(Integration):
                 "status": device.status.value if device else "off",
                 "detail": device.status_detail if device else "",
                 "version": self._source.version if self._source else "",
+                "input_name": self._source.input_name if self._source else "",
                 "source": (self._source.label if self._source else ""),
                 "verified": bool(self._source.verified) if self._source else False,
                 "available": dict(self._available)}

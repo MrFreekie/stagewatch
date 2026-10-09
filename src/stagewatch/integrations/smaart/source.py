@@ -17,7 +17,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Callable
 
-from ...core.spl import SplReading
+from ...core.spl import SplReading, clean_input_name
 
 ReadingCallback = Callable[[SplReading], None]
 LinkCallback = Callable[[bool, str], None]
@@ -34,6 +34,16 @@ class SplSource(ABC):
         self._on_reading = on_reading
         self._on_link = on_link
         self.version = ""   # the software's version as it reported it (cleaned), "" if unknown
+        self._input_name = ""
+
+    @property
+    def input_name(self) -> str:
+        """The input the meter is tied to, as the software names it (cleaned), "" if unknown."""
+        return self._input_name
+
+    @input_name.setter
+    def input_name(self, value: object) -> None:
+        self._input_name = clean_input_name(value)
 
     @abstractmethod
     async def start(self) -> None: ...

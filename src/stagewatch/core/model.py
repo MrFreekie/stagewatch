@@ -96,9 +96,12 @@ class Device:
     # "environment" (air at the site) or "equipment" (gear). Set by the integration from the
     # node's config. Not in to_dict(): dashboards group by the entity's role.
     role: str = "environment"
+    # The input a measurement source is tied to, as the software names it (cleaned text). Only the
+    # sound level device sets it; left out of to_dict() while empty.
+    input_name: str = ""
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "id": self.id,
             "name": self.name,
             "integration": self.integration,
@@ -109,6 +112,9 @@ class Device:
             "status": self.status.value,
             "status_detail": self.status_detail,
         }
+        if self.input_name:
+            out["input_name"] = self.input_name
+        return out
 
 
 @dataclass
