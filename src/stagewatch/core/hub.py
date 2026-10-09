@@ -316,6 +316,14 @@ class Hub:
         device.input_name = name
         self.bus.publish("device", device)
 
+    def set_device_public(self, device_id: str, fields: dict) -> None:
+        """Set a device's extra public fields (already cleaned); tells clients on change."""
+        device = self.devices.get(device_id)
+        if device is None or device.public == fields:
+            return
+        device.public = dict(fields)
+        self.bus.publish("device", device)
+
     def remove_entity(self, entity_id: str) -> None:
         """Forget an entity (emulate scenarios that take a sensor away). Its history stays."""
         self.entities.pop(entity_id, None)
@@ -327,6 +335,7 @@ class Hub:
                 entity.name, entity.kind, entity.unit, entity.decimals)
             existing.hw_key = entity.hw_key
             existing.labels = dict(entity.labels)
+            existing.location = entity.location
             entity = existing
         else:
             self.entities[entity.id] = entity

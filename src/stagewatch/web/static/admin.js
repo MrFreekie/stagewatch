@@ -209,15 +209,52 @@
         r.met.value = curMet;
       }
     };
+    // Locations are labels only. A default for the whole card, plus one per Smaart input (saved by the
+    // input's name, so slots that read the same input share one field). They never change what is recorded.
+    const locs = { ...(s.locations || {}) };
+    const defLoc = h("input", { class: "touch", maxlength: "40", autocomplete: "off", value: s.location || "", placeholder: "FOH" });
+    const locBox = h("div", {});
+    // Graph range: automatic fits the readings; custom is fixed. The numbers stay filled in (22 and 145 to begin with).
+    const rangeMode = h("select", { class: "touch", "aria-label": "Graph range" },
+      h("option", { value: "auto" }, "Automatic"), h("option", { value: "custom" }, "Custom"));
+    rangeMode.value = s.chart_range === "custom" ? "custom" : "auto";
+    const rangeMin = h("input", { class: "num touch", type: "number", min: "0", max: "200", step: "1", value: s.chart_min_db === undefined ? 22 : s.chart_min_db });
+    const rangeMax = h("input", { class: "num touch", type: "number", min: "0", max: "200", step: "1", value: s.chart_max_db === undefined ? 145 : s.chart_max_db });
+    const rangeNums = h("span", { class: "row spl-range-nums" }, field("Min dB", rangeMin), field("Max dB", rangeMax));
+    const showRange = () => { rangeNums.hidden = rangeMode.value !== "custom"; };
+    rangeMode.addEventListener("change", showRange);
+    showRange();
+    let curInputs = inputs;
+    const renderLocs = (ins) => {
+      curInputs = ins;
+      if (!ins.length) {
+        locBox.replaceChildren(h("p", { class: "muted hint" }, "A location for each input appears here once Smaart is connected. Any you have saved are kept."));
+        return;
+      }
+      const kids = [], seen = new Set();
+      for (const r of slotRows) {
+        const name = r.src.value || ins[0];
+        if (!r.met.value || !name || seen.has(name)) continue;
+        seen.add(name);
+        const inp = h("input", { class: "touch", maxlength: "40", autocomplete: "off", value: locs[name] || "", "aria-label": `Location for ${name}`, oninput: () => { locs[name] = inp.value; } });
+        kids.push(h("div", { class: "row" }, field(`Location for this input (${name})`, inp)));
+      }
+      for (const name of Object.keys(locs).filter((n) => locs[n] && !ins.includes(n))) {
+        const note = h("span", { class: "muted" }, `Not listed now: ${name} → ${locs[name]} `);
+        kids.push(h("p", {}, note, h("button", { type: "button", class: "touch", onclick: () => { delete locs[name]; renderLocs(curInputs); } }, "Remove")));
+      }
+      locBox.replaceChildren(...kids);
+    };
     for (let i = 0; i < max; i++) {
       const cur = saved[i] || { source: "", metric: "" };
-      const src = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: input` }, h("option", { value: cur.source }, cur.source));
-      const met = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: value` }, h("option", { value: cur.metric }, cur.metric));
+      const src = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: input`, onchange: () => renderLocs(curInputs) }, h("option", { value: cur.source }, cur.source));
+      const met = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: value`, onchange: () => renderLocs(curInputs) }, h("option", { value: cur.metric }, cur.metric));
       src.value = cur.source; met.value = cur.metric;
       slotRows.push({ src, met });
     }
     fillLists(inputs, metrics);
-    splFill = fillLists;
+    renderLocs(inputs);
+    splFill = (ins, mets) => { fillLists(ins, mets); renderLocs(ins); };
     const refreshStatus = h("span", { class: "muted", role: "status" });
     const refreshBtn = h("button", { class: "touch", type: "button", onclick: async () => {
       refreshBtn.disabled = true;
@@ -252,14 +289,23 @@
         : h("p", { class: "notice" }, "Not yet tested against a live Smaart. This was written from the script Smaart's own web page uses, and no real reading has been seen. Turn on Smaart's API under Options → Preferences → API first. The port is normally the one Smaart's SPL web page uses (26000 is the usual example); please confirm it on your Smaart."),
       h("div", { class: "row" }, h("label", { class: "field inline" }, on, " Record sound level"),
         admin.emulate ? null : field("Smaart computer (127.0.0.1 is this computer)", host), admin.emulate ? null : field("Port (26000 unless Smaart says otherwise)", port)),
+      h("div", { class: "row" }, field("Default location (shown on the card)", defLoc),
+        h("span", { class: "muted hint" }, "For example FOH or Stage left. Shown on the dashboard card, for any input without its own location below.")),
+      h("div", { class: "row" }, field("Graph range", rangeMode), rangeNums,
+        h("span", { class: "muted hint" }, "Automatic fits the graph to what Smaart reports. Custom keeps it fixed, for example 22 to 145 dB.")),
       admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "Smaart API password: one is saved, type here to replace it" : "Smaart API password (leave empty if Smaart has none)", pw),
         st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
       ...slotRows.map((r, i) => h("div", { class: "row spl-slot" }, field(`Value ${i + 1}: input`, r.src), field(`Value ${i + 1}: value`, r.met))),
+      locBox,
       h("div", { class: "row" }, refreshBtn, h("span", { class: "muted hint" }, "Re-reads the input and metric names from Smaart"), refreshStatus),
       h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/spl", {
         enabled: on.checked, host: host.value.trim(), port: port.value ? Number(port.value) : null,
         meters: slotRows.filter((r) => r.met.value).map((r) => ({ source: r.src.value, metric: r.met.value })),
         password: pw.value, clear_password: clearPw.checked,
+        location: defLoc.value,
+        chart_range: rangeMode.value,
+        ...(rangeMode.value === "custom" ? { chart_min_db: Number(rangeMin.value), chart_max_db: Number(rangeMax.value) } : {}),
+        locations: Object.fromEntries(Object.entries(locs).filter(([, v]) => v.trim())),
       }), "Sound level saved").then(refresh, () => {}) }, "Save")),
       ...notes.map((n) => h("p", { class: "notice" }, n)),
       h("p", { class: "muted hint" }, "Normally SPL A Slow, SPL C Slow and an LAeq figure. The LAeq is Smaart's own number; Stagewatch cannot check which period it covers beyond the name Smaart gives it. Stagewatch is not a calibrated compliance record. The Smaart log or report is the record that counts."),

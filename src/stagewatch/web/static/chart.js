@@ -10,6 +10,7 @@ class TimeChart {
     this.markers = [];    // [{ts, label, selected}]
     this.range = [Date.now() / 1000 - 3600, Date.now() / 1000];
     this.format = opts.format || ((v) => v.toFixed(1));
+    this.fixedRange = null;     // [lo, hi] used exactly when set; readings outside are drawn at the edge with a mark
     this.defaultRange = null;   // [lo, hi] the axis starts from; it grows if the data goes outside it
     this.onMarkerClick = opts.onMarkerClick || null;
     this._markerHits = [];
@@ -210,9 +211,10 @@ class TimeChart {
       this._drawMarkers(ctx, pad, ph, text);
       return;
     }
-    [lo, hi] = TimeChart.yRange(lo, hi, this.defaultRange);
+    const fixed = Array.isArray(this.fixedRange) && this.fixedRange.length === 2 && this.fixedRange[0] < this.fixedRange[1] ? this.fixedRange : null;
+    if (fixed) [lo, hi] = fixed; else [lo, hi] = TimeChart.yRange(lo, hi, this.defaultRange);
     const x = (t) => pad.l + ((t - t0) / (t1 - t0)) * pw;
-    const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * ph;
+    const y = (v) => pad.t + (1 - ((fixed ? Math.min(hi, Math.max(lo, v)) : v) - lo) / (hi - lo)) * ph;
 
     // grid + y labels
     ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.fillStyle = fg;
@@ -251,6 +253,21 @@ class TimeChart {
     }
     ctx.setLineDash([]);
     ctx.restore();
+    // A fixed range never hides a reading outside it: the line runs to the edge and a small triangle
+    // (up for above, down for below) sits there, at most one every 10 px.
+    if (fixed) {
+      ctx.fillStyle = text; ctx.strokeStyle = this._css("--panel", "#161b26"); ctx.lineWidth = 1;
+      const last = { up: -99, down: -99 };
+      for (const s of this.series) for (const [t, v] of s.points) {
+        if (v === null || t < t0 || t > t1 || (v <= hi && v >= lo)) continue;
+        const up = v > hi, k = up ? "up" : "down", xx = x(t);
+        if (xx - last[k] < 10) continue;
+        last[k] = xx;
+        const yy = up ? pad.t + 2 : pad.t + ph - 2, d = up ? 1 : -1;
+        ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx - 5, yy + 8 * d); ctx.lineTo(xx + 5, yy + 8 * d); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+      }
+    }
 
     this._drawMarkers(ctx, pad, ph, text);
 

@@ -842,11 +842,12 @@
       const r = {
         chip: h("i", { class: `spl-chip spl-line-${i}`, "aria-hidden": "true" }),
         name: h("span", {}), value: h("span", { class: "spl-num" }), unit: h("span", { class: "unit" }, "dB"),
+        loc: h("div", { class: "foot spl-loc" }),
         sub: h("div", { class: "foot spl-sub" }), note: h("div", { class: "foot spl-note-line" }),
       };
       r.chip.style.borderTopColor = `var(${COLORS[i % COLORS.length]})`;
       r.el = h("div", { class: "tile spl-tile" }, h("div", { class: "label" }, r.chip, r.name),
-        h("div", { class: "value" }, r.value, r.unit), r.sub, r.note);
+        r.loc, h("div", { class: "value" }, r.value, r.unit), r.sub, r.note);
       splUi.rows[e.id] = r;
       return r.el;
     }));
@@ -863,11 +864,15 @@
     for (const e of ents) {
       const v = SW.spl.view(e, dev, state.now), r = splUi.rows[e.id];
       setText(r.name, SW.spl.label(e));
+      const loc = SW.spl.location(e);
+      setText(r.loc, loc);
+      r.loc.hidden = !loc;
       setText(r.value, v.text);
       setText(r.sub, v.sub);
       setText(r.note, v.note);
       setClass(r.el, `tile spl-tile spl-${v.state}`);
     }
+    setText($("spl-title"), SW.spl.title(ents));
     const inp = $("spl-input"), line = SW.spl.inputLine(dev);
     inp.hidden = !line;
     setText(inp, line);
@@ -893,11 +898,19 @@
     }));
     splChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "spl").map((m) => ({ ...m, selected: false }));
     splChart.range = [now - span, now];
-    splChart.defaultRange = [70, 110];
+    // The vertical range comes from the Smaart device's public settings: automatic (fits the readings,
+    // tidy values, steady) or custom (exactly min..max; readings outside are drawn at the edge, marked).
+    const cr = SW.spl.chartRange(state.devices[ents[0].device_id]), pts = ents.map((e) => state.splHistory[e.id] || []);
+    let fr = null;
+    if (cr.mode === "custom") fr = [cr.min, cr.max];
+    else { fr = SW.spl.autoRange(pts, now - span, now, state.splAxis); state.splAxis = fr; }
+    splChart.fixedRange = fr;
+    splChart.defaultRange = null;
+    const rangeNote = cr.mode === "custom" ? SW.spl.rangeNote(SW.spl.clipFlags(pts, now - span, now, fr)) : "";
     splChart.draw();
     $("spl-legend").replaceChildren(...ents.map((e, i) => h("span", {}, h("i", { class: `spl-key spl-line-${i % 3}`, style: `border-top-color:${css(COLORS[i % COLORS.length])}` }),
       `${SW.spl.label(e)} (${SW.spl.LINE_NAMES[i % 3]})`)));
-    setText($("spl-note"), `${SW.spl.chartNote(span, SPL_POINTS)} Values are as Smaart reports them; this is not a compliance record.`);
+    setText($("spl-note"), `${SW.spl.chartNote(span, SPL_POINTS)} Values are as Smaart reports them; this is not a compliance record.${rangeNote ? ` ${rangeNote}` : ""}`);
   }
   async function loadSplHistory() {
     if (!has("spl_live")) return;
