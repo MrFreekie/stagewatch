@@ -16,6 +16,8 @@ them into a dated release section and tags the commit.
 ## [Unreleased]
 
 ### Changed
+
+- The **Ontime Rundown** card can also be set to half width (**Card width** in Edit cards), with a single-column list and smaller type.
 - **Sound level: live values no longer show an updated time.** A value that has gone old still turns grey and shows its age ("Old reading, 12 s ago"); "Not available" and "No signal from Smaart" are unchanged. The line is reserved so a box does not change height.
 
 ### Added

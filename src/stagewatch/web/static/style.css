@@ -801,3 +801,19 @@ body.layout-wall main > [data-size="half"] .ot-count { font-size: min(160px, 9.5
 body.layout-wall main > [data-size="half"] .ot-title { font-size: 40px; }
 body.layout-wall main > [data-size="half"] .ot-badge, body.layout-wall main > [data-size="half"] .ot-type, body.layout-wall main > [data-size="half"] .ot-note { font-size: 26px; }
 body.layout-wall main > [data-size="half"] .ot-tags .sched-tag { font-size: 24px; padding: 2px 12px; }
+/* Ontime Rundown at half width: one list column, a smaller figure and smaller rows. */
+main > #ontime-rundown-card[data-size="half"] .rd-big { font-size: 44px; }
+main > #ontime-rundown-card[data-size="half"] .rd-title { font-size: 22px; }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-big { font-size: min(120px, 8vw, 12vh); }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-word { font-size: min(64px, 4.5vw); }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-big.quiet { font-size: 48px; }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-title { font-size: min(44px, 3.4vw, 4.5vh); }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-evnote { font-size: 20px; }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-badge, body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-note { font-size: 24px; }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-events { column-count: 1; }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-ev { font-size: 24px; padding: 2px 4px; gap: 10px; }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-ev-cue { display: none; }
+body.layout-wall main > #ontime-rundown-card[data-size="half"] .rd-listnote { font-size: 20px; }
+body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-notstarted .rd-big, body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-finished .rd-big,
+body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-empty .rd-big, body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-nodata .rd-big,
+body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-off .rd-big, body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-error .rd-big { font-size: min(80px, 6vw); }
