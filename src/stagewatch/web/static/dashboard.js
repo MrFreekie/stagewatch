@@ -31,6 +31,7 @@
     site: {}, show: {}, schedule: { items: [] }, scheduleMeta: null, dash: null, isAdmin: false, now: Date.now() / 1000,
     mode: localGet("sw.mode", "temperature"), span: Number(localGet("sw.span", 3600)),
     selectedMarker: null, history: {}, showHidden: false,
+    splSpan: Number(localGet("sw.splspan", 3600)), splHistory: {},
   };
   // The marker whose note is being edited ({id, text}), or null.
   let noteEdit = null;
@@ -52,6 +53,8 @@
     format: (v) => fmt(SERIES_MODES[state.mode].kind, v, false),
     onMarkerClick: (m) => selectMarker(m.id),
   });
+
+  const splChart = new TimeChart($("spl-chart"), { format: (v) => SW.num(v, 0) });
 
   // ------------------------------------------------------------ rendering
   // The speed-of-sound formula (Cramer 1993) is tested for 0–30 °C and 75–102 kPa. Outside that
@@ -238,6 +241,7 @@
       chart.markers = SW.visibleMarkers(state.markers, false).map((m) => ({ ...m, selected: m.id === state.selectedMarker }));
       chart.draw();
     }
+    if (has("spl_live")) updateSplChart();
     if (!has("markers")) return;
     const canDelete = state.isAdmin;
     const canEdit = canEditMarkers();
@@ -785,6 +789,105 @@
             h("div", { class: "foot" }, e.stale ? `Old reading, ${SW.age(e.updated, state.now)}` : SW.age(e.updated, state.now))))))));
   }
 
+  // ------------------------------------------------------- sound level
+  // Up to three values from Smaart (A Slow, C Slow, LAeq 15 min ...), exactly as Smaart reported
+  // them, and their timeline. Nothing is averaged or smoothed here: the chart draws the points the
+  // server gives (the last reading in each interval on long views) and breaks the line wherever
+  // there was no reading. A missing value is a dash. The rows are built once and then only their
+  // text changes. The card hides itself while no values are set up.
+  const SPL_SPANS = [[900, "15m"], [3600, "1h"], [0, "Show"]];   // 0 = since the show started
+  const SPL_POINTS = 500;
+  const splUi = { rows: {}, key: "" };
+  const splSpanS = () => {
+    if (state.splSpan > 0) return state.splSpan;
+    const since = (state.show && state.show.started) || serverNow() - 3600;
+    return Math.max(60, serverNow() - since);
+  };
+  function splBuildRows(ents) {
+    splUi.rows = {};
+    $("spl-rows").replaceChildren(...ents.map((e, i) => {
+      const r = {
+        chip: h("i", { class: `spl-chip spl-line-${i}`, "aria-hidden": "true" }),
+        name: h("span", {}), value: h("span", { class: "spl-num" }), unit: h("span", { class: "unit" }, "dB"),
+        sub: h("div", { class: "foot spl-sub" }), note: h("div", { class: "foot spl-note-line" }),
+      };
+      r.chip.style.borderTopColor = `var(${COLORS[i % COLORS.length]})`;
+      r.el = h("div", { class: "tile spl-tile" }, h("div", { class: "label" }, r.chip, r.name),
+        h("div", { class: "value" }, r.value, r.unit), r.sub, r.note);
+      splUi.rows[e.id] = r;
+      return r.el;
+    }));
+  }
+  function renderSpl() {
+    const card = $("spl-card");
+    if (!has("spl_live")) { card.hidden = true; return; }
+    const ents = SW.spl.entities(state.entities);
+    card.hidden = ents.length === 0;
+    if (!ents.length) return;
+    const key = ents.map((e) => e.id).join(",");
+    if (key !== splUi.key) { splUi.key = key; splBuildRows(ents); loadSplHistory(); renderSplSpan(); }
+    const dev = state.devices[ents[0].device_id];
+    for (const e of ents) {
+      const v = SW.spl.view(e, dev, state.now), r = splUi.rows[e.id];
+      setText(r.name, e.name || e.id);
+      setText(r.value, v.text);
+      setText(r.sub, v.sub);
+      setText(r.note, v.note);
+      setClass(r.el, `tile spl-tile spl-${v.state}`);
+    }
+    // The state of the link to Smaart, in words (never colour alone).
+    const down = dev && (dev.status === "missing" || dev.status === "fault" || dev.status === "compromised");
+    const status = $("spl-status");
+    status.hidden = !down;
+    setText(status, down ? `Smaart: ${dev.status_detail || dev.status}. Readings are missing until it comes back.` : "");
+    updateSplChart();
+  }
+  function renderSplSpan() {
+    $("spl-span-seg").replaceChildren(...SPL_SPANS.map(([s, label]) =>
+      h("button", { class: s === state.splSpan ? "on" : "", onclick: () => { state.splSpan = s; localSet("sw.splspan", String(s)); renderSplSpan(); loadSplHistory(); } }, label)));
+  }
+  function updateSplChart() {
+    if (!has("spl_live") || $("spl-card").hidden) return;
+    const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+    const ents = SW.spl.entities(state.entities), span = splSpanS(), now = serverNow();
+    const gap = SW.spl.gapSeconds(span / SPL_POINTS);
+    splChart.series = ents.map((e, i) => ({
+      label: e.name || e.id, color: css(COLORS[i % COLORS.length]), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3],
+      points: state.splHistory[e.id] || [],
+    }));
+    splChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "spl").map((m) => ({ ...m, selected: false }));
+    splChart.range = [now - span, now];
+    splChart.defaultRange = [70, 110];
+    splChart.draw();
+    $("spl-legend").replaceChildren(...ents.map((e, i) => h("span", {}, h("i", { class: `spl-key spl-line-${i % 3}`, style: `border-top-color:${css(COLORS[i % COLORS.length])}` }),
+      `${e.name || e.id} (${SW.spl.LINE_NAMES[i % 3]})`)));
+    setText($("spl-note"), `${SW.spl.chartNote(span, SPL_POINTS)} Values are as Smaart reports them; this is not a compliance record.`);
+  }
+  async function loadSplHistory() {
+    if (!has("spl_live")) return;
+    const ents = SW.spl.entities(state.entities);
+    if (!ents.length) return;
+    const span = splSpanS(), since = serverNow() - span;
+    try {
+      state.splHistory = await SW.api("GET", `/api/history?entities=${encodeURIComponent(ents.map((e) => e.id).join(","))}&since=${since}&points=${SPL_POINTS}`);
+    } catch (_) { state.splHistory = {}; }
+    updateSplChart();
+  }
+  // A live update: add the point (or a break when the value went missing), keep the window tidy.
+  function splOnStates(list) {
+    let any = false;
+    for (const e of list) {
+      if (e.kind !== "sound_level" || !e.updated) continue;
+      any = true;
+      const pts = state.splHistory[e.id] || (state.splHistory[e.id] = []);
+      if (e.value === null) { if (pts.length && pts[pts.length - 1][1] !== null) pts.push([e.updated, null]); }
+      else if (!pts.length || e.updated > pts[pts.length - 1][0]) pts.push([e.updated, e.value]);
+      const oldest = serverNow() - splSpanS() - 60;
+      while (pts.length > 1 && pts[1][0] < oldest) pts.shift();
+    }
+    return any;
+  }
+
   // --------------------------------------------------------- barometer
   // Sea-level pressure, the 3-hour change and a rough outlook, from site.baro (Pa, a state, a
   // tendency word and an outlook letter; SW.baro.view decides the words). Advisory only. The dial
@@ -876,6 +979,8 @@
     barometer: { el: cardEl("barometer"), render: renderBarometer, empty: () => isWall() && !!state.site.baro && state.site.baro.state === "no_sensor" },
     // Hidden while no sensor has the Equipment role (renderEquipment keeps it in step).
     equipment: { el: cardEl("equipment"), render: renderEquipment, empty: () => equipmentGroups().length === 0 },
+    // Hidden while no sound level values are set up (renderSpl keeps it in step).
+    spl_live: { el: cardEl("spl_live"), render: renderSpl, empty: () => SW.spl.entities(state.entities).length === 0 },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
     connect_footer: { el: cardEl("connect_footer"), footer: true, render: renderConnectFooter },
   };
@@ -992,6 +1097,7 @@
         if (has("sensors")) renderSensors();
         if (has("barometer")) renderBarometer();
         if (has("equipment")) renderEquipment();
+        if (has("spl_live")) { splOnStates(msg.entities); renderSpl(); }
         if (has("chart")) updateChartSeries();
         break;
       }
@@ -999,6 +1105,7 @@
         state.devices[msg.device.id] = msg.device;
         if (has("sensors")) renderSensors();
         if (has("equipment")) renderEquipment();
+        if (has("spl_live")) renderSpl();
         break;
       case "marker":
         if (!findMarker(msg.marker.id)) state.markers.push(msg.marker);
@@ -1046,5 +1153,6 @@
   // Re-bucket history so long views stay tidy; refresh the sensors' "Updated" ages. Each only
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); }, 5000);
+  setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("spl_live")) renderSpl(); }, 5000);
 })();

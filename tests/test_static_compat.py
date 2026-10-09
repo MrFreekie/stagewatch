@@ -16,7 +16,7 @@ import pytest
 STATIC = Path(__file__).resolve().parents[1] / "src" / "stagewatch" / "web" / "static"
 HTML_PAGES = ["index.html", "dashboard.html", "admin.html", "schedule.html"]
 # Dashboard-side files (admin.js is allowed to need iOS 13+ / Chrome 80+).
-DASHBOARD_JS = ["common.js", "chart.js", "wallclock.js", "dashboard.js", "vendor/qrcode.js"]
+DASHBOARD_JS = ["common.js", "chart.js", "wallclock.js", "dashboard.js", "spl.js", "vendor/qrcode.js"]
 
 FORBIDDEN = {
     "optional chaining ?.": r"\?\.(?!\d)",

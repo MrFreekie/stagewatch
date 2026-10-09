@@ -20,6 +20,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "connect_footer",  # "Open on a tablet" QR footer
     "barometer",       # sea-level pressure dial, 3-hour tendency, rough outlook; never added by default
     "equipment",       # readings from Equipment-role sensors (amp racks, PSUs), by node; hidden while there are none; never added by default
+    "spl_live",        # sound level from Smaart: up to 3 chosen values and their timeline; hidden while none are set up; never added by default
 )
 KNOWN_CARDS = KNOWN_CARDS_0_3
 

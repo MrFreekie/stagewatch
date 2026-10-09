@@ -21,6 +21,7 @@ from .core.wallclock import seed_emulate_demo
 from .integrations.esphome import EsphomeIntegration
 from .integrations.ontime import OntimeIntegration
 from .integrations.osc_out import OscOutIntegration
+from .integrations.smaart import SmaartIntegration, seed_emulate_spl
 from .netinfo import local_ipv4  # noqa: F401  (also used by tests)
 from .version import build_info, version_string
 from .web.limits import WS_MAX_MESSAGE
@@ -86,7 +87,10 @@ async def run(args: argparse.Namespace) -> int:
     hub.add_integration(EsphomeIntegration(hub, emulate=args.emulate, zeroconf=zc))
     hub.add_integration(OscOutIntegration(hub))
     hub.add_integration(OntimeIntegration(hub, emulate=args.emulate))  # runs only while a dashboard has the Wall Clock card
+    hub.add_integration(SmaartIntegration(hub, emulate=args.emulate))  # runs only when switched on in the admin page
     if args.emulate and seed_emulate_demo(hub.config):  # a fresh emulate folder shows every clock style
+        hub.save_config()
+    if args.emulate and seed_emulate_spl(hub.config):   # ...and the Sound level card with simulated values
         hub.save_config()
     app = create_app(hub)
     app.state.port = args.port  # for the "Connect a tablet" addresses
