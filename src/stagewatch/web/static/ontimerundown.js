@@ -15,7 +15,7 @@ SW.rd = (function () {
 
   // ---- Facts about Ontime that a real capture has not yet confirmed. Each is one line, so a
   // capture session can change it without touching the logic. Tests pin both readings.
-  rd.OFFSET_POSITIVE_IS_AHEAD = true;   // Ontime's delay docs: positive = running early, negative = running late
+  rd.OFFSET_POSITIVE_IS_AHEAD = false;  // CONFIRMED by the owner on a real Ontime 4.14.0: positive = behind, negative = ahead
   rd.INDEX_BASE = 0;                    // selectedEventIndex 0 = the first event (captured: 8 of 16, not yet proven)
 
   // ---- Thresholds (milliseconds)
@@ -33,6 +33,8 @@ SW.rd = (function () {
   const DAY_MS = 86400000;
   const MAX_TIME_MS = 72 * 3600000;
 
+  // A server-sent string is only ever a key of our own tables ("toString" and "constructor" are not).
+  const own = (table, key) => typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key);
   const isNum = (x) => typeof x === "number" && isFinite(x);
   const pad2 = (n) => (n < 10 ? "0" : "") + n;
 
@@ -101,16 +103,42 @@ SW.rd = (function () {
     return { big: `${sym} ${t}`, sym, word: "BEHIND", phrase: `Running ${t} behind`, level: b.level };
   };
 
+  // ---- The event list. The server sends rows around the current event (about 4 before and 14
+  // after); each layout shows fewer. Counts, not scrolling: whatever does not fit is left out.
+  rd.LIST_LIMITS = { tablet: { past: 2, ahead: 8 }, phone: { past: 0, ahead: 4 }, wall: { past: 0, ahead: 10 } };
+  rd.MARKS = { current: "▶", next: "→", later: "·", past: "✓", skipped: "⊘" };
+  const hhmm = (ms) => (isNum(ms) && ms >= 0 && ms <= MAX_TIME_MS
+    ? `${pad2(Math.floor((ms % DAY_MS) / 3600000))}:${pad2(Math.floor((ms % 3600000) / 60000))}` : "--:--");
+
+  // The rows to show for a layout, as {state, mark, time, cue, title, tag}. Pure. With a current row:
+  // some before it, it, and some after. Before the start: the first rows. Finished: the last few.
+  rd.listRows = function (events, layout) {
+    if (!Array.isArray(events) || events.length === 0) return [];
+    const lim = own(rd.LIST_LIMITS, layout) ? rd.LIST_LIMITS[layout] : rd.LIST_LIMITS.tablet;
+    const cur = events.findIndex((e) => e && e.state === "current");
+    let part;
+    if (cur >= 0) part = events.slice(Math.max(0, cur - lim.past), cur + 1 + lim.ahead);
+    else if (events.every((e) => e && (e.state === "past" || e.state === "skipped"))) part = events.slice(-(lim.past + 1));
+    else part = events.slice(0, lim.ahead + 1);
+    const withEnd = layout !== "phone";
+    return part.filter((e) => e && typeof e === "object").map((e) => {
+      const state = own(rd.MARKS, e.state) ? e.state : "later";
+      const time = hhmm(e.start) + (withEnd && isNum(e.end) ? `-${hhmm(e.end)}` : "");
+      return { state, mark: rd.MARKS[state], time, cue: typeof e.cue === "string" ? e.cue : "",
+        title: typeof e.title === "string" && e.title ? e.title : "Event", tag: state === "skipped" ? "SKIPPED" : "" };
+    });
+  };
+
   const ago = (a) => (a < 10 ? "a few seconds" : a < 60 ? `${Math.round(a / 10) * 10} s` : `${Math.round(a / 60)} min`);
 
   // The one place that decides what the card says. m is the "ontime_rundown" message; now is the
   // server-corrected time in seconds. Returns:
   //   state  "running" | "notstarted" | "finished" | "empty" | "nodata" | "unplaced" | "stale" | "off" | "error"
-  //   big (the large line), word, phrase, level ("" | "warn" | "alert"), position, modeNote,
+  //   big (the large line), word, phrase, level ("" | "warn" | "alert"), quiet (on time: small and calm), modeNote,
   //   planned, expected, started, day (short facts), barPct / tickPct (null = hide), note, badge, cls
-  rd.view = function (m, now) {
+  rd.view = function (m, now, layout) {
     const name = (m && m.label) || "Ontime";
-    const v = { phraseDup: false, unreadable: false, state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", position: "",
+    const v = { textStale: false, rows: [], listNote: "", title: "", evnote: "", phraseDup: false, unreadable: false, state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", quiet: false,
       modeNote: "", planned: "", expected: "", started: "", day: "", barPct: null, tickPct: null, note: "", stale: false };
     if (!m || m.status !== "ok") {
       if (m && m.status === "error") {
@@ -122,6 +150,9 @@ SW.rd = (function () {
       return v;
     }
     v.badge = "";
+    v.title = typeof m.event_title === "string" ? m.event_title : "";
+    v.evnote = typeof m.event_note === "string" ? m.event_note : "";
+    v.textStale = m.event_text_unreadable === true;   // the title and note are the last good ones
     const a = Math.max(0, now - m.received_at);
     const pos = m.position;
     const ps = m.planned_start_ms, pe = m.planned_end_ms, ee = m.expected_end_ms, as = m.actual_start_ms;
@@ -143,8 +174,9 @@ SW.rd = (function () {
         v.planned = plannedText;
       }
     } else {
-      v.position = rd.positionText(pos.index, pos.total);
-      if (!v.position) {
+      // "Event N of M" is no longer shown (the event list marks where we are). The placement check
+      // stays: an index outside the rundown is reported instead of guessed.
+      if (!rd.positionText(pos.index, pos.total)) {
         v.state = "unplaced"; v.note = `Can't place the current event in ${name}'s rundown`;
       } else {
         v.state = "running";
@@ -152,17 +184,23 @@ SW.rd = (function () {
       v.cls = `rd-s-${v.state}`;
       if (isNum(m.offset_ms)) {
         const o = rd.offsetView(m.offset_ms);
+        v.quiet = o.big === "ON TIME";   // nothing needs attention: say it small
         v.big = o.big; v.word = o.word; v.phrase = o.phrase; v.level = o.level;
         v.phraseDup = !!o.phrase;   // "Running 4:10 behind" repeats the big figure and word (the wall hides it)
-        v.modeNote = MODE_NOTE[m.offset_mode] || "";
+        v.modeNote = own(MODE_NOTE, m.offset_mode) ? MODE_NOTE[m.offset_mode] : "";
       } else {
         v.big = "--"; v.phrase = "Ahead or behind not sent";
       }
       v.planned = plannedText;
-      if (isNum(ee)) v.expected = `Expected end ${rd.fmtOntimeTime(ee)}${isNum(pe) && ee !== pe ? ` (planned ${rd.fmtOntimeTime(pe)})` : ""}`;
+      if (isNum(ee) && ee >= 0) v.expected = `Expected end ${rd.fmtOntimeTime(ee)}${isNum(pe) && ee !== pe ? ` (planned ${rd.fmtOntimeTime(pe)})` : ""}`;
       if (isNum(as)) v.started = `Started ${rd.fmtOntimeTime(as)}`;
       const dp = rd.dayProgress(isNum(as) ? as : ps, pe, ee, m.ontime_clock_ms);
       if (dp) { v.barPct = dp.pct; v.tickPct = dp.tickPct; }
+    }
+    if (v.state !== "nodata" && v.state !== "empty") {
+      v.rows = rd.listRows(m.events, layout);
+      if (m.events_unplaced === true) v.listNote = "▲ Can't place the current event in the event list.";
+      else if (v.rows.length && m.events_stale === true) v.listNote = "▲ The event list may be out of date.";
     }
     if (isNum(m.current_day) && m.current_day > 0) v.day = `${name} marks this as a later day of the rundown`;
 
@@ -189,25 +227,36 @@ SW.rd = (function () {
   rd.createUi = function () {
     const h = SW.h;
     const ui = {
+      title: h("div", { class: "rd-title", hidden: true }),
+      evnote: h("p", { class: "rd-evnote", hidden: true }),
       big: h("span", { class: "rd-big" }),
       word: h("span", { class: "rd-word" }),
       mode: h("span", { class: "rd-mode muted" }),
       badge: h("span", { class: "rd-badge", role: "status" }),
       phrase: h("p", { class: "rd-phrase" }),
-      position: h("div", { class: "rd-pos" }),
       tick: h("div", { class: "rd-tick", hidden: true }),
       bar: h("div", { class: "sched-bar rd-bar", hidden: true, "aria-hidden": "true" }, h("div", { class: "sched-bar-fill" })),
       planned: h("p", { class: "rd-line rd-planned" }),
       expected: h("p", { class: "rd-line rd-expected" }),
       started: h("p", { class: "rd-line rd-started" }),
       day: h("p", { class: "rd-line rd-day muted", hidden: true }),
+      list: h("ul", { class: "rd-events", hidden: true }),
+      listNote: h("p", { class: "rd-line rd-listnote muted", hidden: true }),
       note: h("p", { class: "rd-note", hidden: true, role: "status" }),
       foot: h("p", { class: "rd-foot muted" }, "Ontime time: the times are Ontime's own clock, not converted."),
     };
     ui.bar.append(ui.tick);
-    ui.nodes = [h("div", { class: "rd-main" }, ui.big, ui.word, ui.mode), ui.badge, ui.phrase, ui.position, ui.bar,
-      ui.planned, ui.expected, ui.started, ui.day, ui.note, ui.foot];
+    ui.nodes = [ui.title, ui.evnote, h("div", { class: "rd-main" }, ui.big, ui.word, ui.mode), ui.badge, ui.phrase, ui.bar,
+      ui.planned, ui.expected, ui.started, ui.day, ui.list, ui.listNote, ui.note, ui.foot];
+    let listKey = "";
     ui.update = function (v) {
+      setClass(ui.title, v.textStale ? "rd-title stale" : "rd-title");
+      setClass(ui.evnote, v.textStale ? "rd-evnote stale" : "rd-evnote");
+      setText(ui.title, v.title);
+      setHidden(ui.title, !v.title);
+      setText(ui.evnote, v.evnote);
+      setHidden(ui.evnote, !v.evnote);
+      setClass(ui.big, v.quiet ? "rd-big quiet" : "rd-big");
       setText(ui.big, v.big);
       setText(ui.word, v.word);
       setHidden(ui.word, !v.word);
@@ -218,12 +267,23 @@ SW.rd = (function () {
       setText(ui.phrase, v.phrase);
       setHidden(ui.phrase, !v.phrase);
       setClass(ui.phrase, v.phraseDup ? "rd-phrase dup" : "rd-phrase");
-      setText(ui.position, v.position);
-      setHidden(ui.position, !v.position);
       for (const k of ["planned", "expected", "started", "day"]) {
         setText(ui[k], v[k]);
         setHidden(ui[k], !v[k]);
       }
+      const key = JSON.stringify(v.rows);
+      if (key !== listKey) {   // rebuilt only when a row changes (about once per event)
+        listKey = key;
+        ui.list.replaceChildren(...v.rows.map((r) => h("li", { class: `rd-ev rd-ev-${r.state}` },
+          h("span", { class: "rd-ev-mark", "aria-hidden": "true" }, r.mark),
+          h("span", { class: "rd-ev-time" }, r.time),
+          h("span", { class: "rd-ev-cue" }, r.cue),
+          h("span", { class: "rd-ev-title" }, r.title),
+          r.tag ? h("span", { class: "rd-ev-tag" }, r.tag) : null)));
+      }
+      setHidden(ui.list, v.rows.length === 0);
+      setText(ui.listNote, v.listNote);
+      setHidden(ui.listNote, !v.listNote);
       setText(ui.note, v.note);
       setHidden(ui.note, !v.note);
       setHidden(ui.bar, v.barPct === null);

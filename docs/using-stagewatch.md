@@ -598,7 +598,7 @@ connection.
 2. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Ontime Timer** and click
    **Save dashboards**.
 3. Optional: in the **Ontime Timer** card on the Admin page, untick **Show the event title on
-   dashboards** and click **Save**. The title is the event's name in Ontime, often an artist. Dashboards
+   dashboards** (this one switch also hides the titles and notes on the Ontime Rundown card) and click **Save**. The title is the event's name in Ontime, often an artist. Dashboards
    have no password, so untick this if the name should stay off the screens.
 
 **What you'll see:** the event title, the time left in large digits (`m:ss`, or `h:mm:ss` from an
@@ -645,7 +645,7 @@ paused, time added, running over, stopped, ready, then stale and offline.
 **If it didn't work:** see [Troubleshooting](troubleshooting.md).
 ### Show where Ontime is in the day (Ontime Rundown card)
 
-The **Ontime Rundown** card shows how the whole running order is doing: "Event 4 of 12", whether
+The **Ontime Rundown** card shows how the whole running order is doing: which event is running (highlighted in the event list), whether
 [Ontime](https://github.com/cpvalente/ontime) is running ahead or behind, the planned start and end, when it
 now expects to finish, and when it actually started. The Ontime Timer answers "how long is left in this
 item"; this card answers "are we on time?". It is for the stage manager's wall, the FOH tablet or the monitor
@@ -653,8 +653,14 @@ desk, without another browser tab. It shows Ontime's own numbers. It does not co
 Stagewatch.
 
 Stagewatch only listens to Ontime. It never starts, pauses or changes anything in Ontime. This card reads
-event counters, times and the ahead/behind figure, and nothing else: **no event names, no list of events and
-no "next" item** (those would need a request Stagewatch doesn't make). It uses the same **Ontime address** as
+event counters, times and the ahead/behind figure, the **title and note of the running event**, and the
+**list of events** (cue, title, start and end time, and whether one is skipped). The list is the one extra
+request Stagewatch makes to Ontime: a plain read of its current rundown, only while a dashboard has this card,
+when the event changes and at least once a minute. It does not read colours, custom fields or triggers.
+**Anyone who can open a dashboard with this card can see the event titles and the running event's note**, and
+dashboards have no password. Untick **Show the event title on dashboards** in the **Ontime Timer** card on the
+Admin page to hide every title and note here as well (the list then shows times and cues, with "Event" for each
+title); that one switch covers both cards. Or leave the card off any dashboard that should not show them. It uses the same **Ontime address** as
 the Wall Clock and the Ontime Timer, and all the cards share one connection.
 
 1. Open **Admin**, find the **Wall Clock** card, type the **Ontime address** and click **Test connection**
@@ -662,12 +668,24 @@ the Wall Clock and the Ontime Timer, and all the cards share one connection.
 2. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Ontime Rundown** and click **Save
    dashboards**. It is never switched on by default.
 
-**What you'll see:** a large figure with words and a triangle, then the position, a bar and the times.
+**What you'll see:** the title and note of the running event, a large figure with words and a triangle, a
+bar, the times and the event list.
+
+- **The event list** sits under the figure. Each row has a marker, the start time (and the end time on a tablet
+  or wall) as Ontime shows it, the cue and the title. The running event is bold with ▶, the next one has →,
+  finished ones are muted with ✓, and a skipped one is struck through and says SKIPPED (⊘). A tablet shows the
+  running event with 2 before and 8 after; a phone the running event and 4 after; a wall the running event and
+  10 after. If a read of the list fails while Ontime is still connected, the last good list stays with "may be out of date".
+  While Ontime is offline the list is hidden (a gap, not old rows). If Stagewatch can't find the running event
+  in the list (for example in a rundown of more than 200 events), it says "Can't place the current event in
+  the event list" and shows no list rather than guess. Groups and milestones
+  are left out. Titles are text only.
 
 - **▼ 4:10 BEHIND** / **▲ 1:30 AHEAD**: Ontime's offset, in minutes and seconds (hours from one hour). Behind
   is amber, then orange once it passes the last warning step of the Schedule card (set under **Admin → Site**,
   5 minutes if you haven't set any). Ahead stays calm. It is never red, and never colour alone.
-- **ON TIME**: within 30 seconds either way.
+- **ON TIME**: within 30 seconds either way. It is shown small and calm on purpose, because nothing needs
+  attention; behind and ahead stay large.
 - A small label says which offset Ontime reports: **vs plan** (measured against the planned times) or **since
   start**. Stagewatch shows whichever Ontime is set to.
 - **Planned 11:30 to 22:30**, **Expected end 22:34 (planned 22:30)** and **Started 11:30**. A line is left out
@@ -687,11 +705,12 @@ time zone cannot make the show look late.
 
 **This card is experimental.** Only one situation has been recorded from a real Ontime (4.14.0): running event
 9 of 16, offset 0. These assumptions have not been checked against the real thing, and each is one setting in
-the card's code, so they are easy to correct. If one looks wrong, please say which:
+the card's code, so they are easy to correct. If one looks wrong, please say which. Still unchecked:
 
-- Which way the offset runs. Ontime's documentation suggests a positive offset means running early (ahead).
-- Whether the event number counts from 0 (the card adds 1 to show "Event N") or from 1. If it can't place
-  the number in the rundown it says so instead of guessing.
+- **Confirmed on a real Ontime 4.14.0:** a positive offset means **behind** and a negative one means **ahead**
+  (for example -8:49 on Ontime's screen shows here as "▲ 8:49 AHEAD"). The event number counts from 0 (the card
+  places the running event in the list); a capture agrees. If it can't place the running event in the rundown it says so.
+- Groups, milestones and delays in the event list have not been seen from a real Ontime; they are left out.
 - That "Finished" means a start time exists and no event is selected, and "Not started" means neither.
 - Whether the event count includes groups, and what "a later day" does in a multi-day rundown.
 - The documented layout (offset and expected end inside the rundown) is also read, in case a newer Ontime

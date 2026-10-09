@@ -787,7 +787,7 @@
     stopOntimeRundown();
     const m = state.ontimeRundown, ui = rdc.ui;
     if (!m || !ui || !has("ontime_rundown")) return;
-    const v = SW.rd.view(m, serverNow());
+    const v = SW.rd.view(m, serverNow(), (state.dash && state.dash.layout) || "tablet");
     ui.update(v);
     setClass($("ontime-rundown-card"), `card ${v.cls}${v.level ? ` rd-lvl-${v.level}` : ""}`);
     rdc.timer = setTimeout(tickOntimeRundown, 1000);

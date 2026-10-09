@@ -638,7 +638,7 @@
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
     wall_clock: ["Wall Clock", "The time of day, as plain digits, an LED ring or 7-segment digits. Choose the source in the Wall Clock settings."],
     ontime_timer: ["Ontime Timer", "The countdown Ontime is running, with the event title. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings."],
-    ontime_rundown: ["Ontime Rundown", "Which event Ontime is on (Event 4 of 12) and whether it is running ahead or behind, with the planned and expected end. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings."],
+    ontime_rundown: ["Ontime Rundown", "The running event, whether Ontime is ahead or behind, the planned and expected end and the list of events with their times. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings. Event titles and notes are shown on the dashboard, and follow the Ontime Timer setting \"Show the event title on dashboards\"."],
     equipment: ["Equipment", "Readings from Equipment sensors (amp racks, power supplies), by node. Never part of the site average. Stays hidden until a sensor has the Equipment role."],
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
@@ -860,7 +860,7 @@
     }
     return card("Ontime Timer",
       h("p", { class: "muted" }, "Shows the countdown Ontime is running on dashboards that have the Ontime Timer card. It reads the Ontime address under Wall Clock, so set and test that first. Stagewatch only listens: it never starts, pauses or changes anything in Ontime. It is Ontime's timer on a screen, not a Stagewatch timer, so don't use it as a cue."),
-      h("div", { class: "row" }, field("Show the event title on dashboards", title),
+      h("div", { class: "row" }, field("Show the event title on dashboards (also the Ontime Rundown card's titles and notes)", title),
         h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/ontime-timer", {
           show_title: title.checked,
         }), "Ontime Timer saved").then(refresh, () => {}) }, "Save")),

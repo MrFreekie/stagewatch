@@ -4,7 +4,9 @@ Timer card and the running-order position and offset for the Ontime Rundown card
 Read-only. It listens to an Ontime server (https://github.com/cpvalente/ontime) for the time of
 day and the main timer (with the title and warning times of the loaded event) and sends nothing
 to it. It also reads the rundown counters, planned and expected times and the ahead/behind
-offset. It does not read event lists, notes, messages or aux timers.
+offset, the title and note of the current event, and (one extra read-only request, only while
+a dashboard has the Rundown card) the event list: cue, title, times and skipped. It does not
+read the next event's details, colours, custom fields, messages or aux timers.
 
 There is one connection. It runs only while at least one dashboard has a card that needs it: the
 Wall Clock card (when the Wall Clock source is Ontime), the Ontime Timer card or the Ontime
@@ -21,7 +23,7 @@ import logging
 
 from ...core.model import Device, Status
 from ...core.plugin import Integration, Manifest
-from ...core.ontimerundown import RundownReading
+from ...core.ontimerundown import EventsReading, RundownReading
 from ...core.ontimetimer import TimerReading
 from ...core.wallclock import ClockReading
 from .client import OntimeSource
@@ -40,8 +42,11 @@ MANIFEST = Manifest(
                 "WebSocket connection, falling back to HTTP polling, so the Wall Clock and Ontime "
                 "Timer cards can show them. For the Ontime Rundown card it also reads the rundown "
                 "position (event number and count), planned start and end, expected end, actual "
-                "start and the ahead/behind offset. Read-only: sends nothing to Ontime and does "
-                "not read event titles or lists, notes, messages or aux timers. Runs only while a "
+                "start and the ahead/behind offset, plus the title and note of the current event and, from one "
+                "extra read-only request (GET /data/rundowns/current), the event list (cue, title, start and "
+                "end time, skipped). Titles and notes are shown on dashboards unless the admin switches "
+                "them off. Read-only: sends nothing to Ontime and does not read colours, custom fields, "
+                "triggers, messages or aux timers. Runs only while a "
                 "dashboard has one of those cards. Tested against Ontime 4.14.0 in the 'roll' "
                 "state only; other states are handled but not yet checked against a real Ontime.",
     tier="experimental",
@@ -68,6 +73,11 @@ class _ManagedSource:
     def _current_url(self) -> str:
         return self._owner.hub.config.wall_clock.ontime_url
 
+    def _sync_events(self) -> None:
+        """The event list is fetched only while the Ontime Rundown card holds the source."""
+        if hasattr(self._inner, "want_events"):
+            self._inner.want_events = "ontime_rundown" in self._holders
+
     async def acquire(self, consumer: str) -> None:
         """Hold the source for ``consumer`` (idempotent). Starts it if nobody held it; if it is
         running against an old address (the admin changed it), restarts it on the new one."""
@@ -75,6 +85,7 @@ class _ManagedSource:
             url = self._current_url()
             first = not self._holders
             self._holders.add(consumer)
+            self._sync_events()
             if first:
                 self._owner._register()
                 await self._inner.start()
@@ -90,6 +101,7 @@ class _ManagedSource:
             if consumer not in self._holders:
                 return
             self._holders.discard(consumer)
+            self._sync_events()
             if not self._holders:
                 await self._inner.stop()
                 self._owner._unregister()
@@ -109,6 +121,9 @@ class _ManagedSource:
 
     def latest_rundown(self) -> RundownReading:
         return self._inner.latest_rundown()
+
+    def latest_events(self) -> EventsReading:
+        return self._inner.latest_events()
 
     def details(self) -> dict:
         return self._inner.details()

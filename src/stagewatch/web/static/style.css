@@ -522,15 +522,47 @@ body.layout-wall #ontime-timer-card > h2 { font-size: 24px; }
 /* ---- dashboard: Ontime Rundown card ----
    The big line is the ahead/behind figure with its words and a triangle (never colour alone).
    Behind is amber then orange, never red; ahead and on time stay neutral. Stale figures are struck
-   through. Nothing moves. Tablet: every line. Phone: figure, position, expected end.
-   Wall: figure and position in large type, plus the bar. */
+   through. Nothing moves. Tablet: every line. Phone: figure, expected end.
+   Wall: figure in large type, plus the bar and the event list. ON TIME is deliberately quiet (small,
+   normal emphasis, calm colour): nothing needs the crew. */
+.rd-title { font-size: 24px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.rd-evnote { margin: 2px 0 8px; font-size: 15px; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
+#ontime-rundown-card.rd-s-stale .rd-title, #ontime-rundown-card.rd-s-stale .rd-evnote { opacity: .6; text-decoration: line-through; }
+body.layout-phone .rd-title { font-size: 20px; }
+body.layout-phone .rd-evnote { font-size: 14px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+body.layout-wall .rd-title { font-size: min(64px, 5vw); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+body.layout-wall .rd-evnote { font-size: 24px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; text-overflow: ellipsis; }
+.rd-events { list-style: none; margin: 10px 0 0; padding: 0; }
+.rd-ev { display: flex; align-items: baseline; gap: 10px; padding: 3px 4px; border-top: 1px solid var(--grid); font-size: 16px; font-variant-numeric: tabular-nums; }
+.rd-ev-mark { flex: 0 0 1.4em; text-align: center; }
+.rd-ev-time { flex: 0 0 6.9em; }   /* fixed, so the titles line up whatever the weight of the row */
+body.layout-phone .rd-ev-time { flex-basis: 3.2em; }
+.rd-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.rd-evnote { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.rd-ev-cue { flex: 0 0 2.4em; color: var(--muted); }
+.rd-ev-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.rd-ev-tag { flex: 0 0 auto; font-size: .75em; font-weight: 800; letter-spacing: .04em; }
+.rd-ev-current { font-weight: 800; background: var(--panel-2); border-left: 4px solid var(--accent); }
+.rd-ev-next { font-weight: 600; }
+.rd-ev-past, .rd-ev-skipped { color: var(--muted); }
+.rd-ev-skipped .rd-ev-time, .rd-ev-skipped .rd-ev-title { text-decoration: line-through; }
+.rd-title.stale, .rd-evnote.stale { opacity: .6; text-decoration: line-through; }
+#ontime-rundown-card.rd-s-stale .sched-bar-fill { background: var(--muted); }
+body.layout-phone .rd-phrase.dup { display: none; }
+.rd-listnote { font-size: 13px; }
+#ontime-rundown-card.rd-s-stale .rd-events { opacity: .6; }
+body.layout-phone .rd-ev { font-size: 15px; gap: 8px; }
+body.layout-phone .rd-ev-cue { display: none; }
+body.layout-phone .rd-ev-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+body.layout-wall .rd-ev { font-size: 36px; padding: 2px 6px; gap: 18px; }
+body.layout-wall .rd-ev-cue { flex-basis: 2.6em; }
+body.layout-wall .rd-listnote { font-size: 28px; }
 .rd-main { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; }
 .rd-big { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.05; }
 .rd-word { font-size: 24px; font-weight: 800; letter-spacing: .04em; }
 .rd-mode { font-size: 14px; }
 .rd-badge { display: block; font-size: 15px; font-weight: 800; letter-spacing: .04em; }
 .rd-phrase { margin: 2px 0 0; font-size: 18px; }
-.rd-pos { margin-top: 4px; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .rd-bar { position: relative; overflow: visible; }
 .rd-bar .sched-bar-fill { border-radius: 999px; }
 .rd-tick { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1px; background: var(--text); border-radius: 2px; }
@@ -551,13 +583,15 @@ body.layout-wall #ontime-timer-card > h2 { font-size: 24px; }
 #ontime-rundown-card.rd-s-stale .rd-word { color: var(--muted); }
 #ontime-rundown-card.rd-s-stale .rd-big, #ontime-rundown-card.rd-s-stale .rd-word { text-decoration: line-through; text-decoration-thickness: 4px; }
 body.layout-phone .rd-big { font-size: 46px; }
+.rd-big.quiet { font-size: 28px; font-weight: 500; letter-spacing: .04em; color: var(--muted); }
+body.layout-phone .rd-big.quiet { font-size: 22px; }
 body.layout-phone .rd-planned, body.layout-phone .rd-started, body.layout-phone .rd-day, body.layout-phone .rd-foot { display: none; }
 body.layout-wall .rd-big { font-size: min(220px, 18vw); }
+body.layout-wall .rd-big.quiet { font-size: 68px; }
 body.layout-wall .rd-word { font-size: min(96px, 8vw); }
 body.layout-wall .rd-mode { font-size: 40px; }
 body.layout-wall .rd-badge, body.layout-wall .rd-note { font-size: 32px; }
 body.layout-wall .rd-phrase { font-size: 40px; }
-body.layout-wall .rd-pos { font-size: min(110px, 9vw); margin-top: 8px; }
 body.layout-wall .rd-line { font-size: 44px; }
 body.layout-wall #ontime-rundown-card.rd-s-notstarted .rd-big, body.layout-wall #ontime-rundown-card.rd-s-finished .rd-big,
 body.layout-wall #ontime-rundown-card.rd-s-empty .rd-big, body.layout-wall #ontime-rundown-card.rd-s-nodata .rd-big,
@@ -568,6 +602,15 @@ body.layout-wall .rd-phrase.dup { display: none; }
 /* A fixed minimum height on the wall, so the card does not jump between its states (about 290 px
    for "not started" up to about 730 px with every line). */
 body.layout-wall #ontime-rundown-card { min-height: 730px; }
+/* The wall is one screen, never scrolled: the figure and title scale with the screen height, and the
+   event list runs in two columns (down the first, then the second) so 11 rows still fit at 1080 px. */
+body.layout-wall .rd-big { font-size: min(220px, 18vw, 17vh); }
+body.layout-wall .rd-title { font-size: min(64px, 5vw, 5.5vh); }
+body.layout-wall .rd-events { column-count: 2; column-gap: 40px; margin-top: 4px; }
+body.layout-wall .rd-ev { break-inside: avoid; }
+body.layout-wall .rd-ev-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.layout-wall .rd-phrase { margin: 0; }
+body.layout-wall .rd-evnote { -webkit-line-clamp: 2; line-clamp: 2; margin-bottom: 4px; }
 body.layout-wall #ontime-rundown-card > h2 { font-size: 24px; }
 /* ---- dashboard: Barometer card ----
    Tablet: the dial beside the figures. Phone: a smaller dial above them. Wall: big numbers, no dial

@@ -28,8 +28,8 @@ import re
 from typing import Literal
 from urllib.parse import urlsplit
 
-from ...core.ontimerundown import (MAX_DAY, MAX_EVENTS, MAX_OFFSET_MS, MAX_TIME_MS, OFFSET_MODES,
-                                   RundownState)
+from ...core.ontimerundown import (EVENT_ID_MAX, EVENT_NOTE_MAX, EVENT_TITLE_MAX, LIST_CUE_MAX, LIST_MAX_EVENTS, MAX_DAY,
+                                   MAX_EVENTS, MAX_OFFSET_MS, MAX_TIME_MS, OFFSET_MODES, EventRow, RundownState)
 from ...core.ontimetimer import PHASES, PLAYBACKS, TIMER_TYPES, TimerState, clean_title
 from ...core.wallclock import valid_clock_ms
 
@@ -38,7 +38,8 @@ MAX_SIGNED_MS = 100 * HOUR_MS      # |current| and |elapsed| must stay under 100
 MAX_DURATION_MS = 24 * HOUR_MS     # duration, added time and the warning times: within a day
 
 MAX_BYTES = 1024 * 1024           # largest message or response we accept (1 MiB)
-HTTP_PATHS = ("/api/version", "/api/poll")   # the only HTTP paths we ever request
+EVENTS_PATH = "/data/rundowns/current"   # the one extra read-only request, for the Ontime Rundown card's event list
+HTTP_PATHS = ("/api/version", "/api/poll", EVENTS_PATH)   # the only HTTP paths we ever request (all GET)
 WS_PATH = "/ws"                   # and the only WebSocket path
 HTTP_OK = (200, 202)              # Ontime 4.14 answers its read endpoints with 202
 
@@ -189,10 +190,17 @@ def _merge_block(block: dict, keys: dict) -> dict | None:
     return out
 
 
+def _text(value: object, limit: int) -> str | None:
+    """Missing or null -> "", text -> cleaned and capped, anything else (a number, list, object) -> None."""
+    if value is None:
+        return ""
+    return clean_title(value, limit) if isinstance(value, str) else None
+
+
 def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownState | None:
     """Merge one ``runtime-data`` payload into the last rundown state.
 
-    * Neither a ``rundown`` nor an ``offset`` key (the usual clock-and-timer message): ``prev``
+    * None of ``rundown``, ``offset`` or ``eventNow`` (the usual clock-and-timer message): ``prev``
       unchanged (which may be None).
     * A block merges key by key into ``prev`` (a key it lacks keeps its old value; null clears it).
       ``"rundown": null`` or ``"offset": null`` clears that block.
@@ -202,7 +210,7 @@ def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownS
       offset it labels is not used (never guessed).
 
     Real Ontime 4.14.0 output has only been seen with the first message carrying both blocks."""
-    if not isinstance(payload, dict) or ("rundown" not in payload and "offset" not in payload):
+    if not isinstance(payload, dict) or not ("rundown" in payload or "offset" in payload or "eventNow" in payload):
         return prev
     state = prev or RundownState()
     changes: dict = {}
@@ -235,6 +243,27 @@ def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownS
                 return None
             changes.update({f: None for f in _OFFSET_FIELDS})
             changes["doc_offset_ms"] = value
+    if "eventNow" in payload:
+        # The current event's title and note (the same eventNow the Timer reads), cleaned and capped.
+        # Null means no event is loaded. Text we cannot read (not an object, a title or note that is
+        # not text) keeps the old title and note and marks only the text as unreadable; the rundown
+        # and offset blocks of the same message are still taken.
+        event = payload["eventNow"]
+        if event is None:
+            changes.update(event_title="", event_note="", event_id="", text_unreadable=False)
+        elif isinstance(event, dict):
+            title, note = _text(event.get("title"), EVENT_TITLE_MAX), _text(event.get("note"), EVENT_NOTE_MAX)
+            if title is None or note is None:
+                changes["text_unreadable"] = True
+            else:
+                ident = event.get("id")
+                if not isinstance(ident, str):
+                    ident = ""
+                elif len(ident) > EVENT_ID_MAX:
+                    ident = "\x00"   # an id we cannot match (the list drops such ids too): the row is unplaced, not guessed
+                changes.update(event_title=title, event_note=note, event_id=ident, text_unreadable=False)
+        else:
+            changes["text_unreadable"] = True
     new = dataclasses.replace(state, **changes)
     # Deliberately strict until a real capture shows whether selectedEventIndex is 0- or 1-based
     # (and what Ontime sends when it is finished): an index past numEvents is treated as unreadable
@@ -242,6 +271,46 @@ def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownS
     if new.selected_index is not None and new.num_events is not None and new.selected_index > new.num_events:
         return None
     return new
+
+
+MAX_LIST_IDS = 5000    # ids looked at in one rundown list, however many it claims
+
+
+def parse_events(body: object) -> tuple[EventRow, ...] | None:
+    """The decoded ``GET /data/rundowns/current`` body -> the events to list, or None if it is not
+    a rundown at all.
+
+    Shape (4.14.0): ``{id, title, entries: {<id>: event}, order: [ids], flatOrder: [ids], revision}``;
+    an event has ``type, title, cue, timeStart, timeEnd, skip`` and many fields we never read (note,
+    colour, delay, custom fields, triggers, ...). Tolerant: follow ``flatOrder`` (else ``order``), look
+    at no more than MAX_LIST_IDS ids, ignore ids that are not text, repeat, are missing from
+    ``entries`` or are not an ``event`` (groups, milestones and delays are left out), keep at most
+    LIST_MAX_EVENTS events, and clean every text. A time outside 0 to 72 h is "unavailable" (None)."""
+    if not isinstance(body, dict):
+        return None
+    entries = body.get("entries")
+    order = body.get("flatOrder") if isinstance(body.get("flatOrder"), list) else body.get("order")
+    if not isinstance(entries, dict) or not isinstance(order, list):
+        return None
+    rows: list[EventRow] = []
+    seen: set[str] = set()
+    for ident in order[:MAX_LIST_IDS]:
+        if len(rows) >= LIST_MAX_EVENTS:
+            break
+        if not isinstance(ident, str) or ident in seen:
+            continue
+        seen.add(ident)
+        event = entries.get(ident)
+        if not isinstance(event, dict) or event.get("type") != "event":
+            continue
+        rows.append(EventRow(
+            id=ident if len(ident) <= EVENT_ID_MAX else "",   # same cap as eventNow.id: too long never matches
+            cue=clean_title(event.get("cue"), LIST_CUE_MAX),
+            title=clean_title(event.get("title"), EVENT_TITLE_MAX),
+            start_ms=_int_or_none(event.get("timeStart"), 0, MAX_TIME_MS)[1],
+            end_ms=_int_or_none(event.get("timeEnd"), 0, MAX_TIME_MS)[1],
+            skip=event.get("skip") is True))
+    return tuple(rows)
 
 
 def parse_version(body: object) -> str | None:
