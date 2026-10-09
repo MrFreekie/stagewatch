@@ -692,11 +692,14 @@
     }
     card.hidden = false;
     if (!wc.ui) {
-      wc.ui = { head: card.querySelector("h2"), face: null, host: h("div", { class: "wc-host" }),
+      wc.ui = { head: card.querySelector("h2"), headText: h("span"), face: null, host: h("div", { class: "wc-host" }),
+        logo: h("img", { class: "card-logo", src: "/static/ontime-badge.png", alt: "Ontime", width: "26", height: "26" }),
         date: h("p", { class: "wc-date" }), note: h("p", { class: "wc-note", role: "status" }) };
+      wc.ui.head.replaceChildren(wc.ui.headText, h("span", { class: "grow" }), wc.ui.logo);
       card.replaceChildren(wc.ui.head, wc.ui.host, wc.ui.date, wc.ui.note);
     }
-    wc.ui.head.textContent = `Wall Clock · ${m.label || "Ontime"}`;
+    wc.ui.headText.textContent = `Wall Clock · ${m.label || "Ontime"}`;
+    wc.ui.logo.hidden = m.source !== "ontime";      // the Ontime logo only while the time comes from Ontime
     tickWallClock();
   }
 
