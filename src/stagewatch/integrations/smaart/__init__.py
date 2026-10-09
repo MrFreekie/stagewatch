@@ -125,7 +125,7 @@ class SmaartIntegration(Integration):
         async with self._lock:
             await self._stop_source()
 
-    async def apply(self) -> None:
+    async def apply(self, restart: bool = False) -> None:
         """Make the running state match the saved settings (call after they change): start, stop or
         restart the source, and keep exactly the chosen values as entities. Safe to call any time."""
         async with self._lock:
@@ -138,7 +138,7 @@ class SmaartIntegration(Integration):
                     self.hub.remove_device(DEVICE_ID)
                 return
             key = (self.emulate, cfg.host, cfg.port, cfg.password)   # a new password logs in afresh
-            if self._source is None or key != self._key:
+            if self._source is None or key != self._key or restart:   # restart: log in afresh (a saved password)
                 await self._stop_source()
                 self._register_device()
                 self._reset_link_state()

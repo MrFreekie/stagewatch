@@ -77,7 +77,7 @@ def test_the_new_kind_is_in_db_with_its_unit_and_not_an_environment_kind():
 
 def test_version_text_is_short_plain_ascii():
     assert spl.clean_version("9.1.2") == "9.1.2"
-    for bad in (None, 9, "", "x" * 25, "9.\n1", "<script>", "café"):
+    for bad in (None, 9, "", "x" * 25, "9.\n1", "<script>", "cafÃ©"):
         assert spl.clean_version(bad) == ""
 
 
@@ -127,7 +127,7 @@ def test_public_entity_shape_has_labels_only_for_sound_levels(hub):
 
 def test_sound_levels_never_enter_a_site_average_or_the_equipment_group(hub):
     hub.register_device(Device("n1", "Node", "esphome"))
-    t = hub.register_entity(Entity("n1.t", "n1", "Temp", Kind.TEMPERATURE, "°C", 1))
+    t = hub.register_entity(Entity("n1.t", "n1", "Temp", Kind.TEMPERATURE, "Â°C", 1))
     hub.update_state(t.id, 20.0)
     e = add_level(hub)
     hub.update_state(e.id, 99.0)
@@ -170,7 +170,7 @@ def test_history_skips_not_available_records_so_an_outage_is_a_gap(hub):
 
 def test_other_kinds_are_still_averaged_in_history(hub):
     hub.register_device(Device("n1", "Node", "esphome"))
-    t = hub.register_entity(Entity("n1.t", "n1", "Temp", Kind.TEMPERATURE, "°C", 1))
+    t = hub.register_entity(Entity("n1.t", "n1", "Temp", Kind.TEMPERATURE, "Â°C", 1))
     base = 1_000_000.0
     hub.update_state(t.id, 10.0, base + 1)
     hub.update_state(t.id, 20.0, base + 2)
@@ -605,7 +605,7 @@ def test_the_password_is_not_in_the_repr_or_the_logs_and_is_checked():
     c = SplConfig(password=secret)
     assert secret not in repr(c) and secret not in str(c) and secret not in repr(Config(spl=c))
     assert c.password == secret
-    for bad in ("x" * 129, "a\nb", "a\x00b", 5, ["x"]):
+    for bad in ("x" * 129, "a\nb", "a\x00b", ["x"]):
         with pytest.raises(Exception) as exc:
             SplConfig(password=bad)
         assert "x" * 129 not in str(exc.value) and "a\nb" not in str(exc.value)
@@ -688,10 +688,52 @@ def test_put_spl_in_real_mode_needs_an_address_and_port(tmp_path):
     hub.add_integration(SmaartIntegration(hub, source_factory=FakeSource))
     with TestClient(create_app(hub, lan_addresses=lambda: ["192.0.2.10"])) as c:
         admin(c)
-        assert put(c).status_code == 422 and put(c, host="192.168.1.5").status_code == 422
+        assert put(c).status_code == 422                       # no address
         assert put(c, enabled=False).status_code == 200
-        assert put(c, host="192.168.1.5", port=26000).status_code == 200
+        r = put(c, host="192.168.1.5")                          # no port: Smaart's usual one
+        assert r.status_code == 200 and hub.config.spl.port == 26000
         assert hub.integrations["smaart"]._source is not None
+
+
+def test_saving_with_a_password_or_after_a_refused_one_restarts_the_source_but_a_plain_save_does_not(tmp_path):
+    hub = Hub(tmp_path)
+    integ = SmaartIntegration(hub, source_factory=FakeSource)
+    hub.add_integration(integ)
+    with TestClient(create_app(hub, lan_addresses=lambda: ["192.0.2.10"])) as c:
+        admin(c)
+        assert put(c, host="192.168.1.5", port=26000).status_code == 200
+        first = integ._source
+        assert put(c, host="192.168.1.5", port=26000, slots=["c_slow"]).status_code == 200
+        assert integ._source is first and first.stopped == 0          # a plain save: no reconnect
+        assert put(c, host="192.168.1.5", port=26000, password=SECRET).status_code == 200
+        second = integ._source
+        assert second is not first and first.stopped == 1               # a new password: log in afresh
+        assert put(c, host="192.168.1.5", port=26000, password=SECRET).status_code == 200
+        third = integ._source
+        assert third is not second and second.stopped == 1              # the same password again: still tries again
+        third.problem = "wrong_password"
+        assert put(c, host="192.168.1.5", port=26000).status_code == 200
+        assert integ._source is not third and third.stopped == 1        # saving after a refusal: tries again
+
+
+@pytest.mark.parametrize("host", ["::ffff:192.168.1.5", "::ffff:8.8.8.8", "2002:c0a8:105::1", "2001:0:4136:e378:8000:63bf:3fff:fdd2"])
+def test_ipv6_forms_that_hide_another_address_are_refused_as_typed_addresses(host):
+    from stagewatch.core.config import spl_host_error
+    assert spl_host_error(host) and "local network" in spl_host_error(host)
+    with pytest.raises(Exception):
+        SplConfig(host=host)
+    assert spl_host_error("127.0.0.1") is None and spl_host_error("::1") is None and spl_host_error("fe80::1") is None
+
+
+def test_a_numeric_password_in_the_file_is_read_as_text_and_never_logged(tmp_path, caplog):
+    p = tmp_path / "config.yaml"
+    p.write_text("schema_version: 2\nspl:\n  enabled: true\n  host: 192.168.1.5\n  password: 1234\n", encoding="utf-8")
+    cfg = ConfigStore(p).load()
+    assert cfg.spl.password == "1234" and cfg.spl.host == "192.168.1.5"
+    assert SplConfig(password=1234).password == "1234" and "1234" not in caplog.text
+    assert SplConfig(password=0.5).password == "0.5"
+    with pytest.raises(Exception):
+        SplConfig(password=True)
 
 
 def test_put_spl_applies_at_once_and_the_snapshot_has_the_public_shape_only(client_app):

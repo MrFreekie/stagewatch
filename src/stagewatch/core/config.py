@@ -476,6 +476,8 @@ def spl_host_error(v) -> str | None:
         return bad if (not _ONTIME_HOST_RE.fullmatch(v) or numeric_host_name(v)) else None
     if ip.is_global or ip.is_multicast or ip.is_unspecified:
         return "address must be on the local network"
+    if isinstance(ip, ipaddress.IPv6Address) and (ip.ipv4_mapped or ip.sixtofour or ip.teredo):
+        return "address must be on the local network"   # carries another address inside: not obvious where it goes
     return None
 
 
@@ -571,6 +573,8 @@ class SplConfig(_Model):
     @field_validator("password", mode="before")
     @classmethod
     def _password(cls, v):
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            v = str(v)   # YAML reads `password: 1234` as a number
         if v is None or v == "":
             return ""
         err = spl_password_error(v)
@@ -640,6 +644,8 @@ class Config(_Model):
         if isinstance(v, dict) and "host" in v and spl_host_error(v["host"]):
             log.warning("Sound level: the saved address is not usable and was cleared")
             v = {**v, "host": ""}
+        if isinstance(v, dict) and isinstance(v.get("password"), (int, float)) and not isinstance(v["password"], bool):
+            v = {**v, "password": str(v["password"])}
         if isinstance(v, dict) and v.get("password") not in (None, "") and spl_password_error(v["password"]):
             log.warning("Sound level: the saved password is not usable and was cleared")
             v = {**v, "password": ""}

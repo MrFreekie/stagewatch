@@ -60,6 +60,7 @@ POLL_S = 15.0           # ask for the input list again this often
 NO_INPUTS_POLL_S = 5.0  # ... or this often while Smaart has none
 AUTH_RETRY_S = 60.0     # check again this often when Smaart wants a password and we have none
 QUEUE_MAX = 16
+STRICT_SKIP_MAX = 5     # set-up questions skip this many unrelated messages, then give up
 
 # Fixed, plain wording for crew (never raw error text, which can carry addresses).
 TEXT = {
@@ -146,7 +147,8 @@ async def resolve_local(host: str, port: int) -> str:
         return host
     except ValueError:
         pass
-    infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    infos = await asyncio.wait_for(
+        asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM), OPEN_TIMEOUT_S)
     addrs = [i[4][0].split("%")[0] for i in infos]
     if not addrs or not all(is_local_address(ipaddress.ip_address(a)) for a in addrs):
         raise NotLocal()
@@ -356,6 +358,7 @@ class SmaartSource(SplSource):
         skipped (at most 20). Raises TimeoutError when Smaart does not answer, or the failure that
         ended the connection."""
         async def go():
+            skipped = 0
             for _ in range(20):
                 raw = await queue.get()
                 if raw is None:
@@ -364,6 +367,11 @@ class SmaartSource(SplSource):
                 if doc is not None and wanted(doc):
                     return doc
                 if strict:
+                    # A message with no "response" is not an answer (Smaart may push other things):
+                    # skip a few. Anything else that is not the reply is a wrong shape.
+                    if isinstance(doc, dict) and "response" not in doc and skipped < STRICT_SKIP_MAX:
+                        skipped += 1
+                        continue
                     raise NotSmaart()
             raise TimeoutError()
         return await asyncio.wait_for(go(), self._reply_timeout)

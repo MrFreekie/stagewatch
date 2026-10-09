@@ -394,7 +394,7 @@ async def test_smaart_with_no_active_inputs_says_to_start_logging_and_picks_them
             await src.stop()
 
 
-@pytest.mark.parametrize("frames", [['{"hello": "world"}'], ["not json"], ['["a"]'], ['{"response": 5}'], ['{"error":"no such path"}']])
+@pytest.mark.parametrize("frames", [["not json"], ['["a"]'], ['{"response": 5}'], ['{"response": []}'], ['{"hello": "x"}'] * 7])
 async def test_an_address_that_does_not_answer_like_smaarts_v4_api_is_told_so_plainly(frames):
     async with FakeSmaartServer(probe_frames=frames) as srv:
         sink = Sink()
@@ -407,6 +407,69 @@ async def test_an_address_that_does_not_answer_like_smaarts_v4_api_is_told_so_pl
             assert all(k in (outbound.PROBE,) for k in probe_kinds(srv))      # nothing more was sent to it
         finally:
             await src.stop()
+
+
+async def test_a_few_unrelated_messages_before_the_reply_are_skipped_but_not_forever():
+    class Chatty(FakeSmaartServer):
+        async def _probe(self, ws):
+            async for text in ws:
+                self.received.append((PROBE_PATH, text))
+                kind = outbound.kind_of(text)
+                for _ in range(3):
+                    await ws.send('{"hello": "greeting"}')
+                if kind == outbound.PROBE:
+                    await ws.send(json.dumps({"response": {"authenticationRequired": False}}))
+                elif kind == outbound.INPUTS:
+                    await ws.send(self.inputs_reply())
+    async with Chatty() as srv:
+        sink = Sink()
+        src = client(srv.port, sink)
+        await src.start()
+        try:
+            await until(lambda: sink.readings)
+        finally:
+            await src.stop()
+    async with FakeSmaartServer(probe_frames=['{"hello": "x"}'] * 6 + ['{"response": {"authenticationRequired": false}}']) as srv:
+        sink = Sink()           # more than the cap of unrelated messages: not Smaart's API
+        src = client(srv.port, sink)
+        await src.start()
+        try:
+            await until(lambda: (False, TEXT["not_smaart"]) in sink.links)
+        finally:
+            await src.stop()
+
+
+async def test_a_name_lookup_that_hangs_times_out_with_the_timeout_message(monkeypatch):
+    from stagewatch.integrations.smaart import client as cl
+    monkeypatch.setattr(cl, "OPEN_TIMEOUT_S", 0.1)
+
+    async def getaddrinfo(self, host, port, **kw):
+        await asyncio.sleep(30)
+    monkeypatch.setattr(asyncio.get_running_loop().__class__, "getaddrinfo", getaddrinfo)
+    sink = Sink()
+    src = SmaartSource(lambda: ("smaart.example", 1), sink.reading, sink.link, backoff_min_s=0.05, backoff_max_s=0.1)
+    await src.start()
+    try:
+        await until(lambda: (False, TEXT["timeout"]) in sink.links)
+    finally:
+        await src.stop()
+
+
+async def test_apply_with_restart_logs_in_again_after_a_refused_password(hub):
+    async with FakeSmaartServer(password=PW) as srv:
+        integ = make_integ(hub, srv, [("", A)], password="not-" + PW)
+        await integ.start()
+        try:
+            await until(lambda: integ.admin_status()["problem"] == "wrong_password")
+            srv.password = "not-" + PW                 # as if the password had been corrected in Smaart
+            await integ.apply()                         # nothing changed: stays parked
+            await asyncio.sleep(0.3)
+            assert probe_kinds(srv).count(outbound.LOGIN) == 1
+            await integ.apply(restart=True)             # what saving the settings now does
+            await until(lambda: hub.devices["spl"].status == Status.OK)
+            assert probe_kinds(srv).count(outbound.LOGIN) == 2
+        finally:
+            await integ.stop()
 
 
 async def test_an_address_that_never_answers_is_a_timeout_not_a_hang():

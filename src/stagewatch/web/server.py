@@ -1225,7 +1225,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 raise HTTPException(422, "The password must be 1 to 128 characters, with no control characters")
             password = body.password
         try:
-            new = SplConfig(enabled=body.enabled, host=body.host, port=body.port, password=password, **extra)
+            # an empty port means Smaart's usual one (the page shows 26000 as its placeholder)
+            new = SplConfig(enabled=body.enabled, host=body.host, port=body.port or 26000, password=password, **extra)
         except ValidationError:
             raise HTTPException(422, "The address must be a host name or an IP address on the local network") from None
         if new.enabled and not hub.emulate and not (new.host and new.port):
@@ -1234,7 +1235,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         integ = hub.integrations.get("smaart")
         if integ is not None:
             try:
-                await integ.apply()
+                # A password sent with the save (even the same one) or a refused one earlier means
+                # "try logging in again now": the client does not retry a refused password by itself.
+                again = bool(body.password) or integ.admin_status().get("problem") == "wrong_password"
+                await integ.apply(restart=again)
             except Exception:  # noqa: BLE001 - the settings are saved either way
                 log.exception("Could not apply the sound level settings")
         hub.save_config()

@@ -806,7 +806,9 @@ work anything out itself.
 3. If the API has a password, type it in **Smaart API password**. It is stored in the settings file like an
    ESPHome encryption key, is never shown again (the page only says a password is saved), and is never put
    in the logs or the support bundle. Leave the box empty to keep the saved one; tick **Remove the saved
-   password** to delete it.
+   password** to delete it. Smaart's API is plain, not encrypted (as far as we know), so the password
+   crosses the show network as readable text: use a password you use nowhere else. Saving a password
+   (even the same one) makes Stagewatch try to log in again at once; it never retries a refused one by itself.
 4. Save. Once Stagewatch is connected, the drop-downs fill with Smaart's own lists. For each of up to three
    values choose the **input** (for example "ASIO MADIface USB : Channel 7 (1)"; the default is the first
    input Smaart lists) and the **value** (for example "SPL A Slow", "SPL C Slow", "LAeq 10"). Save again.
@@ -843,6 +845,10 @@ knows Smaart's `/api/v4/` address; check the API is on and the port is right).
 - The card shows the input a value is read from as a small line of plain text: once at the top if all the
   values use the same input, otherwise under each value. Values from different inputs are never combined.
 - A reading Smaart marks as **overload** shows as a dash, never as 0.
+- Input names (for example "ASIO MADIface USB : Channel 7 (1)") appear on the dashboards, which have no
+  password, and are part of the stored value names. If you rename an input in Smaart, Stagewatch starts a
+  new series for it, and the old one stays in the history.
+- An empty **Port** box means 26000.
 - Sound levels are **never** part of the site averages and cannot be given a calibration offset.
 - Dashboards are not password protected, so anyone on the show network can see these numbers. Only add the
   card to screens where that is fine.
