@@ -128,17 +128,25 @@ def timer_assigned(config) -> bool:
     return card_assigned(config, CARD_ID)
 
 
-def _ontime_source(hub: "Hub"):
+def _ontime_source(hub: "Hub", attr: str = "latest_timer"):
     """The Ontime integration's shared source (the real one or its emulated stand-in), if any."""
     for integration in hub.integrations.values():
         source = getattr(integration, "clock_source", None)
-        if source is not None and getattr(source, "name", "") == "ontime" and hasattr(source, "latest_timer"):
+        if source is not None and getattr(source, "name", "") == "ontime" and hasattr(source, attr):
             return source
     return None
 
 
 class OntimeTimerService:
-    """Owned by the hub. Holds the shared Ontime source while a dashboard has the card."""
+    """Owned by the hub. Holds the shared Ontime source while a dashboard has the card.
+
+    The Ontime Rundown card's service (core/ontimerundown.py) subclasses this and changes only the
+    class attributes and ``_message``: same refcounted source, same one connection."""
+
+    CARD_ID = CARD_ID
+    CONSUMER = CONSUMER
+    TOPIC = "ontime_timer"
+    SOURCE_ATTR = "latest_timer"      # the reading method the source must offer
 
     def __init__(self, hub: "Hub") -> None:
         self.hub = hub
@@ -159,7 +167,7 @@ class OntimeTimerService:
     async def start(self) -> None:
         self._stopped = False
         await self.evaluate()
-        self._task = asyncio.create_task(self._publish_loop(), name="ontime-timer")
+        self._task = asyncio.create_task(self._publish_loop(), name=f"{self.TOPIC}-publish")
 
     async def stop(self) -> None:
         self._stopped = True
@@ -182,7 +190,7 @@ class OntimeTimerService:
             return
         self._dirty = True
         if self._apply_task is None or self._apply_task.done():
-            self._apply_task = loop.create_task(self._apply_loop(), name="ontime-timer-apply")
+            self._apply_task = loop.create_task(self._apply_loop(), name=f"{self.TOPIC}-apply")
 
     async def _apply_loop(self) -> None:
         """Evaluate until no save arrived meanwhile, so a second save during a slow start is not lost."""
@@ -194,10 +202,10 @@ class OntimeTimerService:
         """Hold or release the shared source to match the config. Never raises."""
         async with self._lock:
             try:
-                if not timer_assigned(self.hub.config):
+                if not card_assigned(self.hub.config, self.CARD_ID):
                     await self._release()
                     return
-                source = self._source or _ontime_source(self.hub)
+                source = self._source or _ontime_source(self.hub, self.SOURCE_ATTR)
                 if source is None:
                     return
                 if self._source is None:
@@ -205,10 +213,10 @@ class OntimeTimerService:
                 # Remember it BEFORE acquiring: if we are cancelled part-way, stop() still releases it.
                 self._source = source
                 try:
-                    await source.acquire(CONSUMER)   # idempotent; also restarts it if the address changed
+                    await source.acquire(self.CONSUMER)   # idempotent; also restarts it if the address changed
                 except Exception:
                     self._source = None
-                    await source.release(CONSUMER)
+                    await source.release(self.CONSUMER)
                     raise
             except Exception:  # noqa: BLE001 - a timer card must never stop the hub
                 log.exception("Could not start or stop the Ontime timer")
@@ -217,7 +225,7 @@ class OntimeTimerService:
         source, self._source = self._source, None
         if source is not None:
             try:
-                await source.release(CONSUMER)
+                await source.release(self.CONSUMER)
             except Exception:  # noqa: BLE001
                 log.exception("Could not release the Ontime source")
         self._last_sent = None
@@ -229,17 +237,23 @@ class OntimeTimerService:
         if source is None:
             return None
         try:
-            return timer_message(source.label, source.latest_timer(), self.hub.config.ontime_timer.show_title)
-        except Exception:  # noqa: BLE001 - never break the snapshot over the timer
-            log.exception("Ontime timer reading failed")
+            return self._message(source)
+        except Exception:  # noqa: BLE001 - never break the snapshot over a card
+            log.exception("Ontime %s reading failed", self.TOPIC)
             return None
+
+    def _reading(self, source):
+        return source.latest_timer()
+
+    def _message(self, source) -> dict:
+        return timer_message(source.label, self._reading(source), self.hub.config.ontime_timer.show_title)
 
     def admin_status(self) -> dict:
         """For the admin page: is the card assigned, and is the shared source running (no addresses)."""
-        out: dict = {"card_assigned": timer_assigned(self.hub.config), "active": self._source is not None}
+        out: dict = {"card_assigned": card_assigned(self.hub.config, self.CARD_ID), "active": self._source is not None}
         source = self._source
         if source is not None:
-            reading = source.latest_timer()
+            reading = self._reading(source)
             out.update(status=reading.status, detail=reading.detail,
                        last_message=reading.received_at if reading.status == "ok" else None)
         return out
@@ -248,7 +262,7 @@ class OntimeTimerService:
         msg = self.snapshot()
         if msg is not None and msg != self._last_sent:
             self._last_sent = msg
-            self.hub.bus.publish("ontime_timer", msg)
+            self.hub.bus.publish(self.TOPIC, msg)
 
     async def _publish_loop(self) -> None:
         while True:
@@ -256,4 +270,4 @@ class OntimeTimerService:
             try:
                 self._publish_once()
             except Exception:  # noqa: BLE001
-                log.exception("Ontime timer publish failed")
+                log.exception("Ontime %s publish failed", self.TOPIC)

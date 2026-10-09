@@ -17,6 +17,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "schedule",        # NOW / NEXT / CURFEW and the running order; hidden while the show has no items
     "wall_clock",      # Wall Clock (Ontime); never added by default
     "ontime_timer",    # Ontime Timer: the countdown Ontime is running; never added by default
+    "ontime_rundown",  # Ontime Rundown: event N of M and ahead/behind from Ontime; never added by default
     "connect_footer",  # "Open on a tablet" QR footer
     "barometer",       # sea-level pressure dial, 3-hour tendency, rough outlook; never added by default
     "equipment",       # readings from Equipment-role sensors (amp racks, PSUs), by node; hidden while there are none; never added by default

@@ -8,7 +8,8 @@
 * Reconnects with a bounded backoff (1 s to 30 s). Nothing here can stop the hub.
 
 What is read from what Ontime sends: the clock, the main timer with a few fields of the loaded
-event (for the Ontime Timer card), and the version string. One connection serves both cards.
+event (for the Ontime Timer card), the rundown counters, times and offset (for the Ontime Rundown
+card), and the version string. One connection serves all three cards.
 """
 
 from __future__ import annotations
@@ -25,9 +26,10 @@ from typing import Callable
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidURI
 
+from ...core.ontimerundown import RundownReading, RundownState
 from ...core.ontimetimer import TimerReading, TimerState
 from ...core.wallclock import ClockReading, valid_clock_ms
-from .parse import (HTTP_OK, HTTP_PATHS, MAX_BYTES, parse_timer, parse_version, parse_ws_runtime, poll_payload,
+from .parse import (HTTP_OK, HTTP_PATHS, MAX_BYTES, parse_rundown, parse_timer, parse_version, parse_ws_runtime, poll_payload,
                     split_url, ws_url)
 
 log = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ TEXT = {
     "too_large": "Ontime sent more data than we accept",
     "bad_clock": "Ontime sent a time we can't read",
     "bad_timer": "Ontime sent a timer we can't read",
+    "bad_rundown": "Ontime sent a rundown we can't read",
     "closed": "Ontime closed the connection",
 }
 
@@ -164,6 +167,8 @@ class OntimeSource:
         self._reading = ClockReading(None, clock(), "offline", "Connecting")
         self._timer = TimerReading(None, clock(), "offline", "Connecting")
         self._merged: TimerState | None = None   # the last good timer state, for merging partial messages
+        self._rundown = RundownReading(None, clock(), "offline", "Connecting")
+        self._merged_rd: RundownState | None = None   # likewise for the rundown and offset blocks
         self.version = ""
         self.transport = ""
         self._got = False
@@ -174,6 +179,8 @@ class OntimeSource:
             self._reading = ClockReading(None, self._time(), "offline", "Connecting")
             self._timer = TimerReading(None, self._time(), "offline", "Connecting")
             self._merged = None
+            self._rundown = RundownReading(None, self._time(), "offline", "Connecting")
+            self._merged_rd = None
             self.version = self.transport = ""
             self._task = asyncio.create_task(self._run(), name="ontime-client")
 
@@ -188,6 +195,9 @@ class OntimeSource:
 
     def latest_timer(self) -> TimerReading:
         return self._timer
+
+    def latest_rundown(self) -> RundownReading:
+        return self._rundown
 
     def details(self) -> dict:
         return {"version": self.version, "transport": self.transport}
@@ -209,7 +219,9 @@ class OntimeSource:
         """The connection or the data is gone: both the clock and the timer have nothing to show."""
         self.transport = ""
         self._merged = None
+        self._merged_rd = None
         self._timer = TimerReading(None, self._time(), "offline", TEXT.get(category, TEXT["unreachable"]))
+        self._rundown = RundownReading(None, self._time(), "offline", TEXT.get(category, TEXT["unreachable"]))
         self._set(ClockReading(None, self._time(), "offline" if category != "bad_clock" else "error",
                                TEXT.get(category, TEXT["unreachable"])))
 
@@ -230,6 +242,7 @@ class OntimeSource:
                 self._merged, timer_ok = state, True
                 self._timer = TimerReading(state, self._time(), "ok", "WebSocket" if transport == "websocket" else "Polling")
         ms = valid_clock_ms(payload.get("clock"))
+        self._ingest_rundown(payload, transport, alive=ms is not None or timer_ok, clock_ms=ms)
         if ms is not None:
             self._good(ms, transport)
         else:
@@ -237,11 +250,29 @@ class OntimeSource:
             self._set(ClockReading(None, self._time(), "error", TEXT["bad_clock"]))
         return ms is not None or timer_ok
 
+    def _ingest_rundown(self, payload: dict, transport: str, alive: bool, clock_ms: int | None) -> None:
+        """Merge the rundown and offset blocks. A message without them (the usual one) just proves
+        the connection is alive, so the reading's age restarts; one that carries an unreadable
+        block turns the card to "can't read" until a readable block arrives."""
+        how = "WebSocket" if transport == "websocket" else "Polling"
+        if "rundown" in payload or "offset" in payload:
+            state = parse_rundown(payload, self._merged_rd)
+            if state is None:
+                self._merged_rd = None
+                self._rundown = RundownReading(None, self._time(), "error", TEXT["bad_rundown"])
+            else:
+                self._merged_rd = state
+                self._rundown = RundownReading(state, self._time(), "ok", how, clock_ms)
+        elif alive and self._rundown.status != "error":
+            # Alive, no new blocks: same state, newer time. (With nothing seen yet it stays "no data".)
+            self._rundown = RundownReading(self._merged_rd, self._time(), "ok", how, clock_ms)
+
     async def _run(self) -> None:
         backoff = self._bmin
         while True:
             self._got = False
             self._merged = None   # a new connection starts with a full message
+            self._merged_rd = None
             try:
                 await self._read_version()
                 await self._ws_session()

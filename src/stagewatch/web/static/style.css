@@ -519,6 +519,48 @@ body.layout-wall .ot-tags .sched-tag { font-size: 30px; padding: 2px 16px; }
 body.layout-wall .ot-tags { gap: 8px 24px; margin-top: 10px; }
 body.layout-wall .ot-added, body.layout-wall .ot-extra, body.layout-wall .ot-foot { display: none; }
 body.layout-wall #ontime-timer-card > h2 { font-size: 24px; }
+/* ---- dashboard: Ontime Rundown card ----
+   The big line is the ahead/behind figure with its words and a triangle (never colour alone).
+   Behind is amber then orange, never red; ahead and on time stay neutral. Stale figures are struck
+   through. No animation at all. Tablet: every line. Phone: figure, position, expected end.
+   Wall: figure and position in large type, plus the bar. */
+.rd-main { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; }
+.rd-big { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.05; }
+.rd-word { font-size: 24px; font-weight: 800; letter-spacing: .04em; }
+.rd-mode { font-size: 14px; }
+.rd-badge { display: block; font-size: 15px; font-weight: 800; letter-spacing: .04em; }
+.rd-phrase { margin: 2px 0 0; font-size: 18px; }
+.rd-pos { margin-top: 4px; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rd-bar { position: relative; overflow: visible; }
+.rd-bar .sched-bar-fill { border-radius: 999px; }
+.rd-tick { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1px; background: var(--text); border-radius: 2px; }
+.rd-line { margin: 4px 0 0; font-size: 15px; font-variant-numeric: tabular-nums; }
+.rd-day { font-size: 13px; }
+.rd-note { margin: 6px 0 0; font-size: 15px; font-weight: 600; }
+.rd-foot { margin: 8px 0 0; font-size: 12px; }
+#ontime-rundown-card.rd-lvl-warn .rd-big, #ontime-rundown-card.rd-lvl-warn .rd-word { color: var(--warn); }
+#ontime-rundown-card.rd-lvl-alert .rd-big, #ontime-rundown-card.rd-lvl-alert .rd-word { color: var(--alert); }
+#ontime-rundown-card.rd-lvl-alert { border-left: 6px solid var(--alert); }
+#ontime-rundown-card.rd-lvl-warn { border-left: 6px solid var(--warn); }
+#ontime-rundown-card.rd-s-notstarted .rd-big, #ontime-rundown-card.rd-s-finished .rd-big,
+#ontime-rundown-card.rd-s-empty .rd-big, #ontime-rundown-card.rd-s-nodata .rd-big { color: var(--muted); font-size: 40px; }
+#ontime-rundown-card.rd-s-off, #ontime-rundown-card.rd-s-error, #ontime-rundown-card.rd-s-stale { border-left: 6px solid var(--warn); }
+#ontime-rundown-card.rd-s-off, #ontime-rundown-card.rd-s-error { opacity: .75; }
+#ontime-rundown-card.rd-s-off .rd-big, #ontime-rundown-card.rd-s-error .rd-big,
+#ontime-rundown-card.rd-s-stale .rd-big { color: var(--muted); }
+#ontime-rundown-card.rd-s-stale .rd-big { text-decoration: line-through; text-decoration-thickness: 4px; }
+body.layout-phone .rd-big { font-size: 46px; }
+body.layout-phone .rd-planned, body.layout-phone .rd-started, body.layout-phone .rd-day { display: none; }
+body.layout-wall .rd-big { font-size: min(220px, 18vw); }
+body.layout-wall .rd-word { font-size: min(96px, 8vw); }
+body.layout-wall .rd-mode { font-size: 32px; }
+body.layout-wall .rd-badge, body.layout-wall .rd-note { font-size: 32px; }
+body.layout-wall .rd-phrase { font-size: 40px; }
+body.layout-wall .rd-pos { font-size: min(110px, 9vw); margin-top: 8px; }
+body.layout-wall .rd-line { font-size: 32px; }
+body.layout-wall .rd-planned, body.layout-wall .rd-started, body.layout-wall .rd-day, body.layout-wall .rd-foot { display: none; }
+body.layout-wall .rd-bar { height: 24px; margin: 16px 0 8px; }
+body.layout-wall #ontime-rundown-card > h2 { font-size: 24px; }
 /* ---- dashboard: Barometer card ----
    Tablet: the dial beside the figures. Phone: a smaller dial above them. Wall: big numbers, no dial
    (a needle position cannot be read at 5 m). A fast fall always has words and ▼▼ as well as colour

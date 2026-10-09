@@ -144,14 +144,14 @@ def seed_emulate_demo(config) -> bool:
     """Emulate mode only (called from __main__, never by the hub): a fresh emulate config with the
     three stock dashboards gets the Wall Clock card on each, one in each style, and the emulated
     Ontime as the source, so every style and every state (live, differs, stale, offline) can be
-    seen offline. The wall dashboard also gets the Ontime Timer card. Does nothing once any
+    seen offline. The wall dashboard also gets the Ontime Timer and Ontime Rundown cards. Does nothing once any
     dashboard has the Wall Clock card or the dashboards were changed.
     Returns True if it changed the config."""
     stock = {"foh": "segments", "phone": "digits", "wall": "ring"}
     if card_assigned(config) or {d.slug for d in config.dashboards} != set(stock):
         return False
     for d in config.dashboards:
-        d.cards = [*d.cards[:1], *(["ontime_timer"] if d.slug == "wall" else []), "wall_clock", *d.cards[1:]]
+        d.cards = [*d.cards[:1], *(["ontime_timer", "ontime_rundown"] if d.slug == "wall" else []), "wall_clock", *d.cards[1:]]
         d.clock_style = stock[d.slug]
     config.wall_clock.source = "ontime"
     return True
