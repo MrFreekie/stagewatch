@@ -546,6 +546,9 @@ body.layout-phone .rd-ev-time { flex-basis: 3.2em; }
 .rd-ev-next { font-weight: 600; }
 .rd-ev-past, .rd-ev-skipped { color: var(--muted); }
 .rd-ev-skipped .rd-ev-time, .rd-ev-skipped .rd-ev-title { text-decoration: line-through; }
+.rd-title.stale, .rd-evnote.stale { opacity: .6; text-decoration: line-through; }
+#ontime-rundown-card.rd-s-stale .sched-bar-fill { background: var(--muted); }
+body.layout-phone .rd-phrase.dup { display: none; }
 .rd-listnote { font-size: 13px; }
 #ontime-rundown-card.rd-s-stale .rd-events { opacity: .6; }
 body.layout-phone .rd-ev { font-size: 15px; gap: 8px; }

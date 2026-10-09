@@ -41,7 +41,8 @@ STATIC = ROOT / "src" / "stagewatch" / "web" / "static"
 ALLOWED = ALLOWED_BASE | {"/data/rundowns/current"}   # the one deliberate extra read-only request
 
 PUBLIC_KEYS = {"status", "label", "received_at", "position", "offset_ms", "offset_mode", "planned_start_ms",
-               "planned_end_ms", "expected_end_ms", "actual_start_ms", "current_day", "ontime_clock_ms", "unreadable", "event_title", "event_note", "events", "events_stale"}
+               "planned_end_ms", "expected_end_ms", "actual_start_ms", "current_day", "ontime_clock_ms", "unreadable", "event_title", "event_note", "events", "events_stale",
+               "events_unplaced", "event_text_unreadable"}
 # current_day (only to say "a later day") and ontime_clock_ms (Ontime's clock, for the day bar) are public on purpose.
 
 
@@ -671,20 +672,31 @@ def test_hostile_event_text_is_cleaned_and_capped():
 
 @pytest.mark.parametrize("bad", [{"title": 5}, {"title": ["a"]}, {"title": {"a": {"b": {}}}}, {"note": 1.5},
                                  {"note": {"nested": [1, 2]}}, {"title": True}])
-def test_event_text_of_the_wrong_type_is_unreadable_and_keeps_the_last_good_text(bad):
-    assert parse.parse_rundown({"eventNow": event(**bad)}) is None
+def test_event_text_of_the_wrong_type_keeps_the_old_text_and_marks_only_the_text(bad):
+    good = parse.parse_rundown({"rundown": rundown_block(), "offset": offset_block(), "eventNow": event()})
+    s = parse.parse_rundown({"eventNow": event(**bad)}, good)
+    assert s is not None and s.text_unreadable is True
+    assert (s.event_title, s.event_note, s.event_id) == ("Support act", "Check IEMs before the changeover.", "abc123")   # old text kept
+    # a valid rundown/offset block in the same message is still taken
+    both = parse.parse_rundown({"rundown": {"selectedEventIndex": 7}, "offset": {"absolute": 5000}, "eventNow": event(**bad)}, good)
+    assert both.selected_index == 7 and both.offset_ms == 5000 and both.text_unreadable is True and both.event_title == "Support act"
+    # a good eventNow clears the mark
+    again = parse.parse_rundown({"eventNow": event(title="Headliner")}, s)
+    assert again.text_unreadable is False and again.event_title == "Headliner"
     src = fast_source("http://127.0.0.1:1")
     src._ingest({"clock": 1000, "rundown": rundown_block(), "eventNow": event()}, "websocket")
     src._ingest({"clock": 2000, "eventNow": event(**bad)}, "websocket")
     r = src.latest_rundown()
-    assert r.unreadable is True and r.state.event_title == "Support act"                   # last good, marked
+    assert r.unreadable is False and r.state.event_title == "Support act"                  # the figures are fine
     m = rundown_message("Ontime", r)
-    assert m["event_title"] == "Support act" and m["unreadable"] is True
+    assert m["event_title"] == "Support act" and m["event_text_unreadable"] is True and m["unreadable"] is False
 
 
 @pytest.mark.parametrize("value", ["text", 5, [], True])
-def test_an_eventnow_that_is_not_an_object_is_unreadable(value):
-    assert parse.parse_rundown({"eventNow": value}) is None
+def test_an_eventnow_that_is_not_an_object_marks_only_the_text(value):
+    good = parse.parse_rundown({"rundown": rundown_block(), "eventNow": event()})
+    s = parse.parse_rundown({"eventNow": value}, good)
+    assert s.text_unreadable is True and s.event_title == "Support act" and s.num_events == 12
 
 
 def test_offline_messages_carry_no_event_text():
@@ -700,7 +712,7 @@ def test_the_rundown_card_still_asks_for_no_new_path():
 # The event list (GET /data/rundowns/current). Shape from a real 4.14.0 capture; every
 # title below is MADE UP and the groups / milestones / delays are SYNTHETIC.
 # ====================================================================================
-from stagewatch.core.ontimerundown import EventRow, EventsReading, events_window  # noqa: E402
+from stagewatch.core.ontimerundown import EventRow, EventsReading, events_view, events_window  # noqa: E402
 from stagewatch.integrations.ontime.emulate import emulated_rundown_json  # noqa: E402
 
 
@@ -797,7 +809,9 @@ def test_window_prefers_the_event_id_over_the_index():
     win = events_window(rows_for(), st)
     assert [r["title"] for r in win if r["state"] == "current"] == ["Act 10"]
     st = RundownState(selected_index=3, num_events=20, event_id="unknown")
-    assert [r["title"] for r in events_window(rows_for(), st) if r["state"] == "current"] == ["Act 4"]   # id not in the list: index
+    assert events_window(rows_for(), st) == []                                    # an id that is not in the list: never the index
+    st = RundownState(selected_index=3, num_events=20, event_id="")
+    assert [r["title"] for r in events_window(rows_for(), st) if r["state"] == "current"] == ["Act 4"]   # no id at all: the index
 
 
 def test_window_before_the_start_and_when_finished():
@@ -936,7 +950,10 @@ async def test_a_failed_or_unreadable_answer_keeps_the_last_good_list_marked_sta
 
 
 async def test_the_rundown_card_through_the_hub_fetches_only_while_assigned(tmp_path):
-    async with ListOntime(body=list_body(16)) as fake:
+    body = list_body(16)   # the fake Ontime says the running event is "4234a8" (the real fixture): name the 9th row so
+    body["entries"]["4234a8"] = {**body["entries"].pop("e8"), "id": "4234a8"}   # the card can find it
+    body["order"] = body["flatOrder"] = ["4234a8" if i == "e8" else i for i in body["order"]]
+    async with ListOntime(body=body) as fake:
         hub = Hub(tmp_path)
         hub.config.wall_clock.ontime_url = fake.url
         hub.add_integration(OntimeIntegration(hub, inner=list_source(fake.url)))
@@ -978,3 +995,104 @@ async def test_emulate_mode_shows_a_list_through_the_hub(tmp_path):
         assert set(snap) == PUBLIC_KEYS and snap["events"][0]["title"]
     finally:
         await hub.stop()
+
+
+# ---- review fixes ----
+def test_the_admin_switch_blanks_every_title_and_note_but_keeps_the_structure():
+    s = parse.parse_rundown({"rundown": rundown_block(selectedEventIndex=2), "eventNow": event(id="e2")})
+    rows = parse.parse_events(list_body())
+    on = rundown_message("Ontime", RundownReading(s, 1.0, "ok", "", 5), EventsReading(rows, False), True)
+    off = rundown_message("Ontime", RundownReading(s, 1.0, "ok", "", 5), EventsReading(rows, False), False)
+    assert set(on) == set(off) == PUBLIC_KEYS
+    assert on["event_title"] == "Support act" and on["event_note"] and all(r["title"] for r in on["events"])
+    assert off["event_title"] == "" and off["event_note"] == "" and off["event_text_unreadable"] is False
+    assert all(r["title"] == "" for r in off["events"])
+    assert [(r["cue"], r["start"], r["end"], r["state"]) for r in off["events"]] == [(r["cue"], r["start"], r["end"], r["state"]) for r in on["events"]]
+    text = json.dumps(off)
+    for t in ("Support act", "Act 1", "Act 3", "IEMs"):
+        assert t not in text
+
+
+async def test_the_rundown_card_follows_the_timer_title_switch_through_the_hub(tmp_path):
+    hub = Hub(tmp_path, emulate=True)
+    hub.add_integration(OntimeIntegration(hub, emulate=True))
+    await hub.start()
+    try:
+        set_cards(hub, "ontime_rundown")
+        await until(lambda: (hub.snapshot()["ontime_rundown"] or {}).get("events"))
+        hub.config.ontime_timer.show_title = True
+        assert any(r["title"] for r in hub.snapshot()["ontime_rundown"]["events"])
+        hub.config.ontime_timer.show_title = False
+        snap = hub.snapshot()["ontime_rundown"]
+        assert set(snap) == PUBLIC_KEYS and snap["events"] and all(r["title"] == "" for r in snap["events"])
+        assert snap["event_title"] == "" and snap["event_note"] == ""
+        assert "Act One" not in json.dumps(snap) and "Emulated" not in json.dumps(snap)
+    finally:
+        await hub.stop()
+
+
+def test_a_running_show_with_an_unfindable_current_event_is_unplaced_never_a_guess():
+    rows = rows_for(20)
+    # id longer than the cap: neither side can match it
+    long_id = "x" * 200
+    s = parse.parse_rundown({"rundown": rundown_block(selectedEventIndex=3, numEvents=20), "eventNow": event(id=long_id)})
+    assert s.event_id and len(s.event_id) <= 64
+    win, unplaced = events_view(rows, s)
+    assert win == [] and unplaced is True
+    # a list row with a too-long id never matches anything
+    body = list_body(3)
+    body["entries"]["e1"]["id"] = "y" * 200
+    body["order"] = body["flatOrder"] = ["e0", "y" * 200, "e2"]
+    body["entries"]["y" * 200] = body["entries"]["e1"]
+    assert [r.id for r in parse.parse_events(body)] == ["e0", "", "e2"]
+    # the id is simply not in the list
+    st = RundownState(selected_index=3, num_events=20, event_id="nope", actual_start_ms=1)
+    assert events_view(rows, st) == ([], True)
+    # an index past the list, with no id
+    st = RundownState(selected_index=25, num_events=30, actual_start_ms=1)
+    assert events_view(rows, st) == ([], True)
+    msg = rundown_message("Ontime", RundownReading(st, 1.0, "ok", "", 5), EventsReading(rows, False))
+    assert msg["events"] == [] and msg["events_unplaced"] is True
+
+
+def test_a_250_event_rundown_with_the_show_at_event_220_is_unplaced():
+    body = list_body(250)
+    rows = parse.parse_events(body)
+    assert len(rows) == 200
+    s = parse.parse_rundown({"rundown": rundown_block(selectedEventIndex=220, numEvents=250), "eventNow": event(id="e220")})
+    win, unplaced = events_view(rows, s)
+    assert win == [] and unplaced is True and not any(r["state"] == "next" for r in win)
+    inside = parse.parse_rundown({"rundown": rundown_block(selectedEventIndex=150, numEvents=250), "eventNow": event(id="e150")})
+    win, unplaced = events_view(rows, inside)
+    assert unplaced is False and [r["state"] for r in win].count("current") == 1
+
+
+def test_before_the_start_nothing_is_unplaced_and_the_first_is_next():
+    st = RundownState(selected_index=None, num_events=20)
+    win, unplaced = events_view(rows_for(), st)
+    assert unplaced is False and win[0]["state"] == "next"
+
+
+async def test_the_list_is_fetched_from_the_address_the_source_was_started_with():
+    async with ListOntime() as old, ListOntime(body=list_body(3)) as new:
+        live = [old.url]
+        src = OntimeSource(lambda: live[0], poll_every_s=0.05, backoff_min_s=0.05, backoff_max_s=0.2, no_data_s=1.0,
+                           open_timeout_s=1.0, events_min_gap_s=0.1, events_every_s=100.0, events_tick_s=0.05)
+        src.want_events = True
+        await src.start()
+        try:
+            await until(lambda: src.latest_events().rows is not None)
+            assert len(src.latest_events().rows) == 6 and len(new.list_hits) == 0
+            live[0] = new.url                              # the setting changes; the source has not been restarted yet
+            src._ingest({"clock": 9, "rundown": {"numEvents": 99}}, "websocket")
+            await until(lambda: len(old.list_hits) >= 2)
+            assert new.list_hits == []                       # still the old Ontime, never a mix
+        finally:
+            await src.stop()
+
+
+def test_no_comment_or_description_still_says_the_card_reads_no_titles():
+    root = Path(__file__).resolve().parent.parent / "src" / "stagewatch"
+    for rel in ("core/ontimerundown.py", "integrations/ontime/__init__.py", "integrations/ontime/client.py"):
+        text = (root / rel).read_text(encoding="utf-8")
+        assert "no event titles" not in text and "does not read event lists" not in text and "two allowed read paths" not in text

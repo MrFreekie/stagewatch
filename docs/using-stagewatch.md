@@ -598,7 +598,7 @@ connection.
 2. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Ontime Timer** and click
    **Save dashboards**.
 3. Optional: in the **Ontime Timer** card on the Admin page, untick **Show the event title on
-   dashboards** and click **Save**. The title is the event's name in Ontime, often an artist. Dashboards
+   dashboards** (this one switch also hides the titles and notes on the Ontime Rundown card) and click **Save**. The title is the event's name in Ontime, often an artist. Dashboards
    have no password, so untick this if the name should stay off the screens.
 
 **What you'll see:** the event title, the time left in large digits (`m:ss`, or `h:mm:ss` from an
@@ -658,7 +658,9 @@ event counters, times and the ahead/behind figure, the **title and note of the r
 request Stagewatch makes to Ontime: a plain read of its current rundown, only while a dashboard has this card,
 when the event changes and at least once a minute. It does not read colours, custom fields or triggers.
 **Anyone who can open a dashboard with this card can see the event titles and the running event's note**, and
-dashboards have no password, so leave the card off any dashboard that should not show them. It uses the same **Ontime address** as
+dashboards have no password. Untick **Show the event title on dashboards** in the **Ontime Timer** card on the
+Admin page to hide every title and note here as well (the list then shows times and cues, with "Event" for each
+title); that one switch covers both cards. Or leave the card off any dashboard that should not show them. It uses the same **Ontime address** as
 the Wall Clock and the Ontime Timer, and all the cards share one connection.
 
 1. Open **Admin**, find the **Wall Clock** card, type the **Ontime address** and click **Test connection**
@@ -673,7 +675,10 @@ bar, the times and the event list.
   or wall) as Ontime shows it, the cue and the title. The running event is bold with ▶, the next one has →,
   finished ones are muted with ✓, and a skipped one is struck through and says SKIPPED (⊘). A tablet shows the
   running event with 2 before and 8 after; a phone the running event and 4 after; a wall the running event and
-  10 after. If the list can't be read, the last good list stays with "may be out of date". Groups and milestones
+  10 after. If a read of the list fails while Ontime is still connected, the last good list stays with "may be out of date".
+  While Ontime is offline the list is hidden (a gap, not old rows). If Stagewatch can't find the running event
+  in the list (for example in a rundown of more than 200 events), it says "Can't place the current event in
+  the event list" and shows no list rather than guess. Groups and milestones
   are left out. Titles are text only.
 
 - **▼ 4:10 BEHIND** / **▲ 1:30 AHEAD**: Ontime's offset, in minutes and seconds (hours from one hour). Behind

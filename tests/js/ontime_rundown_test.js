@@ -197,7 +197,7 @@ eq(rd.listRows(ev.map((e) => Object.assign({}, e, { state: "past" })), "tablet")
 eq(rd.listRows([row(0, "skipped")], "tablet")[0], { state: "skipped", mark: "⊘", time: "11:30-12:20", cue: "1", title: "Act 1", tag: "SKIPPED" }, "skipped rows are marked and labelled");
 eq(rd.listRows([row(0, "next", { start: null, end: null })], "tablet")[0].time, "--:--", "unavailable time");
 eq(rd.listRows([row(0, "next", { start: 86400000 + 3600000 })], "phone")[0].time, "01:00", "past midnight wraps");
-eq(rd.listRows([row(0, "weird"), null, 5, { state: "next", title: 5, cue: null }], "tablet").map((r) => [r.state, r.title, r.cue]), [["later", "Act 1", "1"], ["next", "", ""]], "wrong types are tolerated");
+eq(rd.listRows([row(0, "weird"), null, 5, { state: "next", title: 5, cue: null }], "tablet").map((r) => [r.state, r.title, r.cue]), [["later", "Act 1", "1"], ["next", "Event", ""]], "wrong types are tolerated");
 eq([rd.listRows(null, "tablet"), rd.listRows([], "tablet"), rd.listRows("x", "tablet")], [[], [], []], "no list: no rows");
 eq(rd.MARKS.current !== rd.MARKS.later && rd.MARKS.skipped !== rd.MARKS.past, true, "every state has its own marker, not colour alone");
 
@@ -220,6 +220,22 @@ ui4.update(rd.view(msg({ events: [row(0, "current", { title: "<img src=x onerror
 eq([ui4.list.children.length, ui4.list.textContent.indexOf("<img src=x") >= 0, ui4.list.children[0].children.length], [1, true, 4], "titles are text, never markup");
 ui4.update(rd.view(msg(), NOW, "tablet"));
 eq(ui4.list.hidden, true, "hidden again with no rows");
+
+// ---- review fixes
+eq(rd.listRows([row(0, "next", { title: "" })], "tablet")[0].title, "Event", "a blank title (the admin switch) shows a neutral label");
+eq(rd.listRows([row(0, "toString"), row(1, "constructor"), row(2, "__proto__")], "tablet").map((r) => r.state), ["later", "later", "later"], "a server string never indexes a table");
+eq(rd.listRows(ev, "constructor").length, 11, "an inherited layout name is a tablet");
+eq(rd.view(msg({ offset_mode: "constructor" }), NOW).modeNote, "", "an inherited mode name gives no label");
+eq(rd.view(msg({ offset_mode: "toString" }), NOW).modeNote, "", "likewise");
+v = rd.view(msg({ events: [], events_unplaced: true }), NOW, "tablet");
+eq([v.rows.length, v.listNote], [0, "▲ Can't place the current event in the event list."], "unplaceable list is said, not guessed");
+v = rd.view(msg({ event_title: "Act", event_text_unreadable: true }), NOW);
+eq([v.textStale, v.stale, v.state], [true, false, "running"], "only the text is marked");
+const ui5 = rd.createUi();
+ui5.update(rd.view(msg({ event_title: "Act", event_text_unreadable: true }), NOW));
+eq(ui5.title.className, "rd-title stale", "the title is marked");
+ui5.update(rd.view(msg({ event_title: "Act" }), NOW));
+eq(ui5.title.className, "rd-title", "and unmarked");
 
 console.log(`${count} checks, ${fails} failed`);
 process.exit(fails ? 1 : 0);

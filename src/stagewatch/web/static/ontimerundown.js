@@ -33,6 +33,8 @@ SW.rd = (function () {
   const DAY_MS = 86400000;
   const MAX_TIME_MS = 72 * 3600000;
 
+  // A server-sent string is only ever a key of our own tables ("toString" and "constructor" are not).
+  const own = (table, key) => typeof key === "string" && Object.prototype.hasOwnProperty.call(table, key);
   const isNum = (x) => typeof x === "number" && isFinite(x);
   const pad2 = (n) => (n < 10 ? "0" : "") + n;
 
@@ -112,7 +114,7 @@ SW.rd = (function () {
   // some before it, it, and some after. Before the start: the first rows. Finished: the last few.
   rd.listRows = function (events, layout) {
     if (!Array.isArray(events) || events.length === 0) return [];
-    const lim = rd.LIST_LIMITS[layout] || rd.LIST_LIMITS.tablet;
+    const lim = own(rd.LIST_LIMITS, layout) ? rd.LIST_LIMITS[layout] : rd.LIST_LIMITS.tablet;
     const cur = events.findIndex((e) => e && e.state === "current");
     let part;
     if (cur >= 0) part = events.slice(Math.max(0, cur - lim.past), cur + 1 + lim.ahead);
@@ -120,10 +122,10 @@ SW.rd = (function () {
     else part = events.slice(0, lim.ahead + 1);
     const withEnd = layout !== "phone";
     return part.filter((e) => e && typeof e === "object").map((e) => {
-      const state = rd.MARKS[e.state] ? e.state : "later";
+      const state = own(rd.MARKS, e.state) ? e.state : "later";
       const time = hhmm(e.start) + (withEnd && isNum(e.end) ? `-${hhmm(e.end)}` : "");
       return { state, mark: rd.MARKS[state], time, cue: typeof e.cue === "string" ? e.cue : "",
-        title: typeof e.title === "string" ? e.title : "", tag: state === "skipped" ? "SKIPPED" : "" };
+        title: typeof e.title === "string" && e.title ? e.title : "Event", tag: state === "skipped" ? "SKIPPED" : "" };
     });
   };
 
@@ -136,7 +138,7 @@ SW.rd = (function () {
   //   planned, expected, started, day (short facts), barPct / tickPct (null = hide), note, badge, cls
   rd.view = function (m, now, layout) {
     const name = (m && m.label) || "Ontime";
-    const v = { rows: [], listNote: "", title: "", evnote: "", phraseDup: false, unreadable: false, state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", quiet: false,
+    const v = { textStale: false, rows: [], listNote: "", title: "", evnote: "", phraseDup: false, unreadable: false, state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", quiet: false,
       modeNote: "", planned: "", expected: "", started: "", day: "", barPct: null, tickPct: null, note: "", stale: false };
     if (!m || m.status !== "ok") {
       if (m && m.status === "error") {
@@ -150,6 +152,7 @@ SW.rd = (function () {
     v.badge = "";
     v.title = typeof m.event_title === "string" ? m.event_title : "";
     v.evnote = typeof m.event_note === "string" ? m.event_note : "";
+    v.textStale = m.event_text_unreadable === true;   // the title and note are the last good ones
     const a = Math.max(0, now - m.received_at);
     const pos = m.position;
     const ps = m.planned_start_ms, pe = m.planned_end_ms, ee = m.expected_end_ms, as = m.actual_start_ms;
@@ -184,7 +187,7 @@ SW.rd = (function () {
         v.quiet = o.big === "ON TIME";   // nothing needs attention: say it small
         v.big = o.big; v.word = o.word; v.phrase = o.phrase; v.level = o.level;
         v.phraseDup = !!o.phrase;   // "Running 4:10 behind" repeats the big figure and word (the wall hides it)
-        v.modeNote = MODE_NOTE[m.offset_mode] || "";
+        v.modeNote = own(MODE_NOTE, m.offset_mode) ? MODE_NOTE[m.offset_mode] : "";
       } else {
         v.big = "--"; v.phrase = "Ahead or behind not sent";
       }
@@ -196,7 +199,8 @@ SW.rd = (function () {
     }
     if (v.state !== "nodata" && v.state !== "empty") {
       v.rows = rd.listRows(m.events, layout);
-      if (v.rows.length && m.events_stale === true) v.listNote = "▲ The event list may be out of date.";
+      if (m.events_unplaced === true) v.listNote = "▲ Can't place the current event in the event list.";
+      else if (v.rows.length && m.events_stale === true) v.listNote = "▲ The event list may be out of date.";
     }
     if (isNum(m.current_day) && m.current_day > 0) v.day = `${name} marks this as a later day of the rundown`;
 
@@ -246,6 +250,8 @@ SW.rd = (function () {
       ui.planned, ui.expected, ui.started, ui.day, ui.list, ui.listNote, ui.note, ui.foot];
     let listKey = "";
     ui.update = function (v) {
+      setClass(ui.title, v.textStale ? "rd-title stale" : "rd-title");
+      setClass(ui.evnote, v.textStale ? "rd-evnote stale" : "rd-evnote");
       setText(ui.title, v.title);
       setHidden(ui.title, !v.title);
       setText(ui.evnote, v.evnote);

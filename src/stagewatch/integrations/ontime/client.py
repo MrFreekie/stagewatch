@@ -66,7 +66,7 @@ class OntimeError(Exception):
 
 
 def http_get_json(base_url: str, path: str, timeout: float = HTTP_TIMEOUT_S, max_bytes: int = MAX_BYTES):
-    """Blocking GET of one of the two allowed read paths; returns the decoded JSON.
+    """Blocking GET of one of the allowed read paths (HTTP_PATHS); returns the decoded JSON.
 
     Never follows a redirect (http.client does not), refuses a body over ``max_bytes`` and a
     status other than 200/202. Raises OntimeError(category). Run it with ``asyncio.to_thread``."""
@@ -184,6 +184,7 @@ class OntimeSource:
         # (the card is on a dashboard): when the connection comes up, when the number of events or
         # the running event changes, and every events_every_s, never more often than events_min_gap_s.
         self.want_events = False
+        self._started_url = ""
         self._events = EventsReading()
         self._events_task: asyncio.Task | None = None
         self._events_gap, self._events_every, self._events_tick = events_min_gap_s, events_every_s, events_tick_s
@@ -198,6 +199,7 @@ class OntimeSource:
             self._merged_rd = None
             self.version = self.transport = ""
             self._events = EventsReading()
+            self._started_url = self._url_fn()
             self._task = asyncio.create_task(self._run(), name="ontime-client")
             self._events_task = asyncio.create_task(self._events_loop(), name="ontime-events")
 
@@ -329,7 +331,9 @@ class OntimeSource:
 
     async def _fetch_events(self) -> None:
         try:
-            body = await asyncio.to_thread(http_get_json, self._url_fn(), EVENTS_PATH)
+            # The address the source was started with, not the live setting: after an address change
+            # the manager restarts the source, and until then two Ontimes must not be mixed.
+            body = await asyncio.to_thread(http_get_json, self._started_url or self._url_fn(), EVENTS_PATH)
             rows = parse_events(body)
             if rows is None:
                 raise OntimeError("bad_list")

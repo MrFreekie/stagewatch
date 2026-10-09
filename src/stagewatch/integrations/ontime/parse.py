@@ -245,20 +245,25 @@ def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownS
             changes["doc_offset_ms"] = value
     if "eventNow" in payload:
         # The current event's title and note (the same eventNow the Timer reads), cleaned and capped.
-        # Null means no event is loaded. Anything we cannot read (not an object, a title or note
-        # that is not text) is unreadable: the caller keeps the last good text and marks it.
+        # Null means no event is loaded. Text we cannot read (not an object, a title or note that is
+        # not text) keeps the old title and note and marks only the text as unreadable; the rundown
+        # and offset blocks of the same message are still taken.
         event = payload["eventNow"]
         if event is None:
-            changes.update(event_title="", event_note="", event_id="")
+            changes.update(event_title="", event_note="", event_id="", text_unreadable=False)
         elif isinstance(event, dict):
             title, note = _text(event.get("title"), EVENT_TITLE_MAX), _text(event.get("note"), EVENT_NOTE_MAX)
             if title is None or note is None:
-                return None
-            ident = event.get("id")
-            changes.update(event_title=title, event_note=note,
-                           event_id=ident if isinstance(ident, str) and len(ident) <= EVENT_ID_MAX else "")
+                changes["text_unreadable"] = True
+            else:
+                ident = event.get("id")
+                if not isinstance(ident, str):
+                    ident = ""
+                elif len(ident) > EVENT_ID_MAX:
+                    ident = "\x00"   # an id we cannot match (the list drops such ids too): the row is unplaced, not guessed
+                changes.update(event_title=title, event_note=note, event_id=ident, text_unreadable=False)
         else:
-            return None
+            changes["text_unreadable"] = True
     new = dataclasses.replace(state, **changes)
     # Deliberately strict until a real capture shows whether selectedEventIndex is 0- or 1-based
     # (and what Ontime sends when it is finished): an index past numEvents is treated as unreadable
@@ -299,7 +304,7 @@ def parse_events(body: object) -> tuple[EventRow, ...] | None:
         if not isinstance(event, dict) or event.get("type") != "event":
             continue
         rows.append(EventRow(
-            id=ident[:EVENT_ID_MAX],
+            id=ident if len(ident) <= EVENT_ID_MAX else "",   # same cap as eventNow.id: too long never matches
             cue=clean_title(event.get("cue"), LIST_CUE_MAX),
             title=clean_title(event.get("title"), EVENT_TITLE_MAX),
             start_ms=_int_or_none(event.get("timeStart"), 0, MAX_TIME_MS)[1],

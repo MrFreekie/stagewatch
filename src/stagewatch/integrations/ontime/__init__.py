@@ -4,7 +4,9 @@ Timer card and the running-order position and offset for the Ontime Rundown card
 Read-only. It listens to an Ontime server (https://github.com/cpvalente/ontime) for the time of
 day and the main timer (with the title and warning times of the loaded event) and sends nothing
 to it. It also reads the rundown counters, planned and expected times and the ahead/behind
-offset, and the title and note of the current event. It does not read event lists, the next event, messages or aux timers.
+offset, the title and note of the current event, and (one extra read-only request, only while
+a dashboard has the Rundown card) the event list: cue, title, times and skipped. It does not
+read the next event's details, colours, custom fields, messages or aux timers.
 
 There is one connection. It runs only while at least one dashboard has a card that needs it: the
 Wall Clock card (when the Wall Clock source is Ontime), the Ontime Timer card or the Ontime
@@ -40,8 +42,11 @@ MANIFEST = Manifest(
                 "WebSocket connection, falling back to HTTP polling, so the Wall Clock and Ontime "
                 "Timer cards can show them. For the Ontime Rundown card it also reads the rundown "
                 "position (event number and count), planned start and end, expected end, actual "
-                "start and the ahead/behind offset, plus the title and note of the current event. Read-only: sends nothing to Ontime and does "
-                "not read the event list, the next event, colours, custom fields, messages or aux timers. Runs only while a "
+                "start and the ahead/behind offset, plus the title and note of the current event and, from one "
+                "extra read-only request (GET /data/rundowns/current), the event list (cue, title, start and "
+                "end time, skipped). Titles and notes are shown on dashboards unless the admin switches "
+                "them off. Read-only: sends nothing to Ontime and does not read colours, custom fields, "
+                "triggers, messages or aux timers. Runs only while a "
                 "dashboard has one of those cards. Tested against Ontime 4.14.0 in the 'roll' "
                 "state only; other states are handled but not yet checked against a real Ontime.",
     tier="experimental",
