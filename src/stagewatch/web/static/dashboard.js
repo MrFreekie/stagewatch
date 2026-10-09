@@ -1057,6 +1057,13 @@
       else if (!on) c.el.hidden = true;
     }
     for (const r of oldRows) r.remove();   // emptied by the moves above
+    // Half-size cards (style.css puts two side by side on a tablet or wall screen, a lone one stays half).
+    const lay = (state.dash && state.dash.layout) || "tablet";
+    for (const id of Object.keys(CARDS)) {
+      const c = CARDS[id];
+      if (!c.wide) continue;
+      if (want.indexOf(id) >= 0 && SW.cardIsHalf(state.dash, id, lay)) c.el.setAttribute("data-size", "half"); else c.el.removeAttribute("data-size");
+    }
     $("no-cards").hidden = want.length > 0;
   }
 

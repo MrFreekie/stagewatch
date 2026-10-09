@@ -65,3 +65,35 @@ def strict_cards_error(cards) -> str | None:
 def unknown_cards(cards: list[str]) -> list[str]:
     """Ids this build can't render (for the API, which refuses them; loading keeps them)."""
     return [c for c in cards if c not in KNOWN_CARDS]
+
+
+# Per-dashboard card size ("full" is the default and is never needed in the map). A card can be
+# made half width only if it is listed here; add an id to allow another card later.
+CARD_SIZES: tuple[str, ...] = ("full", "half")
+HALF_CAPABLE: tuple[str, ...] = ("wall_clock", "ontime_timer")
+
+
+def clean_card_sizes(v) -> tuple[dict[str, str], int]:
+    """Lenient load: keep only allowed card ids with a known size. Returns (sizes, dropped count)."""
+    if not isinstance(v, dict):
+        return {}, 0 if v is None else 1
+    out: dict[str, str] = {}
+    dropped = 0
+    for k, size in v.items():
+        if isinstance(k, str) and k in HALF_CAPABLE and isinstance(size, str) and size in CARD_SIZES:
+            out[k] = size
+        else:
+            dropped += 1
+    return out, dropped
+
+
+def strict_card_sizes_error(v) -> str | None:
+    """For the API: a fixed-text problem with a submitted size map, or None."""
+    if not isinstance(v, dict):
+        return "Card sizes must be a list of card and size"
+    for k, size in v.items():
+        if not isinstance(k, str) or k not in HALF_CAPABLE:
+            return "That card can't be made half size"
+        if not isinstance(size, str) or size not in CARD_SIZES:
+            return "Card size must be full or half"
+    return None

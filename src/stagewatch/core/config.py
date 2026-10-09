@@ -27,7 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from ..updater_common import atomic_write_bytes, fsync_dir, remove_stale_temps, replace_with_retry
 from ..version import CONFIG_SCHEMA_VERSION
 from . import spl
-from .cards import CARD_ID_RE, MAX_CARDS, default_cards, legacy_cards
+from .cards import CARD_ID_RE, MAX_CARDS, clean_card_sizes, default_cards, legacy_cards
 from .model import normalise_mac, slugify
 
 log = logging.getLogger(__name__)
@@ -382,6 +382,8 @@ class Dashboard(_Model):
     stage: str = Field("", max_length=40)  # which stage this screen follows ("" = all)
     # The Wall Clock card's look on this screen.  Loading is lenient (unknown -> "digits"); the API is strict.
     clock_style: str = "digits"
+    # Optional card id -> "full" | "half" (core/cards.py HALF_CAPABLE).  Empty = every card full width.
+    card_sizes: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("slug")
     @classmethod
@@ -412,6 +414,14 @@ class Dashboard(_Model):
     @classmethod
     def _clock_style(cls, v):
         return v if isinstance(v, str) and v in CLOCK_STYLES else "digits"
+
+    @field_validator("card_sizes", mode="before")
+    @classmethod
+    def _card_sizes(cls, v):
+        out, dropped = clean_card_sizes(v)
+        if dropped:
+            log.warning("A dashboard's card sizes: %d entr%s this version can't use were left out", dropped, "y" if dropped == 1 else "ies")
+        return out
 
     @model_validator(mode="after")
     def _default_cards(self):

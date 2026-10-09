@@ -650,6 +650,8 @@
   // Returns {el, read(), setDefaults(layout), count()}.
   function cardsEditor(d, onChange) {
     const known = (admin.cards && admin.cards.known) || Object.keys(CARD_INFO);
+    const halfOk = (admin.cards && admin.cards.half_capable) || [];
+    const sizes = Object.assign({}, d.card_sizes || {});   // card id -> "full" | "half"
     let items = [];
     const ul = h("ul", { class: "card-picker" });
     const fill = (list) => {
@@ -671,9 +673,14 @@
         const info = CARD_INFO[it.id] || [it.id, ""];
         const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; if (lookField) lookField.style.display = box.checked ? "" : "none"; onChange(); } });
         const lookField = it.id === "wall_clock" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Wall Clock look"), clockStyle) : null;
+        const sizeSel = halfOk.indexOf(it.id) < 0 ? null : h("select", { class: "touch", "aria-label": `${info[0]} size`, onchange: () => { sizes[it.id] = sizeSel.value; onChange(); } }, h("option", { value: "full" }, "Full"), h("option", { value: "half" }, "Half"));
+        if (sizeSel) sizeSel.value = sizes[it.id] === "half" ? "half" : "full";
+        const sizeField = sizeSel ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Size"), sizeSel) : null;
+        if (sizeField) box.addEventListener("change", () => { sizeField.style.display = box.checked ? "" : "none"; });
         return h("li", {},
           h("label", { class: "card-pick" }, box, h("span", {}, h("strong", {}, info[0]), info[1] ? h("span", { class: "muted" }, info[1]) : null)),
           lookField,
+          sizeField,
           h("button", { type: "button", class: "card-up", "aria-label": `Move ${info[0]} up`, title: "Move up", disabled: i === 0, onclick: () => move(i, -1) }, "▲"),
           h("button", { type: "button", class: "card-down", "aria-label": `Move ${info[0]} down`, title: "Move down", disabled: i === items.length - 1, onclick: () => move(i, 1) }, "▼"));
       }));
@@ -691,10 +698,10 @@
       ul,
       h("div", { class: "row", style: "margin-top:10px" },
         field("Stage", stage)),
-      h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black."));
+      h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black. Half-size cards sit side by side with another half-size card on tablets and wall screens. On a phone every card is full width."));
     return {
       el,
-      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value }),
+      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)) }),
       setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
       count: () => items.filter((it) => it.on).length,
     };
