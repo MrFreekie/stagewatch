@@ -116,7 +116,7 @@ def test_public_dashboard_payload_has_exactly_these_fields(client):
 
 
 def test_admin_state_lists_the_cards_that_can_be_half(client):
-    assert client.get("/api/admin/state").json()["cards"]["half_capable"] == ["wall_clock", "ontime_timer"]
+    assert client.get("/api/admin/state").json()["cards"]["half_capable"] == ["wall_clock", "ontime_timer", "ontime_rundown"]
 
 
 # ------------------------------------------------------------------ static pieces
@@ -136,7 +136,7 @@ def test_dashboard_js_marks_half_cards_and_admin_has_the_size_control():
     admin = (STATIC / "admin.js").read_text(encoding="utf-8")
     assert "card_sizes" in admin and "half_capable" in admin and "Half-size cards sit side by side" in admin
     common = (STATIC / "common.js").read_text(encoding="utf-8")
-    assert re.search(r'SW\.HALF_CAPABLE = \["wall_clock", "ontime_timer"\]', common)   # same list as core/cards.py
+    assert re.search(r'SW\.HALF_CAPABLE = \["wall_clock", "ontime_timer", "ontime_rundown"\]', common)   # same list as core/cards.py
 
 
 def test_card_size_helper_in_node():
