@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from ..updater_common import atomic_write_bytes, fsync_dir, remove_stale_temps, replace_with_retry
 from ..version import CONFIG_SCHEMA_VERSION
+from . import spl
 from .cards import CARD_ID_RE, MAX_CARDS, default_cards, legacy_cards
 from .model import normalise_mac, slugify
 
@@ -449,6 +450,76 @@ class BarometerConfig(_Model):
     rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10)   # Met Office "quickly": 3.6 hPa in 3 h
 
 
+def numeric_host_name(host: str) -> bool:
+    """True for a "host name" that an address parser could read as a number: its last label is all
+    digits or starts with 0x (134744072, 0x8.0x8.0x8.0x8, 8.8.2056, 010.010.010.010). Such names
+    can mean a public IPv4 address, so they are refused."""
+    last = host.rstrip(".").rsplit(".", 1)[-1].lower()
+    return last.isdigit() or last.startswith("0x")
+
+
+def spl_host_error(v) -> str | None:
+    """Fixed-text problem with a Smaart address, or None. '' is fine (not set)."""
+    bad = "address must be a host name or IP address"
+    if not isinstance(v, str):
+        return "address must be text"
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in v):
+        return bad
+    v = v.strip()
+    if v == "":
+        return None
+    if any(not 0x21 <= ord(ch) <= 0x7E for ch in v):
+        return bad
+    try:
+        ip = ipaddress.ip_address(v)
+    except ValueError:
+        return bad if (not _ONTIME_HOST_RE.fullmatch(v) or numeric_host_name(v)) else None
+    if ip.is_global or ip.is_multicast or ip.is_unspecified:
+        return "address must be on the local network"
+    return None
+
+
+class SplConfig(_Model):
+    """Sound level from Smaart (read-only). Additive with defaults (off, no address, the usual three
+    values): no config schema bump. An older build ignores the section and forgets it on its next
+    save. The address is admin only. Nothing here is a secret: no password is stored because
+    Stagewatch does not log in to Smaart yet (the log-in is not documented in what we have)."""
+    enabled: bool = False
+    host: str = Field("", max_length=253)
+    port: int | None = Field(None, ge=1, le=65535)
+    # Up to three values (core/spl.py METRICS keys) recorded together on one timeline.
+    slots: list[str] = Field(default_factory=lambda: list(spl.DEFAULT_SLOTS))
+
+    @field_validator("host", mode="before")
+    @classmethod
+    def _host(cls, v):
+        """'' or a host name / IP address of the Smaart computer on the local network: no scheme,
+        port, path or user info, and no public IP address (a Smaart machine is on the LAN)."""
+        if not isinstance(v, str):
+            raise ValueError("address must be text")
+        err = spl_host_error(v)
+        if err:
+            raise ValueError(err)
+        v = v.strip()
+        try:
+            return str(ipaddress.ip_address(v))
+        except ValueError:
+            return v.lower()
+
+    @field_validator("slots", mode="before")
+    @classmethod
+    def _slots(cls, v):
+        """On load: known values only, each once, at most three (the API is strict and refuses).
+        Logs a count, never the values."""
+        if not isinstance(v, (list, tuple)):
+            return list(spl.DEFAULT_SLOTS)
+        kept = spl.clean_slots(v)
+        if len(v) > len(kept):
+            log.warning("Sound level: %d value%s this version can't use left out", len(v) - len(kept),
+                        "" if len(v) - len(kept) == 1 else "s")
+        return kept
+
+
 class Config(_Model):
     schema_version: int = CONFIG_SCHEMA_VERSION
     site: SiteConfig = Field(default_factory=SiteConfig)
@@ -471,6 +542,17 @@ class Config(_Model):
     wall_clock: WallClockConfig = Field(default_factory=WallClockConfig)
     ontime_timer: OntimeTimerConfig = Field(default_factory=OntimeTimerConfig)
     barometer: BarometerConfig = Field(default_factory=BarometerConfig)
+    spl: SplConfig = Field(default_factory=SplConfig)
+
+    @field_validator("spl", mode="before")
+    @classmethod
+    def _lenient_spl_host(cls, v):
+        """On load (the API is strict): an address that is not acceptable is cleared with a warning,
+        so one bad value never sends the whole file through salvage. Never logs the value."""
+        if isinstance(v, dict) and "host" in v and spl_host_error(v["host"]):
+            log.warning("Sound level: the saved address is not usable and was cleared")
+            v = {**v, "host": ""}
+        return v
 
     @field_validator("wall_clock", mode="before")
     @classmethod

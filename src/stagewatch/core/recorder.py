@@ -582,13 +582,19 @@ class Recorder:
     def history(self, entity_ids: list[str], since: float, until: float | None = None,
                 max_points: int = 600, show_id: int | None = None) -> dict[str, list[list[float]]]:
         """Per-entity [[ts, value], ...], averaged into at most max_points
-        time buckets so a 12-hour show still draws quickly on a tablet."""
+        time buckets so a 12-hour show still draws quickly on a tablet.
+
+        Sound levels from measurement software are never averaged: each bucket gives the last
+        recorded reading in it, with that reading's own time (``_last_in_buckets``)."""
         self.flush()
         until = until if until is not None else time.time()
         show_id = show_id if show_id is not None else self.show_id
         bucket = max((until - since) / max(max_points, 1), 0.001)
         out: dict[str, list[list[float]]] = {}
         for entity_id in entity_ids:
+            if self._is_sound_level(entity_id):
+                out[entity_id] = self._last_in_buckets(entity_id, since, until, bucket, show_id)
+                continue
             rows = self._db.execute(
                 "SELECT CAST((ts - ?) / ? AS INTEGER) AS b, AVG(ts), AVG(value) "
                 "FROM states WHERE show_id = ? AND entity_id = ? AND ts >= ? AND ts <= ? "
@@ -597,6 +603,23 @@ class Recorder:
             ).fetchall()
             out[entity_id] = [[r[1], r[2]] for r in rows]
         return out
+
+    def _is_sound_level(self, entity_id: str) -> bool:
+        meta = self._meta.get(entity_id)
+        return meta is not None and meta[1] == "sound_level"
+
+    def _last_in_buckets(self, entity_id: str, since: float, until: float, bucket: float,
+                         show_id: int) -> list[list[float]]:
+        """[[ts, value], ...]: the last recorded reading of each time bucket, untouched (no
+        averaging, no rounding). "Not available" records are skipped and a bucket with no real
+        reading adds no point, so an outage stays a gap."""
+        rows = self._db.execute(
+            "SELECT s.ts, s.value FROM states s JOIN ("
+            "  SELECT MAX(rowid) AS r FROM states WHERE show_id = ? AND entity_id = ? AND ts >= ? AND ts <= ? "
+            "  AND value IS NOT NULL GROUP BY CAST((ts - ?) / ? AS INTEGER)) last ON s.rowid = last.r "
+            "ORDER BY s.ts",
+            (show_id, entity_id, since, until, since, bucket)).fetchall()
+        return [[r[0], r[1]] for r in rows]
 
     def series(self, entity_id: str, since: float, until: float | None = None,
                bucket_s: float = 60.0) -> list[tuple[float, float]]:

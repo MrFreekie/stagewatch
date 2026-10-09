@@ -676,3 +676,28 @@ body.layout-wall .eq-node h3 { font-size: 24px; }
 body.layout-wall .eq-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }.sg-heading { margin: 16px 0 6px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .sensor-group tr.role-eq td { background: var(--panel-2); }
 .sensor-group tr.role-eq input:disabled, .sensor-group tr.role-eq select:disabled { opacity: .5; }
+
+/* Sound level card: up to three values from Smaart and their timeline */
+.spl-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.spl-tile .label { display: flex; align-items: center; gap: 8px; }
+.spl-chip { display: inline-block; width: 22px; height: 0; border-top: 4px solid var(--s2); background: none !important; flex: none; }
+.spl-key { display: inline-block; width: 26px; height: 0; border-top: 3px solid; background: none !important; vertical-align: middle; margin-right: 6px; }
+.spl-chip.spl-line-0, .spl-key.spl-line-0 { border-top-style: solid; }
+.spl-chip.spl-line-1, .spl-key.spl-line-1 { border-top-style: dashed; }
+.spl-chip.spl-line-2, .spl-key.spl-line-2 { border-top-style: dotted; }
+.spl-tile .spl-num { font-variant-numeric: tabular-nums; }
+.spl-tile.spl-stale .value { color: var(--muted); }   /* greyed, not faded: the grey keeps 4.5:1 and the age line says "Old reading" */
+.spl-tile .foot { font-size: 13px; }
+#spl-span-seg button { min-height: 44px; min-width: 44px; }
+.spl-tile.spl-na .value, .spl-tile.spl-wait .value { color: var(--muted); }
+.spl-note { font-size: 13px; margin: 6px 0 0; }
+.spl-chart-wrap { height: 220px; }
+body.layout-phone .spl-chart-wrap { height: 170px; }
+body.layout-phone .spl-rows { grid-template-columns: 1fr 1fr; gap: 8px; }
+body.layout-phone .spl-tile .value { font-size: 28px; }
+body.layout-wall .spl-rows { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+body.layout-wall .spl-tile .value { font-size: 72px; }
+body.layout-wall .spl-tile .label, body.layout-wall .spl-tile .foot { font-size: 18px; }
+body.layout-wall .spl-chart-wrap { height: 260px; }
+body.layout-wall #spl-legend { font-size: 18px; }
+body.layout-wall .spl-note { font-size: 16px; }

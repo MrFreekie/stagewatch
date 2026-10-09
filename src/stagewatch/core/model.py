@@ -36,6 +36,10 @@ class Kind(str, Enum):
     CONTACT = "contact"
     BATTERY = "battery"          # node battery level, %; shown per node, never averaged
     SIGNAL = "signal_strength"   # node Wi-Fi signal, dBm; shown per node, never averaged
+    # Sound level from measurement software (Smaart and similar), dB. Recorded exactly as received:
+    # never averaged, smoothed, rounded or calibrated here, and never part of a site average. The
+    # weighting, time constant and metric travel as Entity.labels.
+    SOUND_LEVEL = "sound_level"
     GENERIC = "generic"
 
 
@@ -48,6 +52,7 @@ UNITS = {
     Kind.CONTACT: "",
     Kind.BATTERY: "%",
     Kind.SIGNAL: "dBm",
+    Kind.SOUND_LEVEL: "dB",
 }
 
 ENV_KINDS = (Kind.TEMPERATURE, Kind.HUMIDITY, Kind.PRESSURE)
@@ -121,6 +126,9 @@ class Entity:
     # Hardware key of the measurement ("mac:<12hex>/<object_id>"), set by the integration in
     # register_entity; calibration follows it (core/calibration.py). Admin only: never in to_dict().
     hw_key: str = ""
+    # Short text labels that describe the measurement (for sound levels: weighting, time_constant,
+    # metric, period, slot). Public, plain text; absent from to_dict() when empty.
+    labels: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self, now: float, stale_after_s: float, offset: float = 0.0, role: str = "environment") -> dict:
         data = {
@@ -144,6 +152,8 @@ class Entity:
         # public shape of every existing sensor is unchanged.
         if role == "equipment" and not self.derived:
             data["role"] = "equipment"
+        if self.labels:
+            data["labels"] = dict(self.labels)
         return data
 
     def is_stale(self, now: float, stale_after_s: float) -> bool:

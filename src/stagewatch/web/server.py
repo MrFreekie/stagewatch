@@ -29,12 +29,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Stre
 from fastapi.staticfiles import StaticFiles
 import unicodedata
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError, field_validator, model_validator
 
 from .. import __version__, acoustics
 from ..core.config import (
     ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
-    SiteConfig, Threshold, WallClockConfig,
+    SiteConfig, SplConfig, Threshold, WallClockConfig,
 )
 from ..core.calibration import set_calibration
 from ..core.hub import Hub
@@ -44,6 +44,7 @@ from .. import diagnostics, netinfo
 from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
 from ..core import schedule as sched
+from ..core import spl as spl_mod
 from ..integrations.ontime.client import check_connection
 from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
@@ -270,6 +271,19 @@ class BarometerBody(BaseModel):
     hemisphere: Literal["north", "south"] = "north"
     rapid_fall_alarm: StrictBool = False
     rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10, allow_inf_nan=False, strict=True)
+
+
+class SplBody(BaseModel):
+    """PUT /api/admin/spl: the sound level (Smaart) settings. Strict: real true/false, a whole-number
+    port, a list of at most three values. The address is checked by SplConfig (host name or a local
+    network IP address)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    enabled: StrictBool
+    host: str = Field("", max_length=253)
+    port: int | None = Field(None, ge=1, le=65535, strict=True)
+    slots: list[str] = Field(default_factory=list, max_length=spl_mod.MAX_SLOTS)
 
 
 class BaroDemoBody(BaseModel):
@@ -897,6 +911,12 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     # ------------------------------------------------------------ admin
     admin_deps = [Depends(require_admin), Depends(require_same_origin)]
 
+    def spl_admin() -> dict:
+        integ = hub.integrations.get("smaart")
+        state = integ.admin_status() if integ is not None else {"running": False, "status": "off"}
+        return {"metrics": [{"key": m.key, "name": m.name, "hint": m.hint} for m in spl_mod.METRICS],
+                "max_slots": spl_mod.MAX_SLOTS, **state}
+
     @app.get("/api/admin/state", dependencies=[Depends(require_admin)])
     async def admin_state():
         cfg = hub.config.model_dump(mode="json")
@@ -923,6 +943,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "wall_clock": hub.wall_clock.admin_status(),
             "ontime_timer": hub.ontime_timer.admin_status(),
             "ontime_rundown": hub.ontime_rundown.admin_status(),
+            # Sound level card: the values that can be chosen, and what is running (no addresses).
+            "spl": spl_admin(),
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
             # defaults a new dashboard gets for each layout.
             "cards": {"known": list(cards_mod.KNOWN_CARDS),
@@ -1058,6 +1080,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if entity_id not in hub.entities:
             raise HTTPException(404, "No such entity")
         entity = hub.entities[entity_id]
+        if entity.kind == Kind.SOUND_LEVEL:
+            raise HTTPException(409, "Sound levels are recorded exactly as received and cannot be adjusted. "
+                                     "Nothing has been changed.")
         # Accuracy: only for the three kinds that make the site average, within a sane limit for
         # the kind. Fixed text; the submitted number is never echoed.
         extra = {}
@@ -1151,6 +1176,33 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         hub.config.barometer = BarometerConfig(**body.model_dump())
         hub.save_config()
         return hub.config.barometer
+
+    # Sound level (Smaart): which values to record (up to three) and where Smaart is. Read-only
+    # toward Smaart. The running source is brought in line before the save is announced, so open
+    # screens reload into the new state.
+    @app.put("/api/admin/spl", dependencies=admin_deps)
+    async def put_spl(body: SplBody):
+        err = spl_mod.slots_error(body.slots)
+        if err:
+            raise HTTPException(422, err)
+        try:
+            new = SplConfig(enabled=body.enabled, host=body.host, port=body.port, slots=body.slots)
+        except ValidationError:
+            raise HTTPException(422, "The address must be a host name or an IP address on the local network") from None
+        if new.enabled and not hub.emulate and not (new.host and new.port):
+            raise HTTPException(422, "Enter the address and port of the Smaart computer first")
+        old = hub.config.spl
+        hub.config.spl = new
+        integ = hub.integrations.get("smaart")
+        if integ is not None:
+            try:
+                await integ.apply()
+            except Exception:  # noqa: BLE001 - the settings are saved either way
+                log.exception("Could not apply the sound level settings")
+        hub.save_config()
+        log.info("Sound level settings saved (%s, %d value%s)", "on" if new.enabled else "off", len(new.slots),
+                 "" if len(new.slots) == 1 else "s")
+        return {"ok": True, "changed": old != new}
 
     @app.post("/api/admin/barometer/demo", dependencies=admin_deps)
     async def barometer_demo(body: BaroDemoBody):

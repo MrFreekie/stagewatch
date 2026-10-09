@@ -259,7 +259,8 @@ class Hub:
             self.recorder.upsert_entity_meta(
                 entity.id, entity.device_id, entity.kind.value, entity.unit, entity.name,
                 device.name if device else "", device.area if device else "",
-                {"decimals": entity.decimals, "category": getattr(device, "category", "sensor")})
+                {"decimals": entity.decimals, "category": getattr(device, "category", "sensor"),
+                 **({"labels": entity.labels} if entity.labels else {})})
         except Exception:  # noqa: BLE001 - descriptive data must never break registration
             log.exception("Could not record the description of %s", entity.id)
 
@@ -317,6 +318,7 @@ class Hub:
             existing.name, existing.kind, existing.unit, existing.decimals = (
                 entity.name, entity.kind, entity.unit, entity.decimals)
             existing.hw_key = entity.hw_key
+            existing.labels = dict(entity.labels)
             entity = existing
         else:
             self.entities[entity.id] = entity
@@ -331,7 +333,14 @@ class Hub:
         if entity is None:
             return
         ts = ts if ts is not None else time.time()
-        offset = self.calibration_for(entity).offset
+        if entity.kind == Kind.SOUND_LEVEL:
+            # Recorded exactly as the measurement software sent it: no calibration offset, no
+            # maths. Anything that is not a finite number is "not available", never a number.
+            ok = isinstance(raw_value, (int, float)) and not isinstance(raw_value, bool) and math.isfinite(raw_value)
+            raw_value = float(raw_value) if ok else None
+            offset = 0.0
+        else:
+            offset = self.calibration_for(entity).offset
         entity.raw_value = raw_value
         entity.value = None if raw_value is None else raw_value + offset
         entity.updated = ts
@@ -371,7 +380,7 @@ class Hub:
     def entity_dict(self, entity: Entity, now: float, stale_after: float) -> dict:
         """Public form of an entity: includes ``offset`` only when a calibration offset is set,
         and ``role`` only for equipment."""
-        offset = 0.0 if entity.derived else float(self.calibration_for(entity).offset or 0.0)
+        offset = 0.0 if (entity.derived or entity.kind == Kind.SOUND_LEVEL) else float(self.calibration_for(entity).offset or 0.0)
         return entity.to_dict(now, stale_after, offset, self.role_of(entity))
 
     def set_node_role(self, device_id: str, role: str) -> None:

@@ -74,6 +74,18 @@
     <div id="equipment-body"></div>
   </section>
 
+  <section class="card" data-card="spl_live" id="spl-card" hidden>
+    <h2>
+      <span>Sound level</span><span class="grow"></span>
+      <span class="seg" id="spl-span-seg"></span>
+    </h2>
+    <div class="spl-rows" id="spl-rows"></div>
+    <p class="notice" id="spl-status" role="status" hidden></p>
+    <div class="chart-wrap spl-chart-wrap"><canvas id="spl-chart"></canvas></div>
+    <div class="legend" id="spl-legend"></div>
+    <p class="muted spl-note" id="spl-note"></p>
+  </section>
+
   <section class="card" data-card="wall_clock" id="wall-clock-card" hidden>
     <h2>Wall Clock</h2>
   </section>
@@ -94,6 +106,7 @@
 <script src="/static/ontimetimer.js"></script>
 <script src="/static/ontimerundown.js"></script>
 <script src="/static/barometer.js"></script>
+<script src="/static/spl.js"></script>
 <script src="/static/dashboard.js"></script>
 </body>
 </html>

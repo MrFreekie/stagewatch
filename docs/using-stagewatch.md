@@ -721,3 +721,45 @@ box can fake a small change. Keep the sensor in the shade.
 ---
 
 **Something not right?** [Troubleshooting](troubleshooting.md).
+
+### Watch the sound level (Sound level card)
+
+The **Sound level** card shows up to three sound level values from Smaart, for the question "how loud is it
+at the mix position, and has it been climbing?". The numbers are **Smaart's own**. Stagewatch copies them
+across exactly as Smaart sends them: it does not average, smooth, round or correct them, and it does not
+work anything out itself.
+
+> **Not tested with a real Smaart yet.** The connection to Smaart was written without Smaart's developer
+> kit, so for now Stagewatch can connect but cannot read a value. The card works in emulate mode
+> (`--emulate`) with simulated numbers. This is not a calibrated compliance record: the Smaart log or
+> report is the record that counts.
+
+**Set it up (admin).** Open **Admin → Sound level (Smaart)**. Tick **Record sound level**, type the name or
+address of the Smaart computer and its port, and choose up to three values (normally **A Slow**, **C Slow**
+and **LAeq 15 min**). Save. In Smaart, switch the API on under **Options → Preferences → API**. Then add the
+card to a dashboard under **User dashboards → Edit cards**. The card stays hidden until values are set up.
+Stagewatch only listens: it never sends anything to Smaart, starts or stops measuring, or changes
+calibration, gain, logging, alarms or the mix.
+
+**What the card shows**
+
+- One big number for each chosen value, in dB, with a short description (for example "A-weighted, Slow
+  response"). Each has its own line style on the chart (solid, dashed, dotted), so you can tell them apart
+  without colour.
+- **A dash and "Not available"** when Smaart does not give that value. It is never shown as 0.
+- **"No signal from Smaart"** and a notice above the chart while Smaart is away. An old value stays on the
+  screen dimmed, with how old it is, and is never shown as live.
+- The chart (15 minutes, 1 hour or the whole show). **A gap in the line means no readings** for that time.
+  Nothing is filled in. When readings come back after a gap, one marker is added ("Sound level readings
+  resumed after a gap"). Over a long time the chart shows the last reading in each interval, and the note
+  under the chart says so.
+
+**Good to know**
+
+- **LAeq 15 min** is Smaart's own figure. It is a 15 minute figure only if Smaart's Leq period is set to
+  15 minutes, and Stagewatch cannot check that.
+- Sound levels are **never** part of the site averages and cannot be given a calibration offset.
+- Dashboards are not password protected, so anyone on the show network can see these numbers. Only add the
+  card to screens where that is fine.
+- Limits and alarms for the level are planned for a later version. Until then the card is a display and a
+  record only.

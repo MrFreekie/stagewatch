@@ -266,6 +266,7 @@ SW.KIND_FMT = {
   contact: { unit: "", dec: 0, conv: (v) => v },
   battery: { unit: "%", dec: 0, conv: (v) => v },
   signal_strength: { unit: "dBm", dec: 0, conv: (v) => v },
+  sound_level: { unit: "dB", dec: 1, conv: (v) => v },   // shown to one decimal, never changed or averaged
 };
 
 // Fixed-point with a comma every three digits and a full stop for decimals ("1,013.2"), whatever
