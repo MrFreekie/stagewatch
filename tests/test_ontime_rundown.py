@@ -1,4 +1,4 @@
-"""The Ontime Rundown card: parsing and merging Ontime's rundown and offset blocks (both the
+﻿"""The Ontime Rundown card: parsing and merging Ontime's rundown and offset blocks (both the
 documented shape and the one real 4.14.0 sends), the shared connection, the public message, the
 emulated story and the static page.
 
@@ -21,17 +21,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from stagewatch.core import cards
-from stagewatch.core.config import Config
+from stagewatch.core.config import Config, WallClockConfig
 from stagewatch.core.hub import Hub
 from stagewatch.core.model import Status
 from stagewatch.core.ontimerundown import RundownReading, RundownState, rundown_message
 from stagewatch.core.wallclock import seed_emulate_demo
 from stagewatch.integrations.ontime import OntimeIntegration, parse
+from stagewatch.integrations.ontime.client import OntimeSource
 from stagewatch.integrations.ontime.emulate import (
     RUNDOWN_CYCLE_S, RUNDOWN_OFFLINE, RUNDOWN_STALE, EmulatedClock, emulated_rundown_clock, emulated_rundown_state)
 from stagewatch.web.server import create_app
 
-from test_ontime import ALLOWED, FakeOntime, load, until, wait  # noqa: E402
+from test_ontime import ALLOWED, FakeOntime, free_port, load, until, wait  # noqa: E402
 from test_ontime_timer import Probe, fast_source  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -284,7 +285,6 @@ def test_ingest_turns_an_unreadable_rundown_into_an_error_until_a_good_one_arriv
     assert src.latest_rundown().status == "ok" and src.latest_rundown().state.selected_index == 3
     assert src._ingest({"clock": 2000, "rundown": rundown_block(numEvents=1.5)}, "websocket")
     assert src.latest_rundown().status == "error" and src.latest_rundown().state is None
-    assert src.latest_timer().status != "ok" or True   # a bad rundown never touches the clock
     assert src.latest().status == "ok" and src.latest().clock_ms == 2000
     src._ingest({"clock": 3000}, "websocket")           # a plain message does not clear the error
     assert src.latest_rundown().status == "error"
@@ -365,14 +365,19 @@ async def test_the_rundown_card_alone_with_the_real_source_opens_one_websocket(t
 
 async def test_unreachable_ontime_with_only_the_rundown_card_is_a_silent_alarm(tmp_path):
     hub = Hub(tmp_path)
-    hub.config.wall_clock.ontime_url = "http://127.0.0.1:1"
-    hub.add_integration(OntimeIntegration(hub, inner=fast_source("http://127.0.0.1:1")))
+    url = f"http://127.0.0.1:{free_port()}"
+    hub.config.wall_clock = WallClockConfig(source="pc", ontime_url=url)
+    hub.add_integration(OntimeIntegration(hub, inner=OntimeSource(lambda: hub.config.wall_clock.ontime_url,
+                                                                  poll_every_s=0.05, backoff_min_s=0.05, backoff_max_s=0.1)))
     await hub.start()
     try:
         set_cards(hub, "ontime_rundown")
-        await until(lambda: "ontime" in hub.devices and hub.devices["ontime"].status == Status.MISSING)
-        assert hub.snapshot()["ontime_rundown"]["status"] == "offline"
-        assert all(not a.get("sounding") for a in hub.alarms.to_list())
+        await until(lambda: hub.devices.get("ontime") and hub.devices["ontime"].status == Status.MISSING, timeout=30)
+        alarm = hub.alarms.to_list()[0]
+        assert alarm["silent"] is True and hub.alarms.sounding is False and hub.alarms.max_level == 0
+        await until(lambda: (hub.snapshot()["ontime_rundown"] or {}).get("status") == "offline")
+        snap = hub.snapshot()["ontime_rundown"]
+        assert snap["position"] is None and url not in json.dumps(snap)
     finally:
         await hub.stop()
 
@@ -382,12 +387,12 @@ def test_the_emulated_rundown_cycles_through_every_state():
     s = emulated_rundown_state(10)
     assert s.selected_index is None and s.actual_start_ms is None and s.num_events == 12            # not started
     on_time = emulated_rundown_state(35)
-    assert abs(on_time.offset_ms) <= 60_000 and on_time.selected_index is not None
-    behind = emulated_rundown_state(80)
+    assert abs(on_time.offset_ms) <= 30_000 and on_time.selected_index is not None
+    behind = emulated_rundown_state(89)
     assert behind.offset_ms < -300_000                                                              # past the orange step
     amber = emulated_rundown_state(60)
     assert -300_000 < amber.offset_ms < -60_000
-    ahead = emulated_rundown_state(125)
+    ahead = emulated_rundown_state(129)
     assert ahead.offset_ms > 60_000
     done = emulated_rundown_state(170)
     assert done.selected_index is None and done.actual_start_ms is not None                         # finished
@@ -450,6 +455,14 @@ def test_card_id_is_known_and_never_a_default():
     assert "ontime_rundown" in cards.KNOWN_CARDS and cards.strict_cards_error(["ontime_rundown"]) is None
     for layout in ("tablet", "phone", "wall"):
         assert "ontime_rundown" not in cards.default_cards(layout) and "ontime_rundown" not in cards.legacy_cards(layout)
+
+
+def test_the_card_id_survives_a_reload_and_a_file_from_before_still_loads(tmp_path):
+    hub = Hub(tmp_path, emulate=True)
+    set_cards(hub, "ontime_rundown")
+    again = Hub(tmp_path, emulate=True)
+    assert "ontime_rundown" in again.config.dashboards[0].cards
+    assert Config.model_validate({"wall_clock": {"source": "pc"}}).dashboards is not None   # no rundown settings needed
 
 
 def test_no_config_field_was_added():

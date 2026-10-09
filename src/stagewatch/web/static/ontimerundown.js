@@ -19,8 +19,16 @@ SW.rd = (function () {
   rd.INDEX_BASE = 0;                    // selectedEventIndex 0 = the first event (captured: 8 of 16, not yet proven)
 
   // ---- Thresholds (milliseconds)
-  rd.ON_TIME_MS = 60 * 1000;            // within +/-1 minute is "on time" (neutral)
-  rd.ORANGE_MS = 5 * 60 * 1000;         // behind by more than this is orange; more than ON_TIME_MS is amber
+  rd.ON_TIME_MS = 30 * 1000;            // within +/-30 seconds is "on time" (neutral)
+  rd.ORANGE_DEFAULT_MS = 5 * 60 * 1000; // orange step when the site has no warning minutes
+  // Behind by more than ON_TIME_MS is amber; by more than the orange step is orange. The orange
+  // step is the site's smallest schedule warning step (the one the schedule card marks as the
+  // last), so crew see the same steps everywhere; never below ON_TIME_MS. Never red.
+  rd.orangeMs = function () {
+    const w = typeof SW.scheduleWarn === "object" && SW.scheduleWarn ? SW.scheduleWarn.minutes : null;
+    const last = Array.isArray(w) && w.length ? w[w.length - 1] * 60000 : NaN;
+    return isNum(last) && last > rd.ON_TIME_MS ? last : rd.ORANGE_DEFAULT_MS;
+  };
   rd.STALE_S = 3;                       // a reading older than this is stale (Ontime sends about once a second)
   const DAY_MS = 86400000;
   const MAX_TIME_MS = 72 * 3600000;
@@ -38,7 +46,7 @@ SW.rd = (function () {
     if (!isNum(aheadMs)) return { kind: "none", level: "" };
     if (Math.abs(aheadMs) <= rd.ON_TIME_MS) return { kind: "ontime", level: "" };
     if (aheadMs > 0) return { kind: "ahead", level: "" };
-    return { kind: "behind", level: -aheadMs > rd.ORANGE_MS ? "alert" : "warn" };
+    return { kind: "behind", level: -aheadMs > rd.orangeMs() ? "alert" : "warn" };
   };
 
   // A length of time as m:ss, or h:mm:ss from one hour (whole seconds, rounded). 59:59 -> 1:00:00.

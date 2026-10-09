@@ -78,7 +78,7 @@ def emulated_timer_state(t: float) -> TimerState:
 # is ahead, negative is behind); a real capture has not confirmed it.
 #   0-20 not started | 20-50 on time (a few seconds out) | 50-90 falling behind, 0 to 6:00
 #   (amber after 1:00, orange after 5:00; nothing arrives from 70 to 85) | 90-130 catching up,
-#   6:00 behind to 1:00 ahead | 130-150 ahead, easing back to 0 | 150-195 finished
+#   6:00 behind to 1:30 ahead | 130-150 ahead, easing back to 0 | 150-195 finished
 #   | 195-210 Ontime offline.
 RUNDOWN_CYCLE_S = 210.0
 RUNDOWN_EVENTS = 12
@@ -114,9 +114,9 @@ def emulated_rundown_state(t: float) -> RundownState:
     if t < 90:
         return state(3 + int((t - 50) // 20), -int((t - 50) / 40 * 360_000))
     if t < 130:
-        return state(5 + int((t - 90) // 20), int(-360_000 + (t - 90) / 40 * 420_000))
+        return state(5 + int((t - 90) // 20), int(-360_000 + (t - 90) / 40 * 450_000))
     if t < 150:
-        return state(8, int(60_000 - (t - 130) / 20 * 60_000))
+        return state(8, int(90_000 - (t - 130) / 20 * 90_000))
     return state(None, 0)                                              # finished
 
 

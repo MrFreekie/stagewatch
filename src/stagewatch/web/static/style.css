@@ -522,7 +522,7 @@ body.layout-wall #ontime-timer-card > h2 { font-size: 24px; }
 /* ---- dashboard: Ontime Rundown card ----
    The big line is the ahead/behind figure with its words and a triangle (never colour alone).
    Behind is amber then orange, never red; ahead and on time stay neutral. Stale figures are struck
-   through. No animation at all. Tablet: every line. Phone: figure, position, expected end.
+   through. Nothing moves. Tablet: every line. Phone: figure, position, expected end.
    Wall: figure and position in large type, plus the bar. */
 .rd-main { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; }
 .rd-big { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.05; }
