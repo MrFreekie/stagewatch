@@ -45,6 +45,7 @@ from ...core.config import MAX_IGNORED, EsphomeDeviceConfig
 from ...core.model import Device, Entity, Kind, Status, slugify
 from ...core.plugin import Integration, Manifest
 from .emulate import EmulatedNode
+from ...core.statustext import describe_connect_error
 from .mapping import canonical_unit, sensor_kind, to_canonical
 
 log = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ class _NodeConnection:
         # and other device ids, which never go into public status or alarm text):
         # {"reason": "different"|"duplicate"|"unreadable"|"known_board", "expected", "found", "other"}
         self.conflict: dict | None = None
+        self._last_error = ""   # last connection-problem phrase logged, so the log gets one line per change
         self.client = APIClient(
             cfg.host, cfg.port, None,
             client_info=f"Stagewatch {__version__}",
@@ -168,20 +170,28 @@ class _NodeConnection:
                     entity_id, self.cfg.id, e.name or object_id, Kind.CONTACT, "", 0,
                     hw_key=hw_key))
         self.client.subscribe_states(self._on_state)
+        self._last_error = ""
         self.hub.set_device_status(self.cfg.id, Status.OK)
         log.info("ESPHome %s connected (%d entities)", self.cfg.host, len(self._keys))
 
     async def _on_disconnect(self, expected_disconnect: bool) -> None:
         self.hub.set_device_status(self.cfg.id, Status.MISSING,
-                                   "" if expected_disconnect else "connection lost")
+                                   "" if expected_disconnect else "Connection lost")
 
     async def _on_connect_error(self, err: Exception) -> None:
+        # The public text is one short fixed phrase. The error's own text (it can hold an IP
+        # address) goes to the log only, once per change of phrase, never into the device status.
+        phrase = describe_connect_error(err)
         if isinstance(err, (InvalidEncryptionKeyAPIError, RequiresEncryptionAPIError)):
-            self.hub.set_device_status(self.cfg.id, Status.FAULT, "encryption key missing or wrong")
+            self.hub.set_device_status(self.cfg.id, Status.FAULT, phrase)
         elif isinstance(err, InvalidAuthAPIError):
-            self.hub.set_device_status(self.cfg.id, Status.FAULT, "node needs an API password (unsupported; use an encryption key)")
+            self.hub.set_device_status(self.cfg.id, Status.FAULT, "API password not supported")
+            phrase = "API password not supported"
         else:
-            self.hub.set_device_status(self.cfg.id, Status.MISSING, str(err)[:120])
+            self.hub.set_device_status(self.cfg.id, Status.MISSING, phrase)
+        if phrase != self._last_error:
+            self._last_error = phrase
+            log.warning("ESPHome %s: %s (%s: %s)", self.cfg.id, phrase, type(err).__name__, err)
 
     def _on_state(self, state) -> None:
         mapping = self._keys.get(state.key)

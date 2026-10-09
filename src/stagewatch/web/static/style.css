@@ -118,6 +118,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.35); } }
 .alarm-bar ul { margin: 0; padding: 0; list-style: none; flex: 1; }
 .alarm-bar li { font-weight: 600; }
+.alarm-bar li.older { font-weight: 400; margin-top: 4px; }
+.alarm-bar li.older summary { cursor: pointer; min-height: 32px; display: list-item; }
+.alarm-bar li.older ul { margin-top: 4px; }
 .alarm-bar li .lvl { text-transform: uppercase; font-size: 12px; margin-right: 8px; opacity: .85; }
 
 .markers li { display: flex; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--grid); cursor: pointer; align-items: baseline; }

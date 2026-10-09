@@ -450,6 +450,15 @@ class UpdaterConfig(_Model):
 MAX_IGNORED = 200
 
 
+class AlarmsConfig(_Model):
+    """How long advisory notices stay on dashboards. Additive with defaults: no config schema
+    bump. An older build ignores the section and forgets it on its next save. Only the
+    dashboard list is affected; the underlying state (a node still MISSING) is untouched, and
+    alert and stop alarms never time out. 0 means never."""
+    hide_acked_min: int = Field(2, ge=0, le=1440)     # hide an acknowledged advisory this long after the ack
+    fold_old_min: int = Field(30, ge=0, le=10080)     # move an unacknowledged, unchanged advisory into "older notices"
+
+
 class BarometerConfig(_Model):
     """Barometer card settings. Additive with defaults: no config schema bump. An older build
     ignores the section and forgets it on its next save."""
@@ -703,6 +712,7 @@ class Config(_Model):
     wall_clock: WallClockConfig = Field(default_factory=WallClockConfig)
     ontime_timer: OntimeTimerConfig = Field(default_factory=OntimeTimerConfig)
     barometer: BarometerConfig = Field(default_factory=BarometerConfig)
+    alarms: AlarmsConfig = Field(default_factory=AlarmsConfig)
     spl: SplConfig = Field(default_factory=SplConfig)
 
     @field_validator("spl", mode="before")

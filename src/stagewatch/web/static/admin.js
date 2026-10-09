@@ -312,6 +312,24 @@
       h("p", { class: "muted" }, lines.join(" · ")));
   }
 
+  // ------------------------------------------------------------ alarm notices
+  // How long advisory notices stay on dashboards. Only the dashboard list changes: the state behind
+  // a notice (a node still Missing) stays visible in the sensor list and here.
+  function alarmNoticesCard() {
+    const a = admin.config.alarms || {};
+    const mins = (v, dflt) => h("input", { class: "num touch", type: "number", step: "1", min: "0", value: v === undefined ? dflt : v });
+    const hide = mins(a.hide_acked_min, 2), fold = mins(a.fold_old_min, 30);
+    return card("Alarm notices",
+      h("p", { class: "muted" }, "Keeps the alarm list on dashboards short. Advisory notices only: alert and stop alarms stay until they clear. The sensor list and this page still show what is wrong. 0 means never."),
+      h("div", { class: "row" },
+        field("Hide acknowledged notices after (minutes)", hide),
+        field("Move old notices into the fold-out after (minutes)", fold),
+        h("button", { class: "primary touch", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/alarms", {
+          hide_acked_min: Math.round(Number(hide.value)), fold_old_min: Math.round(Number(fold.value)),
+        }), "Alarm notices saved").then(refresh, () => {}) }, "Save")),
+      h("p", { class: "muted hint" }, "An acknowledged notice leaves the list that long after it was acknowledged (up to 1,440 minutes). A notice nobody has acknowledged and that has not changed moves into \"Older notices\" (up to 10,080 minutes); it is not removed. If the problem changes or comes back, the notice is shown again straight away."));
+  }
+
   // ------------------------------------------------------------ barometer
   // Settings for the Barometer card. The card itself is added to a dashboard under User dashboards →
   // Edit cards. Advisory only.
@@ -1402,7 +1420,7 @@
       scheduleCard(),     // summary and a link to /schedule
       connectCard(),
       softwareCard(),
-      devicesCard(), entitiesCard(), thresholdsCard(),
+      devicesCard(), entitiesCard(), thresholdsCard(), alarmNoticesCard(),
       dashboardsCard(),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, oscCard(), securityCard()),
       wallClockCard(),

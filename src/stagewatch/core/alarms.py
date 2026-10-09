@@ -10,6 +10,7 @@ own status alarm instead.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Callable
 
@@ -26,6 +27,12 @@ class ActiveAlarm:
     since: float
     acked: bool = False
     silent: bool = False  # on-screen notice only: never sounds, never counts toward max_level
+    changed: float = 0.0   # when the alarm was raised or its condition last changed (the notice timers)
+    acked_at: float = 0.0  # when it was acknowledged (0 = not)
+
+    def __post_init__(self) -> None:
+        if not self.changed:
+            self.changed = self.since
 
     def to_dict(self) -> dict:
         return {"id": self.id, "level": self.level, "level_name": LEVEL_NAMES.get(self.level, ""),
@@ -114,12 +121,19 @@ class AlarmEngine:
         if not active and current is not None:
             del self.active[alarm_id]
             return AlarmChange(current, "clear")
+        if active and current is not None and (current.message != message or current.level != level):
+            # The condition changed (e.g. missing -> fault): the line says so, and the notice
+            # timers start again so it is not hidden as "old". Acknowledged stays acknowledged.
+            current.message, current.level, current.changed = message, level, now
+            if current.acked:
+                current.acked_at = now
         return None
 
-    def ack_all(self) -> list[ActiveAlarm]:
+    def ack_all(self, now: float | None = None) -> list[ActiveAlarm]:
         acked = [a for a in self.active.values() if not a.acked and not a.silent]
         for a in acked:
             a.acked = True
+            a.acked_at = time.time() if now is None else now
         return acked
 
     @property
@@ -133,3 +147,30 @@ class AlarmEngine:
     def to_list(self) -> list[dict]:
         return [a.to_dict() for a in sorted(self.active.values(),
                                              key=lambda a: (-a.level, a.since))]
+
+    def notice_list(self, now: float, hide_acked_s: float = 0, fold_old_s: float = 0) -> list[dict]:
+        """The list a dashboard shows, with the notice timers applied by the server's clock
+        (0 = never). Only advisory (level 1) alarms ever time out; alert and stop never do.
+        An acknowledged advisory leaves the list ``hide_acked_s`` after it was acknowledged.
+        An unacknowledged advisory not changed for ``fold_old_s`` is flagged ``old`` (the browser
+        puts it in an "older notices" fold-out; nothing is dropped). ``hide_in`` / ``fold_in`` are
+        the seconds left until each happens (None = it will not), so a screen can act on them
+        without asking again; the server's clock is the only one used."""
+        out: list[dict] = []
+        for a in sorted(self.active.values(), key=lambda a: (-a.level, a.since)):
+            d = a.to_dict()
+            d.update(old=False, hide_in=None, fold_in=None)
+            if a.level == 1:
+                if a.acked and hide_acked_s > 0:
+                    left = a.acked_at + hide_acked_s - now
+                    if left <= 0:
+                        continue
+                    d["hide_in"] = round(left, 1)
+                elif not a.acked and fold_old_s > 0:
+                    left = a.changed + fold_old_s - now
+                    if left <= 0:
+                        d["old"] = True
+                    else:
+                        d["fold_in"] = round(left, 1)
+            out.append(d)
+        return out
