@@ -189,8 +189,32 @@ class SmaartSource(SplSource):
         self._wanted: list[str] = []
         self._wake: asyncio.Event | None = None
         self.dropped_frames = 0   # over the rate cap, for the diagnostics
+        self._ready = False       # a session is up and has the input list
+        self._refresh_waiters: list[asyncio.Future] = []
 
     # ------------------------------------------------------------ source API
+    async def refresh(self) -> bool:
+        """Ask for the input list now, on the open session (the same allowed message as the regular
+        poll). False if there is no open session or Smaart does not answer in time."""
+        if self._task is None or not self._ready or self._wake is None:
+            return False
+        fut = asyncio.get_running_loop().create_future()
+        self._refresh_waiters.append(fut)
+        self._wake.set()
+        try:
+            return bool(await asyncio.wait_for(fut, self._reply_timeout + 1.0))
+        except (TimeoutError, asyncio.TimeoutError):
+            return False
+        finally:
+            if fut in self._refresh_waiters:
+                self._refresh_waiters.remove(fut)
+
+    def _settle_refresh(self, ok: bool) -> None:
+        waiters, self._refresh_waiters = self._refresh_waiters, []
+        for fut in waiters:
+            if not fut.done():
+                fut.set_result(ok)
+
     def set_wanted(self, sources: list[str]) -> None:
         self._wanted = list(sources)
         if self._wake is not None:
@@ -284,6 +308,7 @@ class SmaartSource(SplSource):
                 await self._login(ws, queue, failure)
                 catalog = await self._ask_inputs(ws, queue, failure, first=True)
                 self._apply_catalog(catalog)
+                self._ready = True
                 next_poll = time.monotonic() + self._poll_for(catalog)
                 while True:
                     assert self._wake is not None
@@ -291,11 +316,12 @@ class SmaartSource(SplSource):
                     self._reconcile(streams, catalog, ip, port, failure, failed)
                     if failed.is_set():
                         raise failure[0]
-                    if time.monotonic() >= next_poll:
+                    if time.monotonic() >= next_poll or self._refresh_waiters:
                         try:
                             fresh = await self._ask_inputs(ws, queue, failure, first=False)
                         except (TimeoutError, asyncio.TimeoutError):
                             fresh = None   # a slow answer is not a dead link: the keep-alive decides that
+                        self._settle_refresh(fresh is not None)
                         if fresh is not None:
                             if fresh != catalog:
                                 catalog = fresh
@@ -306,6 +332,8 @@ class SmaartSource(SplSource):
                         continue
                     await self._idle(failed, max(0.0, next_poll - time.monotonic()))
             finally:
+                self._ready = False
+                self._settle_refresh(False)
                 for _endpoint, task in streams.values():
                     task.cancel()
                 pump.cancel()

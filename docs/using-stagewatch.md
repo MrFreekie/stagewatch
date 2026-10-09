@@ -812,6 +812,8 @@ work anything out itself.
 4. Save. Once Stagewatch is connected, the drop-downs fill with Smaart's own lists. For each of up to three
    values choose the **input** (for example "ASIO MADIface USB : Channel 7 (1)"; the default is the first
    input Smaart lists) and the **value** (for example "SPL A Slow", "SPL C Slow", "LAeq 10"). Save again.
+   If you rename an input in Smaart or start a new one, press **Refresh** under the drop-downs to read the
+   names again; a choice Smaart no longer lists stays chosen and shows as not available.
 5. Add the card to a dashboard under **User dashboards → Edit cards**. It stays hidden until values are set up.
 
 Stagewatch sends Smaart four fixed messages and nothing else: is a password needed, the list of inputs, the

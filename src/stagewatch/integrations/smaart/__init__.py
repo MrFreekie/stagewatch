@@ -35,6 +35,12 @@ STALE_AFTER_S = 10.0          # connected, but no reading for this long: a gap
 TICK_S = 1.0
 MARKER_MIN_GAP_S = 60.0       # a flapping link adds at most one "resumed" marker a minute
 MARKER_SOURCE = "spl"
+REFRESH_MIN_S = 2.0           # the admin Refresh button: at most one ask of Smaart in this time
+REFRESH_TEXT = {
+    "off": "Sound level is not switched on",
+    "down": "Smaart is not connected",
+    "recent": "Refreshed too recently",
+}
 
 MANIFEST = Manifest(
     domain="smaart",
@@ -83,8 +89,11 @@ class SmaartIntegration(Integration):
     manifest = MANIFEST
 
     def __init__(self, hub, emulate: bool = False, source_factory: SourceFactory | None = None,
-                 clock: Callable[[], float] = time.time, stale_after_s: float = STALE_AFTER_S) -> None:
+                 clock: Callable[[], float] = time.time, stale_after_s: float = STALE_AFTER_S,
+                 mono: Callable[[], float] = time.monotonic) -> None:
         super().__init__(hub, emulate)
+        self._mono = mono
+        self._last_refresh: float | None = None
         self._factory = source_factory or self._default_source
         self._clock = clock
         self._stale_after = stale_after_s
@@ -219,6 +228,47 @@ class SmaartIntegration(Integration):
         self._metrics = [spl.clean_metric_name(m) for m in metrics if isinstance(m, str)]
         self._sync_entities()
         self._sync_input_name()
+        self._blank_unlisted()
+
+    def _blank_unlisted(self) -> None:
+        """A chosen value whose input or metric Smaart no longer lists becomes "not available" now
+        (never zero, never moved to another input). It stays pointed at the same name, so it comes
+        back if Smaart lists it again."""
+        if not self._registered:
+            return
+        now = self._clock()
+        for eid, (source, metric) in self.slot_entities():
+            gone = self._resolved(source) not in self._inputs or \
+                   (bool(self._metrics) and metric not in self._metrics)
+            if not gone:
+                continue
+            e = self.hub.entities.get(eid)
+            if e is not None and e.value is not None:
+                self.hub.update_state(eid, None, now)
+            self._slot_ok[eid] = False
+
+    async def refresh_catalog(self) -> tuple[bool, str]:
+        """The admin Refresh button: ask Smaart for its input and metric names again, now. Returns
+        (done, fixed text for crew). Sends nothing new (the same allowed input-list question the regular
+        poll uses), at most once every REFRESH_MIN_S, and says so plainly when the link is down."""
+        source = self._source
+        if not self._registered or source is None:
+            return False, REFRESH_TEXT["off"]
+        if not self._link_up:
+            return False, REFRESH_TEXT["down"]
+        now = self._mono()
+        if self._last_refresh is not None and now - self._last_refresh < REFRESH_MIN_S:
+            return False, REFRESH_TEXT["recent"]
+        self._last_refresh = now
+        try:
+            ok = await source.refresh()
+        except Exception:  # noqa: BLE001 - never let a button press reach the hub
+            log.exception("Sound level refresh failed")
+            ok = False
+        if not ok:
+            return False, REFRESH_TEXT["down"]
+        n, m = len(self._inputs), len(self._metrics)
+        return True, f"Refreshed: {n} input{'' if n == 1 else 's'}, {m} metric{'' if m == 1 else 's'}"
 
     # -------------------------------------------------------------- callbacks
     def _blank(self, ts: float) -> None:
