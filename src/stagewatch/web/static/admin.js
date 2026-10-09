@@ -181,7 +181,7 @@
     }
     const lines = [];
     if (!st.running) lines.push("Not running. Tick the box and Save to start.");
-    else lines.push(`${st.status === "ok" ? "Receiving" : "▲ " + st.status}${st.detail ? `: ${st.detail}` : ""}`);
+    else lines.push(st.status === "ok" ? (st.detail || "Receiving values") : `▲ ${st.status}${st.detail ? `: ${st.detail}` : ""}`);
     if (st.running && st.source) lines.push(st.source);
     if (st.version) lines.push(`Version ${st.version}`);
     return card("Sound level (Smaart)",
@@ -985,7 +985,7 @@
         h("tbody", {}, admin.integrations.map((i) => h("tr", {},
           h("td", {}, h("strong", {}, i.manifest.name), h("div", { class: "muted", style: "font-size:12px" }, i.manifest.description)),
           h("td", {}, i.manifest.tier), h("td", {}, i.manifest.direction), h("td", {}, i.manifest.protocols.join(", ")),
-          h("td", { class: "muted" }, Object.entries(i).filter(([k]) => k !== "manifest").map(([k, v]) => `${k}: ${v}`).join(" · "))))))));
+          h("td", { class: "muted" }, Object.entries(i).filter(([k]) => k !== "manifest").map(([k, v]) => `${k}: ${v !== null && typeof v === "object" ? JSON.stringify(v) : v}`).join(" · "))))))));
   }
 
   function alarmLogCard() {

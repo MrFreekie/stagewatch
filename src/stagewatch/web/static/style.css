@@ -644,7 +644,9 @@ body.layout-wall .eq-grid { grid-template-columns: repeat(auto-fit, minmax(260px
 .spl-chip.spl-line-1, .spl-key.spl-line-1 { border-top-style: dashed; }
 .spl-chip.spl-line-2, .spl-key.spl-line-2 { border-top-style: dotted; }
 .spl-tile .spl-num { font-variant-numeric: tabular-nums; }
-.spl-tile.spl-stale { opacity: .6; }
+.spl-tile.spl-stale .value { color: var(--muted); }   /* greyed, not faded: the grey keeps 4.5:1 and the age line says "Old reading" */
+.spl-tile .foot { font-size: 13px; }
+#spl-span-seg button { min-height: 44px; min-width: 44px; }
 .spl-tile.spl-na .value, .spl-tile.spl-wait .value { color: var(--muted); }
 .spl-note { font-size: 13px; margin: 6px 0 0; }
 .spl-chart-wrap { height: 220px; }
@@ -655,3 +657,5 @@ body.layout-wall .spl-rows { grid-template-columns: repeat(auto-fit, minmax(260p
 body.layout-wall .spl-tile .value { font-size: 72px; }
 body.layout-wall .spl-tile .label, body.layout-wall .spl-tile .foot { font-size: 18px; }
 body.layout-wall .spl-chart-wrap { height: 260px; }
+body.layout-wall #spl-legend { font-size: 18px; }
+body.layout-wall .spl-note { font-size: 16px; }
