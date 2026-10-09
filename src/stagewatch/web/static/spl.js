@@ -41,7 +41,7 @@ SW.spl = (function () {
     }
     const text = SW.fmt("sound_level", e.value, false);
     if (e.stale) return { state: "stale", text, sub, note: `Old reading, ${SW.age(e.updated, now)}` };
-    return { state: "live", text, sub, note: "" };
+    return { state: "live", text, sub, note: `Updated ${SW.age(e.updated, now)}` };
   };
 
   // Seconds of silence in a chart line that count as a gap: a few intervals between points, and

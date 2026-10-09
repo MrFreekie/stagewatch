@@ -911,3 +911,111 @@ def test_js_view_cases_run_in_node():
         pytest.skip("node is not installed")
     r = subprocess.run([node, str(ROOT / "tests" / "js" / "spl_test.js")], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ------------------------------------------------------------------ review fixes
+@pytest.mark.parametrize("host", ["134744072", "0x8.0x8.0x8.0x8", "8.8.2056", "010.010.010.010", "host.0x10", "a.b.123",
+                                  "0X7F000001"])
+def test_numeric_looking_host_names_are_refused(host):
+    with pytest.raises(Exception):
+        SplConfig(host=host)
+
+
+def test_ordinary_names_with_digits_still_work():
+    assert SplConfig(host="smaart2.local").host == "smaart2.local" and SplConfig(host="foh-1").host == "foh-1"
+
+
+async def test_resolved_names_must_all_be_local(monkeypatch):
+    from stagewatch.integrations.smaart import client as cl
+
+    def fake(answers):
+        async def getaddrinfo(self, host, port, **kw):
+            return [(0, 0, 0, "", (a, port)) for a in answers]
+        monkeypatch.setattr(asyncio.get_running_loop().__class__, "getaddrinfo", getaddrinfo)
+
+    fake(["192.168.1.9"])
+    assert await cl.resolve_local("smaart.local", 1) == "192.168.1.9"
+    for bad in (["8.8.8.8"], ["192.168.1.9", "8.8.8.8"], ["127.0.0.1"], ["169.254.1.1"], ["2002:808:808::1"],
+                ["2001:0:4136:e378:8000:63bf:3fff:fdd2"], ["::ffff:8.8.8.8"], ["2001:4860:4860::8888"], ["0.0.0.0"], []):
+        fake(bad)
+        with pytest.raises(cl.NotLocal):
+            await cl.resolve_local("smaart.local", 1)
+    assert await cl.resolve_local("127.0.0.1", 1) == "127.0.0.1"   # a typed IP was checked by the settings
+
+
+async def test_a_name_that_resolves_publicly_is_refused_and_nothing_is_connected(monkeypatch):
+    from stagewatch.integrations.smaart import client as cl
+
+    async def getaddrinfo(self, host, port, **kw):
+        return [(0, 0, 0, "", ("8.8.8.8", port))]
+    monkeypatch.setattr(asyncio.get_running_loop().__class__, "getaddrinfo", getaddrinfo)
+    sink = Sink()
+    src = SmaartSource(lambda: ("smaart.example", 1), sink.reading, sink.link, backoff_min_s=0.05, backoff_max_s=0.1)
+    await src.start()
+    await until(lambda: (False, TEXT["not_local"]) in sink.links)
+    await src.stop()
+    assert sink.readings == []
+
+
+def test_a_bad_saved_address_is_cleared_on_load_not_salvaged(tmp_path, caplog):
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.safe_dump({"schema_version": 2, "site": {"name": "Keep Me"},
+                                 "spl": {"enabled": True, "host": "8.8.8.8", "port": 26000, "slots": ["a_slow"]}}), encoding="utf-8")
+    store = ConfigStore(p)
+    cfg = store.load()
+    assert cfg.spl.host == "" and cfg.spl.port == 26000 and cfg.spl.enabled and cfg.spl.slots == ["a_slow"]
+    assert cfg.site.name == "Keep Me" and store.invalid_files() == []      # no salvage, no quarantined file
+    assert "8.8.8.8" not in caplog.text and "not usable" in caplog.text
+
+
+def test_the_api_stays_strict_about_the_address(tmp_path):
+    hub = Hub(tmp_path)
+    with TestClient(create_app(hub, lan_addresses=lambda: [])) as c:
+        admin(c)
+        assert put(c, host="134744072", port=1).status_code == 422
+
+
+def test_entity_dict_sends_no_offset_for_a_sound_level_even_with_a_stale_setting(hub):
+    e = add_level(hub)
+    hub.config.entities[e.id] = EntitySettings(offset=5.0)
+    hub.update_state(e.id, 94.3, 1000.0)
+    assert "offset" not in hub.entity_dict(e, 1001.0, 60.0)
+
+
+async def _waits(script, n, **kw):
+    waits = []
+    real = asyncio.sleep
+
+    async def spy(d):
+        waits.append(d)
+        await real(0.01)
+    srv = FakeSmaart(script)
+    srv.close_after_script = True
+    async with srv:
+        src = client(srv.port, Sink(), backoff_min_s=0.05, backoff_max_s=0.4, sleep=spy, **kw)
+        await src.start()
+        try:
+            await until(lambda: len(waits) >= n)
+        finally:
+            await src.stop()
+    return waits[:n]
+
+
+async def test_backoff_grows_when_the_link_drops_quickly_even_after_readings():
+    assert await _waits([frame(a_slow=90.0)], 4, stable_s=30.0) == [0.1, 0.2, 0.4, 0.4]
+
+
+async def test_backoff_starts_over_after_a_stable_link():
+    assert await _waits([0.15, frame(a_slow=90.0)], 2, stable_s=0.1) == [0.05, 0.05]
+
+
+async def test_a_failing_callback_does_not_end_the_simulated_source():
+    calls = []
+
+    def bad(*a):
+        calls.append(a)
+        raise RuntimeError("boom")
+    src = EmulatedSplSource(bad, bad, period_s=0.01, first_outage_s=1000)
+    await src.start()
+    await until(lambda: len(calls) >= 4)
+    await src.stop()

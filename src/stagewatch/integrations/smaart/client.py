@@ -18,7 +18,9 @@ log-in, whether a client must ask for values or just listens, and every message 
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import socket
 import time
 from typing import Callable, Mapping as MappingType
 
@@ -33,6 +35,7 @@ log = logging.getLogger(__name__)
 
 BACKOFF_MIN_S = 1.0
 BACKOFF_MAX_S = 30.0
+STABLE_S = 30.0   # the wait starts over only after the link has stayed up this long
 OPEN_TIMEOUT_S = 5.0
 MAX_FRAMES_PER_S = 50
 
@@ -44,6 +47,7 @@ TEXT = {
     "closed": "Smaart closed the connection",
     "too_large": "Smaart sent more data than we accept",
     "not_smaart": "That address did not answer like Smaart",
+    "not_local": "That name does not point to a computer on the local network",
     "connected": "Connected, waiting for values",
     "connected_unverified": "Connected, but Smaart's field names are not verified yet, so no values can be read",
 }
@@ -63,11 +67,42 @@ def describe(exc: BaseException) -> str:
             if frame is not None and frame.code == 1009:
                 return "too_large"
         return "closed"
+    if isinstance(exc, NotLocal):
+        return "not_local"
     if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
         return "timeout"
     if isinstance(exc, (InvalidHandshake, InvalidURI)):
         return "not_smaart"
     return "unreachable"
+
+
+class NotLocal(Exception):
+    """A host name resolved to an address that is not on the local network."""
+
+
+def is_local_address(ip: ipaddress._BaseAddress) -> bool:
+    """True for a private LAN address. Refuses global, loopback, link-local, multicast and
+    unspecified addresses, and IPv6 forms that carry another address inside (IPv4-mapped, 6to4,
+    Teredo), which are checked as refused because the real destination is not obvious."""
+    if isinstance(ip, ipaddress.IPv6Address) and (ip.ipv4_mapped or ip.sixtofour or ip.teredo):
+        return False
+    return not (ip.is_global or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified)
+
+
+async def resolve_local(host: str, port: int) -> str:
+    """The address to connect to. An IP address typed in is used as it is (the settings already
+    refused a public one). A name is looked up here and EVERY answer must be a local address; the
+    caller connects to the checked address itself, so the name cannot change under us."""
+    try:
+        ipaddress.ip_address(host)
+        return host
+    except ValueError:
+        pass
+    infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    addrs = [i[4][0].split("%")[0] for i in infos]
+    if not addrs or not all(is_local_address(ipaddress.ip_address(a)) for a in addrs):
+        raise NotLocal()
+    return addrs[0]
 
 
 def ws_url(host: str, port: int) -> str:
@@ -85,7 +120,8 @@ class SmaartSource(SplSource):
                  on_link: LinkCallback, *, table: MappingType[str, Mapping] = BY_MAJOR,
                  default: Mapping = DEFAULT, clock: Callable[[], float] = time.time,
                  backoff_min_s: float = BACKOFF_MIN_S, backoff_max_s: float = BACKOFF_MAX_S,
-                 open_timeout_s: float = OPEN_TIMEOUT_S, max_frames_per_s: int = MAX_FRAMES_PER_S) -> None:
+                 open_timeout_s: float = OPEN_TIMEOUT_S, max_frames_per_s: int = MAX_FRAMES_PER_S,
+                 stable_s: float = STABLE_S, sleep=asyncio.sleep) -> None:
         super().__init__(on_reading, on_link)
         self._target_fn = target_fn
         self._table, self._default = table, default
@@ -93,6 +129,9 @@ class SmaartSource(SplSource):
         self._bmin, self._bmax = backoff_min_s, backoff_max_s
         self._open_timeout = open_timeout_s
         self._max_fps = max_frames_per_s
+        self._stable_s = stable_s
+        self._sleep = sleep
+        self._up_since: float | None = None
         self._task: asyncio.Task | None = None
         self.dropped_frames = 0   # over the rate cap, for the diagnostics
 
@@ -124,14 +163,15 @@ class SmaartSource(SplSource):
     async def _run(self) -> None:
         backoff = self._bmin
         while True:
-            got = False
             category = "unreachable"
+            self._up_since = None
             try:
                 target = self._target_fn()
                 if target is None:
                     category = "no_address"
                 else:
-                    got = await self._session(ws_url(*target))
+                    ip = await resolve_local(*target)
+                    await self._session(ws_url(ip, target[1]))
                     category = "closed"
             except asyncio.CancelledError:
                 raise
@@ -139,17 +179,19 @@ class SmaartSource(SplSource):
                 category = describe(exc)
                 log.info("Smaart connection ended (%s)", category)
             self._link(False, TEXT.get(category, TEXT["unreachable"]))
-            backoff = self._bmin if got else min(backoff * 2, self._bmax)
-            await asyncio.sleep(backoff)
+            # Readings before an abnormal drop do not earn a short wait: only a link that stayed up
+            # for a while does, so a source that connects and drops at once backs off.
+            stable = self._up_since is not None and time.monotonic() - self._up_since >= self._stable_s
+            backoff = self._bmin if stable else min(backoff * 2, self._bmax)
+            await self._sleep(backoff)
 
-    async def _session(self, url: str) -> bool:
-        """Listen until the connection ends. True if at least one reading was delivered. Never
-        sends a data frame."""
-        got = False
+    async def _session(self, url: str) -> None:
+        """Listen until the connection ends. Never sends a data frame."""
         window_start, in_window = time.monotonic(), 0
         async with _NoRedirectConnect(url, max_size=MAX_BYTES, proxy=None, open_timeout=self._open_timeout,
                                       ping_interval=20, ping_timeout=20, compression=None,
                                       max_queue=4) as ws:
+            self._up_since = time.monotonic()
             self._link(True, TEXT["connected"] if VERIFIED else TEXT["connected_unverified"])
             async for raw in ws:
                 now = time.monotonic()
@@ -165,5 +207,3 @@ class SmaartSource(SplSource):
                 if parsed.version:
                     self.version = parsed.version
                 self._deliver(SplReading(self._time(), parsed.values, parsed.version))
-                got = True
-        return got

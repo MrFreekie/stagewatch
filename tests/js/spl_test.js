@@ -36,7 +36,7 @@ eq(SW.spl.describe(ent("p", 1, { weighting: "Z", metric: "Peak" })), "Unweighted
 eq(SW.spl.describe({ labels: {} }), "", "no labels, no words");
 
 // view: live value to one decimal, the number itself not changed
-eq(SW.spl.view(A, { status: "ok" }, 1001), { state: "live", text: "94.3", sub: "A-weighted, Slow response", note: "" }, "live");
+eq(SW.spl.view(A, { status: "ok" }, 1001), { state: "live", text: "94.3", sub: "A-weighted, Slow response", note: "Updated 1s ago" }, "live");
 eq(SW.spl.view(ent("v", 1, {}, { value: 94.35 }), null, 1001).text, "94.3", "display only: one decimal");
 // not available is a dash, never zero
 const na = SW.spl.view(ent("n", 1, { weighting: "A", metric: "SPL", time_constant: "Slow" }, { value: null }), { status: "ok" }, 1001);

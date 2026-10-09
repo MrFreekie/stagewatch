@@ -13,6 +13,7 @@ mean nothing for a licence limit. The emulated Leq is just another slow wander, 
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import random
 import time
@@ -20,6 +21,8 @@ from typing import Callable
 
 from ...core.spl import SplReading
 from .source import LinkCallback, ReadingCallback, SplSource
+
+log = logging.getLogger(__name__)
 
 OFFERED = ("a_slow", "c_slow", "a_fast", "c_fast", "laeq_15m", "lceq_15m")   # the rest are "not available"
 VERSION = "9.0 (emulated)"
@@ -72,16 +75,23 @@ class EmulatedSplSource(SplSource):
         return {"a_slow": a_slow, "c_slow": c_slow, "a_fast": a_fast, "c_fast": c_fast,
                 "laeq_15m": leq, "lceq_15m": leq + 5.0}
 
+    @staticmethod
+    def _call(fn, *args) -> None:
+        try:
+            fn(*args)
+        except Exception:  # noqa: BLE001 - a callback must not end the simulated source
+            log.exception("Simulated sound level callback failed")
+
     async def _run(self) -> None:
         while True:
             elapsed = self._time() - self._t0
             down = self.in_outage(elapsed)
             if down and self._up:
                 self._up = False
-                self._on_link(False, "Can't reach Smaart (simulated dropout)")
+                self._call(self._on_link, False, "Can't reach Smaart (simulated dropout)")
             elif not down and not self._up:
                 self._up = True
-                self._on_link(True, "Connected (simulated)")
+                self._call(self._on_link, True, "Connected (simulated)")
             if self._up:
-                self._on_reading(SplReading(self._time(), self.values(elapsed), VERSION))
+                self._call(self._on_reading, SplReading(self._time(), self.values(elapsed), VERSION))
             await asyncio.sleep(self._period)

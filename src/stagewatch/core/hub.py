@@ -376,7 +376,7 @@ class Hub:
     def entity_dict(self, entity: Entity, now: float, stale_after: float) -> dict:
         """Public form of an entity: includes ``offset`` only when a calibration offset is set,
         and ``role`` only for equipment."""
-        offset = 0.0 if entity.derived else float(self.calibration_for(entity).offset or 0.0)
+        offset = 0.0 if (entity.derived or entity.kind == Kind.SOUND_LEVEL) else float(self.calibration_for(entity).offset or 0.0)
         return entity.to_dict(now, stale_after, offset, self.role_of(entity))
 
     def set_node_role(self, device_id: str, role: str) -> None:

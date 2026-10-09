@@ -450,6 +450,35 @@ class BarometerConfig(_Model):
     rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10)   # Met Office "quickly": 3.6 hPa in 3 h
 
 
+def numeric_host_name(host: str) -> bool:
+    """True for a "host name" that an address parser could read as a number: its last label is all
+    digits or starts with 0x (134744072, 0x8.0x8.0x8.0x8, 8.8.2056, 010.010.010.010). Such names
+    can mean a public IPv4 address, so they are refused."""
+    last = host.rstrip(".").rsplit(".", 1)[-1].lower()
+    return last.isdigit() or last.startswith("0x")
+
+
+def spl_host_error(v) -> str | None:
+    """Fixed-text problem with a Smaart address, or None. '' is fine (not set)."""
+    bad = "address must be a host name or IP address"
+    if not isinstance(v, str):
+        return "address must be text"
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in v):
+        return bad
+    v = v.strip()
+    if v == "":
+        return None
+    if any(not 0x21 <= ord(ch) <= 0x7E for ch in v):
+        return bad
+    try:
+        ip = ipaddress.ip_address(v)
+    except ValueError:
+        return bad if (not _ONTIME_HOST_RE.fullmatch(v) or numeric_host_name(v)) else None
+    if ip.is_global or ip.is_multicast or ip.is_unspecified:
+        return "address must be on the local network"
+    return None
+
+
 class SplConfig(_Model):
     """Sound level from Smaart (read-only). Additive with defaults (off, no address, the usual three
     values): no config schema bump. An older build ignores the section and forgets it on its next
@@ -468,23 +497,14 @@ class SplConfig(_Model):
         port, path or user info, and no public IP address (a Smaart machine is on the LAN)."""
         if not isinstance(v, str):
             raise ValueError("address must be text")
-        bad = "address must be a host name or IP address"
-        if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in v):
-            raise ValueError(bad)   # a new line or other control character is never part of an address
+        err = spl_host_error(v)
+        if err:
+            raise ValueError(err)
         v = v.strip()
-        if v == "":
-            return ""
-        if any(not 0x21 <= ord(ch) <= 0x7E for ch in v):
-            raise ValueError(bad)
         try:
-            ip = ipaddress.ip_address(v)
+            return str(ipaddress.ip_address(v))
         except ValueError:
-            if not _ONTIME_HOST_RE.fullmatch(v):
-                raise ValueError(bad) from None
             return v.lower()
-        if ip.is_global or ip.is_multicast or ip.is_unspecified:
-            raise ValueError("address must be on the local network")
-        return str(ip)
 
     @field_validator("slots", mode="before")
     @classmethod
@@ -523,6 +543,16 @@ class Config(_Model):
     ontime_timer: OntimeTimerConfig = Field(default_factory=OntimeTimerConfig)
     barometer: BarometerConfig = Field(default_factory=BarometerConfig)
     spl: SplConfig = Field(default_factory=SplConfig)
+
+    @field_validator("spl", mode="before")
+    @classmethod
+    def _lenient_spl_host(cls, v):
+        """On load (the API is strict): an address that is not acceptable is cleared with a warning,
+        so one bad value never sends the whole file through salvage. Never logs the value."""
+        if isinstance(v, dict) and "host" in v and spl_host_error(v["host"]):
+            log.warning("Sound level: the saved address is not usable and was cleared")
+            v = {**v, "host": ""}
+        return v
 
     @field_validator("wall_clock", mode="before")
     @classmethod
