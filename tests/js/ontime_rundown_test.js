@@ -101,7 +101,9 @@ rd.INDEX_BASE = 0;
 
 // ---- views
 let v = rd.view(msg(), NOW);
-eq([v.state, v.big, v.word, v.position, v.level, v.modeNote], ["running", "ON TIME", "", "Event 4 of 12", "", "vs plan"], "running, on time");
+eq([v.state, v.big, v.word, v.quiet, v.level, v.modeNote], ["running", "ON TIME", "", true, "", "vs plan"], "running, on time (quiet)");
+eq("position" in v, false, "no position line any more");
+eq([rd.view(msg({ offset_ms: 250 * S }), NOW).quiet, rd.view(msg({ offset_ms: -250 * S }), NOW).quiet], [false, false], "behind and ahead stay loud");
 eq([v.planned, v.expected, v.started], ["Planned 11:30 to 22:30", "Expected end 22:30", "Started 11:30"], "tablet lines");
 eq([Math.round(v.barPct), v.tickPct], [32, null], "day bar");
 v = rd.view(msg({ offset_ms: 250 * S, expected_end_ms: 22.5 * H + 250 * S }), NOW);
@@ -121,7 +123,7 @@ eq(rd.view(msg({ current_day: 0 }), NOW).day, "", "day 0: nothing");
 
 // ---- not started, finished, nothing loaded, no data
 v = rd.view(msg({ position: { index: null, total: 12 }, actual_start_ms: null, offset_ms: null }), NOW);
-eq([v.state, v.big, v.planned, v.position, v.barPct], ["notstarted", "NOT STARTED", "Planned 11:30 to 22:30", "", null], "not started");
+eq([v.state, v.big, v.planned, v.quiet, v.barPct], ["notstarted", "NOT STARTED", "Planned 11:30 to 22:30", false, null], "not started");
 v = rd.view(msg({ position: { index: null, total: 12 } }), NOW);
 eq([v.state, v.big, v.phrase, v.planned, v.started], ["finished", "FINISHED", "", "Planned end 22:30", "Started 11:30"], "finished (assumed: started, nothing selected)");
 v = rd.view(msg({ position: { index: null, total: 0 }, planned_start_ms: null, planned_end_ms: null }), NOW);
@@ -148,14 +150,16 @@ eq([rd.view(msg({ offset_ms: 250 * S }), NOW).phraseDup, rd.view(msg({ offset_ms
 // ---- the DOM is updated in place
 const ui = rd.createUi();
 ui.update(rd.view(msg({ offset_ms: 250 * S, expected_end_ms: 22.5 * H + 250 * S }), NOW));
-eq([ui.big.textContent, ui.word.textContent, ui.position.textContent, ui.bar.hidden, ui.tick.hidden], ["▼ 4:10", "BEHIND", "Event 4 of 12", false, false], "card content");
+eq([ui.big.textContent, ui.word.textContent, ui.big.className, ui.bar.hidden, ui.tick.hidden], ["▼ 4:10", "BEHIND", "rd-big", false, false], "card content");
+const uiq = rd.createUi();
+uiq.update(rd.view(msg(), NOW));
+eq([uiq.big.textContent, uiq.big.className], ["ON TIME", "rd-big quiet"], "on time is the quiet class");
 const before = ui.big.writes;
 ui.update(rd.view(msg({ offset_ms: 250 * S, expected_end_ms: 22.5 * H + 250 * S }), NOW));
 eq(ui.big.writes, before, "nothing rewritten when nothing changed");
 ui.update(rd.view({ status: "offline", label: "Ontime" }, NOW));
 eq([ui.big.textContent, ui.bar.hidden, ui.note.hidden, ui.word.hidden], ["--", true, false, true], "offline hides the rest");
-ui.update(rd.view(msg({ position: { index: 0, total: 12 } }), NOW));
-eq(ui.position.textContent, "Event 1 of 12", "first event");
+eq("position" in ui, false, "the card has no position element");
 const ui2 = rd.createUi();
 ui2.update(rd.view(msg({ label: "<img src=x onerror=alert(1)>", status: "offline" }), NOW));
 eq([ui2.note.textContent.indexOf("<img") > 0, ui2.note.children.length], [true, 0], "a label is text, never markup");

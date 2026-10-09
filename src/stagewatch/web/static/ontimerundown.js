@@ -132,11 +132,11 @@ SW.rd = (function () {
   // The one place that decides what the card says. m is the "ontime_rundown" message; now is the
   // server-corrected time in seconds. Returns:
   //   state  "running" | "notstarted" | "finished" | "empty" | "nodata" | "unplaced" | "stale" | "off" | "error"
-  //   big (the large line), word, phrase, level ("" | "warn" | "alert"), position, modeNote,
+  //   big (the large line), word, phrase, level ("" | "warn" | "alert"), quiet (on time: small and calm), modeNote,
   //   planned, expected, started, day (short facts), barPct / tickPct (null = hide), note, badge, cls
   rd.view = function (m, now, layout) {
     const name = (m && m.label) || "Ontime";
-    const v = { rows: [], listNote: "", title: "", evnote: "", phraseDup: false, unreadable: false, state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", position: "",
+    const v = { rows: [], listNote: "", title: "", evnote: "", phraseDup: false, unreadable: false, state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", quiet: false,
       modeNote: "", planned: "", expected: "", started: "", day: "", barPct: null, tickPct: null, note: "", stale: false };
     if (!m || m.status !== "ok") {
       if (m && m.status === "error") {
@@ -171,8 +171,9 @@ SW.rd = (function () {
         v.planned = plannedText;
       }
     } else {
-      v.position = rd.positionText(pos.index, pos.total);
-      if (!v.position) {
+      // "Event N of M" is no longer shown (the event list marks where we are). The placement check
+      // stays: an index outside the rundown is reported instead of guessed.
+      if (!rd.positionText(pos.index, pos.total)) {
         v.state = "unplaced"; v.note = `Can't place the current event in ${name}'s rundown`;
       } else {
         v.state = "running";
@@ -180,6 +181,7 @@ SW.rd = (function () {
       v.cls = `rd-s-${v.state}`;
       if (isNum(m.offset_ms)) {
         const o = rd.offsetView(m.offset_ms);
+        v.quiet = o.big === "ON TIME";   // nothing needs attention: say it small
         v.big = o.big; v.word = o.word; v.phrase = o.phrase; v.level = o.level;
         v.phraseDup = !!o.phrase;   // "Running 4:10 behind" repeats the big figure and word (the wall hides it)
         v.modeNote = MODE_NOTE[m.offset_mode] || "";
@@ -228,7 +230,6 @@ SW.rd = (function () {
       mode: h("span", { class: "rd-mode muted" }),
       badge: h("span", { class: "rd-badge", role: "status" }),
       phrase: h("p", { class: "rd-phrase" }),
-      position: h("div", { class: "rd-pos" }),
       tick: h("div", { class: "rd-tick", hidden: true }),
       bar: h("div", { class: "sched-bar rd-bar", hidden: true, "aria-hidden": "true" }, h("div", { class: "sched-bar-fill" })),
       planned: h("p", { class: "rd-line rd-planned" }),
@@ -241,7 +242,7 @@ SW.rd = (function () {
       foot: h("p", { class: "rd-foot muted" }, "Ontime time: the times are Ontime's own clock, not converted."),
     };
     ui.bar.append(ui.tick);
-    ui.nodes = [ui.title, ui.evnote, h("div", { class: "rd-main" }, ui.big, ui.word, ui.mode), ui.badge, ui.phrase, ui.position, ui.bar,
+    ui.nodes = [ui.title, ui.evnote, h("div", { class: "rd-main" }, ui.big, ui.word, ui.mode), ui.badge, ui.phrase, ui.bar,
       ui.planned, ui.expected, ui.started, ui.day, ui.list, ui.listNote, ui.note, ui.foot];
     let listKey = "";
     ui.update = function (v) {
@@ -249,6 +250,7 @@ SW.rd = (function () {
       setHidden(ui.title, !v.title);
       setText(ui.evnote, v.evnote);
       setHidden(ui.evnote, !v.evnote);
+      setClass(ui.big, v.quiet ? "rd-big quiet" : "rd-big");
       setText(ui.big, v.big);
       setText(ui.word, v.word);
       setHidden(ui.word, !v.word);
@@ -259,8 +261,6 @@ SW.rd = (function () {
       setText(ui.phrase, v.phrase);
       setHidden(ui.phrase, !v.phrase);
       setClass(ui.phrase, v.phraseDup ? "rd-phrase dup" : "rd-phrase");
-      setText(ui.position, v.position);
-      setHidden(ui.position, !v.position);
       for (const k of ["planned", "expected", "started", "day"]) {
         setText(ui[k], v[k]);
         setHidden(ui[k], !v[k]);

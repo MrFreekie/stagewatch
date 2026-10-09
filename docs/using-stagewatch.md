@@ -645,7 +645,7 @@ paused, time added, running over, stopped, ready, then stale and offline.
 **If it didn't work:** see [Troubleshooting](troubleshooting.md).
 ### Show where Ontime is in the day (Ontime Rundown card)
 
-The **Ontime Rundown** card shows how the whole running order is doing: "Event 4 of 12", whether
+The **Ontime Rundown** card shows how the whole running order is doing: which event is running (highlighted in the event list), whether
 [Ontime](https://github.com/cpvalente/ontime) is running ahead or behind, the planned start and end, when it
 now expects to finish, and when it actually started. The Ontime Timer answers "how long is left in this
 item"; this card answers "are we on time?". It is for the stage manager's wall, the FOH tablet or the monitor
@@ -666,8 +666,8 @@ the Wall Clock and the Ontime Timer, and all the cards share one connection.
 2. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Ontime Rundown** and click **Save
    dashboards**. It is never switched on by default.
 
-**What you'll see:** the title and note of the running event, a large figure with words and a triangle, the
-position, a bar, the times and the event list.
+**What you'll see:** the title and note of the running event, a large figure with words and a triangle, a
+bar, the times and the event list.
 
 - **The event list** sits under the figure. Each row has a marker, the start time (and the end time on a tablet
   or wall) as Ontime shows it, the cue and the title. The running event is bold with ▶, the next one has →,
@@ -679,7 +679,8 @@ position, a bar, the times and the event list.
 - **▼ 4:10 BEHIND** / **▲ 1:30 AHEAD**: Ontime's offset, in minutes and seconds (hours from one hour). Behind
   is amber, then orange once it passes the last warning step of the Schedule card (set under **Admin → Site**,
   5 minutes if you haven't set any). Ahead stays calm. It is never red, and never colour alone.
-- **ON TIME**: within 30 seconds either way.
+- **ON TIME**: within 30 seconds either way. It is shown small and calm on purpose, because nothing needs
+  attention; behind and ahead stay large.
 - A small label says which offset Ontime reports: **vs plan** (measured against the planned times) or **since
   start**. Stagewatch shows whichever Ontime is set to.
 - **Planned 11:30 to 22:30**, **Expected end 22:34 (planned 22:30)** and **Started 11:30**. A line is left out
@@ -703,7 +704,7 @@ the card's code, so they are easy to correct. If one looks wrong, please say whi
 
 - **Confirmed on a real Ontime 4.14.0:** a positive offset means **behind** and a negative one means **ahead**
   (for example -8:49 on Ontime's screen shows here as "▲ 8:49 AHEAD"). The event number counts from 0 (the card
-  adds 1 to show "Event N"); a capture agrees. If it can't place the number in the rundown it says so.
+  places the running event in the list); a capture agrees. If it can't place the running event in the rundown it says so.
 - Groups, milestones and delays in the event list have not been seen from a real Ontime; they are left out.
 - That "Finished" means a start time exists and no event is selected, and "Not started" means neither.
 - Whether the event count includes groups, and what "a later day" does in a multi-day rundown.
