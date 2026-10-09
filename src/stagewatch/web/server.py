@@ -36,7 +36,7 @@ from ..core.config import (
     ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GlobconConfig, OntimeTimerConfig, OscOutConfig,
     SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_host_error, spl_password_error,
 )
-from ..core.calibration import set_calibration
+from ..core.calibration import change_text, set_calibration
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Kind, Marker, slugify
 from ..core.recorder import clean_note, valid_day
@@ -1186,8 +1186,17 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             extra["role"] = body.role
         # Hardware record when the sensor's board is known (a "manual" history entry when the
         # offset changes), else the legacy entry keyed by entity id.
+        before = hub.calibration_for(entity)
+        old_offset, old_included = before.offset, before.include_in_average
         set_calibration(hub.config, entity_id, entity.hw_key, body.offset, body.include_in_average, **extra)
         hub.save_config()
+        # One system marker per save that really changed the offset or the average setting, so the
+        # crew can see why a site value stepped. Equipment is never averaged, so its tick is no change.
+        if hub.role_of(entity) != "environment":
+            old_included = body.include_in_average
+        text = change_text(entity.name, entity.unit, old_offset, body.offset, old_included, body.include_in_average)
+        if text:
+            hub.add_marker(text, "hub")
         if entity.raw_value is not None and not entity.derived:
             hub.update_state(entity_id, entity.raw_value, entity.updated)
         else:

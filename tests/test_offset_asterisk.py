@@ -1,6 +1,8 @@
 """The public entity payload says when a calibration offset is applied, and nothing else about it."""
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -52,7 +54,10 @@ def test_derived_entities_never_carry_an_offset(client):
 
 def test_nothing_else_about_calibration_leaks(client):
     _set(client, -100.0)
-    text = client.get("/api/snapshot").text.lower()
+    snap = client.get("/api/snapshot").json()
+    assert [m["label"] for m in snap["markers"]] == ["Calibration changed: Pressure offset -100 Pa (was 0 Pa)"]
+    snap["markers"] = []   # the system marker names the change on purpose; everything else must stay silent
+    text = json.dumps(snap).lower()
     assert "aabbccddeeff" not in text and "hw_key" not in text and "calibration" not in text
     assert "include_in_average" not in text
     assert set(_entity(client)) == {"id", "device_id", "name", "kind", "unit", "decimals", "derived",

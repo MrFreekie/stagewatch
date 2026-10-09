@@ -44,7 +44,7 @@ from .model import normalise_mac
 
 __all__ = ["normalise_mac", "format_mac", "node_key", "sensor_key", "fallback_key", "Identity",
            "check_identity", "calibration_for", "records_of", "move_legacy", "copy_node",
-           "drop_node", "drop_legacy", "set_calibration", "utc_now_iso"]
+           "drop_node", "drop_legacy", "set_calibration", "utc_now_iso", "change_text"]
 
 log = logging.getLogger(__name__)
 
@@ -297,3 +297,27 @@ def set_calibration(config: Config, entity_id: str, hw_key: str, offset: float,
     config.calibrations[hw_key] = cal.model_copy(update=update)
     if entity_id in config.entities:  # rollback mirror (drop in 0.4.0)
         config.entities[entity_id] = EntitySettings(offset=offset, include_in_average=include_in_average)
+
+
+def _amount(value: float, unit: str, signed: bool) -> str:
+    text = f"{value:+.3f}" if signed else f"{value:.3f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    if text in ("-0", "+0"):
+        text = "0"
+    return f"{text} {unit}".strip()
+
+
+def change_text(name: str, unit: str, old_offset: float, new_offset: float,
+                old_included: bool, new_included: bool) -> str:
+    """The timeline marker text for a saved calibration change, or "" when nothing changed.
+    Plain words, the sensor's display name only (never an address or key); an offset change and
+    an include change in one save share one line."""
+    parts = []
+    if new_offset != old_offset:
+        parts.append(f"Calibration changed: {name} offset {_amount(new_offset, unit, True)} "
+                     f"(was {_amount(old_offset, unit, True)})")
+    if new_included != old_included:
+        now, was = ("included in", "left out") if new_included else ("left out of", "included")
+        parts.append((f"{name} now " if not parts else "now ") + f"{now} the site average (was {was})")
+    return "; ".join(parts)
