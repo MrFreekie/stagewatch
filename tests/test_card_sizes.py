@@ -25,7 +25,7 @@ DASHBOARD_FIELDS = {"slug", "title", "layout", "allow_marker", "allow_ack", "car
 
 def test_default_is_full_everywhere_and_the_allow_list_is_small():
     assert Dashboard(slug="x").card_sizes == {}
-    assert cards.HALF_CAPABLE == ("wall_clock", "ontime_timer")
+    assert cards.HALF_CAPABLE == ("wall_clock", "ontime_timer", "ontime_rundown")
     assert set(cards.HALF_CAPABLE) <= set(cards.KNOWN_CARDS)
 
 

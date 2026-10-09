@@ -70,7 +70,7 @@ def unknown_cards(cards: list[str]) -> list[str]:
 # Per-dashboard card size ("full" is the default and is never needed in the map). A card can be
 # made half width only if it is listed here; add an id to allow another card later.
 CARD_SIZES: tuple[str, ...] = ("full", "half")
-HALF_CAPABLE: tuple[str, ...] = ("wall_clock", "ontime_timer")
+HALF_CAPABLE: tuple[str, ...] = ("wall_clock", "ontime_timer", "ontime_rundown")
 
 
 def clean_card_sizes(v) -> tuple[dict[str, str], int]:
