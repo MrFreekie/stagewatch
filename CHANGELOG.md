@@ -252,6 +252,8 @@ them into a dated release section and tags the commit.
 
 ### Changed
 
+- The **Wall Clock** card also shows the small Ontime logo while its time comes from Ontime (not for the Stagewatch PC clock).
+
 - The **Ontime Timer** and **Ontime Rundown** cards show a small Ontime logo in their header corner, the same size and place as the Stagewatch badge on the Sound level card.
 
 - The **Wall Clock** card no longer says "Matches Stagewatch" under an Ontime time that agrees; a line appears only when the time differs, is stale or offline.
