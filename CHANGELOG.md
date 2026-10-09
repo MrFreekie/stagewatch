@@ -250,6 +250,8 @@ them into a dated release section and tags the commit.
   key on every node to stop other devices pretending to be yours.
 
 ### Changed
+
+- The **Sound level** card shows a small Stagewatch badge in its header corner (26 px on dashboards, 44 px on the wall).
 - Admin → Site: the altitude label now says the altitude is also used for the barometer's sea-level figure
   (it used to say it was only used without a pressure sensor).
 - Wall Clock LED ring: the 60 lights for the seconds are now an outer ring, and the 12 hour marks
