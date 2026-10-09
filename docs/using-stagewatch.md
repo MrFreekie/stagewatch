@@ -206,7 +206,10 @@ An alarm shows up for two reasons:
 
 - A **limit** was crossed (for example, "Temperature: 36.2 above 35").
 - A **node has gone offline**. This shows as an advisory alarm, such as
-  "Stage L node: missing - connection lost".
+  "Stage L node: missing (connection lost)". The reason in brackets is always a short
+  plain phrase such as "can't reach the node", "connection refused", "timed out", "name not
+  found" or "wrong encryption key". It never shows addresses or technical error text; those
+  go to the log for your tech.
 
 **When an alarm is "sounding"**, the bar pulses and a beep repeats every two seconds.
 
@@ -216,6 +219,23 @@ An alarm shows up for two reasons:
 - **Alert** and **Stop** alarms also drop a marker on the timeline that starts with **ALARM:**.
   **Acknowledge** hides that marker (it stays in the history: tick **Show hidden** under the
   marker list to see it). If the alarm clears by itself, its marker stays on the chart.
+
+### How long advisory notices stay on screen
+
+So the bar does not fill up with old news, advisory notices (the amber ones, including a node
+that has gone offline) time out **on the dashboard only**:
+
+- An **acknowledged** notice disappears from the bar **2 minutes** after it was acknowledged.
+- A quiet notice (one that never beeps) that has not changed for **30 minutes** moves into a
+  **Older notices (n)** fold-out under the bar. Tap it to read them. Nothing is hidden silently.
+- A notice that is still **beeping** stays until someone acknowledges it.
+- **Alert** and **Stop** alarms never time out. They stay until the problem clears.
+- If the problem changes or comes back, the notice is shown again straight away and its timer
+  starts again.
+
+A notice leaving the bar does not mean the problem has gone: a node that is still offline is
+still marked **missing** in the sensor list. Your tech can change both times, or set either to 0
+for "never", in **Admin → Alarm notices**. No flashing or sound changes.
 
 ### The sound button
 
@@ -287,6 +307,7 @@ on the page:
 | **User dashboards** | Add or remove dashboards. Each has a URL name, a title, a **Layout** (tablet, phone or wall), and ticks for whether people can **Add markers** and **Ack alarms**. Click **Edit cards** to choose what it shows (see [Choose the cards on a dashboard](#choose-the-cards-on-a-dashboard)). Click **Save dashboards**. |
 | **OSC output** | Send the site average and alarm state to other gear (the desk, for example). See the [main README](../README.md#osc-output). |
 | **Security** | Change the admin PIN. |
+| **Alarm notices** | **Hide acknowledged notices after (minutes)** (default 2) and **Move old notices into the fold-out after (minutes)** (default 30). 0 means never. Advisory notices only; see [How long advisory notices stay on screen](#how-long-advisory-notices-stay-on-screen). |
 | **Alarm log** | See what alarmed, and when, in this show. |
 
 **Nothing alarms until you add limits.** Out of the box there are no threshold alarms.

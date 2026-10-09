@@ -75,6 +75,31 @@ SW.toast = function (msg, isError) {
   document.body.append(el);
   setTimeout(() => el.remove(), 3500);
 };
+// Alarm notice timers. The server sends, for each alarm, how many seconds are left until an
+// acknowledged advisory leaves the list (hide_in) or an unacknowledged one moves into "older
+// notices" (fold_in), counted from the moment the list was sent. The page adds the time since it
+// arrived, so nothing needs pushing every second and a reload simply asks again.
+// Returns { shown, older, next }: next is the seconds until the list should be worked out again
+// (null = never).
+SW.splitAlarms = function (alarms, elapsedS) {
+  const shown = [], older = [];
+  let next = null;
+  const soon = (s) => { if (next === null || s < next) next = s; };
+  for (const a of alarms) {
+    if (a.hide_in !== null && a.hide_in !== undefined) {
+      const left = a.hide_in - elapsedS;
+      if (left <= 0) continue;
+      soon(left);
+    }
+    let isOld = !!a.old;
+    if (!isOld && a.fold_in !== null && a.fold_in !== undefined) {
+      const left = a.fold_in - elapsedS;
+      if (left <= 0) isOld = true; else soon(left);
+    }
+    (isOld ? older : shown).push(a);
+  }
+  return { shown, older, next };
+};
 SW.card = (title, ...body) => SW.h("section", { class: "card" }, SW.h("h2", {}, title), ...body);
 // A normal link that looks like a button, at least 44 px tall.
 SW.linkButton = function (text, href, primary) {

@@ -409,9 +409,9 @@ async def test_fault_never_puts_a_mac_or_other_id_in_public_text(tmp_path, reaso
 
 
 @pytest.mark.parametrize("err, detail", [
-    (InvalidEncryptionKeyAPIError("x"), "encryption key missing or wrong"),
-    (RequiresEncryptionAPIError("x"), "encryption key missing or wrong"),
-    (InvalidAuthAPIError("x"), "node needs an API password (unsupported; use an encryption key)"),
+    (InvalidEncryptionKeyAPIError("x"), "Wrong encryption key"),
+    (RequiresEncryptionAPIError("x"), "Wrong encryption key"),
+    (InvalidAuthAPIError("x"), "API password not supported"),
 ])
 async def test_auth_and_encryption_fault_details_are_unchanged(tmp_path, err, detail):
     """R20: these happen before DeviceInfo, so no MAC is read and the identity FAULT never

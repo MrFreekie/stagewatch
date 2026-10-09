@@ -15,6 +15,7 @@ from .. import __version__, acoustics
 from ..boottime import system_boot_time
 from . import sitetime
 from .alarms import AlarmChange, AlarmEngine
+from .statustext import alarm_detail, safe_status_detail
 from .barometer import BarometerService
 from .bus import EventBus
 from .calibration import calibration_for as _calibration_for
@@ -296,6 +297,7 @@ class Hub:
     def set_device_status(self, device_id: str, status: Status, detail: str = "",
                           silent_alarm: bool = False) -> None:
         device = self.devices.get(device_id)
+        detail = safe_status_detail(detail)   # public text: never a raw exception, address or host
         if device is None or (device.status == status and device.status_detail == detail):
             return
         device.status, device.status_detail = status, detail
@@ -303,8 +305,8 @@ class Hub:
         offline = status in (Status.MISSING, Status.FAULT)
         change = self.alarms.set_condition(
             f"device:{device_id}", offline, DEVICE_OFFLINE_LEVEL,
-            f"{device.name}: {status.value}{' - ' + detail if detail else ''}", time.time(),
-            silent=silent_alarm)
+            f"{device.name}: {status.value}{' (' + alarm_detail(detail) + ')' if detail else ''}", time.time(),
+            silent=silent_alarm, status=status.value)
         if change:
             self._alarm_changed([change])
 
@@ -582,13 +584,18 @@ class Hub:
             elif change.event == "clear":
                 # Cleared without an acknowledge: its marker stays visible.
                 self._alarm_markers.pop(a.id, None)
-        self.bus.publish("alarms", self.alarms.to_list())
+        self.bus.publish("alarms", self.alarm_notices())
+
+    def alarm_notices(self) -> list[dict]:
+        """The alarm list as dashboards get it: the notice timers applied by the server's clock."""
+        cfg = self.config.alarms
+        return self.alarms.notice_list(time.time(), cfg.hide_acked_min * 60, cfg.fold_old_min * 60)
 
     def ack_alarms(self, source: str) -> int:
         """Acknowledge every sounding alarm. The marker each one added when it raised is hidden
         (it stays in the history and reports); silent alarms are never acknowledged here and
         add no markers."""
-        acked = self.alarms.ack_all()
+        acked = self.alarms.ack_all(time.time())
         for a in acked:
             self.recorder.log_alarm(a.id, f"ack ({source})", a.level, a.message)
             marker_id = self._alarm_markers.pop(a.id, None)
@@ -598,7 +605,7 @@ class Hub:
                 except Exception:  # noqa: BLE001 - an acknowledge must never fail over a marker
                     log.exception("Could not hide the marker of an acknowledged alarm")
         if acked:
-            self.bus.publish("alarms", self.alarms.to_list())
+            self.bus.publish("alarms", self.alarm_notices())
         return len(acked)
 
     # -------------------------------------------------------------- markers
@@ -766,6 +773,6 @@ class Hub:
             "devices": [d.to_dict() for d in self.devices.values()],
             "entities": [self.entity_dict(e, now, stale_after) for e in self.entities.values()],
             "markers": [m.to_dict() for m in self.recorder.markers()],
-            "alarms": self.alarms.to_list(),
+            "alarms": self.alarm_notices(),
             "sounding": self.alarms.sounding,
         }

@@ -93,15 +93,36 @@
     }
   }
 
+  // Alarm notice timers: the server says how long is left on each (see SW.splitAlarms); this page
+  // adds the time since the list arrived and works the list out again when the next one is due.
+  // performance.now() is a steady clock: a change of the device clock cannot hide or fold early.
+  const steadyNow = () => (window.performance && performance.now ? performance.now() : Date.now());
+  let alarmsAt = steadyNow(), alarmTimer = null, olderOpen = false;
+  function setAlarms(list) {
+    state.alarms = list;
+    alarmsAt = steadyNow();
+  }
   function renderAlarms() {
+    clearTimeout(alarmTimer);
     const bar = $("alarms");
-    const active = state.alarms;
-    const loud = active.filter((a) => !a.silent);
+    const split = SW.splitAlarms(state.alarms, Math.max(0, (steadyNow() - alarmsAt) / 1000));
+    const active = split.shown, older = split.older;
+    if (split.next !== null) alarmTimer = setTimeout(renderAlarms, Math.min(2147000000, Math.max(1000, split.next * 1000 + 250)));
+    // Styled from everything still listed, folded lines too: a sounding notice is never left unstyled.
+    const loud = active.concat(older).filter((a) => !a.silent);
     // Only silent alarms: a calm "notice" style, no level colour, no Ack.
-    bar.className = "alarm-bar" + (loud.length ? ` show l${Math.max(...loud.map((a) => a.level))}` : (active.length ? " show notice" : ""))
+    bar.className = "alarm-bar" + (loud.length ? ` show l${Math.max(...loud.map((a) => a.level))}` : (active.length || older.length ? " show notice" : ""))
       + (state.sounding ? " sounding" : "");
-    $("alarm-list").replaceChildren(...active.map((a) =>
-      h("li", { class: a.silent ? "silent" : "" }, h("span", { class: "lvl" }, a.silent ? "notice" : a.level_name), a.message, a.acked ? h("span", { class: "muted" }, " (acknowledged)") : null)));
+    const line = (a) => h("li", { class: a.silent ? "silent" : "" }, h("span", { class: "lvl" }, a.silent ? "notice" : a.level_name), h("span", { class: "sr-only" }, ": "), a.message, a.acked ? h("span", { class: "muted" }, " (acknowledged)") : null);
+    const fold = older.length ? h("li", { class: "older" },
+      h("details", { open: olderOpen, ontoggle: (ev) => { olderOpen = ev.target.open; } },
+        h("summary", {}, `Older notices (${older.length})`),
+        h("ul", {}, older.map(line)))) : null;
+    // The wall shows at most three lines (alerts sort first); the rest become one "+N more" line.
+    const cap = (state.dash && state.dash.layout) === "wall" ? 3 : Infinity;
+    const lines = active.slice(0, cap).map(line);
+    if (active.length > cap) lines.push(h("li", { class: "more" }, `+${active.length - cap} more`));
+    $("alarm-list").replaceChildren(...lines, ...(fold ? [fold] : []));
     const canAck = state.isAdmin || (state.dash && state.dash.allow_ack);
     $("ack").hidden = !(canAck && state.sounding);
     sounder.set(state.sounding);
@@ -1085,7 +1106,7 @@
     state.entities = Object.fromEntries(msg.entities.map((e) => [e.id, e]));
     state.devices = Object.fromEntries(msg.devices.map((d) => [d.id, d]));
     state.markers = msg.markers;
-    state.alarms = msg.alarms;
+    setAlarms(msg.alarms);
     state.sounding = msg.sounding;
     state.site = msg.site;
     SW.setSiteTime(msg.site.time);
@@ -1186,7 +1207,7 @@
       case "wall_clock": state.wallClock = msg; if (has("wall_clock")) renderWallClock(); break;
       case "ontime_timer": state.ontimeTimer = msg; if (has("ontime_timer")) renderOntimeTimer(); break;
       case "ontime_rundown": state.ontimeRundown = msg; if (has("ontime_rundown")) renderOntimeRundown(); break;
-      case "alarms": state.alarms = msg.alarms; state.sounding = msg.sounding; renderAlarms(); break;
+      case "alarms": setAlarms(msg.alarms); state.sounding = msg.sounding; renderAlarms(); break;
       case "reload": location.reload(); break;
     }
   }

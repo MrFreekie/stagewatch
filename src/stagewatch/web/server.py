@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
     SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_password_error,
 )
 from ..core.calibration import set_calibration
@@ -271,6 +271,16 @@ class BarometerBody(BaseModel):
     hemisphere: Literal["north", "south"] = "north"
     rapid_fall_alarm: StrictBool = False
     rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10, allow_inf_nan=False, strict=True)
+
+
+class AlarmsBody(BaseModel):
+    """PUT /api/admin/alarms: how long advisory notices stay on dashboards (minutes, 0 = never).
+    Strict: whole numbers only, no unknown keys."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    hide_acked_min: int = Field(ge=0, le=1440, strict=True)
+    fold_old_min: int = Field(ge=0, le=10080, strict=True)
 
 
 class SplSlotBody(BaseModel):
@@ -1206,6 +1216,14 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         body = hub.config.ontime_timer
         hub.save_config()
         return body
+    # Alarm notice timers (dashboard list only; the state behind a notice is untouched).
+    @app.put("/api/admin/alarms", dependencies=admin_deps)
+    async def put_alarms(body: AlarmsBody):
+        hub.config.alarms = AlarmsConfig(**body.model_dump())
+        hub.save_config()
+        hub.bus.publish("alarms", hub.alarm_notices())   # open screens take the new timers at once
+        return hub.config.alarms
+
     # Barometer card settings (hemisphere, optional silent rapid-fall notice).
     @app.put("/api/admin/barometer", dependencies=admin_deps)
     async def put_barometer(body: BarometerBody):
