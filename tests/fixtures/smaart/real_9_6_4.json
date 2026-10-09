@@ -1,0 +1,66 @@
+{
+ "_note": "REAL capture from Smaart Suite 9.6.4 (09/10/2026) via the SPL web page; machine name anonymised; colour thresholds trimmed to one. Not synthetic.",
+ "probe_reply": {
+  "response": {
+   "applicationName": "Smaart Suite",
+   "applicationVersion": "9.6.4",
+   "authenticationRequired": false,
+   "machineName": "TEST-PC",
+   "marshallingTimeout": 4000,
+   "serializationFormat": "clear text",
+   "supportedSerializationFormats": [
+    "clear text",
+    "BSON",
+    "MessagePack",
+    "CBOR",
+    "UBJSON"
+   ]
+  }
+ },
+ "inputs_reply": {
+  "response": {
+   "colorThresholds": [
+    {
+     "greenAboveLevel": 80,
+     "redAboveLevel": 103,
+     "yellowAboveLevel": 100
+    }
+   ],
+   "devices": [
+    {
+     "activeCalibratedChannels": [
+      {
+       "channelIndex": 6,
+       "channelName": "Channel 7 (1)",
+       "logEndpointPrefix": "/api/v4//logs/ASIO%20MADIface%20USB/Channel%207%20(1)",
+       "streamEndpoint": "/api/v4//devices/ASIO%20MADIface%20USB/channels/Channel%207%20(1)"
+      }
+     ],
+     "deviceName": "ASIO MADIface USB"
+    }
+   ],
+   "metrics": [
+    "FS Peak",
+    "Peak C",
+    "SPL Fast",
+    "SPL A Fast",
+    "SPL C Fast",
+    "SPL Slow",
+    "SPL A Slow",
+    "SPL C Slow",
+    "Leq 1",
+    "LAeq 1",
+    "LCeq 1",
+    "Leq 15",
+    "LAeq 15",
+    "LCeq 15",
+    "Exposure O",
+    "Exposure N"
+   ]
+  }
+ },
+ "stream_messages": [
+  "{\n\t\"timestamp\":\"2026-10-09T14:10:17.975+01:00\",\n\t\"deviceName\": \"ASIO MADIface USB\",\n\t\"channelName\": \"Channel 7 (1)\",\n\t\"metrics\": [\n\t\t{ \"FS Peak\": -86.37 },\n\t\t{ \"Peak C\": 64.01 },\n\t\t{ \"SPL Fast\": 61.11 },\n\t\t{ \"SPL A Fast\": 48.47 },\n\t\t{ \"SPL C Fast\": 56.80 },\n\t\t{ \"SPL Slow\": 62.65 },\n\t\t{ \"SPL A Slow\": 47.17 },\n\t\t{ \"SPL C Slow\": 56.49 },\n\t\t{ \"Leq 1\": 65.21 },\n\t\t{ \"LAeq 1\": 47.79 },\n\t\t{ \"LCeq 1\": 57.29 },\n\t\t{ \"Leq 15\": 64.25 },\n\t\t{ \"LAeq 15\": 57.43 },\n\t\t{ \"LCeq 15\": 61.11 },\n\t\t{ \"Exposure O\": 0.29 },\n\t\t{ \"Exposure N\": 5.11 }\n\t]\n}",
+  "{\n\t\"timestamp\":\"2026-10-09T14:10:18.097+01:00\",\n\t\"deviceName\": \"ASIO MADIface USB\",\n\t\"channelName\": \"Channel 7 (1)\",\n\t\"metrics\": [\n\t\t{ \"FS Peak\": -84.43 },\n\t\t{ \"Peak C\": 66.71 },\n\t\t{ \"SPL Fast\": 61.73 },\n\t\t{ \"SPL A Fast\": 49.09 },\n\t\t{ \"SPL C Fast\": 57.38 },\n\t\t{ \"SPL Slow\": 62.61 },\n\t\t{ \"SPL A Slow\": 47.52 },\n\t\t{ \"SPL C Slow\": 56.66 },\n\t\t{ \"Leq 1\": 65.20 },\n\t\t{ \"LAeq 1\": 47.80 },\n\t\t{ \"LCeq 1\": 57.29 },\n\t\t{ \"Leq 15\": 64.25 },\n\t\t{ \"LAeq 15\": 57.43 },\n\t\t{ \"LCeq 15\": 61.11 },\n\t\t{ \"Exposure O\": 0.29 },\n\t\t{ \"Exposure N\": 5.11 }\n\t]\n}"
+ ]
+}

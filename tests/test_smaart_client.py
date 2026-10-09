@@ -824,3 +824,30 @@ async def test_wrong_password_through_the_hub_is_a_clear_silent_notice(hub):
             assert probe_kinds(srv).count(outbound.LOGIN) == 2
         finally:
             await integ.stop()
+
+
+# --- a REAL capture (Smaart Suite 9.6.4, 09/10/2026; see tests/fixtures/smaart/real_9_6_4.json) -------
+
+def _real():
+    return json.loads((Path(__file__).parent / "fixtures" / "smaart" / "real_9_6_4.json").read_text(encoding="utf-8"))
+
+
+def test_real_inputs_reply_with_brackets_in_the_channel_name_is_accepted():
+    """Smaart named the stream path "...Channel%207%20(1)": brackets must be allowed, or the only
+    input is dropped and the card says "no values are arriving" (the first live test did exactly that)."""
+    cat = mapping.parse_inputs_reply(_real()["inputs_reply"])
+    assert cat is not None and len(cat.inputs) == 1
+    assert cat.inputs[0].label == "ASIO MADIface USB : Channel 7 (1)"
+    assert cat.inputs[0].endpoint == "/api/v4//devices/ASIO%20MADIface%20USB/channels/Channel%207%20(1)"
+    assert "LAeq 15" in cat.metrics and "SPL A Slow" in cat.metrics and "FS Peak" not in cat.metrics
+
+
+def test_real_stream_message_gives_the_values_exactly_as_sent():
+    out = mapping.parse_stream_message(_real()["stream_messages"][0])
+    assert out["SPL A Slow"] == 47.17 and out["SPL C Slow"] == 56.49 and out["LAeq 15"] == 57.43
+    assert out["FS Peak"] is None          # -86.37 is outside the accepted range: not available, never zero
+
+
+@pytest.mark.parametrize("path", ["//x", "/a@b", "/a?x=1", "/a#b", "/a\b", "/../x", "/a/../b"])
+def test_endpoints_that_could_change_the_host_are_still_refused(path):
+    assert mapping.safe_endpoint(path) is None

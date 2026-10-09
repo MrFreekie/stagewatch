@@ -38,7 +38,8 @@ DROPPED_METRICS = frozenset({"fs peak"})
 # Keys that sit beside a metric in a stream object and are not the metric's name.
 FLAG_KEYS = frozenset({"violation", "overload"})
 
-_ENDPOINT_RE = re.compile(r"/(?!/)[A-Za-z0-9_\-./~%:]{0,198}")
+# Smaart names its input paths with percent-encoding and brackets ("Channel%207%20(1)"); a leading "//", "@", "?", "#" and "\\" stay refused.
+_ENDPOINT_RE = re.compile(r"/(?!/)[A-Za-z0-9_\-./~%:()'!,+=]{0,198}")
 
 
 @dataclass(frozen=True)
