@@ -16,7 +16,7 @@ nothing is copied into Stagewatch's own schedule.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from .ontimetimer import OntimeTimerService, Status
@@ -34,6 +34,11 @@ MAX_EVENTS = 10_000               # numEvents, and the selected index
 MAX_DAY = 366                     # currentDay
 EVENT_TITLE_MAX = 120             # characters kept of the current event's title
 EVENT_NOTE_MAX = 400              # and of its note
+EVENT_ID_MAX = 64                 # an event id is matched, never shown
+LIST_MAX_EVENTS = 200             # events kept from the rundown list
+LIST_CUE_MAX = 12                 # characters of an event's cue
+LIST_PAST = 4                     # rows sent before the current event
+LIST_AHEAD = 14                   # rows sent after it (the browser trims further per layout)
 
 OFFSET_MODES = ("absolute", "relative")
 
@@ -62,6 +67,7 @@ class RundownState:
     offset_expected_end_ms: int | None = None  # real shape: offset.expectedRundownEnd
     event_title: str = ""                     # eventNow.title, cleaned (shown on dashboards)
     event_note: str = ""                      # eventNow.note, cleaned (shown on dashboards)
+    event_id: str = ""                        # eventNow.id, only to find the current row in the list (never public)
 
     @property
     def offset_kind(self) -> str | None:
@@ -105,7 +111,70 @@ class RundownReading:
     unreadable: bool = False
 
 
-def rundown_message(label: str, reading: RundownReading) -> dict:
+@dataclass(frozen=True)
+class EventRow:
+    """One event of Ontime's rundown list, reduced to what the card shows. ``start_ms`` and ``end_ms``
+    are Ontime-clock milliseconds, or None when Ontime sent nothing usable."""
+
+    id: str
+    cue: str
+    title: str
+    start_ms: int | None
+    end_ms: int | None
+    skip: bool
+
+
+@dataclass(frozen=True)
+class EventsReading:
+    """The last good event list. ``rows`` is None until one has been read. ``stale`` is True while
+    the latest fetch failed or the connection is lost: the old rows stay, marked, never invented."""
+
+    rows: tuple[EventRow, ...] | None = None
+    stale: bool = False
+
+
+def events_window(rows: tuple[EventRow, ...] | None, state: RundownState | None) -> list[dict]:
+    """The rows around the current event as public dicts ``{cue, title, start, end, state}``.
+
+    The current event is the row whose id equals ``eventNow.id``, else the row at
+    ``selectedEventIndex`` (0-based, confirmed on a real 4.14.0; counted among the listed events).
+    state is "current", "next" (the first event after it that is not skipped), "later", "past" or
+    "skipped". Before the start every row is "later" (the first is "next"); once finished every row is
+    "past". At most LIST_PAST rows before and LIST_AHEAD after the current one are sent."""
+    if not rows:
+        return []
+    cur = None
+    if state is not None:
+        if state.event_id:
+            cur = next((i for i, r in enumerate(rows) if r.id == state.event_id), None)
+        if cur is None and state.selected_index is not None and 0 <= state.selected_index < len(rows):
+            cur = state.selected_index
+    started = state is not None and state.actual_start_ms is not None
+    finished = cur is None and started and state is not None and state.selected_index is None
+    out = []
+    next_found = False
+    for i, r in enumerate(rows):
+        if r.skip:
+            st = "skipped"
+        elif cur is not None and i == cur:
+            st = "current"
+        elif finished or (cur is not None and i < cur):
+            st = "past"
+        elif not next_found:
+            st, next_found = "next", True
+        else:
+            st = "later"
+        out.append((i, {"cue": r.cue, "title": r.title, "start": r.start_ms, "end": r.end_ms, "state": st}))
+    if cur is not None:
+        lo, hi = cur - LIST_PAST, cur + LIST_AHEAD
+    elif finished:
+        lo, hi = len(rows) - LIST_PAST - 1, len(rows)
+    else:
+        lo, hi = 0, LIST_AHEAD
+    return [d for i, d in out if lo <= i <= hi]
+
+
+def rundown_message(label: str, reading: RundownReading, events: EventsReading | None = None) -> dict:
     """The public shape (snapshot and live feed). No address, error text, ids or event text.
     ``current_day`` (only used to say "a later day") and ``ontime_clock_ms`` (Ontime's own clock, for
     the day bar) are sent on purpose; both are plain numbers. ``event_title`` and ``event_note`` are
@@ -130,6 +199,8 @@ def rundown_message(label: str, reading: RundownReading) -> dict:
         "unreadable": bool(s is not None and reading.unreadable),
         "event_title": s.event_title if s else "",
         "event_note": s.event_note if s else "",
+        "events": events_window(events.rows, s) if (s is not None and events is not None) else [],
+        "events_stale": bool(events.stale) if (events is not None and events.rows is not None) else False,
     }
 
 
@@ -148,4 +219,5 @@ class OntimeRundownService(OntimeTimerService):
         return source.latest_rundown()
 
     def _message(self, source) -> dict:
-        return rundown_message(source.label, self._reading(source))
+        events = source.latest_events() if hasattr(source, "latest_events") else None
+        return rundown_message(source.label, self._reading(source), events)

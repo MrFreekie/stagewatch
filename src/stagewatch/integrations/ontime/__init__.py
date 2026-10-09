@@ -1,4 +1,4 @@
-﻿"""Ontime integration: the show clock for the Wall Clock card and the countdown for the Ontime
+"""Ontime integration: the show clock for the Wall Clock card and the countdown for the Ontime
 Timer card and the running-order position and offset for the Ontime Rundown card.
 
 Read-only. It listens to an Ontime server (https://github.com/cpvalente/ontime) for the time of
@@ -21,7 +21,7 @@ import logging
 
 from ...core.model import Device, Status
 from ...core.plugin import Integration, Manifest
-from ...core.ontimerundown import RundownReading
+from ...core.ontimerundown import EventsReading, RundownReading
 from ...core.ontimetimer import TimerReading
 from ...core.wallclock import ClockReading
 from .client import OntimeSource
@@ -68,6 +68,11 @@ class _ManagedSource:
     def _current_url(self) -> str:
         return self._owner.hub.config.wall_clock.ontime_url
 
+    def _sync_events(self) -> None:
+        """The event list is fetched only while the Ontime Rundown card holds the source."""
+        if hasattr(self._inner, "want_events"):
+            self._inner.want_events = "ontime_rundown" in self._holders
+
     async def acquire(self, consumer: str) -> None:
         """Hold the source for ``consumer`` (idempotent). Starts it if nobody held it; if it is
         running against an old address (the admin changed it), restarts it on the new one."""
@@ -75,6 +80,7 @@ class _ManagedSource:
             url = self._current_url()
             first = not self._holders
             self._holders.add(consumer)
+            self._sync_events()
             if first:
                 self._owner._register()
                 await self._inner.start()
@@ -90,6 +96,7 @@ class _ManagedSource:
             if consumer not in self._holders:
                 return
             self._holders.discard(consumer)
+            self._sync_events()
             if not self._holders:
                 await self._inner.stop()
                 self._owner._unregister()
@@ -109,6 +116,9 @@ class _ManagedSource:
 
     def latest_rundown(self) -> RundownReading:
         return self._inner.latest_rundown()
+
+    def latest_events(self) -> EventsReading:
+        return self._inner.latest_events()
 
     def details(self) -> dict:
         return self._inner.details()

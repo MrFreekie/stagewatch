@@ -14,9 +14,10 @@ import time
 from typing import Callable
 
 from ...core import sitetime
-from ...core.ontimerundown import RundownReading, RundownState
+from ...core.ontimerundown import EventsReading, RundownReading, RundownState
 from ...core.ontimetimer import TimerReading, TimerState
 from ...core.wallclock import ClockReading
+from .parse import parse_events
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +91,27 @@ RUNDOWN_STALE = (100.0, 115.0)
 RUNDOWN_OFFLINE = (225.0, 240.0)
 
 
+# Made-up event names for the emulated rundown (12 events, 55 minutes each from 11:30; the 11th is skipped).
+EMULATED_TITLES = ("Doors", "Act One", "Changeover", "Act Two", "Changeover 2", "Act Three", "Interval",
+                   "Act Four", "Changeover 3", "Main Act", "Cancelled Slot", "Curfew Announcement")
+EMULATED_SKIPPED = 10
+EMULATED_SLOT_MS = 3_300_000
+EMULATED_NOTES = ("Check IEM mixes before the changeover.", "Smoke effect in the second song.")
+
+
+def emulated_rundown_json() -> dict:
+    """What an Ontime 4.14.0 ``GET /data/rundowns/current`` answer looks like (the real shape),
+    with made-up titles. The emulated source runs it through the same parser as the real one."""
+    entries, order = {}, []
+    for i, title in enumerate(EMULATED_TITLES):
+        start = RUNDOWN_PLANNED_START_MS + i * EMULATED_SLOT_MS
+        entries[f"ev{i}"] = {"id": f"ev{i}", "type": "event", "title": title, "cue": str(i + 1), "timeStart": start,
+                             "timeEnd": start + EMULATED_SLOT_MS, "duration": EMULATED_SLOT_MS,
+                             "skip": i == EMULATED_SKIPPED, "note": "", "colour": "", "custom": {}, "triggers": []}
+        order.append(f"ev{i}")
+    return {"id": "emulated", "title": "Emulated day", "entries": entries, "order": order, "flatOrder": order, "revision": 1}
+
+
 def emulated_rundown_clock(t: float) -> int:
     """Ontime's clock in the emulated story: the planned day squeezed into one cycle."""
     span = RUNDOWN_PLANNED_END_MS - RUNDOWN_PLANNED_START_MS
@@ -110,8 +132,9 @@ def emulated_rundown_state(t: float) -> RundownState:
             selected_index=index, actual_start_ms=RUNDOWN_PLANNED_START_MS if started else None,
             offset_absolute_ms=offset, offset_relative_ms=offset,
             offset_expected_end_ms=None if offset is None else RUNDOWN_PLANNED_END_MS + offset,
-            event_title="" if index is None else "Emulated: Support act",
-            event_note="" if index is None or index % 2 == 0 else "Emulated note: IEM check before the changeover.", **base)
+            event_title="" if index is None else EMULATED_TITLES[index],
+            event_note="" if index is None or index % 2 == 0 else EMULATED_NOTES[(index // 2) % 2],
+            event_id="" if index is None else f"ev{index}", **base)
 
     if t < 20:
         return state(None, None, started=False)
@@ -198,6 +221,15 @@ class EmulatedClock:
             return RundownReading(None, now, "offline", "Emulated dropout")
         t = (now - self._t0) % RUNDOWN_CYCLE_S
         return RundownReading(emulated_rundown_state(t), now, "ok", "Emulated", emulated_rundown_clock(t))
+
+    def latest_events(self) -> EventsReading:
+        """The emulated event list (the real answer shape, made-up titles), marked stale whenever the
+        emulated rundown is stale or offline."""
+        stale = self.latest_rundown().status != "ok"
+        if self._cycle:
+            t = (self._time() - self._t0) % RUNDOWN_CYCLE_S
+            stale = stale or RUNDOWN_STALE[0] <= t < RUNDOWN_STALE[1]
+        return EventsReading(parse_events(emulated_rundown_json()), stale)
 
     def _cycle_reading(self, now: float) -> ClockReading:
         t = (now - self._t0) % CYCLE_S

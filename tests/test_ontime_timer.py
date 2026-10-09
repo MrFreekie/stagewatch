@@ -113,7 +113,8 @@ def test_a_clock_only_message_keeps_the_last_timer():
 
 
 def test_only_the_allowed_paths_exist():
-    assert parse.HTTP_PATHS == ("/api/version", "/api/poll") and parse.WS_PATH == "/ws"
+    # The one deliberate extra read-only request: the Ontime Rundown card's event list (GET only).
+    assert parse.HTTP_PATHS == ("/api/version", "/api/poll", "/data/rundowns/current") and parse.WS_PATH == "/ws"
     assert ALLOWED == {"/api/version", "/api/poll", "/ws"}
 
 

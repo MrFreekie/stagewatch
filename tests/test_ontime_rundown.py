@@ -32,14 +32,16 @@ from stagewatch.integrations.ontime.emulate import (
     RUNDOWN_CYCLE_S, RUNDOWN_OFFLINE, RUNDOWN_STALE, EmulatedClock, emulated_rundown_clock, emulated_rundown_state)
 from stagewatch.web.server import create_app
 
-from test_ontime import ALLOWED, FakeOntime, free_port, load, until, wait  # noqa: E402
+from test_ontime import ALLOWED as ALLOWED_BASE, FakeOntime, free_port, load, until, wait  # noqa: E402
 from test_ontime_timer import Probe, fast_source  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "src" / "stagewatch" / "web" / "static"
 
+ALLOWED = ALLOWED_BASE | {"/data/rundowns/current"}   # the one deliberate extra read-only request
+
 PUBLIC_KEYS = {"status", "label", "received_at", "position", "offset_ms", "offset_mode", "planned_start_ms",
-               "planned_end_ms", "expected_end_ms", "actual_start_ms", "current_day", "ontime_clock_ms", "unreadable", "event_title", "event_note"}
+               "planned_end_ms", "expected_end_ms", "actual_start_ms", "current_day", "ontime_clock_ms", "unreadable", "event_title", "event_note", "events", "events_stale"}
 # current_day (only to say "a later day") and ontime_clock_ms (Ontime's clock, for the day bar) are public on purpose.
 
 
@@ -71,7 +73,7 @@ def test_the_real_first_message_gives_the_rundown_and_the_offset():
     assert s == RundownState(
         selected_index=8, num_events=16, planned_start_ms=41_400_000, planned_end_ms=81_000_000,
         actual_start_ms=41_400_000, current_day=0, offset_absolute_ms=0, offset_relative_ms=0, offset_mode="absolute",
-        offset_expected_end_ms=81_000_000, event_title="Event 1")
+        offset_expected_end_ms=81_000_000, event_title="Event 1", event_id="4234a8")
     assert (s.offset_ms, s.offset_kind, s.expected_end_ms) == (0, "absolute", 81_000_000)
 
 
@@ -431,7 +433,7 @@ def test_every_emulated_state_parses_through_the_real_parser_limits():
         s = emulated_rundown_state(t)
         block = {"selectedEventIndex": s.selected_index, "numEvents": s.num_events, "plannedStart": s.planned_start_ms,
                  "plannedEnd": s.planned_end_ms, "actualStart": s.actual_start_ms, "currentDay": s.current_day}
-        event = {"title": s.event_title, "note": s.event_note}
+        event = {"id": s.event_id, "title": s.event_title, "note": s.event_note}
         off = {"absolute": s.offset_absolute_ms, "relative": s.offset_relative_ms, "mode": s.offset_mode,
                "expectedRundownEnd": s.offset_expected_end_ms}
         assert parse.parse_rundown({"rundown": block, "offset": off, "eventNow": event}) == s
@@ -548,7 +550,7 @@ def test_the_snapshot_carries_nothing_private(client):
     wait(lambda: client.hub.ontime_rundown.active)
     text = json.dumps(client.get("/api/snapshot").json()["ontime_rundown"])
     assert "127.0.0.1" not in text and "http" not in text
-    for forbidden in ("cue", "custom", "colour", "url", "id\""):
+    for forbidden in ("custom", "colour", "url", "id\""):
         assert forbidden not in text
 
 
@@ -577,7 +579,7 @@ def test_admin_names_the_card_and_the_address_hint():
 
 
 def test_nothing_in_the_ontime_code_writes_or_adds_a_path():
-    assert parse.HTTP_PATHS == ("/api/version", "/api/poll") and parse.WS_PATH == "/ws"
+    assert parse.HTTP_PATHS == ("/api/version", "/api/poll", "/data/rundowns/current") and parse.WS_PATH == "/ws"
     client_src = (ROOT / "src" / "stagewatch" / "integrations" / "ontime" / "client.py").read_text(encoding="utf-8")
     assert ".send(" not in client_src and "\"POST\"" not in client_src and "\"PUT\"" not in client_src
 
@@ -691,4 +693,288 @@ def test_offline_messages_carry_no_event_text():
 
 
 def test_the_rundown_card_still_asks_for_no_new_path():
-    assert parse.HTTP_PATHS == ("/api/version", "/api/poll") and parse.WS_PATH == "/ws"
+    assert parse.HTTP_PATHS == ("/api/version", "/api/poll", "/data/rundowns/current") and parse.WS_PATH == "/ws"
+
+
+# ====================================================================================
+# The event list (GET /data/rundowns/current). Shape from a real 4.14.0 capture; every
+# title below is MADE UP and the groups / milestones / delays are SYNTHETIC.
+# ====================================================================================
+from stagewatch.core.ontimerundown import EventRow, EventsReading, events_window  # noqa: E402
+from stagewatch.integrations.ontime.emulate import emulated_rundown_json  # noqa: E402
+
+
+def list_body(n=6, **kw):
+    entries, order = {}, []
+    for i in range(n):
+        start = 41_400_000 + i * 3_000_000
+        entries[f"e{i}"] = {"id": f"e{i}", "type": "event", "flag": False, "title": f"Act {i + 1}", "timeStart": start,
+                            "timeEnd": start + 3_000_000, "duration": 3_000_000, "timeStrategy": "lock-duration",
+                            "linkStart": True, "endAction": "none", "timerType": "count-down", "countToEnd": False,
+                            "skip": False, "note": "PRIVATE NOTE", "colour": "#abc", "delay": 0, "dayOffset": 0, "gap": 0,
+                            "cue": str(i + 1), "parent": None, "revision": 0, "timeWarning": 120000, "timeDanger": 60000,
+                            "custom": {"secret": "x"}, "triggers": [{"t": 1}]}
+        order.append(f"e{i}")
+    return {"id": "r1", "title": "Day", "entries": entries, "order": order, "flatOrder": order, "revision": 3, **kw}
+
+
+def test_parse_events_reads_the_real_shape_and_keeps_only_the_listed_fields():
+    rows = parse.parse_events(list_body())
+    assert len(rows) == 6 and rows[0] == EventRow("e0", "1", "Act 1", 41_400_000, 44_400_000, False)
+    text = json.dumps([r.__dict__ for r in rows])
+    for forbidden in ("PRIVATE", "secret", "#abc", "triggers", "r1"):
+        assert forbidden not in text
+
+
+def test_parse_events_follows_flat_order_then_order_and_leaves_out_other_types():
+    body = list_body(3)
+    body["entries"]["g1"] = {"id": "g1", "type": "group", "title": "Group A", "entries": ["e1"]}       # SYNTHETIC
+    body["entries"]["m1"] = {"id": "m1", "type": "milestone", "title": "Mile"}                          # SYNTHETIC
+    body["entries"]["d1"] = {"id": "d1", "type": "delay", "duration": 5}                                # SYNTHETIC
+    body["flatOrder"] = ["e2", "g1", "e0", "m1", "d1", "e1"]
+    assert [r.id for r in parse.parse_events(body)] == ["e2", "e0", "e1"]
+    del body["flatOrder"]
+    body["order"] = ["e1", "e0"]
+    assert [r.id for r in parse.parse_events(body)] == ["e1", "e0"]
+
+
+def test_parse_events_times_skip_and_text():
+    body = list_body(1)
+    ev = body["entries"]["e0"]
+    ev.update(timeStart=72 * 3_600_000 + 1, timeEnd=-5, skip=True, cue="x" * 50, title="T\u202e\x00 <b>x</b>" + "y" * 500)
+    row = parse.parse_events(body)[0]
+    assert row.start_ms is None and row.end_ms is None and row.skip is True       # unavailable, not guessed
+    assert len(row.cue) == 12 and len(row.title) == 120 and "\u202e" not in row.title and "\x00" not in row.title
+    ev.update(skip="yes", timeStart=True, timeEnd=1.5)
+    row = parse.parse_events(body)[0]
+    assert row.skip is False and row.start_ms is None and row.end_ms is None
+
+
+@pytest.mark.parametrize("body", [None, [], "x", 5, {}, {"entries": []}, {"entries": {}}, {"entries": {}, "order": "a"},
+                                  {"order": ["a"]}, {"entries": 3, "order": []}])
+def test_parse_events_refuses_what_is_not_a_rundown(body):
+    assert parse.parse_events(body) is None
+
+
+def test_hostile_lists_are_survived():
+    body = list_body(5)
+    body["flatOrder"] = ["e0", "e0", "e1", "e1", 5, None, {"a": 1}, ["e2"], "missing", "e2"] + ["e0"] * 20_000   # repeats, wrong types, gaps
+    assert [r.id for r in parse.parse_events(body)] == ["e0", "e1", "e2"]
+    body = list_body(5)
+    body["entries"]["e1"] = "not an object"
+    body["entries"]["e2"] = {"type": "event", "title": {"a": [1]}, "cue": 5, "timeStart": "x"}
+    rows = parse.parse_events(body)
+    assert [r.id for r in rows] == ["e0", "e2", "e3", "e4"] and rows[1].title == "" and rows[1].cue == ""
+    big = list_body(10_000)
+    assert len(parse.parse_events(big)) == 200                                      # at most 200 events kept
+    deep = {"entries": {"a": {"type": "event", "title": "x", "custom": json.loads("[" * 200 + "]" * 200)}}, "order": ["a"]}
+    assert len(parse.parse_events(deep)) == 1
+    cyc = list_body(2)
+    cyc["entries"]["e0"]["parent"] = "e1"
+    cyc["entries"]["e1"]["parent"] = "e0"
+    assert len(parse.parse_events(cyc)) == 2                                        # parent links are never followed
+
+
+def rows_for(n=20, skip=()):
+    return tuple(EventRow(f"e{i}", str(i + 1), f"Act {i + 1}", i * 1000, i * 1000 + 500, i in skip) for i in range(n))
+
+
+def states(win):
+    return [r["state"] for r in win]
+
+
+def test_window_marks_past_current_next_later_and_skipped():
+    st = RundownState(selected_index=5, num_events=20, event_id="")
+    win = events_window(rows_for(skip={6}), st)
+    assert win[0]["title"] == "Act 2" and win[-1]["title"] == "Act 20"                                # 4 before, 14 after
+    assert [r["state"] for r in win if r["title"] in ("Act 5", "Act 6", "Act 7", "Act 8")] == ["past", "current", "skipped", "next"]
+    assert states(win).count("current") == 1 and states(win).count("next") == 1
+    assert set(win[0]) == {"cue", "title", "start", "end", "state"}
+
+
+def test_window_prefers_the_event_id_over_the_index():
+    st = RundownState(selected_index=1, num_events=20, event_id="e9")
+    win = events_window(rows_for(), st)
+    assert [r["title"] for r in win if r["state"] == "current"] == ["Act 10"]
+    st = RundownState(selected_index=3, num_events=20, event_id="unknown")
+    assert [r["title"] for r in events_window(rows_for(), st) if r["state"] == "current"] == ["Act 4"]   # id not in the list: index
+
+
+def test_window_before_the_start_and_when_finished():
+    rows = rows_for(30)
+    before = events_window(rows, RundownState(selected_index=None, num_events=30))
+    assert len(before) == 15 and states(before)[0] == "next" and set(states(before)[1:]) == {"later"}
+    done = events_window(rows, RundownState(selected_index=None, num_events=30, actual_start_ms=5))
+    assert set(states(done)) == {"past"} and done[-1]["title"] == "Act 30"
+    assert events_window(None, None) == [] and events_window((), RundownState()) == []
+    assert events_window(rows_for(3), None)[0]["state"] == "next"
+
+
+def test_the_message_carries_the_window_and_the_stale_flag_and_nothing_else_of_the_list():
+    s = RundownState(selected_index=2, num_events=6, event_id="e2")
+    rows = parse.parse_events(list_body())
+    msg = rundown_message("Ontime", RundownReading(s, 1.0, "ok", "", 5), EventsReading(rows, False))
+    assert set(msg) == PUBLIC_KEYS and msg["events_stale"] is False
+    assert [r["state"] for r in msg["events"]] == ["past", "past", "current", "next", "later", "later"]
+    text = json.dumps(msg)
+    for forbidden in ("PRIVATE", "secret", "#abc", "e2", "e0"):
+        assert forbidden not in text
+    stale = rundown_message("Ontime", RundownReading(s, 1.0, "ok", "", 5), EventsReading(rows, True))
+    assert stale["events_stale"] is True and stale["events"] == msg["events"]
+    off = rundown_message("Ontime", RundownReading(None, 1.0, "offline", ""), EventsReading(rows, True))
+    assert off["events"] == [] and off["events_stale"] is True is not False or off["events"] == []
+    none_yet = rundown_message("Ontime", RundownReading(s, 1.0, "ok", "", 5), EventsReading())
+    assert none_yet["events"] == [] and none_yet["events_stale"] is False
+
+
+class ListOntime(FakeOntime):
+    """FakeOntime that also answers GET /data/rundowns/current (made-up titles) and records when."""
+
+    def __init__(self, *a, body=None, list_status=200, **kw):
+        super().__init__(*a, **kw)
+        self.list_body, self.list_status = body if body is not None else list_body(), list_status
+        self.list_hits: list[float] = []
+
+    def process_request(self, connection, request):
+        if request.path == "/data/rundowns/current":
+            self.paths.append(request.path)
+            self.list_hits.append(asyncio.get_running_loop().time())
+            if isinstance(self.list_body, (bytes, str)):
+                return self._respond(connection, self.list_status, self.list_body)
+            return self._respond(connection, self.list_status, json.dumps(self.list_body))
+        return super().process_request(connection, request)
+
+
+def list_source(url, **kw):
+    kw = {"events_min_gap_s": 0.2, "events_every_s": 100.0, "events_tick_s": 0.05, **kw}
+    src = fast_source(url) if not kw else OntimeSource(lambda: url, poll_every_s=0.05, backoff_min_s=0.05, backoff_max_s=0.2,
+                                                        no_data_s=1.0, open_timeout_s=1.0, **kw)
+    return src
+
+
+async def test_nothing_is_fetched_unless_the_rundown_card_wants_the_list():
+    async with ListOntime() as fake:
+        src = list_source(fake.url)
+        await src.start()
+        try:
+            await until(lambda: src.latest_rundown().state is not None)
+            await asyncio.sleep(0.5)
+            assert fake.list_hits == [] and src.latest_events().rows is None
+        finally:
+            await src.stop()
+
+
+async def test_the_list_is_fetched_when_connected_with_a_plain_get_and_nothing_is_sent():
+    async with ListOntime() as fake:
+        src = list_source(fake.url)
+        src.want_events = True
+        await src.start()
+        try:
+            await until(lambda: src.latest_events().rows is not None)
+            ev = src.latest_events()
+            assert len(ev.rows) == 6 and ev.stale is False
+            await asyncio.sleep(0.4)
+            assert len(fake.list_hits) == 1                         # not repeated: nothing changed, 100 s refresh
+        finally:
+            await src.stop()
+        assert fake.received == [] and set(fake.paths) <= ALLOWED and fake.paths.count("/data/rundowns/current") == 1
+
+
+async def test_a_change_of_event_count_or_running_event_refetches_after_the_gap():
+    async with ListOntime() as fake:
+        src = list_source(fake.url, events_min_gap_s=0.3)
+        src.want_events = True
+        await src.start()
+        try:
+            await until(lambda: len(fake.list_hits) == 1)
+            src._ingest({"clock": 5, "rundown": {"selectedEventIndex": 9, "numEvents": 16}}, "websocket")   # SYNTHETIC change
+            await until(lambda: len(fake.list_hits) == 2)
+            assert fake.list_hits[1] - fake.list_hits[0] >= 0.28                                           # debounced
+            src._ingest({"clock": 6, "eventNow": {"id": "other", "title": "T"}}, "websocket")
+            src._ingest({"clock": 7, "eventNow": {"id": "other2", "title": "T"}}, "websocket")              # two quick changes: one fetch
+            await until(lambda: len(fake.list_hits) == 3)
+            await asyncio.sleep(0.5)
+            assert len(fake.list_hits) == 3
+        finally:
+            await src.stop()
+
+
+async def test_the_list_is_refreshed_every_so_often_even_when_nothing_changes():
+    async with ListOntime() as fake:
+        src = list_source(fake.url, events_every_s=0.5)
+        src.want_events = True
+        await src.start()
+        try:
+            await until(lambda: len(fake.list_hits) >= 2, timeout=5)
+        finally:
+            await src.stop()
+
+
+@pytest.mark.parametrize("answer", [dict(list_status=404, body="{}"), dict(list_status=500, body="oops"),
+                                    dict(body="not json at all"), dict(body={"entries": 1}), dict(body="x" * (parse.MAX_BYTES + 10)),
+                                    dict(list_status=302, body="")])
+async def test_a_failed_or_unreadable_answer_keeps_the_last_good_list_marked_stale(answer):
+    async with ListOntime() as fake:
+        src = list_source(fake.url, events_min_gap_s=0.1)
+        src.want_events = True
+        await src.start()
+        try:
+            await until(lambda: src.latest_events().rows is not None)
+            good = src.latest_events().rows
+            fake.list_body = answer.get("body", "")
+            fake.list_status = answer.get("list_status", 200)
+            n = len(fake.list_hits)
+            src._ingest({"clock": 9, "rundown": {"numEvents": 99}}, "websocket")   # SYNTHETIC: triggers a refetch
+            await until(lambda: src.latest_events().stale is True)
+            assert src.latest_events().rows == good                                  # kept, never invented
+            assert len(fake.list_hits) > n
+            fake.list_body, fake.list_status = list_body(), 200                       # and it recovers
+            src._ingest({"clock": 10, "rundown": {"numEvents": 98}}, "websocket")
+            await until(lambda: src.latest_events().stale is False)
+        finally:
+            await src.stop()
+
+
+async def test_the_rundown_card_through_the_hub_fetches_only_while_assigned(tmp_path):
+    async with ListOntime(body=list_body(16)) as fake:
+        hub = Hub(tmp_path)
+        hub.config.wall_clock.ontime_url = fake.url
+        hub.add_integration(OntimeIntegration(hub, inner=list_source(fake.url)))
+        await hub.start()
+        try:
+            set_cards(hub, "ontime_timer")
+            await until(lambda: hub.snapshot()["ontime_timer"] and hub.snapshot()["ontime_timer"]["status"] == "ok")
+            await asyncio.sleep(0.4)
+            assert fake.list_hits == []                                              # the timer card alone never asks
+            set_cards(hub, "ontime_timer", "ontime_rundown")
+            await until(lambda: (hub.snapshot()["ontime_rundown"] or {}).get("events"))
+            snap = hub.snapshot()["ontime_rundown"]
+            assert [e["state"] for e in snap["events"]].count("current") == 1 and snap["events_stale"] is False
+            assert fake.url not in json.dumps(snap) and "PRIVATE" not in json.dumps(snap)
+            assert set(fake.paths) <= ALLOWED
+        finally:
+            await hub.stop()
+        assert fake.received == []
+
+
+def test_the_emulated_ontime_serves_a_list_in_the_real_shape():
+    body = emulated_rundown_json()
+    assert set(body) == {"id", "title", "entries", "order", "flatOrder", "revision"}
+    rows = parse.parse_events(body)
+    assert len(rows) == 12 and rows[10].skip is True and rows[0].start_ms == 41_400_000
+    clock = EmulatedClock(lambda: Config().site, clock=lambda: 1_000.0, cycle=True)
+    ev = clock.latest_events()
+    assert ev.rows == rows and ev.stale is False
+
+
+async def test_emulate_mode_shows_a_list_through_the_hub(tmp_path):
+    hub = Hub(tmp_path, emulate=True)
+    hub.add_integration(OntimeIntegration(hub, emulate=True))
+    await hub.start()
+    try:
+        set_cards(hub, "ontime_rundown")
+        await until(lambda: (hub.snapshot()["ontime_rundown"] or {}).get("events"))
+        snap = hub.snapshot()["ontime_rundown"]
+        assert set(snap) == PUBLIC_KEYS and snap["events"][0]["title"]
+    finally:
+        await hub.stop()

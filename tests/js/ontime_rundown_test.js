@@ -21,6 +21,7 @@ class FakeEl {
   get className() { return this.attrs.class || ""; }
   set className(v) { this.attrs.class = String(v); this.writes++; }
   addEventListener() {}
+  replaceChildren(...nodes) { this.children = []; this._text = ""; this.append(...nodes); this.writes++; }
   append(...nodes) { for (const n of nodes) { if (n instanceof FakeEl) this.children.push(n); else this._text += String(n); } }
   get firstChild() { return this.children[0] || null; }
   get textContent() { return this._text + this.children.map((c) => c.textContent).join(""); }
@@ -173,6 +174,48 @@ eq([ui3.title.textContent, ui3.title.children.length, ui3.evnote.textContent, ui
 ui3.update(rd.view(msg(), NOW));
 eq([ui3.title.hidden, ui3.evnote.hidden], [true, true], "hidden again when empty");
 eq(rd.view(msg({ expected_end_ms: -4729221 }), NOW).expected, "", "a negative expected end is not shown as a time");
+
+// ---- the event list (SYNTHETIC rows; titles are made up)
+const row = (i, state, o) => Object.assign({ cue: String(i + 1), title: `Act ${i + 1}`, start: 41400000 + i * 3000000, end: 44400000 + i * 3000000, state }, o || {});
+const mk = (n, cur) => Array.from({ length: n }, (_, i) => row(i, cur === null ? (i === 0 ? "next" : "later") : i < cur ? "past" : i === cur ? "current" : i === cur + 1 ? "next" : "later"));
+const ev = mk(20, 6);
+eq(rd.listRows(ev, "tablet").map((r) => r.title), ["Act 5", "Act 6", "Act 7", "Act 8", "Act 9", "Act 10", "Act 11", "Act 12", "Act 13", "Act 14", "Act 15"], "tablet: 2 past, current, 8 ahead");
+eq(rd.listRows(ev, "phone").map((r) => r.title), ["Act 7", "Act 8", "Act 9", "Act 10", "Act 11"], "phone: current and 4 ahead");
+eq(rd.listRows(ev, "wall").length, 11, "wall: current and 10 ahead");
+eq(rd.listRows(ev, "elsewhere").length, 11, "an unknown layout is treated as a tablet");
+eq(rd.listRows(mk(3, 0), "phone").map((r) => r.state), ["current", "next", "later"], "short list: only what there is");
+let r0 = rd.listRows(ev, "tablet").find((r) => r.state === "current");
+eq([r0.mark, r0.time, r0.cue], ["▶", "16:30-17:20", "7"], "current row: marker, Ontime time with end on a tablet");
+eq(rd.listRows(ev, "phone").find((r) => r.state === "current").time, "16:30", "phone: start only");
+eq(rd.listRows(ev, "wall").find((r) => r.state === "current").time, "16:30-17:20", "wall: with the end");
+eq(rd.listRows(mk(5, null), "phone").map((r) => r.title), ["Act 1", "Act 2", "Act 3", "Act 4", "Act 5"], "before the start: the first rows");
+eq(rd.listRows(ev.map((e) => Object.assign({}, e, { state: "past" })), "tablet").map((r) => r.title), ["Act 18", "Act 19", "Act 20"], "finished: the last few rows");
+eq(rd.listRows([row(0, "skipped")], "tablet")[0], { state: "skipped", mark: "⊘", time: "11:30-12:20", cue: "1", title: "Act 1", tag: "SKIPPED" }, "skipped rows are marked and labelled");
+eq(rd.listRows([row(0, "next", { start: null, end: null })], "tablet")[0].time, "--:--", "unavailable time");
+eq(rd.listRows([row(0, "next", { start: 86400000 + 3600000 })], "phone")[0].time, "01:00", "past midnight wraps");
+eq(rd.listRows([row(0, "weird"), null, 5, { state: "next", title: 5, cue: null }], "tablet").map((r) => [r.state, r.title, r.cue]), [["later", "Act 1", "1"], ["next", "", ""]], "wrong types are tolerated");
+eq([rd.listRows(null, "tablet"), rd.listRows([], "tablet"), rd.listRows("x", "tablet")], [[], [], []], "no list: no rows");
+eq(rd.MARKS.current !== rd.MARKS.later && rd.MARKS.skipped !== rd.MARKS.past, true, "every state has its own marker, not colour alone");
+
+v = rd.view(msg({ events: ev, events_stale: false }), NOW, "wall");
+eq([v.rows.length, v.listNote], [11, ""], "view carries the rows for its layout");
+v = rd.view(msg({ events: ev, events_stale: true }), NOW, "tablet");
+eq(v.listNote, "▲ The event list may be out of date.", "a stale list says so");
+eq(rd.view(msg({ events: ev }), NOW + 12, "tablet").stale, true, "the card goes stale with its list");
+eq(rd.view(msg({ events: ev, position: { index: null, total: 0 } }), NOW, "tablet").rows.length, 0, "no rundown loaded: no list");
+eq(rd.view(msg(), NOW).rows, [], "no list sent: nothing");
+
+const ui4 = rd.createUi();
+ui4.update(rd.view(msg({ events: ev }), NOW, "tablet"));
+eq([ui4.list.hidden, ui4.list.children.length], [false, 11], "rows are built");
+eq(ui4.list.children[2].className, "rd-ev rd-ev-current", "the current row has its own class");
+const w0 = ui4.list.writes;
+ui4.update(rd.view(msg({ events: ev }), NOW + 1, "tablet"));
+eq(ui4.list.writes, w0, "list not rebuilt when nothing changed");
+ui4.update(rd.view(msg({ events: [row(0, "current", { title: "<img src=x onerror=alert(1)>" })] }), NOW, "tablet"));
+eq([ui4.list.children.length, ui4.list.textContent.indexOf("<img src=x") >= 0, ui4.list.children[0].children.length], [1, true, 4], "titles are text, never markup");
+ui4.update(rd.view(msg(), NOW, "tablet"));
+eq(ui4.list.hidden, true, "hidden again with no rows");
 
 console.log(`${count} checks, ${fails} failed`);
 process.exit(fails ? 1 : 0);
