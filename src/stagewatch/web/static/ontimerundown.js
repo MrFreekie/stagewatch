@@ -15,7 +15,7 @@ SW.rd = (function () {
 
   // ---- Facts about Ontime that a real capture has not yet confirmed. Each is one line, so a
   // capture session can change it without touching the logic. Tests pin both readings.
-  rd.OFFSET_POSITIVE_IS_AHEAD = true;   // Ontime's delay docs: positive = running early, negative = running late
+  rd.OFFSET_POSITIVE_IS_AHEAD = false;  // CONFIRMED by the owner on a real Ontime 4.14.0: positive = behind, negative = ahead
   rd.INDEX_BASE = 0;                    // selectedEventIndex 0 = the first event (captured: 8 of 16, not yet proven)
 
   // ---- Thresholds (milliseconds)
@@ -110,7 +110,7 @@ SW.rd = (function () {
   //   planned, expected, started, day (short facts), barPct / tickPct (null = hide), note, badge, cls
   rd.view = function (m, now) {
     const name = (m && m.label) || "Ontime";
-    const v = { phraseDup: false, unreadable: false, state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", position: "",
+    const v = { title: "", evnote: "", phraseDup: false, unreadable: false, state: "off", cls: "rd-s-off", badge: "▲ OFFLINE", big: "--", word: "", phrase: "", level: "", position: "",
       modeNote: "", planned: "", expected: "", started: "", day: "", barPct: null, tickPct: null, note: "", stale: false };
     if (!m || m.status !== "ok") {
       if (m && m.status === "error") {
@@ -122,6 +122,8 @@ SW.rd = (function () {
       return v;
     }
     v.badge = "";
+    v.title = typeof m.event_title === "string" ? m.event_title : "";
+    v.evnote = typeof m.event_note === "string" ? m.event_note : "";
     const a = Math.max(0, now - m.received_at);
     const pos = m.position;
     const ps = m.planned_start_ms, pe = m.planned_end_ms, ee = m.expected_end_ms, as = m.actual_start_ms;
@@ -159,7 +161,7 @@ SW.rd = (function () {
         v.big = "--"; v.phrase = "Ahead or behind not sent";
       }
       v.planned = plannedText;
-      if (isNum(ee)) v.expected = `Expected end ${rd.fmtOntimeTime(ee)}${isNum(pe) && ee !== pe ? ` (planned ${rd.fmtOntimeTime(pe)})` : ""}`;
+      if (isNum(ee) && ee >= 0) v.expected = `Expected end ${rd.fmtOntimeTime(ee)}${isNum(pe) && ee !== pe ? ` (planned ${rd.fmtOntimeTime(pe)})` : ""}`;
       if (isNum(as)) v.started = `Started ${rd.fmtOntimeTime(as)}`;
       const dp = rd.dayProgress(isNum(as) ? as : ps, pe, ee, m.ontime_clock_ms);
       if (dp) { v.barPct = dp.pct; v.tickPct = dp.tickPct; }
@@ -189,6 +191,8 @@ SW.rd = (function () {
   rd.createUi = function () {
     const h = SW.h;
     const ui = {
+      title: h("div", { class: "rd-title", hidden: true }),
+      evnote: h("p", { class: "rd-evnote", hidden: true }),
       big: h("span", { class: "rd-big" }),
       word: h("span", { class: "rd-word" }),
       mode: h("span", { class: "rd-mode muted" }),
@@ -205,9 +209,13 @@ SW.rd = (function () {
       foot: h("p", { class: "rd-foot muted" }, "Ontime time: the times are Ontime's own clock, not converted."),
     };
     ui.bar.append(ui.tick);
-    ui.nodes = [h("div", { class: "rd-main" }, ui.big, ui.word, ui.mode), ui.badge, ui.phrase, ui.position, ui.bar,
+    ui.nodes = [ui.title, ui.evnote, h("div", { class: "rd-main" }, ui.big, ui.word, ui.mode), ui.badge, ui.phrase, ui.position, ui.bar,
       ui.planned, ui.expected, ui.started, ui.day, ui.note, ui.foot];
     ui.update = function (v) {
+      setText(ui.title, v.title);
+      setHidden(ui.title, !v.title);
+      setText(ui.evnote, v.evnote);
+      setHidden(ui.evnote, !v.evnote);
       setText(ui.big, v.big);
       setText(ui.word, v.word);
       setHidden(ui.word, !v.word);

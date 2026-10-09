@@ -1,4 +1,4 @@
-﻿"""The Ontime Rundown card: parsing and merging Ontime's rundown and offset blocks (both the
+"""The Ontime Rundown card: parsing and merging Ontime's rundown and offset blocks (both the
 documented shape and the one real 4.14.0 sends), the shared connection, the public message, the
 emulated story and the static page.
 
@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "src" / "stagewatch" / "web" / "static"
 
 PUBLIC_KEYS = {"status", "label", "received_at", "position", "offset_ms", "offset_mode", "planned_start_ms",
-               "planned_end_ms", "expected_end_ms", "actual_start_ms", "current_day", "ontime_clock_ms", "unreadable"}
+               "planned_end_ms", "expected_end_ms", "actual_start_ms", "current_day", "ontime_clock_ms", "unreadable", "event_title", "event_note"}
 # current_day (only to say "a later day") and ontime_clock_ms (Ontime's clock, for the day bar) are public on purpose.
 
 
@@ -71,7 +71,7 @@ def test_the_real_first_message_gives_the_rundown_and_the_offset():
     assert s == RundownState(
         selected_index=8, num_events=16, planned_start_ms=41_400_000, planned_end_ms=81_000_000,
         actual_start_ms=41_400_000, current_day=0, offset_absolute_ms=0, offset_relative_ms=0, offset_mode="absolute",
-        offset_expected_end_ms=81_000_000)
+        offset_expected_end_ms=81_000_000, event_title="Event 1")
     assert (s.offset_ms, s.offset_kind, s.expected_end_ms) == (0, "absolute", 81_000_000)
 
 
@@ -207,7 +207,7 @@ def test_nothing_but_numbers_is_kept_from_the_blocks():
     block = rundown_block(title="Secret act", note="x", custom={"a": 1}, cue="1", id="abc", flag=True)
     s = parse.parse_rundown({"rundown": block, "offset": offset_block(extra="x")})
     text = json.dumps(rundown_message("Ontime", RundownReading(s, 1.0, "ok", "", 1)))
-    for forbidden in ("Secret", "custom", "cue", "abc", "note", "title", "flag"):
+    for forbidden in ("Secret", "custom", "cue", "abc", "flag"):
         assert forbidden not in text
 
 
@@ -410,11 +410,12 @@ def test_the_emulated_rundown_cycles_through_every_state():
     on_time = emulated_rundown_state(35)
     assert abs(on_time.offset_ms) <= 30_000 and on_time.selected_index is not None
     amber = emulated_rundown_state(60)
-    assert -300_000 < amber.offset_ms < -30_000
+    assert 30_000 < amber.offset_ms < 300_000                                                       # positive = behind (owner-confirmed)
     peak = emulated_rundown_state(90)
-    assert peak.offset_ms == -360_000 and peak.offset_ms < -300_000                                 # past the default 5 minute step
+    assert peak.offset_ms == 360_000 and peak.offset_ms > 300_000                                   # past the default 5 minute step
+    assert peak.offset_expected_end_ms == 81_000_000 + 360_000                                      # behind: finishes later
     ahead = emulated_rundown_state(154)
-    assert ahead.offset_ms > 60_000
+    assert ahead.offset_ms < -60_000                                                                # negative = ahead
     none_loaded = emulated_rundown_state(180)
     assert none_loaded.num_events == 0 and none_loaded.selected_index is None                       # no rundown loaded
     done = emulated_rundown_state(210)
@@ -430,9 +431,10 @@ def test_every_emulated_state_parses_through_the_real_parser_limits():
         s = emulated_rundown_state(t)
         block = {"selectedEventIndex": s.selected_index, "numEvents": s.num_events, "plannedStart": s.planned_start_ms,
                  "plannedEnd": s.planned_end_ms, "actualStart": s.actual_start_ms, "currentDay": s.current_day}
+        event = {"title": s.event_title, "note": s.event_note}
         off = {"absolute": s.offset_absolute_ms, "relative": s.offset_relative_ms, "mode": s.offset_mode,
                "expectedRundownEnd": s.offset_expected_end_ms}
-        assert parse.parse_rundown({"rundown": block, "offset": off}) == s
+        assert parse.parse_rundown({"rundown": block, "offset": off, "eventNow": event}) == s
 
 
 def test_emulated_rundown_goes_stale_then_offline_in_cycle_mode():
@@ -546,7 +548,7 @@ def test_the_snapshot_carries_nothing_private(client):
     wait(lambda: client.hub.ontime_rundown.active)
     text = json.dumps(client.get("/api/snapshot").json()["ontime_rundown"])
     assert "127.0.0.1" not in text and "http" not in text
-    for forbidden in ("title", "note", "cue", "custom", "colour", "url", "id\""):
+    for forbidden in ("cue", "custom", "colour", "url", "id\""):
         assert forbidden not in text
 
 
@@ -599,3 +601,94 @@ def test_real_message_with_a_negative_expected_end_is_readable():
     assert st.offset_absolute_ms == -529221 and st.offset_relative_ms == -529221
     assert st.offset_expected_end_ms == -4729221 and st.offset_mode == "absolute"
     assert st.selected_index == 5 and st.num_events == 14 and st.current_day == 1
+
+
+# --- the owner-confirmed sign, on the REAL capture ---
+def test_the_real_capture_offset_shows_as_ahead_8_49():
+    """Real Ontime 4.14.0: offset -529221 ms (absolute and relative) while 8:49 AHEAD of plan on
+    Ontime's own screen, so a negative offset is ahead and a positive one is behind."""
+    path = Path(__file__).parent / "fixtures" / "ontime" / "real_4_14_offset_running.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))["payload"]
+    st = parse.parse_rundown(payload)
+    msg = rundown_message("Ontime", RundownReading(st, 1.0, "ok", "", payload["clock"]))
+    assert msg["offset_ms"] == -529221
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    js = """
+const fs = require("fs"), vm = require("vm"), path = require("path");
+const S = process.argv[1];
+class E { constructor(){this.attrs={};this.children=[];this._t="";this.style={};} setAttribute(k,v){this.attrs[k]=String(v);} get className(){return this.attrs.class||"";} set className(v){this.attrs.class=String(v);} addEventListener(){} append(){} }
+const ctx = { Intl, Date, Number, Math, Object, Array, String, JSON, console, isFinite, window: {}, Node: E, Element: E };
+ctx.document = { createElement: () => new E(), createTextNode: (s) => String(s) };
+vm.createContext(ctx);
+for (const f of ["common.js", "ontimerundown.js"]) vm.runInContext(fs.readFileSync(path.join(S, f), "utf8"), ctx);
+const SW = vm.runInContext("SW", ctx);
+const m = JSON.parse(process.argv[2]);
+const v = SW.rd.view(m, m.received_at);
+console.log(JSON.stringify([v.big, v.word, v.level, v.state]));
+"""
+    r = subprocess.run([node, "-e", js, str(STATIC), json.dumps(msg)], capture_output=True, text=True, encoding="utf-8", timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["\u25b2 8:49", "AHEAD", "", "running"]
+
+
+# --- event title and note (SYNTHETIC messages: the real captures have eventNow stripped of titles) ---
+def event(**kw):
+    return {"id": "abc123", "type": "event", "title": "Support act", "note": "Check IEMs before the changeover.",
+            "colour": "#ff0000", "custom": {"x": 1}, "triggers": [{"a": 1}], "cue": "7", **kw}
+
+
+def test_title_and_note_come_from_eventnow_and_nothing_else_of_the_event_is_kept():
+    s = parse.parse_rundown({"rundown": rundown_block(), "eventNow": event(), "eventNext": event(title="NEXT-SECRET")})
+    assert (s.event_title, s.event_note) == ("Support act", "Check IEMs before the changeover.")
+    text = json.dumps(rundown_message("Ontime", RundownReading(s, 1.0, "ok", "", 1)))
+    for forbidden in ("abc123", "#ff0000", "custom", "triggers", "NEXT-SECRET", "cue"):
+        assert forbidden not in text
+
+
+def test_event_text_merges_over_partial_messages_and_clears_on_null():
+    first = parse.parse_rundown({"rundown": rundown_block(), "eventNow": event()})
+    assert parse.parse_rundown({"clock": 1}, first) is first                              # kept
+    changed = parse.parse_rundown({"eventNow": event(title="Headliner", note="")}, first)
+    assert (changed.event_title, changed.event_note) == ("Headliner", "")                 # an empty note shows nothing
+    assert changed.num_events == 12                                                       # the rest of the state is kept
+    cleared = parse.parse_rundown({"eventNow": None}, first)
+    assert (cleared.event_title, cleared.event_note) == ("", "")                          # no event loaded: no text
+
+
+def test_hostile_event_text_is_cleaned_and_capped():
+    hostile = "A\x00B\u202e\u200bC\r\n\tD  <img src=x onerror=alert(1)>" + "x" * 1000
+    s = parse.parse_rundown({"eventNow": event(title=hostile, note=hostile)})
+    assert len(s.event_title) <= 120 and len(s.event_note) <= 400
+    for text in (s.event_title, s.event_note):
+        assert all(ord(c) >= 32 and c not in "\u202e\u200b" for c in text) and "\n" not in text
+    assert s.event_title.startswith("AB") and "<img src=x" in s.event_title      # kept as text: the page never uses HTML
+    assert len(s.event_note) == 400 or len(s.event_note) > 200
+
+
+@pytest.mark.parametrize("bad", [{"title": 5}, {"title": ["a"]}, {"title": {"a": {"b": {}}}}, {"note": 1.5},
+                                 {"note": {"nested": [1, 2]}}, {"title": True}])
+def test_event_text_of_the_wrong_type_is_unreadable_and_keeps_the_last_good_text(bad):
+    assert parse.parse_rundown({"eventNow": event(**bad)}) is None
+    src = fast_source("http://127.0.0.1:1")
+    src._ingest({"clock": 1000, "rundown": rundown_block(), "eventNow": event()}, "websocket")
+    src._ingest({"clock": 2000, "eventNow": event(**bad)}, "websocket")
+    r = src.latest_rundown()
+    assert r.unreadable is True and r.state.event_title == "Support act"                   # last good, marked
+    m = rundown_message("Ontime", r)
+    assert m["event_title"] == "Support act" and m["unreadable"] is True
+
+
+@pytest.mark.parametrize("value", ["text", 5, [], True])
+def test_an_eventnow_that_is_not_an_object_is_unreadable(value):
+    assert parse.parse_rundown({"eventNow": value}) is None
+
+
+def test_offline_messages_carry_no_event_text():
+    m = rundown_message("Ontime", RundownReading(None, 1.0, "offline", "x"))
+    assert m["event_title"] == "" and m["event_note"] == ""
+
+
+def test_the_rundown_card_still_asks_for_no_new_path():
+    assert parse.HTTP_PATHS == ("/api/version", "/api/poll") and parse.WS_PATH == "/ws"

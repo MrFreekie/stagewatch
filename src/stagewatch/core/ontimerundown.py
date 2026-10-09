@@ -32,6 +32,8 @@ MAX_TIME_MS = 72 * HOUR_MS        # a time of day (or a few days on) from Ontime
 MAX_OFFSET_MS = 72 * HOUR_MS      # |offset|
 MAX_EVENTS = 10_000               # numEvents, and the selected index
 MAX_DAY = 366                     # currentDay
+EVENT_TITLE_MAX = 120             # characters kept of the current event's title
+EVENT_NOTE_MAX = 400              # and of its note
 
 OFFSET_MODES = ("absolute", "relative")
 
@@ -58,6 +60,8 @@ class RundownState:
     offset_relative_ms: int | None = None     # real shape: offset.relative
     offset_mode: str | None = None            # real shape: offset.mode, one of OFFSET_MODES, or None
     offset_expected_end_ms: int | None = None  # real shape: offset.expectedRundownEnd
+    event_title: str = ""                     # eventNow.title, cleaned (shown on dashboards)
+    event_note: str = ""                      # eventNow.note, cleaned (shown on dashboards)
 
     @property
     def offset_kind(self) -> str | None:
@@ -104,7 +108,10 @@ class RundownReading:
 def rundown_message(label: str, reading: RundownReading) -> dict:
     """The public shape (snapshot and live feed). No address, error text, ids or event text.
     ``current_day`` (only used to say "a later day") and ``ontime_clock_ms`` (Ontime's own clock, for
-    the day bar) are sent on purpose; both are plain numbers."""
+    the day bar) are sent on purpose; both are plain numbers. ``event_title`` and ``event_note`` are
+    the current event's cleaned text from Ontime's ``eventNow``: anyone who can open a dashboard
+    with this card sees them. Nothing else of the event (ids, colours, custom fields, triggers,
+    the next event) is kept."""
     s = reading.state if reading.status == "ok" else None
     has_total = s is not None and s.num_events is not None
     return {
@@ -121,6 +128,8 @@ def rundown_message(label: str, reading: RundownReading) -> dict:
         "current_day": s.current_day if s else None,
         "ontime_clock_ms": reading.clock_ms if s else None,
         "unreadable": bool(s is not None and reading.unreadable),
+        "event_title": s.event_title if s else "",
+        "event_note": s.event_note if s else "",
     }
 
 

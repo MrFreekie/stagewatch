@@ -524,6 +524,13 @@ body.layout-wall #ontime-timer-card > h2 { font-size: 24px; }
    Behind is amber then orange, never red; ahead and on time stay neutral. Stale figures are struck
    through. Nothing moves. Tablet: every line. Phone: figure, position, expected end.
    Wall: figure and position in large type, plus the bar. */
+.rd-title { font-size: 24px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.rd-evnote { margin: 2px 0 8px; font-size: 15px; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
+#ontime-rundown-card.rd-s-stale .rd-title, #ontime-rundown-card.rd-s-stale .rd-evnote { opacity: .6; text-decoration: line-through; }
+body.layout-phone .rd-title { font-size: 20px; }
+body.layout-phone .rd-evnote { font-size: 14px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+body.layout-wall .rd-title { font-size: min(64px, 5vw); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+body.layout-wall .rd-evnote { font-size: 24px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; text-overflow: ellipsis; }
 .rd-main { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; }
 .rd-big { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.05; }
 .rd-word { font-size: 24px; font-weight: 800; letter-spacing: .04em; }

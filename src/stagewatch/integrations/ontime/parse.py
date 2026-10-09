@@ -28,7 +28,7 @@ import re
 from typing import Literal
 from urllib.parse import urlsplit
 
-from ...core.ontimerundown import (MAX_DAY, MAX_EVENTS, MAX_OFFSET_MS, MAX_TIME_MS, OFFSET_MODES,
+from ...core.ontimerundown import (EVENT_NOTE_MAX, EVENT_TITLE_MAX, MAX_DAY, MAX_EVENTS, MAX_OFFSET_MS, MAX_TIME_MS, OFFSET_MODES,
                                    RundownState)
 from ...core.ontimetimer import PHASES, PLAYBACKS, TIMER_TYPES, TimerState, clean_title
 from ...core.wallclock import valid_clock_ms
@@ -189,10 +189,17 @@ def _merge_block(block: dict, keys: dict) -> dict | None:
     return out
 
 
+def _text(value: object, limit: int) -> str | None:
+    """Missing or null -> "", text -> cleaned and capped, anything else (a number, list, object) -> None."""
+    if value is None:
+        return ""
+    return clean_title(value, limit) if isinstance(value, str) else None
+
+
 def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownState | None:
     """Merge one ``runtime-data`` payload into the last rundown state.
 
-    * Neither a ``rundown`` nor an ``offset`` key (the usual clock-and-timer message): ``prev``
+    * None of ``rundown``, ``offset`` or ``eventNow`` (the usual clock-and-timer message): ``prev``
       unchanged (which may be None).
     * A block merges key by key into ``prev`` (a key it lacks keeps its old value; null clears it).
       ``"rundown": null`` or ``"offset": null`` clears that block.
@@ -202,7 +209,7 @@ def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownS
       offset it labels is not used (never guessed).
 
     Real Ontime 4.14.0 output has only been seen with the first message carrying both blocks."""
-    if not isinstance(payload, dict) or ("rundown" not in payload and "offset" not in payload):
+    if not isinstance(payload, dict) or not ("rundown" in payload or "offset" in payload or "eventNow" in payload):
         return prev
     state = prev or RundownState()
     changes: dict = {}
@@ -235,6 +242,20 @@ def parse_rundown(payload: object, prev: RundownState | None = None) -> RundownS
                 return None
             changes.update({f: None for f in _OFFSET_FIELDS})
             changes["doc_offset_ms"] = value
+    if "eventNow" in payload:
+        # The current event's title and note (the same eventNow the Timer reads), cleaned and capped.
+        # Null means no event is loaded. Anything we cannot read (not an object, a title or note
+        # that is not text) is unreadable: the caller keeps the last good text and marks it.
+        event = payload["eventNow"]
+        if event is None:
+            changes.update(event_title="", event_note="")
+        elif isinstance(event, dict):
+            title, note = _text(event.get("title"), EVENT_TITLE_MAX), _text(event.get("note"), EVENT_NOTE_MAX)
+            if title is None or note is None:
+                return None
+            changes.update(event_title=title, event_note=note)
+        else:
+            return None
     new = dataclasses.replace(state, **changes)
     # Deliberately strict until a real capture shows whether selectedEventIndex is 0- or 1-based
     # (and what Ontime sends when it is finished): an index past numEvents is treated as unreadable

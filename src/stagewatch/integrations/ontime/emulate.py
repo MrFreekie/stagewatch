@@ -74,8 +74,8 @@ def emulated_timer_state(t: float) -> TimerState:
 
 
 # The emulated rundown repeats a 240 second story (seconds into the cycle). 12 events, planned
-# 11:30 to 22:30 on Ontime's clock. Ontime's offset sign is taken from its documentation (positive
-# is ahead, negative is behind); a real capture has not confirmed it.
+# 11:30 to 22:30 on Ontime's clock. Ontime's offset sign, confirmed by the owner on a real
+# 4.14.0: positive is BEHIND, negative is AHEAD.
 #   0-20 not started | 20-50 on time (a few seconds out) | 50-85 falling behind, 0 to 6:00
 #   (amber after 0:30, orange after the default 5 minute step) | 85-100 holding 6:00 behind
 #   | 100-115 nothing arrives (stale, still orange underneath) | 115-155 catching up, 6:00 behind
@@ -103,11 +103,15 @@ def emulated_rundown_state(t: float) -> RundownState:
     base = dict(num_events=RUNDOWN_EVENTS, planned_start_ms=RUNDOWN_PLANNED_START_MS,
                 planned_end_ms=RUNDOWN_PLANNED_END_MS, current_day=0, offset_mode="absolute")
 
-    def state(index: int | None, offset: int | None, started: bool = True) -> RundownState:
+    def state(index: int | None, ahead_ms: int | None, started: bool = True) -> RundownState:
+        """``ahead_ms`` is the story's ahead (+) / behind (-); Ontime's own offset is the other way round."""
+        offset = None if ahead_ms is None else -ahead_ms
         return RundownState(
             selected_index=index, actual_start_ms=RUNDOWN_PLANNED_START_MS if started else None,
             offset_absolute_ms=offset, offset_relative_ms=offset,
-            offset_expected_end_ms=None if offset is None else RUNDOWN_PLANNED_END_MS - offset, **base)
+            offset_expected_end_ms=None if offset is None else RUNDOWN_PLANNED_END_MS + offset,
+            event_title="" if index is None else "Emulated: Support act",
+            event_note="" if index is None or index % 2 == 0 else "Emulated note: IEM check before the changeover.", **base)
 
     if t < 20:
         return state(None, None, started=False)

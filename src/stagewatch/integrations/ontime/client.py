@@ -256,7 +256,7 @@ class OntimeSource:
         the last good figures (nothing is guessed) but marks the reading ``unreadable``, until the
         next readable block merges into them."""
         how = "WebSocket" if transport == "websocket" else "Polling"
-        if "rundown" in payload or "offset" in payload:
+        if "rundown" in payload or "offset" in payload or "eventNow" in payload:
             state = parse_rundown(payload, self._merged_rd)
             if state is None:
                 if self._merged_rd is None:   # nothing readable yet: nothing to keep

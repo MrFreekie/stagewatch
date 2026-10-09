@@ -74,15 +74,15 @@ class TimerReading:
     detail: str = ""
 
 
-def clean_title(value: object) -> str:
+def clean_title(value: object, limit: int = TITLE_MAX) -> str:
     """Rundown text from Ontime, made safe to show: no control, format (bidi, zero-width) or
     line-break characters (so a zero-width joiner is dropped and a joined emoji family shows as
-    separate emoji; that is accepted), at most two combining marks per character, runs of spaces collapsed, at most TITLE_MAX characters."""
+    separate emoji; that is accepted), at most two combining marks per character, runs of spaces collapsed, at most ``limit`` (TITLE_MAX) characters."""
     if not isinstance(value, str):
         return ""
     out = []
     marks = 0   # combining marks in a row after one base character
-    for ch in value[:4 * TITLE_MAX]:   # bounded work on a hostile, huge string
+    for ch in value[:4 * limit]:   # bounded work on a hostile, huge string
         cat = unicodedata.category(ch)
         if cat in ("Mn", "Me", "Mc"):
             marks += 1
@@ -94,7 +94,7 @@ def clean_title(value: object) -> str:
             out.append(" ")
         elif cat not in ("Cc", "Cf", "Cs", "Co", "Cn"):
             out.append(ch)
-    return " ".join("".join(out).split())[:TITLE_MAX].rstrip()
+    return " ".join("".join(out).split())[:limit].rstrip()
 
 
 def timer_message(label: str, reading: TimerReading, show_title: bool = True) -> dict:

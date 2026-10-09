@@ -44,7 +44,7 @@ function eq(got, exp, what) {
 const NOW = 1790000000, S = 1000, MIN = 60 * S, H = 3600 * S;
 const msg = (o) => Object.assign({ status: "ok", label: "Ontime", received_at: NOW, position: { index: 3, total: 12 },
   offset_ms: 0, offset_mode: "absolute", planned_start_ms: 11.5 * H, planned_end_ms: 22.5 * H, expected_end_ms: 22.5 * H,
-  actual_start_ms: 11.5 * H, current_day: 0, ontime_clock_ms: 15 * H }, o || {});
+  actual_start_ms: 11.5 * H, current_day: 0, ontime_clock_ms: 15 * H, event_title: "", event_note: "" }, o || {});
 
 // ---- the on-time band (offset in ms, positive = ahead, negative = behind)
 eq([0, 29 * S, -29 * S, 30 * S, -30 * S].map((x) => rd.band(x).kind), ["ontime", "ontime", "ontime", "ontime", "ontime"], "within 30 s is on time, edges included");
@@ -58,14 +58,15 @@ SW.setScheduleWarn({ minutes: [15, 5], flash_minutes: [] });
 eq(rd.band(-5 * MIN - 1).level, "alert", "default site steps");
 
 // ---- the offset wording and the sign assumption
-eq(rd.OFFSET_POSITIVE_IS_AHEAD, true, "assumption: positive offset is ahead (Ontime's delay docs)");
-eq(rd.offsetView(250 * S), { big: "▲ 4:10", sym: "▲", word: "AHEAD", phrase: "Running 4:10 ahead", level: "" }, "positive is ahead");
-eq(rd.offsetView(-250 * S), { big: "▼ 4:10", sym: "▼", word: "BEHIND", phrase: "Running 4:10 behind", level: "warn" }, "negative is behind");
+eq(rd.OFFSET_POSITIVE_IS_AHEAD, false, "CONFIRMED on a real Ontime 4.14.0 by the owner: positive offset = behind, negative = ahead");
+eq(rd.offsetView(-250 * S), { big: "▲ 4:10", sym: "▲", word: "AHEAD", phrase: "Running 4:10 ahead", level: "" }, "negative is ahead");
+eq(rd.offsetView(250 * S), { big: "▼ 4:10", sym: "▼", word: "BEHIND", phrase: "Running 4:10 behind", level: "warn" }, "positive is behind");
+eq(rd.offsetView(-529221).big, "▲ 8:49", "the real capture: -529221 ms is 8:49 ahead");
 eq([rd.offsetView(10 * S).big, rd.offsetView(10 * S).phrase], ["ON TIME", ""], "within the band the words say on time, once");
-eq(rd.offsetView(-400 * S).level, "alert", "far behind is orange");
-rd.OFFSET_POSITIVE_IS_AHEAD = false;
-eq([rd.offsetView(250 * S).word, rd.offsetView(-250 * S).word], ["BEHIND", "AHEAD"], "flipping the one constant flips the meaning");
+eq(rd.offsetView(400 * S).level, "alert", "far behind is orange");
 rd.OFFSET_POSITIVE_IS_AHEAD = true;
+eq([rd.offsetView(250 * S).word, rd.offsetView(-250 * S).word], ["AHEAD", "BEHIND"], "flipping the one constant flips the meaning");
+rd.OFFSET_POSITIVE_IS_AHEAD = false;
 
 // ---- offset formatting
 eq([0, 29 * S, 31 * S, 59 * 60 * S + 59 * S, 3600 * S, 3661 * S].map(rd.fmtOffset), ["0:00", "0:29", "0:31", "59:59", "1:00:00", "1:01:01"], "m:ss then h:mm:ss");
@@ -102,11 +103,11 @@ let v = rd.view(msg(), NOW);
 eq([v.state, v.big, v.word, v.position, v.level, v.modeNote], ["running", "ON TIME", "", "Event 4 of 12", "", "vs plan"], "running, on time");
 eq([v.planned, v.expected, v.started], ["Planned 11:30 to 22:30", "Expected end 22:30", "Started 11:30"], "tablet lines");
 eq([Math.round(v.barPct), v.tickPct], [32, null], "day bar");
-v = rd.view(msg({ offset_ms: -250 * S, expected_end_ms: 22.5 * H + 250 * S }), NOW);
+v = rd.view(msg({ offset_ms: 250 * S, expected_end_ms: 22.5 * H + 250 * S }), NOW);
 eq([v.big, v.word, v.level, v.expected], ["▼ 4:10", "BEHIND", "warn", "Expected end 22:34 (planned 22:30)"], "behind");
 eq(v.tickPct !== null, true, "tick shown when expected end is later");
-eq(rd.view(msg({ offset_ms: -400 * S }), NOW).level, "alert", "orange");
-eq(rd.view(msg({ offset_ms: 90 * S }), NOW).big, "▲ 1:30", "ahead");
+eq(rd.view(msg({ offset_ms: 400 * S }), NOW).level, "alert", "orange");
+eq(rd.view(msg({ offset_ms: -90 * S }), NOW).big, "▲ 1:30", "ahead");
 eq(rd.view(msg({ offset_ms: 70 * S, offset_mode: "relative" }), NOW).modeNote, "since start", "relative mode is labelled");
 eq(rd.view(msg({ offset_mode: "unknown" }), NOW).modeNote, "", "unknown mode: no label");
 eq(rd.view(msg({ offset_ms: null, offset_mode: null }), NOW).phrase, "Ahead or behind not sent", "no offset: nothing guessed");
@@ -133,22 +134,22 @@ eq([v.state, v.big, v.badge, v.note], ["off", "--", "▲ OFFLINE", "▲ Ontime o
 eq(rd.view(null, NOW).state, "off", "no message");
 v = rd.view({ status: "error", label: "Ontime" }, NOW);
 eq([v.state, v.badge], ["error", "▲ CAN'T READ"], "unreadable");
-v = rd.view(msg({ offset_ms: -250 * S }), NOW + 3);
+v = rd.view(msg({ offset_ms: 250 * S }), NOW + 3);
 eq(v.state, "running", "3 s old is still live");
-v = rd.view(msg({ offset_ms: -250 * S }), NOW + 12);
+v = rd.view(msg({ offset_ms: 250 * S }), NOW + 12);
 eq([v.state, v.stale, v.badge, v.level, v.big, v.note], ["stale", true, "", "", "▼ 4:10", "▲ STALE: nothing from Ontime for 10 s. Don't trust these figures."], "stale: struck figures, said once in words with a triangle, no colour step");
-v = rd.view(msg({ offset_ms: -250 * S, unreadable: true }), NOW);
+v = rd.view(msg({ offset_ms: 250 * S, unreadable: true }), NOW);
 eq([v.state, v.stale, v.level, v.big, v.badge], ["unreadable", true, "", "▼ 4:10", ""], "unreadable block: last figures kept, struck through, no colour step");
 eq(v.note.indexOf("▲ CAN'T READ") === 0, true, "and says so in words");
-eq(rd.view(msg({ offset_ms: -250 * S, unreadable: false }), NOW).state, "running", "a readable block clears it");
-eq([rd.view(msg({ offset_ms: -250 * S }), NOW).phraseDup, rd.view(msg({ offset_ms: null }), NOW).phraseDup], [true, false], "the phrase that repeats the figure is marked for the wall");
+eq(rd.view(msg({ offset_ms: 250 * S, unreadable: false }), NOW).state, "running", "a readable block clears it");
+eq([rd.view(msg({ offset_ms: 250 * S }), NOW).phraseDup, rd.view(msg({ offset_ms: null }), NOW).phraseDup], [true, false], "the phrase that repeats the figure is marked for the wall");
 
 // ---- the DOM is updated in place
 const ui = rd.createUi();
-ui.update(rd.view(msg({ offset_ms: -250 * S, expected_end_ms: 22.5 * H + 250 * S }), NOW));
+ui.update(rd.view(msg({ offset_ms: 250 * S, expected_end_ms: 22.5 * H + 250 * S }), NOW));
 eq([ui.big.textContent, ui.word.textContent, ui.position.textContent, ui.bar.hidden, ui.tick.hidden], ["▼ 4:10", "BEHIND", "Event 4 of 12", false, false], "card content");
 const before = ui.big.writes;
-ui.update(rd.view(msg({ offset_ms: -250 * S, expected_end_ms: 22.5 * H + 250 * S }), NOW));
+ui.update(rd.view(msg({ offset_ms: 250 * S, expected_end_ms: 22.5 * H + 250 * S }), NOW));
 eq(ui.big.writes, before, "nothing rewritten when nothing changed");
 ui.update(rd.view({ status: "offline", label: "Ontime" }, NOW));
 eq([ui.big.textContent, ui.bar.hidden, ui.note.hidden, ui.word.hidden], ["--", true, false, true], "offline hides the rest");
@@ -157,6 +158,21 @@ eq(ui.position.textContent, "Event 1 of 12", "first event");
 const ui2 = rd.createUi();
 ui2.update(rd.view(msg({ label: "<img src=x onerror=alert(1)>", status: "offline" }), NOW));
 eq([ui2.note.textContent.indexOf("<img") > 0, ui2.note.children.length], [true, 0], "a label is text, never markup");
+
+// ---- event title and note (SYNTHETIC)
+v = rd.view(msg({ event_title: "Support act", event_note: "Check IEMs before the changeover." }), NOW);
+eq([v.title, v.evnote], ["Support act", "Check IEMs before the changeover."], "title and note");
+eq([rd.view(msg(), NOW).title, rd.view(msg(), NOW).evnote], ["", ""], "empty: nothing");
+eq(rd.view(msg({ event_title: 5, event_note: null }), NOW).title, "", "wrong types show nothing");
+v = rd.view(msg({ event_title: "Support act", event_note: "n", unreadable: true }), NOW);
+eq([v.title, v.stale], ["Support act", true], "last good title stays, marked with the rest of the card");
+const ui3 = rd.createUi();
+ui3.update(rd.view(msg({ event_title: "<b>x</b>", event_note: "<img src=x onerror=alert(1)>" }), NOW));
+eq([ui3.title.textContent, ui3.title.children.length, ui3.evnote.textContent, ui3.evnote.children.length, ui3.title.hidden, ui3.evnote.hidden],
+  ["<b>x</b>", 0, "<img src=x onerror=alert(1)>", 0, false, false], "title and note are text, never markup");
+ui3.update(rd.view(msg(), NOW));
+eq([ui3.title.hidden, ui3.evnote.hidden], [true, true], "hidden again when empty");
+eq(rd.view(msg({ expected_end_ms: -4729221 }), NOW).expected, "", "a negative expected end is not shown as a time");
 
 console.log(`${count} checks, ${fails} failed`);
 process.exit(fails ? 1 : 0);
