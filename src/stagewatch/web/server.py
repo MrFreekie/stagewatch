@@ -33,8 +33,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError, 
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
-    SiteConfig, SplConfig, Threshold, WallClockConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
+    SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_password_error,
 )
 from ..core.calibration import set_calibration
 from ..core.hub import Hub
@@ -273,10 +273,22 @@ class BarometerBody(BaseModel):
     rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10, allow_inf_nan=False, strict=True)
 
 
+class SplSlotBody(BaseModel):
+    """One recorded value: Smaart's own metric text, and the input it is read from ("" = the first
+    input Smaart lists)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    metric: str = Field(min_length=1, max_length=spl_mod.METRIC_NAME_MAX)
+    source: str = Field("", max_length=spl_mod.INPUT_NAME_MAX)
+
+
 class SplBody(BaseModel):
     """PUT /api/admin/spl: the sound level (Smaart) settings. Strict: real true/false, a whole-number
-    port, a list of at most three values. The address is checked by SplConfig (host name or a local
-    network IP address)."""
+    port, at most three values. The address is checked by SplConfig (host name or a local network IP
+    address). ``password`` is Smaart's API password and is write-only: empty leaves the saved one
+    alone, ``clear_password`` removes it. ``meters`` (input + metric) is the current form; ``slots``
+    (older metric keys) is still accepted when ``meters`` is not sent."""
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
@@ -284,6 +296,9 @@ class SplBody(BaseModel):
     host: str = Field("", max_length=253)
     port: int | None = Field(None, ge=1, le=65535, strict=True)
     slots: list[str] = Field(default_factory=list, max_length=spl_mod.MAX_SLOTS)
+    meters: list[SplSlotBody] | None = Field(None, max_length=spl_mod.MAX_SLOTS)
+    password: str = Field("", max_length=PASSWORD_MAX)
+    clear_password: StrictBool = False
 
 
 class BaroDemoBody(BaseModel):
@@ -914,8 +929,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     def spl_admin() -> dict:
         integ = hub.integrations.get("smaart")
         state = integ.admin_status() if integ is not None else {"running": False, "status": "off"}
-        return {"metrics": [{"key": m.key, "name": m.name, "hint": m.hint} for m in spl_mod.METRICS],
-                "max_slots": spl_mod.MAX_SLOTS, **state}
+        # The drop-downs come from what Smaart lists (state["inputs"] and state["metrics"], its own
+        # text, empty until it has answered). The password itself is never sent, only whether it is set.
+        return {"max_slots": spl_mod.MAX_SLOTS, "password_set": bool(hub.config.spl.password),
+                "default_metrics": dict(spl_mod.LEGACY_SMAART_NAMES), "inputs": [], "metrics": [], **state}
 
     @app.get("/api/admin/state", dependencies=[Depends(require_admin)])
     async def admin_state():
@@ -923,7 +940,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         cfg.pop("admin", None)
         for dev in cfg.get("esphome_devices", []):
             dev["noise_psk"] = "set" if dev.get("noise_psk") else ""
-        esp = hub.integrations.get("esphome")
+        cfg.get("spl", {}).pop("password", None)   # Smaart's API password: only "set / not set" (spl.password_set)
+        esp =hub.integrations.get("esphome")
         return {
             "config": cfg,
             "emulate": hub.emulate,
@@ -1182,27 +1200,52 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     # screens reload into the new state.
     @app.put("/api/admin/spl", dependencies=admin_deps)
     async def put_spl(body: SplBody):
-        err = spl_mod.slots_error(body.slots)
-        if err:
-            raise HTTPException(422, err)
+        old = hub.config.spl
+        extra: dict = {}
+        if body.meters is None:
+            err = spl_mod.slots_error(body.slots)
+            if err:
+                raise HTTPException(422, err)
+            extra = {"slots": body.slots}
+        else:
+            pairs = [(m.source, m.metric) for m in body.meters]
+            if any(spl_mod.clean_metric_name(m) != m or spl_mod.clean_input_name(s) != s for s, m in pairs):
+                raise HTTPException(422, "A name has characters that cannot be used")
+            if len(set(pairs)) != len(pairs):
+                raise HTTPException(422, "Each value can only be chosen once")
+            extra = {"meters": [SplSlot(metric=m, source=s) for s, m in pairs],
+                     "slots": spl_mod.legacy_keys_for(pairs)}
+        password = old.password
+        if body.clear_password:
+            if body.password:
+                raise HTTPException(422, "Either enter a new password or clear it, not both")
+            password = ""
+        elif body.password:
+            if spl_password_error(body.password):
+                raise HTTPException(422, "The password must be 1 to 128 characters, with no control characters")
+            password = body.password
         try:
-            new = SplConfig(enabled=body.enabled, host=body.host, port=body.port, slots=body.slots)
+            # an empty port means Smaart's usual one (the page shows 26000 as its placeholder)
+            new = SplConfig(enabled=body.enabled, host=body.host, port=body.port or 26000, password=password, **extra)
         except ValidationError:
             raise HTTPException(422, "The address must be a host name or an IP address on the local network") from None
         if new.enabled and not hub.emulate and not (new.host and new.port):
             raise HTTPException(422, "Enter the address and port of the Smaart computer first")
-        old = hub.config.spl
         hub.config.spl = new
         integ = hub.integrations.get("smaart")
         if integ is not None:
             try:
-                await integ.apply()
+                # A password sent with the save (even the same one) or a refused one earlier means
+                # "try logging in again now": the client does not retry a refused password by itself.
+                again = bool(body.password) or integ.admin_status().get("problem") == "wrong_password"
+                await integ.apply(restart=again)
             except Exception:  # noqa: BLE001 - the settings are saved either way
                 log.exception("Could not apply the sound level settings")
         hub.save_config()
-        log.info("Sound level settings saved (%s, %d value%s)", "on" if new.enabled else "off", len(new.slots),
-                 "" if len(new.slots) == 1 else "s")
-        return {"ok": True, "changed": old != new}
+        n = len(new.effective_slots())
+        log.info("Sound level settings saved (%s, %d value%s, password %s)", "on" if new.enabled else "off", n,
+                 "" if n == 1 else "s", "set" if new.password else "not set")
+        return {"ok": True, "changed": old != new, "password_set": bool(new.password)}
 
     @app.post("/api/admin/barometer/demo", dependencies=admin_deps)
     async def barometer_demo(body: BaroDemoBody):

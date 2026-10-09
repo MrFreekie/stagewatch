@@ -22,7 +22,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_serializer, model_validator
 
 from ..updater_common import atomic_write_bytes, fsync_dir, remove_stale_temps, replace_with_retry
 from ..version import CONFIG_SCHEMA_VERSION
@@ -476,21 +476,111 @@ def spl_host_error(v) -> str | None:
         return bad if (not _ONTIME_HOST_RE.fullmatch(v) or numeric_host_name(v)) else None
     if ip.is_global or ip.is_multicast or ip.is_unspecified:
         return "address must be on the local network"
+    if isinstance(ip, ipaddress.IPv6Address) and (ip.ipv4_mapped or ip.sixtofour or ip.teredo):
+        return "address must be on the local network"   # carries another address inside: not obvious where it goes
+    return None
+
+
+class SplSlot(_Model):
+    """One of the (up to three) recorded values: an input source and a metric, both Smaart's own
+    text, chosen from Smaart's lists. ``source`` "" means "the first input Smaart lists"."""
+    metric: str = Field(max_length=spl.METRIC_NAME_MAX)
+    source: str = Field("", max_length=spl.INPUT_NAME_MAX)
+
+    @field_validator("metric", "source", mode="before")
+    @classmethod
+    def _text(cls, v, info):
+        clean = spl.clean_metric_name(v) if info.field_name == "metric" else spl.clean_input_name(v)
+        if info.field_name == "metric" and not clean:
+            raise ValueError("a metric name is needed")
+        return clean
+
+    @property
+    def pair(self) -> tuple[str, str]:
+        return (self.source, self.metric)
+
+
+PASSWORD_MAX = 128
+
+
+def spl_password_error(v) -> str | None:
+    """Fixed-text problem with Smaart's API password, or None. Any printable text is fine."""
+    if not isinstance(v, str) or not 1 <= len(v) <= PASSWORD_MAX:
+        return f"password must be 1 to {PASSWORD_MAX} characters"
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in v):
+        return "password must not contain control characters"
     return None
 
 
 class SplConfig(_Model):
-    """Sound level from Smaart (read-only). Additive with defaults (off, no address, the usual three
-    values): no config schema bump. An older build ignores the section and forgets it on its next
-    save. The address is admin only. Nothing here is a secret: no password is stored because
-    Stagewatch does not log in to Smaart yet (the log-in is not documented in what we have)."""
+    """Sound level from Smaart (read-only). Additive with defaults (off, the usual three values):
+    no config schema bump. An older build ignores the new keys and forgets them on its next save.
+    The address is admin only. ``password`` is Smaart's API password: a secret, kept like the ESPHome
+    noise key (admin write-only, shown only as set / not set, never logged, redacted from the
+    support bundle); it is used for logging in to Smaart's API and nothing else."""
     enabled: bool = False
-    # Defaults: Smaart on this computer (127.0.0.1), port 26000 (the owner's figure; not yet verified
-    # against Smaart's documentation). Both can be changed in Admin.
+    # Defaults: Smaart on this computer (127.0.0.1), port 26000 (the SPL web page's port in Smaart's
+    # own examples; to be confirmed on a real Smaart). Both can be changed in Admin.
     host: str = Field("127.0.0.1", max_length=253)
     port: int | None = Field(26000, ge=1, le=65535)
-    # Up to three values (core/spl.py METRICS keys) recorded together on one timeline.
+    password: str = Field("", max_length=PASSWORD_MAX, repr=False)
+    # The recorded values. ``meters`` (input source + metric, Smaart's own text) is the current form;
+    # ``slots`` is how older builds stored them (Stagewatch metric keys, core/spl.py) and is still
+    # read when there are no ``meters``, and still written for the older form of a first-input slot.
+    meters: list[SplSlot] | None = None
     slots: list[str] = Field(default_factory=lambda: list(spl.DEFAULT_SLOTS))
+
+    @model_serializer(mode="wrap")
+    def _compact(self, handler):
+        """Leave an unset password and unset meters out of the saved file, so a file that never used
+        them stays exactly as it was (and no empty ``password:`` line appears)."""
+        data = handler(self)
+        if not data.get("password"):
+            data.pop("password", None)
+        if data.get("meters") is None:
+            data.pop("meters", None)
+        return data
+
+    def effective_slots(self) -> list[tuple[str, str]]:
+        """The recorded values as (source, metric) pairs, in slot order, at most three."""
+        if self.meters is not None:
+            return [m.pair for m in self.meters][:spl.MAX_SLOTS]
+        return spl.slots_from_legacy(self.slots)[:spl.MAX_SLOTS]
+
+    @field_validator("meters", mode="before")
+    @classmethod
+    def _meters(cls, v):
+        """On load: usable entries only, each pair once, at most three. Logs a count, never values."""
+        if v is None:
+            return None
+        if not isinstance(v, (list, tuple)):
+            log.warning("Sound level: the saved values were not usable and were reset")
+            return None
+        kept, seen = [], set()
+        for item in v:
+            try:
+                slot = SplSlot.model_validate(item)
+            except ValidationError:
+                continue
+            if slot.pair not in seen:
+                seen.add(slot.pair)
+                kept.append(slot)
+        if len(kept) < len(v) or len(kept) > spl.MAX_SLOTS:
+            log.warning("Sound level: %d value%s this version can't use left out", len(v) - min(len(kept), spl.MAX_SLOTS),
+                        "" if len(v) - min(len(kept), spl.MAX_SLOTS) == 1 else "s")
+        return kept[:spl.MAX_SLOTS]
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def _password(cls, v):
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            v = str(v)   # YAML reads `password: 1234` as a number
+        if v is None or v == "":
+            return ""
+        err = spl_password_error(v)
+        if err:
+            raise ValueError(err)
+        return v
 
     @field_validator("host", mode="before")
     @classmethod
@@ -554,6 +644,11 @@ class Config(_Model):
         if isinstance(v, dict) and "host" in v and spl_host_error(v["host"]):
             log.warning("Sound level: the saved address is not usable and was cleared")
             v = {**v, "host": ""}
+        if isinstance(v, dict) and isinstance(v.get("password"), (int, float)) and not isinstance(v["password"], bool):
+            v = {**v, "password": str(v["password"])}
+        if isinstance(v, dict) and v.get("password") not in (None, "") and spl_password_error(v["password"]):
+            log.warning("Sound level: the saved password is not usable and was cleared")
+            v = {**v, "password": ""}
         return v
 
     @field_validator("wall_clock", mode="before")

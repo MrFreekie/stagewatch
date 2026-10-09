@@ -711,3 +711,8 @@ body.layout-wall .spl-tile .label, body.layout-wall .spl-tile .foot { font-size:
 body.layout-wall .spl-chart-wrap { height: 260px; }
 body.layout-wall #spl-legend { font-size: 18px; }
 body.layout-wall .spl-note { font-size: 16px; }
+
+/* Sound level settings: input and value drop-downs share a row, never wider than the card (long Smaart input names) */
+.spl-slot { align-items: flex-start; }
+.spl-slot label.field { flex: 1 1 220px; min-width: 0; }
+.spl-slot select { width: 100%; min-width: 0; max-width: 100%; text-overflow: ellipsis; }

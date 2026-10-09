@@ -169,33 +169,60 @@
   // card itself is added to a dashboard under User dashboards → Edit cards. Read-only toward Smaart.
   function splCard() {
     const s = admin.config.spl || {}, st = admin.spl || {};
-    const metrics = st.metrics || [], max = st.max_slots || 3;
+    const max = st.max_slots || 3, inputs = st.inputs || [], metrics = st.metrics || [];
+    const defaults = st.default_metrics || {};
     const on = h("input", { type: "checkbox", checked: !!s.enabled });
-    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", value: s.host || "", placeholder: "Name or address of the Smaart computer" });
-    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: s.port || "" });
-    const slots = [];
+    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", value: s.host || "", placeholder: "127.0.0.1" });
+    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: s.port || "", placeholder: "26000" });
+    // Smaart's API password: write-only. The saved one is never shown, only whether there is one.
+    const pw = h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: st.password_set ? "Saved" : "None" });
+    const clearPw = h("input", { type: "checkbox" });
+    // What is saved: the current form, or the older metric-only form (a slot with no input means
+    // "the first input Smaart lists").
+    const saved = (s.meters || (s.slots || []).map((k) => ({ source: "", metric: defaults[k] || k }))).slice(0, max);
+    const slotRows = [];
     for (let i = 0; i < max; i++) {
-      const sel = h("select", { class: "touch" }, h("option", { value: "" }, "(none)"), ...metrics.map((m) => h("option", { value: m.key, title: m.hint }, m.name)));
-      sel.value = (s.slots || [])[i] || "";
-      slots.push(sel);
+      const cur = saved[i] || { source: "", metric: "" };
+      const first = inputs.length ? ` (${inputs[0]})` : "";
+      const src = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: input` }, h("option", { value: "" }, `First input in Smaart${first}`),
+        ...inputs.map((n) => h("option", { value: n }, n)));
+      if (cur.source && !inputs.includes(cur.source)) src.append(h("option", { value: cur.source }, `${cur.source} (Smaart does not list this now)`));
+      src.value = cur.source;
+      const met = h("select", { class: "touch spl-sel", "aria-label": `Value ${i + 1}: value` }, h("option", { value: "" }, "(none)"), ...metrics.map((n) => h("option", { value: n }, n)));
+      if (cur.metric && !metrics.includes(cur.metric)) met.append(h("option", { value: cur.metric }, metrics.length ? `${cur.metric} (Smaart does not list this)` : cur.metric));
+      met.value = cur.metric;
+      slotRows.push({ src, met });
     }
     const lines = [];
     if (!st.running) lines.push("Not running. Tick the box and Save to start.");
     else lines.push(st.status === "ok" ? (st.detail || "Receiving values") : `▲ ${st.status}${st.detail ? `: ${st.detail}` : ""}`);
     if (st.running && st.source) lines.push(st.input_name ? `${st.source} · ${st.input_name}` : st.source);
     if (st.version) lines.push(`Version ${st.version}`);
+    const notes = [];
+    if (st.running && !inputs.length && !metrics.length && !admin.emulate) notes.push("Once Stagewatch is connected to Smaart, the lists of inputs and values come from Smaart. Until then you see what is saved.");
+    for (const slot of st.slots || []) {
+      if (slot.metric_listed === false) notes.push(`Smaart does not list "${slot.metric}"${defaults.laeq_15m === slot.metric ? ": pick one of the LAeq figures it does list (Stagewatch cannot tell which period it is)" : ""}, so that value shows as not available.`);
+      if (slot.source_listed === false) notes.push(`Smaart is not listing the input "${slot.source || "first input"}" now, so that value shows as not available.`);
+    }
     return card("Sound level (Smaart)",
-      h("p", { class: "muted" }, "Records up to three sound level values you choose from Smaart, exactly as Smaart reports them, and shows them on dashboards that have the Sound level card (User dashboards → Edit cards). Stagewatch only listens: it never sends anything to Smaart, never starts or stops measuring, and changes no calibration, gain, logging or alarm. It does no sound-level maths: nothing is averaged, smoothed or rounded, and a value Smaart does not give shows as a dash, never zero."),
-      admin.emulate ? h("p", { class: "notice" }, "Emulate mode: these are simulated values, so no Smaart or address is needed. Choosing a Z-weighted or Peak value shows how \"not available\" looks.")
-        : h("p", { class: "notice" }, "Not tested against a real Smaart yet. Stagewatch was written without the Smaart developer kit, so it can connect to Smaart but cannot read a value until that kit has been read. Turn on Smaart's API under Options → Preferences → API first."),
-      h("div", { class: "row" }, field("Record sound level", on),
-        admin.emulate ? null : field("Smaart computer", host), admin.emulate ? null : field("Port", port)),
-      h("div", { class: "row" }, ...slots.map((sel, i) => field(`Value ${i + 1}`, sel))),
+      h("p", { class: "muted" }, "Records up to three sound level values from Smaart, exactly as Smaart reports them, and shows them on dashboards that have the Sound level card (User dashboards → Edit cards). Stagewatch only listens: it never changes anything in Smaart, and a value Smaart does not give shows as a dash, never zero."),
+      h("details", {}, h("summary", { class: "muted" }, "What Stagewatch sends to Smaart"),
+        h("p", { class: "muted" }, "Four short fixed messages and nothing else: \"is a password needed?\", \"which inputs are active?\", the password (only to log in), and \"one update a second, please\". It never starts or stops measuring, never reads Smaart's history, and never changes calibration, gain, logging, alarms or the mix. It does no sound-level maths: nothing is averaged, smoothed or rounded."),
+        h("p", { class: "muted" }, "The password goes to Smaart as plain text on the show network (Smaart's API is not encrypted as far as we know), so use a password that you use nowhere else.")),
+      admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated Smaart with two inputs and the values SPL A Slow, SPL C Slow, LAeq 1 and LAeq 10, so no Smaart or address is needed. It has no LAeq 15, and now and then flags one reading as overload, to show how \"not available\" looks.")
+        : h("p", { class: "notice" }, "Not yet tested against a live Smaart. This was written from the script Smaart's own web page uses, and no real reading has been seen. Turn on Smaart's API under Options → Preferences → API first. The port is normally the one Smaart's SPL web page uses (26000 is the usual example); please confirm it on your Smaart."),
+      h("div", { class: "row" }, h("label", { class: "field inline" }, on, " Record sound level"),
+        admin.emulate ? null : field("Smaart computer (127.0.0.1 is this computer)", host), admin.emulate ? null : field("Port (26000 unless Smaart says otherwise)", port)),
+      admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "Smaart API password: one is saved, type here to replace it" : "Smaart API password (leave empty if Smaart has none)", pw),
+        st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
+      ...slotRows.map((r, i) => h("div", { class: "row spl-slot" }, field(`Value ${i + 1}: input`, r.src), field(`Value ${i + 1}: value`, r.met))),
       h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/spl", {
         enabled: on.checked, host: host.value.trim(), port: port.value ? Number(port.value) : null,
-        slots: slots.map((x) => x.value).filter((x) => x),
+        meters: slotRows.filter((r) => r.met.value).map((r) => ({ source: r.src.value, metric: r.met.value })),
+        password: pw.value, clear_password: clearPw.checked,
       }), "Sound level saved").then(refresh, () => {}) }, "Save")),
-      h("p", { class: "muted hint" }, "Normally A Slow, C Slow and the LAeq 15 min figure. The LAeq is Smaart's own number, and is a 15 minute figure only if Smaart's Leq period is set to 15 minutes: Stagewatch cannot check that. Stagewatch is not a calibrated compliance record. The Smaart log or report is the record that counts."),
+      ...notes.map((n) => h("p", { class: "notice" }, n)),
+      h("p", { class: "muted hint" }, "Normally SPL A Slow, SPL C Slow and an LAeq figure. The LAeq is Smaart's own number; Stagewatch cannot check which period it covers beyond the name Smaart gives it. Stagewatch is not a calibrated compliance record. The Smaart log or report is the record that counts."),
       h("p", { class: "muted" }, lines.join(" · ")));
   }
 

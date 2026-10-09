@@ -789,17 +789,39 @@ at the mix position, and has it been climbing?". The numbers are **Smaart's own*
 across exactly as Smaart sends them: it does not average, smooth, round or correct them, and it does not
 work anything out itself.
 
-> **Not tested with a real Smaart yet.** The connection to Smaart was written without Smaart's developer
-> kit, so for now Stagewatch can connect but cannot read a value. The card works in emulate mode
-> (`--emulate`) with simulated numbers. This is not a calibrated compliance record: the Smaart log or
+> **Written from Smaart's own web client; not yet tested against a live Smaart.** The connection was
+> built from the script Smaart's own SPL web page uses, not from Rational Acoustics' developer kit, and no
+> real reading has been seen. Expect to adjust it once it has met a real Smaart. The card works in emulate
+> mode (`--emulate`) with simulated numbers. This is not a calibrated compliance record: the Smaart log or
 > report is the record that counts.
 
-**Set it up (admin).** Open **Admin → Sound level (Smaart)**. Tick **Record sound level**, check the name or
-address of the Smaart computer and its port (they start as this computer, `127.0.0.1`, and port `26000`; change them if Smaart runs elsewhere), and choose up to three values (normally **A Slow**, **C Slow**
-and **LAeq 15 min**). Save. In Smaart, switch the API on under **Options → Preferences → API**. Then add the
-card to a dashboard under **User dashboards → Edit cards**. The card stays hidden until values are set up.
-Stagewatch only listens: it never sends anything to Smaart, starts or stops measuring, or changes
-calibration, gain, logging, alarms or the mix.
+**Set it up (admin).**
+
+1. In Smaart, switch the API on under **Options → Preferences → API** and start logging, so Smaart has at
+   least one active input. If you set an API password there, you will need it below.
+2. Open **Admin → Sound level (Smaart)**. Tick **Record sound level**, check the name or address of the
+   Smaart computer and its port. They start as this computer, `127.0.0.1`, and port `26000`, which is the
+   port Smaart's SPL web page normally uses; please confirm it on your Smaart. Change them if Smaart runs
+   elsewhere. The address must be on your local network.
+3. If the API has a password, type it in **Smaart API password**. It is stored in the settings file like an
+   ESPHome encryption key, is never shown again (the page only says a password is saved), and is never put
+   in the logs or the support bundle. Leave the box empty to keep the saved one; tick **Remove the saved
+   password** to delete it. Smaart's API is plain, not encrypted (as far as we know), so the password
+   crosses the show network as readable text: use a password you use nowhere else. Saving a password
+   (even the same one) makes Stagewatch try to log in again at once; it never retries a refused one by itself.
+4. Save. Once Stagewatch is connected, the drop-downs fill with Smaart's own lists. For each of up to three
+   values choose the **input** (for example "ASIO MADIface USB : Channel 7 (1)"; the default is the first
+   input Smaart lists) and the **value** (for example "SPL A Slow", "SPL C Slow", "LAeq 10"). Save again.
+5. Add the card to a dashboard under **User dashboards → Edit cards**. It stays hidden until values are set up.
+
+Stagewatch sends Smaart four fixed messages and nothing else: is a password needed, the list of inputs, the
+password (to log in), and a request for one update a second. It never starts or stops measuring, never
+reads Smaart's history, and never changes calibration, gain, logging, alarms or the mix.
+
+**If it will not connect.** The page says why in words: *Smaart's API has a password* (enter it), *Smaart did
+not accept the password* (check it and save again; Stagewatch will not keep trying with a wrong one), *Smaart
+has no active inputs* (start logging in Smaart), or *did not answer like Smaart's API* (this version only
+knows Smaart's `/api/v4/` address; check the API is on and the port is right).
 
 **What the card shows**
 
@@ -816,9 +838,17 @@ calibration, gain, logging, alarms or the mix.
 
 **Good to know**
 
-- **LAeq 15 min** is Smaart's own figure. It is a 15 minute figure only if Smaart's Leq period is set to
-  15 minutes, and Stagewatch cannot check that.
-- When Smaart names the input a meter is tied to, the card shows it as a small line of plain text (emulate mode shows an example; the real connection cannot read it yet), and nothing is shown when it is unknown.
+- The values are named exactly as Smaart names them ("SPL A Slow", "LAeq 10" and so on). Stagewatch cannot
+  check what period an LAeq covers beyond the name Smaart gives it. Older settings that said "LAeq 15 min"
+  now mean Smaart's "LAeq 15"; if your Smaart does not list that, the admin page says so and the value
+  shows as not available until you pick one that Smaart does list.
+- The card shows the input a value is read from as a small line of plain text: once at the top if all the
+  values use the same input, otherwise under each value. Values from different inputs are never combined.
+- A reading Smaart marks as **overload** shows as a dash, never as 0.
+- Input names (for example "ASIO MADIface USB : Channel 7 (1)") appear on the dashboards, which have no
+  password, and are part of the stored value names. If you rename an input in Smaart, Stagewatch starts a
+  new series for it, and the old one stays in the history.
+- An empty **Port** box means 26000.
 - Sound levels are **never** part of the site averages and cannot be given a calibration offset.
 - Dashboards are not password protected, so anyone on the show network can see these numbers. Only add the
   card to screens where that is fine.
