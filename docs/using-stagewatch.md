@@ -458,6 +458,14 @@ checked against a reference. The accuracy figure says how far the sensor can sti
 you calibrate a sensor, type the uncertainty you are left with (a figure that may be smaller or
 larger than the datasheet's), not the datasheet figure.
 
+**Changing an offset or the average tick leaves a marker.** When you save a sensor with a different
+offset, or with **Include in average** switched on or off, Stagewatch adds one system marker to the
+timeline, for example "Calibration changed: Stage Left Temp offset +0.3 °C (was 0 °C)" or "Stage Left
+Temp now left out of the site average (was included)". If both change in one save they share one
+marker. That way the crew can see why a site value stepped. Saving without a real change adds
+nothing, and a new sensor's first settings are not a change. Equipment sensors are never averaged, so
+their tick adds no marker. Like any marker, you can add a note to it or hide it.
+
 How to check it worked: turn the switch on, give two sensors of one kind different figures, and
 watch the **Share** column change to match. Turn the switch off and the shares go back to equal.
 
