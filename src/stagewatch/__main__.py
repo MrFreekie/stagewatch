@@ -19,6 +19,7 @@ from . import __version__, updater_common
 from .core.hub import Hub
 from .core.wallclock import seed_emulate_demo
 from .integrations.esphome import EsphomeIntegration
+from .integrations.globcon import GlobconIntegration, seed_emulate_globcon
 from .integrations.ontime import OntimeIntegration
 from .integrations.osc_out import OscOutIntegration
 from .integrations.smaart import SmaartIntegration, seed_emulate_spl
@@ -88,9 +89,12 @@ async def run(args: argparse.Namespace) -> int:
     hub.add_integration(OscOutIntegration(hub))
     hub.add_integration(OntimeIntegration(hub, emulate=args.emulate))  # runs only while a dashboard has the Wall Clock card
     hub.add_integration(SmaartIntegration(hub, emulate=args.emulate))  # runs only when switched on in the admin page
+    hub.add_integration(GlobconIntegration(hub, emulate=args.emulate))  # runs only while a dashboard has the GLOBCON levels card
     if args.emulate and seed_emulate_demo(hub.config):  # a fresh emulate folder shows every clock style
         hub.save_config()
     if args.emulate and seed_emulate_spl(hub.config):   # ...and the Sound level card with simulated values
+        hub.save_config()
+    if args.emulate and seed_emulate_globcon(hub.config):   # ...and the GLOBCON levels card on the wall
         hub.save_config()
     app = create_app(hub)
     app.state.port = args.port  # for the "Connect a tablet" addresses

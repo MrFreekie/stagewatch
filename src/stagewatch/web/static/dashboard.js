@@ -813,8 +813,42 @@
     setClass($("ontime-rundown-card"), `card ${v.cls}${v.level ? ` rd-lvl-${v.level}` : ""}`);
     rdc.timer = setTimeout(tickOntimeRundown, 1000);
   }
-  // --------------------------------------------------------- equipment
-  // Readings from sensors whose role is Equipment (an amp rack, a power supply): never part of
+  // ------------------------------------------------------ globcon levels
+  // Live level meters from DirectOut GLOBCON for this dashboard's controller and 4 or 8 strips (a
+  // "globcon_meters" message up to four times a second). What to show is decided in SW.gc.view
+  // (globcon.js). A one-second tick keeps the frozen check and its age honest between messages. The
+  // levels are shown as GLOBCON reports them; nothing here sounds, raises an alarm or sends anything
+  // to GLOBCON.
+  const gcc = { timer: null, ui: null };
+  function stopGlobcon() { if (gcc.timer) { clearTimeout(gcc.timer); gcc.timer = null; } }
+  const gcOpts = () => (state.dash && state.dash.globcon) || { controller: 1, strips: 8 };
+
+  function renderGlobcon() {
+    const card = $("globcon-card");
+    if (!has("globcon_meters") || !state.globcon) {
+      stopGlobcon();
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    if (!gcc.ui) {
+      gcc.ui = SW.gc.createUi();
+      card.replaceChildren(h("h2", {}, gcc.ui.head, h("span", { class: "grow" }), h("span", { class: "gc-sub muted" }, "as reported by GLOBCON")), ...gcc.ui.nodes);
+    }
+    tickGlobcon();
+  }
+
+  function tickGlobcon() {
+    stopGlobcon();
+    const ui = gcc.ui;
+    if (!ui || !state.globcon || !has("globcon_meters")) return;
+    const v = SW.gc.view(state.globcon, gcOpts(), serverNow());
+    ui.update(v);
+    setClass($("globcon-card"), `card ${v.cls}`);
+    gcc.timer = setTimeout(tickGlobcon, 1000);
+  }
+
+  // --------------------------------------------------------- equipment  // Readings from sensors whose role is Equipment (an amp rack, a power supply): never part of
   // any site average. Grouped by node; each reading shows its value with the unit, goes dim with
   // its age when stale, and carries the calibration asterisk. Text is set with textContent only.
   // The card hides itself while there is no equipment sensor, and updates in place.
@@ -1055,6 +1089,8 @@
     barometer: { el: cardEl("barometer"), render: renderBarometer, empty: () => isWall() && !!state.site.baro && state.site.baro.state === "no_sensor" },
     // Hidden while no sensor has the Equipment role (renderEquipment keeps it in step).
     equipment: { el: cardEl("equipment"), render: renderEquipment, empty: () => equipmentGroups().length === 0 },
+    // Live GLOBCON levels. Hidden until the first message arrives (the server sends one with the snapshot).
+    globcon_meters: { el: cardEl("globcon_meters"), wide: true, render: renderGlobcon, empty: () => !state.globcon },
     // Hidden while no sound level values are set up (renderSpl keeps it in step).
     spl_live: { el: cardEl("spl_live"), render: renderSpl, empty: () => SW.spl.entities(state.entities).length === 0 },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
@@ -1116,6 +1152,7 @@
     state.wallClock = msg.wall_clock || null;    // null until a dashboard has the card and the source is running
     state.ontimeTimer = msg.ontime_timer || null; // likewise
     state.ontimeRundown = msg.ontime_rundown || null; // likewise
+    state.globcon = msg.globcon_meters || null;       // likewise
     state.isAdmin = msg.is_admin;
     state.dash = msg.dashboard;
     state.now = msg.now;
@@ -1140,6 +1177,7 @@
     if (!has("wall_clock")) stopWallClockTimer();
     if (!has("ontime_timer")) stopOntimeTimer();
     if (!has("ontime_rundown")) stopOntimeRundown();
+    if (!has("globcon_meters")) stopGlobcon();
     syncSchedule();
   }
 
@@ -1206,6 +1244,7 @@
         break;
       case "wall_clock": state.wallClock = msg; if (has("wall_clock")) renderWallClock(); break;
       case "ontime_timer": state.ontimeTimer = msg; if (has("ontime_timer")) renderOntimeTimer(); break;
+      case "globcon_meters": state.globcon = msg; if (has("globcon_meters")) renderGlobcon(); break;
       case "ontime_rundown": state.ontimeRundown = msg; if (has("ontime_rundown")) renderOntimeRundown(); break;
       case "alarms": setAlarms(msg.alarms); state.sounding = msg.sounding; renderAlarms(); break;
       case "reload": location.reload(); break;

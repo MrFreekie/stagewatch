@@ -756,6 +756,10 @@ class Hub:
             log.exception("Schedule snapshot failed")
             return {"show_id": self.recorder.show_id, "day": "", "revision": 0}
 
+    def _globcon_snapshot(self) -> dict | None:
+        integ = self.integrations.get("globcon")
+        return integ.snapshot() if integ is not None else None   # None while no dashboard has the card
+
     def snapshot(self) -> dict:
         now = time.time()
         stale_after = self.config.site.stale_after_s
@@ -770,6 +774,7 @@ class Hub:
             "wall_clock": self.wall_clock.snapshot(),  # None while no dashboard has the card
             "ontime_timer": self.ontime_timer.snapshot(),  # likewise
             "ontime_rundown": self.ontime_rundown.snapshot(),  # likewise
+            "globcon_meters": self._globcon_snapshot(),  # likewise
             "devices": [d.to_dict() for d in self.devices.values()],
             "entities": [self.entity_dict(e, now, stale_after) for e in self.entities.values()],
             "markers": [m.to_dict() for m in self.recorder.markers()],

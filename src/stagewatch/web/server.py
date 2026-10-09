@@ -33,8 +33,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, OntimeTimerConfig, OscOutConfig,
-    SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_password_error,
+    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GlobconConfig, OntimeTimerConfig, OscOutConfig,
+    SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_host_error, spl_password_error,
 )
 from ..core.calibration import set_calibration
 from ..core.hub import Hub
@@ -321,6 +321,19 @@ class SplBody(BaseModel):
     chart_max_db: StrictInt | StrictFloat | None = None
 
 
+class GlobconBody(BaseModel):
+    """PUT /api/admin/globcon: where GLOBCON is. Strict: a whole-number port, no unknown keys.
+    ``password`` is GLOBCON's controller password and is write-only: empty leaves the saved one alone,
+    ``clear_password`` removes it."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    host: str = Field(max_length=253)
+    port: int = Field(9091, ge=1, le=65535, strict=True)
+    password: str = Field("", max_length=PASSWORD_MAX)
+    clear_password: StrictBool = False
+
+
 class BaroDemoBody(BaseModel):
     """POST /api/admin/barometer/demo (emulate only)."""
 
@@ -381,6 +394,19 @@ class DashboardBody(Dashboard):
         problem = cards_mod.strict_card_sizes_error(v)
         if problem:
             raise ValueError(problem)
+        return v
+
+    @field_validator("globcon", mode="before")
+    @classmethod
+    def _globcon(cls, v):
+        """Overrides the lenient loader: the controller must be a whole number 1 to 16 and the strips 4 or 8."""
+        if not isinstance(v, dict) or set(v) - {"controller", "strips"}:
+            raise ValueError("GLOBCON card options are not valid")
+        c, s = v.get("controller", 1), v.get("strips", 8)
+        if type(c) is not int or not 1 <= c <= 16:
+            raise ValueError("The GLOBCON controller must be a whole number from 1 to 16")
+        if type(s) is not int or s not in (4, 8):
+            raise ValueError("The GLOBCON card shows 4 or 8 strips")
         return v
 
     @field_validator("cards", mode="before")
@@ -713,6 +739,8 @@ class LiveFeed:
             self._send_all({"type": "ontime_timer", **payload})
         elif topic == "ontime_rundown" and isinstance(payload, dict):
             self._send_all({"type": "ontime_rundown", **payload})
+        elif topic == "globcon_meters" and isinstance(payload, dict):
+            self._send_all({"type": "globcon_meters", **payload})
         elif topic == "schedule" and isinstance(payload, dict):
             # Small on purpose: clients fetch GET /api/schedule?stage= for the list itself.
             self._send_all({"type": "schedule", "show_id": payload.get("show_id"),
@@ -962,10 +990,16 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         return {"max_slots": spl_mod.MAX_SLOTS, "password_set": bool(hub.config.spl.password),
                 "default_metrics": dict(spl_mod.LEGACY_SMAART_NAMES), "inputs": [], "metrics": [], **state}
 
+    def globcon_admin() -> dict:
+        integ = hub.integrations.get("globcon")
+        state = integ.admin_status() if integ is not None else {"running": False, "status": "off"}
+        return {"password_set": bool(hub.config.globcon.password), **state}
+
     @app.get("/api/admin/state", dependencies=[Depends(require_admin)])
     async def admin_state():
         cfg = hub.config.model_dump(mode="json")
         cfg.pop("admin", None)
+        cfg.get("globcon", {}).pop("password", None)   # GLOBCON's controller password: only "set / not set" (globcon.password_set)
         for dev in cfg.get("esphome_devices", []):
             dev["noise_psk"] = "set" if dev.get("noise_psk") else ""
         cfg.get("spl", {}).pop("password", None)   # Smaart's API password: only "set / not set" (spl.password_set)
@@ -989,6 +1023,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "wall_clock": hub.wall_clock.admin_status(),
             "ontime_timer": hub.ontime_timer.admin_status(),
             "ontime_rundown": hub.ontime_rundown.admin_status(),
+            # GLOBCON levels card: is it in use and what is running (no addresses, no password).
+            "globcon": globcon_admin(),
             # Sound level card: the values that can be chosen, and what is running (no addresses).
             "spl": spl_admin(),
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
@@ -1183,7 +1219,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             data = d.model_dump()
             # A save that doesn't send cards/stage/clock_style/card_sizes (today's admin page) keeps what the
             # dashboard has; only a new dashboard gets its layout's default cards.
-            for key in ("cards", "stage", "clock_style", "card_sizes"):
+            for key in ("cards", "stage", "clock_style", "card_sizes", "globcon"):
                 if key not in d.model_fields_set and existing is not None:
                     data[key] = getattr(existing, key)
             if "cards" not in d.model_fields_set and existing is None:
@@ -1312,6 +1348,28 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         log.info("Sound level settings saved (%s, %d value%s, password %s)", "on" if new.enabled else "off", n,
                  "" if n == 1 else "s", "set" if new.password else "not set")
         return {"ok": True, "changed": old != new, "password_set": bool(new.password)}
+
+    # GLOBCON levels card: where GLOBCON is. Read-only toward GLOBCON. Saving goes through the config
+    # topic like every save; the integration restarts its connection when the address or password changed.
+    @app.put("/api/admin/globcon", dependencies=admin_deps)
+    async def put_globcon(body: GlobconBody):
+        old = hub.config.globcon
+        host = body.host.strip()
+        if not host or spl_host_error(host):
+            raise HTTPException(422, "The address must be a host name or an IP address on this computer or the local network")
+        password = old.password
+        if body.clear_password:
+            if body.password:
+                raise HTTPException(422, "Either enter a new password or clear it, not both")
+            password = ""
+        elif body.password:
+            if spl_password_error(body.password):
+                raise HTTPException(422, "The password must be 1 to 128 characters, with no control characters")
+            password = body.password
+        hub.config.globcon = GlobconConfig(host=host, port=body.port, password=password)
+        hub.save_config()
+        log.info("GLOBCON settings saved (password %s)", "set" if password else "not set")
+        return {"ok": True, "changed": old != hub.config.globcon, "password_set": bool(password)}
 
     @app.post("/api/admin/spl/refresh", dependencies=admin_deps)
     async def refresh_spl():

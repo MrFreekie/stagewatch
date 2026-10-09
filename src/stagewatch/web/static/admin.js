@@ -312,6 +312,36 @@
       h("p", { class: "muted" }, lines.join(" · ")));
   }
 
+  // ------------------------------------------------------------ globcon
+  // Where DirectOut GLOBCON is, for the GLOBCON levels card. Read-only: Stagewatch only listens and
+  // asks for names and levels. The controller and strips are chosen per dashboard (Edit cards).
+  function globconCard() {
+    const g = admin.config.globcon || {}, st = admin.globcon || {};
+    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", spellcheck: "false", value: g.host || "", placeholder: "127.0.0.1" });
+    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: g.port || 9091, placeholder: "9091" });
+    const pw = h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: st.password_set ? "Saved" : "None" });
+    const clearPw = h("input", { type: "checkbox" });
+    const lines = [];
+    if (!st.running) lines.push(st.card_assigned ? "Starting…" : "Not running. It starts when a dashboard has the GLOBCON levels card (User dashboards → Edit cards).");
+    else {
+      lines.push(st.status === "ok" ? (st.detail || "Receiving levels") : `▲ ${st.status}${st.detail ? `: ${st.detail}` : ""}`);
+      if (st.controllers && st.controllers.length) lines.push(`Controller${st.controllers.length === 1 ? "" : "s"} ${st.controllers.join(", ")} in use`);
+    }
+    return card("DirectOut GLOBCON",
+      h("p", { class: "muted" }, "Shows live level meters from GLOBCON on dashboards that have the GLOBCON levels card. Stagewatch only listens: it never moves a fader, mutes, solos, changes a layer or runs a function in GLOBCON. Levels are shown exactly as GLOBCON reports them, nothing is recorded, and if GLOBCON goes quiet the card freezes on the last levels and says how old they are."),
+      h("details", {}, h("summary", { class: "muted" }, "What Stagewatch sends to GLOBCON"),
+        h("p", { class: "muted" }, "Only \"are you there?\", \"tell me this\" and \"tell me when it changes\" (and \"stop telling me\"), for controller names, strip labels, the layer and the meter levels. If you save a password, it is sent to log in, and only when GLOBCON asks for one. It is sent as plain text on the show network, so use a password you use nowhere else.")),
+      admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated GLOBCON with 16 controllers, so no GLOBCON or address is needed. It drops out for a few seconds every minute and a half, to show how a frozen card looks.")
+        : h("p", { class: "notice" }, "Not yet tested on a real GLOBCON. This was written from GLOBCON's own web page and checked against one recording of it. Please check the levels against GLOBCON's own screen."),
+      admin.emulate ? null : h("div", { class: "row" }, field("GLOBCON computer (127.0.0.1 is this computer)", host), field("Port (9091 unless GLOBCON says otherwise)", port)),
+      admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "GLOBCON password: one is saved, type here to replace it" : "GLOBCON password (leave empty if GLOBCON has none)", pw),
+        st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
+      admin.emulate ? null : h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/globcon", {
+        host: host.value.trim(), port: Number(port.value) || 9091, password: pw.value, clear_password: clearPw.checked,
+      }), "GLOBCON saved").then(refresh, () => {}) }, "Save")),
+      h("p", { class: "muted" }, lines.join(" · ")));
+  }
+
   // ------------------------------------------------------------ alarm notices
   // How long advisory notices stay on dashboards. Only the dashboard list changes: the state behind
   // a notice (a node still Missing) stays visible in the sensor list and here.
@@ -716,6 +746,7 @@
     equipment: ["Equipment", "Readings from Equipment sensors (amp racks, power supplies), by node. Never part of the site average. Stays hidden until a sensor has the Equipment role."],
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
+    globcon_meters: ["GLOBCON levels", "Live level meters for 4 or 8 strips of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Pick the controller and strips here; set the GLOBCON address in the GLOBCON settings."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
   const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
@@ -749,17 +780,30 @@
         const lookField = it.id === "wall_clock" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Wall Clock look"), clockStyle) : null;
         const sizeSel = halfOk.indexOf(it.id) < 0 ? null : h("select", { class: "touch", "aria-label": `${info[0]} size`, onchange: () => { sizes[it.id] = sizeSel.value; onChange(); } }, h("option", { value: "full" }, "Full"), h("option", { value: "half" }, "Half"));
         if (sizeSel) sizeSel.value = sizes[it.id] === "half" ? "half" : "full";
+        const gcField = it.id !== "globcon_meters" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
+          h("label", { class: "field" }, h("span", {}, "GLOBCON controller"), gcCtrl),
+          h("label", { class: "field" }, h("span", {}, "Strips shown"), gcStrips));
+        if (gcField) box.addEventListener("change", () => { gcField.style.display = box.checked ? "" : "none"; });
         const sizeField = sizeSel ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", { title: "Phones always use the full width" }, "Card width"), sizeSel) : null;
         if (sizeField) box.addEventListener("change", () => { sizeField.style.display = box.checked ? "" : "none"; });
         return h("li", {},
           h("label", { class: "card-pick" }, box, h("span", {}, h("strong", {}, info[0]), info[1] ? h("span", { class: "muted" }, info[1]) : null)),
           lookField,
+          gcField,
           sizeField,
           h("button", { type: "button", class: "card-up", "aria-label": `Move ${info[0]} up`, title: "Move up", disabled: i === 0, onclick: () => move(i, -1) }, "▲"),
           h("button", { type: "button", class: "card-down", "aria-label": `Move ${info[0]} down`, title: "Move down", disabled: i === items.length - 1, onclick: () => move(i, 1) }, "▼"));
       }));
       onChange();
     };
+    // GLOBCON levels card: which controller (1 to 16) and how many strips (4 or 8) this screen shows.
+    const gcSaved = d.globcon || {};
+    const gcCtrl = h("select", { class: "touch", "aria-label": "GLOBCON controller" }, Array.from({ length: 16 }, (_, i) => h("option", { value: String(i + 1) }, `Controller ${i + 1}`)));
+    gcCtrl.value = String(gcSaved.controller >= 1 && gcSaved.controller <= 16 ? gcSaved.controller : 1);
+    const gcStrips = h("select", { class: "touch", "aria-label": "GLOBCON strips shown" }, h("option", { value: "4" }, "4 strips"), h("option", { value: "8" }, "8 strips"));
+    gcStrips.value = gcSaved.strips === 4 ? "4" : "8";
+    gcCtrl.addEventListener("change", onChange);
+    gcStrips.addEventListener("change", onChange);
     const stage = h("input", { class: "touch", value: d.stage || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off" });
     const clockStyle = h("select", { class: "touch" }, h("option", { value: "digits" }, "Plain digits"), h("option", { value: "ring" }, "LED ring"), h("option", { value: "segments" }, "7-segment digits"));
     clockStyle.value = ["ring", "segments"].indexOf(d.clock_style) >= 0 ? d.clock_style : "digits";
@@ -775,7 +819,7 @@
       h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black. Half-size cards sit side by side with another half-size card on tablets and wall screens. On a phone every card is full width."));
     return {
       el,
-      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)) }),
+      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: { controller: Number(gcCtrl.value), strips: Number(gcStrips.value) } }),
       setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
       count: () => items.filter((it) => it.on).length,
     };
@@ -1437,6 +1481,7 @@
       ontimeTimerCard(),
       barometerCard(),
       splCard(),
+      globconCard(),
       alarmLogCard(),
       supportCard(),
       catalogCard());
