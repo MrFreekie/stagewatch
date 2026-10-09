@@ -115,23 +115,88 @@ def clean_level(value: object) -> float | None:
 @dataclass(frozen=True)
 class SplReading:
     """One update from a source: the time it was received and the value of each metric the source
-    could give. A metric that is not in ``values`` (or is None) is not available."""
+    could give, keyed by the software's own metric name. A metric that is not in ``values`` (or is
+    None) is not available. ``source`` is the input the values belong to, as the software names it
+    ("" = the source does not say, so the values apply to every slot)."""
     ts: float
     values: dict[str, float | None] = field(default_factory=dict)
     version: str = ""   # the software's version as it reported it, cleaned (see clean_version)
+    source: str = ""
 
 
 INPUT_NAME_MAX = 80
+METRIC_NAME_MAX = 64
+
+
+def _clean_text(value: object, cap: int) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = "".join(" " if ch.isspace() else ch for ch in value if ch.isspace() or unicodedata.category(ch)[0] != "C")
+    return " ".join(text.split())[:cap].strip()
 
 
 def clean_input_name(value: object) -> str:
     """The name of the input a meter is tied to, as the software wrote it, made safe to show: text
     only, control characters removed, spaces tidied, at most INPUT_NAME_MAX characters, "" if unknown.
     Markup is not stripped here because it is only ever shown as plain text (textContent)."""
-    if not isinstance(value, str):
-        return ""
-    text = "".join(" " if ch.isspace() else ch for ch in value if ch.isspace() or unicodedata.category(ch)[0] != "C")
-    return " ".join(text.split())[:INPUT_NAME_MAX].strip()
+    return _clean_text(value, INPUT_NAME_MAX)
+
+
+def clean_metric_name(value: object) -> str:
+    """A metric name as the software wrote it ("SPL A Slow"), made safe in the same way as an input
+    name, at most METRIC_NAME_MAX characters. The cleaned text is what is stored and compared, on both
+    sides, so it always matches itself."""
+    return _clean_text(value, METRIC_NAME_MAX)
+
+
+# ------------------------------------------------------------------ the three slots
+# A slot is (input source, metric): both are Smaart's own text, chosen from Smaart's lists. The source
+# "" means "the first input Smaart lists". Older settings held only a Stagewatch metric key per slot;
+# these are the three that have a known Smaart name (the wording is from Smaart's own web page; the
+# "LAeq 15" one is the owner's expectation and is checked against Smaart's metric list at run time).
+# The Smaart wording of everything else lives in integrations/smaart/mapping.py.
+LEGACY_SMAART_NAMES: dict[str, str] = {"a_slow": "SPL A Slow", "c_slow": "SPL C Slow", "laeq_15m": "LAeq 15"}
+_LEGACY_BY_NAME = {v: k for k, v in LEGACY_SMAART_NAMES.items()}
+
+
+def slots_from_legacy(keys: object) -> list[tuple[str, str]]:
+    """Older metric-only slots as (source, metric) pairs, source "" (the first input). A key with no
+    known Smaart name keeps its own text as the metric: Smaart never lists it, so it shows as "not
+    available" rather than being guessed at."""
+    return [("", LEGACY_SMAART_NAMES.get(k, k)) for k in clean_slots(keys)]
+
+
+def legacy_keys_for(pairs: list[tuple[str, str]]) -> list[str]:
+    """The older-style key list for slots on the first input (kept in the file so an older build
+    still shows what it can)."""
+    return [_LEGACY_BY_NAME[m] for s, m in pairs if s == "" and m in _LEGACY_BY_NAME]
+
+
+def slot_ids(pairs: list[tuple[str, str]]) -> list[str]:
+    """Stable, unique entity ids for the slots. The three older defaults on the first input keep
+    their old ids (spl.a_slow ...) so their history carries on; anything else is spl.<metric> with
+    the source appended when one is chosen. Two slots never share an id."""
+    from .model import slugify
+    out: list[str] = []
+    for source, metric in pairs:
+        key = _LEGACY_BY_NAME.get(metric) or slugify(metric)
+        eid = ENTITY_PREFIX + key + (("." + slugify(source)[:40]) if source else "")
+        base, n = eid, 2
+        while eid in out:
+            eid, n = f"{base}_{n}", n + 1
+        out.append(eid)
+    return out
+
+
+def slot_labels(n: int, metric: str, source: str) -> dict[str, str]:
+    """Public labels for slot ``n`` (1 to 3). ``smaart_name`` is Smaart's own text for the metric, which
+    the card shows as it is; the weighting and so on are added only for the metrics Stagewatch knows."""
+    key = _LEGACY_BY_NAME.get(metric)
+    out = dict(METRIC_BY_KEY[key].labels(n)) if key else {"slot": str(n)}
+    out["smaart_name"] = metric
+    if source:
+        out["source"] = source
+    return out
 
 
 def clean_version(value: object) -> str:

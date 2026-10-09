@@ -102,7 +102,7 @@ default**. Stagewatch never mutes or changes the PA or mix on its own.
 ## Measurement, SPL, noise
 | Integration | Brings | Protocol | Docs | Pri | Dir |
 |---|---|---|---|---|---|
-| Smaart / Smaart SPL | LAeq / LCeq, SPL alarms | WebSocket JSON API (SDK free on request, message format not public) | 🔒 | ★★★ | ⬅ | **sound level card + emulated source built (experimental)**; real client unverified until the SDK is read |
+| Smaart / Smaart SPL | LAeq / LCeq, SPL alarms | WebSocket JSON API (SDK free on request); message shapes read from Smaart's own SPL web page script | 🔒 | ★★★ | ⬅ | **sound level card + real client built (experimental)**, written from Smaart's own web client and **not yet tested against a live Smaart**; input + value per slot, optional API password, four fixed outbound messages; emulated source behaves like the protocol; the SDK request still stands |
 | NTi XL2 | SPL logging | USB remote commands | ✅ | ★★ | ⬅ |
 | 10EaZy, Svantek, Cirrus off-site monitors | Off-site noise | Vendor / cloud | ❓ | ★★ | ⬅ |
 

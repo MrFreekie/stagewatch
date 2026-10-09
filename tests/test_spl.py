@@ -1,59 +1,41 @@
-"""Sound level (SPL) logging, phase 2: the sound-level kind, up to three chosen values on one
-timeline, the Sound level card's data, the emulated source, and the read-only Smaart client.
+"""Sound level (SPL): the sound-level kind, up to three chosen values (input + metric) on one
+timeline, the Sound level card's data, the emulated source, settings and the admin API. The Smaart
+client and its message parsing are in test_smaart_client.py.
 
 Numbers are recorded exactly as received: no averaging, smoothing, rounding or calibration, a missing
-value is "not available" (never zero), and offline is a gap. The Smaart wire format is NOT known (the
-SDK is not public), so every Smaart-shaped message below is SYNTHETIC and read through a synthetic
-mapping table defined here; the shipped table is empty and one test holds it to that.
+value is "not available" (never zero), and offline is a gap. The Smaart message shapes were read from
+Smaart's own web page script and are NOT tested against a live Smaart, so every Smaart-shaped message
+in the tests is SYNTHETIC (made up to match those notes).
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import math
 import shutil
 import subprocess
-from http import HTTPStatus
 from pathlib import Path
 
 import pytest
 import yaml
 from fastapi.testclient import TestClient
-from websockets.asyncio.server import serve
 
 from stagewatch.core import cards, spl
-from stagewatch.core.config import Config, ConfigStore, EntitySettings, SplConfig, migrate, salvage
+from stagewatch.core.config import Config, ConfigStore, EntitySettings, SplConfig, SplSlot, migrate, salvage
 from stagewatch.core.hub import Hub
 from stagewatch.core.model import ENV_KINDS, UNITS, Device, Entity, Kind, Status
 from stagewatch.core.spl import SplReading
 from stagewatch.integrations.smaart import MANIFEST, SmaartIntegration, seed_emulate_spl
-from stagewatch.integrations.smaart import mapping
-from stagewatch.integrations.smaart.client import TEXT, SmaartSource, ws_url
-from stagewatch.integrations.smaart.emulate import OFFERED, EmulatedSplSource
-from stagewatch.integrations.smaart.mapping import Mapping, parse_frame
+from stagewatch.integrations.smaart.client import SmaartSource
+from stagewatch.integrations.smaart.emulate import INPUT_LABELS, EmulatedSplSource
 from stagewatch.integrations.smaart.source import SplSource
 from stagewatch.version import CONFIG_SCHEMA_VERSION, DB_SCHEMA_VERSION
 from stagewatch.web.server import create_app
-from test_ontime import free_port, until
+from test_ontime import until
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "src" / "stagewatch" / "web" / "static"
 PIN = "4711"
-
-# ------------------------------------------------------------------ SYNTHETIC wire format
-# Invented for these tests only. NOT Smaart's real format (unknown until the SDK is read).
-SYNTH = Mapping(version=("app", "version"), metrics={
-    "a_slow": ("levels", "a_slow"), "c_slow": ("levels", "c_slow"), "laeq_15m": ("levels", "leq", 0),
-})
-SYNTH_V8 = Mapping(version=("app", "version"), metrics={"a_slow": ("old", "a"), "c_slow": ("old", "c")})
-TABLE = {"9": SYNTH, "8": SYNTH_V8}
-DEFAULT_T = Mapping(version=("app", "version"), metrics={})
-
-
-def frame(version="9.1", **levels) -> str:
-    return json.dumps({"app": {"version": version}, "levels": levels})
-
 
 # ------------------------------------------------------------------------ core vocabulary
 @pytest.mark.parametrize("raw,expected", [
@@ -97,65 +79,6 @@ def test_version_text_is_short_plain_ascii():
     assert spl.clean_version("9.1.2") == "9.1.2"
     for bad in (None, 9, "", "x" * 25, "9.\n1", "<script>", "café"):
         assert spl.clean_version(bad) == ""
-
-
-# --------------------------------------------------------------------------- parsing
-def test_synthetic_frame_values_come_out_exactly_as_sent():
-    p = parse_frame(json.dumps({"app": {"version": "9.1"}, "levels": {"a_slow": 94.3, "c_slow": 99.1, "leq": [96.05]}}),
-                    TABLE, DEFAULT_T)
-    assert p.version == "9.1"
-    assert p.values == {"a_slow": 94.3, "c_slow": 99.1, "laeq_15m": 96.05}
-
-
-def test_each_version_uses_its_own_table_and_unknown_versions_use_the_default():
-    old = json.dumps({"app": {"version": "8.4"}, "old": {"a": 88.8, "c": 91.0}, "levels": {"a_slow": 1.0}})
-    assert parse_frame(old, TABLE, DEFAULT_T).values == {"a_slow": 88.8, "c_slow": 91.0}
-    assert parse_frame(frame("7.0", a_slow=80.0), TABLE, DEFAULT_T) is None   # no table for 7: nothing mapped
-
-
-def test_a_missing_value_is_absent_and_a_bad_one_is_none_never_zero():
-    p = parse_frame(frame(a_slow=94.3), TABLE, DEFAULT_T)
-    assert p.values == {"a_slow": 94.3} and "c_slow" not in p.values
-    p = parse_frame(frame(a_slow="94.3", c_slow=None, leq=None), TABLE, DEFAULT_T)
-    assert p is not None and p.values == {"a_slow": None, "c_slow": None}
-    assert all(v is None for v in p.values.values())
-
-
-HOSTILE = [
-    "not json", "", b"\xff\xfe", "[]", "7", "null", '"text"', "{}", '{"levels": 5}',
-    '{"levels": {"a_slow": NaN}}', '{"levels": {"a_slow": Infinity}}', '{"levels": {"a_slow": -Infinity}}',
-    '{"levels": {"a_slow": 1e999}}', '{"levels": {"a_slow": true}}', '{"levels": {"a_slow": [94]}}',
-    "[" * 5000 + "]" * 5000, '{"a":' * 3000 + "1" + "}" * 3000,
-]
-
-
-@pytest.mark.parametrize("raw", HOSTILE)
-def test_hostile_json_never_raises_and_never_makes_a_number(raw):
-    got = parse_frame(raw, TABLE, DEFAULT_T)
-    assert got is None or all(v is None for v in got.values.values())
-
-
-def test_oversize_message_is_dropped_before_it_is_decoded():
-    big = json.dumps({"levels": {"a_slow": 94.3}, "pad": "x" * mapping.MAX_BYTES})
-    assert parse_frame(big, TABLE, DEFAULT_T) is None
-
-
-def test_path_longer_than_the_limit_or_through_the_wrong_type_finds_nothing():
-    deep = Mapping(version=None, metrics={"a_slow": tuple(["k"] * (mapping.MAX_DEPTH + 1))})
-    assert mapping.dig({"k": {"k": 1}}, deep.metrics["a_slow"]) is mapping._MISSING
-    assert mapping.dig({"levels": [1, 2]}, ("levels", 5)) is mapping._MISSING
-    assert mapping.dig({"levels": [1, 2]}, ("levels", "x")) is mapping._MISSING
-    assert mapping.dig({"levels": 3}, ("levels", 0)) is mapping._MISSING
-    assert mapping.dig({"a": 1}, ("a",)) == 1
-
-
-def test_shipped_mapping_table_is_empty_and_marked_unverified():
-    """No Smaart field name is known, so none may be invented: every metric maps to nothing."""
-    assert mapping.VERIFIED is False
-    assert mapping.BY_MAJOR == {}
-    assert mapping.DEFAULT.version is None
-    assert set(mapping.DEFAULT.metrics) == set(spl.METRIC_BY_KEY) and all(p is None for p in mapping.DEFAULT.metrics.values())
-    assert parse_frame(frame(a_slow=94.3)) is None   # with the real (empty) table nothing is ever read
 
 
 # --------------------------------------------------------------------- hub / recorder
@@ -304,7 +227,7 @@ async def test_apply_registers_one_entity_per_chosen_value_in_slot_order_and_a_s
 async def test_readings_are_stored_exactly_and_a_missing_value_is_not_available(hub):
     integ, src, clock = await make(hub)
     src._on_link(True, "Connected")
-    src._on_reading(SplReading(1000.0, {"a_slow": 94.3, "c_slow": 99.15, "laeq_15m": None}, "9.1"))
+    src._on_reading(SplReading(1000.0, {"SPL A Slow": 94.3, "SPL C Slow": 99.15, "LAeq 15": None}, "9.1"))
     assert values(hub) == {"spl.a_slow": 94.3, "spl.c_slow": 99.15, "spl.laeq_15m": None}
     assert hub.devices["spl"].status == Status.OK and "2 of 3" in hub.devices["spl"].status_detail
     src._on_reading(SplReading(1001.0, {}))
@@ -316,7 +239,7 @@ async def test_readings_are_stored_exactly_and_a_missing_value_is_not_available(
 async def test_a_value_the_source_does_not_offer_at_all_stays_not_available(hub):
     integ, src, _ = await make(hub, slots=("z_slow", "a_slow"))
     src._on_link(True, "x")
-    src._on_reading(SplReading(1000.0, {"a_slow": 90.0}))
+    src._on_reading(SplReading(1000.0, {"SPL A Slow": 90.0}))
     assert values(hub) == {"spl.z_slow": None, "spl.a_slow": 90.0}
     await integ.stop()
 
@@ -324,7 +247,7 @@ async def test_a_value_the_source_does_not_offer_at_all_stays_not_available(hub)
 async def test_link_loss_is_a_gap_then_a_marker_when_readings_come_back(hub):
     integ, src, clock = await make(hub)
     src._on_link(True, "Connected")
-    src._on_reading(SplReading(1000.0, {"a_slow": 90.0, "c_slow": 95.0, "laeq_15m": 92.0}))
+    src._on_reading(SplReading(1000.0, {"SPL A Slow": 90.0, "SPL C Slow": 95.0, "LAeq 15": 92.0}))
     clock.t = 1001.0
     src._on_link(False, "Can't reach Smaart")
     assert hub.devices["spl"].status == Status.MISSING
@@ -333,7 +256,7 @@ async def test_link_loss_is_a_gap_then_a_marker_when_readings_come_back(hub):
     assert hub.recorder.markers() == []    # nothing is marked while it is down, and nothing is back-filled
     clock.t = 1131.0
     src._on_link(True, "Connected")
-    src._on_reading(SplReading(1131.0, {"a_slow": 91.0, "c_slow": 96.0, "laeq_15m": 93.0}))
+    src._on_reading(SplReading(1131.0, {"SPL A Slow": 91.0, "SPL C Slow": 96.0, "LAeq 15": 93.0}))
     assert hub.devices["spl"].status == Status.OK and not hub.alarms.to_list()
     marks = [m for m in hub.recorder.markers() if m.source == "spl"]
     assert len(marks) == 1 and "resumed after a gap" in marks[0].label and "2 min" in marks[0].label
@@ -348,10 +271,10 @@ async def test_a_flapping_link_adds_at_most_one_marker_a_minute(hub):
     integ, src, clock = await make(hub, slots=("a_slow",))
     for n in range(3):
         src._on_link(True, "up")
-        src._on_reading(SplReading(1000.0 + n * 10, {"a_slow": 90.0}))
+        src._on_reading(SplReading(1000.0 + n * 10, {"SPL A Slow": 90.0}))
         src._on_link(False, "down")
     src._on_link(True, "up")
-    src._on_reading(SplReading(1040.0, {"a_slow": 90.0}))
+    src._on_reading(SplReading(1040.0, {"SPL A Slow": 90.0}))
     assert len([m for m in hub.recorder.markers() if m.source == "spl"]) == 1
     await integ.stop()
 
@@ -360,7 +283,7 @@ async def test_no_marker_on_the_first_connection_only_after_a_gap(hub):
     integ, src, _ = await make(hub)
     src._on_link(False, "Can't reach Smaart")      # never had data: nothing to mark
     src._on_link(True, "up")
-    src._on_reading(SplReading(1000.0, {"a_slow": 90.0}))
+    src._on_reading(SplReading(1000.0, {"SPL A Slow": 90.0}))
     assert [m for m in hub.recorder.markers() if m.source == "spl"] == []
     await integ.stop()
 
@@ -368,7 +291,7 @@ async def test_no_marker_on_the_first_connection_only_after_a_gap(hub):
 async def test_connected_but_silent_is_a_gap_too(hub):
     integ, src, clock = await make(hub, stale_after_s=10.0)
     src._on_link(True, "up")
-    src._on_reading(SplReading(1000.0, {"a_slow": 90.0, "c_slow": 95.0, "laeq_15m": 92.0}))
+    src._on_reading(SplReading(1000.0, {"SPL A Slow": 90.0, "SPL C Slow": 95.0, "LAeq 15": 92.0}))
     clock.t = 1010.0
     integ.tick()
     assert values(hub)["spl.a_slow"] == 90.0 and hub.devices["spl"].status == Status.OK   # exactly at the limit: not yet
@@ -377,7 +300,7 @@ async def test_connected_but_silent_is_a_gap_too(hub):
     assert all(v is None for v in values(hub).values())
     assert hub.devices["spl"].status == Status.COMPROMISED
     clock.t = 1020.0
-    src._on_reading(SplReading(1020.0, {"a_slow": 91.0, "c_slow": 96.0, "laeq_15m": 93.0}))
+    src._on_reading(SplReading(1020.0, {"SPL A Slow": 91.0, "SPL C Slow": 96.0, "LAeq 15": 93.0}))
     assert values(hub)["spl.a_slow"] == 91.0 and hub.devices["spl"].status == Status.OK
     assert len([m for m in hub.recorder.markers() if m.source == "spl"]) == 1
     await integ.stop()
@@ -397,7 +320,7 @@ async def test_connected_but_never_any_value_says_so_and_stores_nothing(hub):
 async def test_changing_the_chosen_values_keeps_exactly_those_entities_and_their_history(hub):
     integ, src, _ = await make(hub)
     src._on_link(True, "up")
-    src._on_reading(SplReading(1000.0, {"a_slow": 90.0, "c_slow": 95.0, "laeq_15m": 92.0}))
+    src._on_reading(SplReading(1000.0, {"SPL A Slow": 90.0, "SPL C Slow": 95.0, "LAeq 15": 92.0}))
     hub.config.spl = SplConfig(enabled=True, host="127.0.0.1", port=26000, slots=["laeq_15m", "a_fast"])
     await integ.apply()
     assert src.started == 1 and src.stopped == 0     # same source: no reconnect for a value change
@@ -432,24 +355,36 @@ async def test_callbacks_after_switch_off_do_nothing(hub):
     hub.config.spl = SplConfig(enabled=False)
     await integ.apply()
     src._on_link(False, "late")
-    src._on_reading(SplReading(1.0, {"a_slow": 90.0}))
+    src._on_reading(SplReading(1.0, {"SPL A Slow": 90.0}))
     assert "spl" not in hub.devices and not [m for m in hub.recorder.markers() if m.source == "spl"]
 
 
 def test_manifest_is_honest():
     assert MANIFEST.tier == "experimental" and MANIFEST.direction == "in" and MANIFEST.entity_kinds == ("sound_level",)
     text = MANIFEST.description.lower()
-    assert "not tested" in text and "sends nothing" in text and "never averages" in text
+    assert "not tested" in text and "four fixed messages" in text and "never averages" in text
+    assert "history" in text and "live smaart" in text
 
 
 # --------------------------------------------------------------------------- emulate
-def test_emulated_source_offers_some_values_and_not_others_and_has_an_outage():
+def test_emulated_source_behaves_like_the_protocol_and_has_an_outage_and_an_overload():
+    from stagewatch.integrations.smaart import mapping
     src = EmulatedSplSource(lambda r: None, lambda u, d: None, first_outage_s=60, outage_every_s=300, outage_s=10)
-    v = src.values(5.0)
-    assert set(v) == set(OFFERED) and "z_slow" not in v and "a_peak" not in v
+    msgs = src.messages(5.0)
+    assert list(msgs) == list(INPUT_LABELS) and len(INPUT_LABELS) == 2
+    v = mapping.parse_stream_message(msgs[INPUT_LABELS[0]])
+    assert set(v) == {"SPL A Slow", "SPL C Slow", "LAeq 1", "LAeq 10"} and "LAeq 15" not in v
     assert all(spl.clean_level(x) is not None for x in v.values())
     assert [src.in_outage(t) for t in (0, 59.9, 60, 69.9, 70, 359.9, 360, 369.9, 370)] == \
         [False, False, True, True, False, False, True, True, False]
+    # an overload point on the first input only: "not available", the rest still numbers
+    assert [src.in_overload(t) for t in (0, 29.9, 30, 32.9, 33, 119.9, 120, 122.9)] == \
+        [False, False, True, True, False, False, True, True]
+    ov = mapping.parse_stream_message(src.messages(31.0)[INPUT_LABELS[0]])
+    assert ov["SPL A Slow"] is None and ov["SPL C Slow"] is not None
+    assert mapping.parse_stream_message(src.messages(31.0)[INPUT_LABELS[1]])["SPL A Slow"] is not None
+    src.set_wanted([INPUT_LABELS[1]])
+    assert list(src.messages(5.0)) == [INPUT_LABELS[1]]
 
 
 def test_input_name_is_cleaned_capped_and_empty_when_unknown():
@@ -473,11 +408,12 @@ async def test_the_input_name_reaches_the_public_device_and_the_admin_status(tmp
     hub = Hub(tmp_path, emulate=True)
     hub.config.spl = SplConfig(enabled=True, slots=["a_slow"])
     integ = SmaartIntegration(hub, emulate=True, source_factory=lambda o: EmulatedSplSource(
-        o._reading, o._link, period_s=0.01, first_outage_s=60))
+        o._reading, o._link, o._catalog, period_s=0.01, first_outage_s=60))
     hub.add_integration(integ)
     try:
         await integ.start()
         want = "ASIO MADIface USB : Channel 7 (1)"
+        await until(lambda: hub.devices["spl"].input_name == want)
         assert hub.devices["spl"].to_dict()["input_name"] == want
         assert integ.admin_status()["input_name"] == want and integ.admin_status()["source"] == "Simulated Smaart"
     finally:
@@ -485,13 +421,13 @@ async def test_the_input_name_reaches_the_public_device_and_the_admin_status(tmp
         hub.recorder.close()
 
 
-async def test_hostile_input_name_is_cleaned_before_it_is_public_and_empty_shows_nothing(tmp_path):
+async def test_hostile_input_and_metric_names_are_cleaned_before_they_are_public(tmp_path):
     hub = Hub(tmp_path, emulate=True)
     hub.config.spl = SplConfig(enabled=True, slots=["a_slow"])
     made = []
 
     def factory(o):
-        s = EmulatedSplSource(o._reading, o._link, period_s=0.01, first_outage_s=60)
+        s = EmulatedSplSource(o._reading, o._link, o._catalog, period_s=0.01, first_outage_s=60)
         made.append(s)
         return s
 
@@ -499,13 +435,14 @@ async def test_hostile_input_name_is_cleaned_before_it_is_public_and_empty_shows
     hub.add_integration(integ)
     try:
         await integ.start()
-        made[0].input_name = "<b>\x00" + "L" * 500
-        await until(lambda: values(hub)["spl.a_slow"] is not None)
+        await until(lambda: integ._inputs)           # the simulated Smaart has announced its own lists
+        made[0]._catalog(["<b>\x00" + "L" * 500], ["<i>\x00M" * 3])
         name = hub.devices["spl"].to_dict()["input_name"]
         assert len(name) == spl.INPUT_NAME_MAX and "\x00" not in name
-        made[0].input_name = ""
-        await until(lambda: hub.devices["spl"].input_name == "")
-        assert "input_name" not in hub.devices["spl"].to_dict()
+        st = integ.admin_status()
+        assert st["inputs"] == [name] and "\x00" not in st["metrics"][0]
+        made[0]._catalog([], [])
+        assert hub.devices["spl"].input_name == "" and "input_name" not in hub.devices["spl"].to_dict()
     finally:
         await integ.stop()
         hub.recorder.close()
@@ -513,16 +450,18 @@ async def test_hostile_input_name_is_cleaned_before_it_is_public_and_empty_shows
 
 async def test_emulate_mode_runs_through_the_hub_with_a_dropout_and_comes_back(tmp_path):
     hub = Hub(tmp_path, emulate=True)
-    hub.config.spl = SplConfig(enabled=True, slots=["a_slow", "z_slow", "laeq_15m"])
+    hub.config.spl = SplConfig(enabled=True, slots=["a_slow", "c_slow", "laeq_15m"])
     integ = SmaartIntegration(hub, emulate=True, source_factory=lambda o: EmulatedSplSource(
-        o._reading, o._link, period_s=0.01, first_outage_s=0.15, outage_every_s=1.0, outage_s=0.25))
+        o._reading, o._link, o._catalog, period_s=0.01, first_outage_s=0.15, outage_every_s=1.0, outage_s=0.25))
     hub.add_integration(integ)
     try:
         await integ.start()
         assert hub.devices["spl"].name == "Sound level (simulated)"
         await until(lambda: values(hub)["spl.a_slow"] is not None)
         v = values(hub)
-        assert v["spl.z_slow"] is None and v["spl.laeq_15m"] is not None      # the "not available" path
+        # the simulated Smaart has no "LAeq 15": the "not available" path, said so in the admin status
+        assert v["spl.c_slow"] is not None and v["spl.laeq_15m"] is None
+        assert [s["metric_listed"] for s in integ.admin_status()["slots"]] == [True, True, False]
         await until(lambda: hub.devices["spl"].status == Status.MISSING)      # the dropout
         await until(lambda: values(hub)["spl.a_slow"] is None)
         await until(lambda: hub.devices["spl"].status == Status.OK and values(hub)["spl.a_slow"] is not None
@@ -537,234 +476,11 @@ def test_seed_emulate_spl_switches_it_on_once_for_a_fresh_config():
     cfg = Config()
     assert seed_emulate_spl(cfg) is True
     assert cfg.spl.enabled and "spl_live" in cfg.dashboard("foh").cards and "spl_live" in cfg.dashboard("wall").cards
+    assert cfg.spl.effective_slots() == [("", "SPL A Slow"), ("", "SPL C Slow"), ("", "LAeq 10")]
     assert "spl_live" not in cfg.dashboard("phone").cards
     assert seed_emulate_spl(cfg) is False
     saved = Config.model_validate(cfg.model_dump(mode="json"))
     assert seed_emulate_spl(saved) is False        # settings exist after a save: never re-enabled behind the admin's back
-
-
-# ------------------------------------------------------------------ real client, fake server
-class FakeSmaart:
-    """A WebSocket server that plays a script of frames and records everything it receives."""
-
-    def __init__(self, script=(), redirect_to=None):
-        self.script = list(script)
-        self.received: list = []
-        self.connections = 0
-        self.redirect_to = redirect_to
-        self.release = asyncio.Event()
-        self.close_after_script = False
-
-    def process_request(self, connection, request):
-        if self.redirect_to:
-            resp = connection.respond(HTTPStatus.FOUND, "")
-            resp.headers["Location"] = self.redirect_to
-            return resp
-        return None
-
-    async def handler(self, ws):
-        self.connections += 1
-        recv = asyncio.create_task(self._drain(ws))
-        try:
-            for item in self.script:
-                if isinstance(item, (int, float)):
-                    await asyncio.sleep(item)
-                else:
-                    await ws.send(item)
-            if self.close_after_script:
-                await ws.close()
-                return
-            await self.release.wait()
-        finally:
-            recv.cancel()
-
-    async def _drain(self, ws):
-        try:
-            async for msg in ws:
-                self.received.append(msg)
-        except Exception:  # noqa: BLE001
-            pass
-
-    async def __aenter__(self):
-        self.server = await serve(self.handler, "127.0.0.1", 0, process_request=self.process_request, close_timeout=0.2)
-        self.port = self.server.sockets[0].getsockname()[1]
-        return self
-
-    async def __aexit__(self, *exc):
-        self.release.set()
-        self.server.close()
-        await self.server.wait_closed()
-
-
-class Sink:
-    def __init__(self):
-        self.readings: list[SplReading] = []
-        self.links: list[tuple[bool, str]] = []
-
-    def reading(self, r):
-        self.readings.append(r)
-
-    def link(self, up, detail):
-        self.links.append((up, detail))
-
-
-def client(port, sink, **kw):
-    kw.setdefault("table", TABLE)
-    kw.setdefault("default", DEFAULT_T)
-    kw.setdefault("backoff_min_s", 0.05)
-    kw.setdefault("backoff_max_s", 0.1)
-    return SmaartSource(lambda: ("127.0.0.1", port), sink.reading, sink.link, **kw)
-
-
-async def test_client_delivers_values_exactly_and_never_sends_a_single_frame():
-    async with FakeSmaart([frame(a_slow=94.3, c_slow=99.1), frame(a_slow=94.9)]) as srv:
-        sink = Sink()
-        src = client(srv.port, sink)
-        await src.start()
-        try:
-            await until(lambda: len(sink.readings) == 2)
-            assert sink.readings[0].values == {"a_slow": 94.3, "c_slow": 99.1} and sink.readings[0].version == "9.1"
-            assert sink.readings[1].values == {"a_slow": 94.9}
-            assert src.version == "9.1" and sink.links[0][0] is True
-            await asyncio.sleep(0.2)
-            assert srv.received == []   # read-only: not a log-in, not a subscribe, not a command
-        finally:
-            await src.stop()
-
-
-async def test_client_ignores_hostile_and_unknown_frames_and_keeps_going():
-    script = ["not json", "[]", '{"levels": {"a_slow": NaN}}', '{"levels": {"a_slow": 1e999}}',
-              json.dumps({"other": 1}), frame(a_slow=94.3)]
-    async with FakeSmaart(script) as srv:
-        sink = Sink()
-        src = client(srv.port, sink)
-        await src.start()
-        try:
-            await until(lambda: any(r.values.get("a_slow") == 94.3 for r in sink.readings))
-            assert all(r.values.get("a_slow") in (94.3, None) for r in sink.readings)
-            assert srv.connections == 1
-        finally:
-            await src.stop()
-
-
-async def test_client_drops_an_oversize_message_by_closing_and_reconnects():
-    big = json.dumps({"levels": {"a_slow": 99.0}, "pad": "x" * (mapping.MAX_BYTES + 100)})
-    async with FakeSmaart([big]) as srv:
-        sink = Sink()
-        src = client(srv.port, sink)
-        await src.start()
-        try:
-            await until(lambda: srv.connections >= 2)
-            assert sink.readings == []
-            assert (False, TEXT["too_large"]) in sink.links
-        finally:
-            await src.stop()
-
-
-async def test_client_reports_a_closed_connection_then_reconnects_and_delivers_again():
-    srv = FakeSmaart([frame(a_slow=90.0)])
-    srv.close_after_script = True
-    async with srv:
-        sink = Sink()
-        src = client(srv.port, sink)
-        await src.start()
-        try:
-            await until(lambda: srv.connections >= 2 and len(sink.readings) >= 2)
-            ups = [u for u, _ in sink.links]
-            assert ups[:3] == [True, False, True]       # up, gap, up again
-            assert (False, TEXT["closed"]) in sink.links
-        finally:
-            await src.stop()
-
-
-async def test_client_caps_how_many_messages_it_looks_at_each_second():
-    async with FakeSmaart([frame(a_slow=90.0 + i / 10) for i in range(40)]) as srv:
-        sink = Sink()
-        src = client(srv.port, sink, max_frames_per_s=5)
-        await src.start()
-        try:
-            await until(lambda: src.dropped_frames >= 30 or len(sink.readings) >= 5)
-            await asyncio.sleep(0.2)
-            assert len(sink.readings) == 5 and src.dropped_frames == 35
-        finally:
-            await src.stop()
-
-
-async def test_client_follows_no_redirect():
-    async with FakeSmaart([frame(a_slow=90.0)]) as target, FakeSmaart(redirect_to="PLACEHOLDER") as srv:
-        srv.redirect_to = f"ws://127.0.0.1:{target.port}/"
-        sink = Sink()
-        src = client(srv.port, sink)
-        await src.start()
-        try:
-            await until(lambda: any(not up for up, _ in sink.links))
-            await asyncio.sleep(0.2)
-            assert target.connections == 0 and sink.readings == []
-        finally:
-            await src.stop()
-
-
-async def test_client_with_the_shipped_empty_table_connects_but_reads_nothing_and_says_why():
-    async with FakeSmaart([frame(a_slow=94.3)]) as srv:
-        sink = Sink()
-        src = SmaartSource(lambda: ("127.0.0.1", srv.port), sink.reading, sink.link, backoff_min_s=0.05, backoff_max_s=0.1)
-        await src.start()
-        try:
-            await until(lambda: sink.links and sink.links[0][0] is True)
-            await asyncio.sleep(0.2)
-            assert sink.readings == [] and src.verified is False
-            assert sink.links[0][1] == TEXT["connected_unverified"]
-        finally:
-            await src.stop()
-
-
-async def test_client_with_no_address_waits_and_says_so_and_unreachable_is_plain_text():
-    sink = Sink()
-    src = SmaartSource(lambda: None, sink.reading, sink.link, backoff_min_s=0.05, backoff_max_s=0.1)
-    await src.start()
-    await until(lambda: (False, TEXT["no_address"]) in sink.links)
-    await src.stop()
-    sink = Sink()
-    port = free_port()
-    src = client(port, sink)
-    await src.start()
-    await until(lambda: (False, TEXT["unreachable"]) in sink.links)
-    await src.stop()
-    assert all("127.0.0.1" not in d and str(port) not in d for _, d in sink.links)   # no address in crew text
-
-
-async def test_client_through_the_integration_updates_the_hub_and_never_blocks_it(hub):
-    async with FakeSmaart([frame(a_slow=94.3, c_slow=99.1, leq=[96.0])]) as srv:
-        hub.config.spl = SplConfig(enabled=True, host="127.0.0.1", port=srv.port, slots=["a_slow", "c_slow", "laeq_15m"])
-        integ = SmaartIntegration(hub, source_factory=lambda o: client(srv.port, o_sink(o)))
-        hub.add_integration(integ)
-        await integ.start()
-        try:
-            await until(lambda: values(hub).get("spl.laeq_15m") == 96.0)
-            assert values(hub) == {"spl.a_slow": 94.3, "spl.c_slow": 99.1, "spl.laeq_15m": 96.0}
-            assert hub.devices["spl"].status == Status.OK
-        finally:
-            await integ.stop()
-
-
-def o_sink(owner):
-    s = Sink()
-    s.reading, s.link = owner._reading, owner._link
-    return s
-
-
-def test_websocket_address_is_built_plainly():
-    assert ws_url("192.0.2.5", 26000) == "ws://192.0.2.5:26000/"
-    assert ws_url("::1", 26000) == "ws://[::1]:26000/"
-    assert ws_url("smaart-laptop", 1) == "ws://smaart-laptop:1/"
-
-
-def test_the_client_source_never_calls_send():
-    """A belt-and-braces check on the code itself: nothing in the client or emulator sends."""
-    for name in ("client.py", "emulate.py", "__init__.py", "mapping.py", "source.py"):
-        src = (ROOT / "src" / "stagewatch" / "integrations" / "smaart" / name).read_text(encoding="utf-8")
-        code = "\n".join(line for line in src.splitlines() if not line.lstrip().startswith(("#", '"', "*", "-")))
-        assert ".send(" not in code and ".send_text(" not in code and ".write(" not in code, name
 
 
 # ------------------------------------------------------------------------------- config
@@ -773,7 +489,8 @@ def test_older_config_without_the_section_loads_with_defaults_and_no_schema_bump
     old = yaml.safe_load((ROOT / "tests" / "fixtures" / "v1" / "config.yaml").read_text(encoding="utf-8"))
     cfg = Config.model_validate(migrate(old))
     assert cfg.spl == SplConfig() and cfg.spl.enabled is False and cfg.spl.host == "127.0.0.1" and cfg.spl.port == 26000
-    assert cfg.spl.slots == ["a_slow", "c_slow", "laeq_15m"]
+    assert cfg.spl.slots == ["a_slow", "c_slow", "laeq_15m"] and cfg.spl.meters is None and cfg.spl.password == ""
+    assert cfg.spl.effective_slots() == [("", "SPL A Slow"), ("", "SPL C Slow"), ("", "LAeq 15")]
     assert cfg.site.name == old["site"]["name"]
 
 
@@ -782,8 +499,45 @@ def test_saved_settings_round_trip_through_a_save_and_a_load(tmp_path):
     store.config.spl = SplConfig(enabled=True, host="Smaart-Laptop.local", port=26000, slots=["c_fast", "a_peak"])
     store.save()
     again = ConfigStore(tmp_path / "config.yaml").load()
+    # an unset password and unset meters are not written at all: a file that never used them is unchanged
     assert again.spl.model_dump() == {"enabled": True, "host": "smaart-laptop.local", "port": 26000,
                                       "slots": ["c_fast", "a_peak"]}
+    assert "password" not in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    assert again.spl.password == "" and again.spl.meters is None
+
+
+def test_input_and_metric_slots_round_trip_and_older_builds_still_see_the_first_input_ones(tmp_path):
+    store = ConfigStore(tmp_path / "config.yaml")
+    pairs = [("", "SPL A Slow"), (INPUT_LABELS[1], "SPL C Slow"), ("", "LAeq 10")]
+    store.config.spl = SplConfig(enabled=True, meters=[SplSlot(metric=m, source=s) for s, m in pairs],
+                                 slots=spl.legacy_keys_for(pairs))
+    store.save()
+    raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))["spl"]
+    assert raw["slots"] == ["a_slow"] and raw["meters"][1] == {"metric": "SPL C Slow", "source": INPUT_LABELS[1]}
+    assert ConfigStore(tmp_path / "config.yaml").load().spl.effective_slots() == pairs
+
+
+def test_an_older_file_with_metric_only_slots_still_loads_with_no_source(tmp_path, caplog):
+    """A file written before sources existed: only Stagewatch metric keys, no meters key."""
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.safe_dump({"schema_version": 2, "site": {"name": "Keep Me"},
+                                 "spl": {"enabled": True, "host": "192.168.1.5", "port": 26000,
+                                         "slots": ["c_slow", "z_fast", "a_slow"]}}), encoding="utf-8")
+    cfg = ConfigStore(p).load()
+    # no source = "the first input Smaart lists"; a key with no known Smaart name is kept as it was
+    # written (Smaart will not list it, so it shows as not available) and keeps its old entity id
+    assert cfg.spl.effective_slots() == [("", "SPL C Slow"), ("", "z_fast"), ("", "SPL A Slow")]
+    assert spl.slot_ids(cfg.spl.effective_slots()) == ["spl.c_slow", "spl.z_fast", "spl.a_slow"]
+    assert cfg.site.name == "Keep Me"
+
+
+def test_slot_ids_are_stable_unique_and_carry_the_source_only_when_one_is_chosen():
+    ids = spl.slot_ids([("", "SPL A Slow"), (INPUT_LABELS[1], "SPL A Slow"), ("", "LAeq 10"), ("", "LAeq 10")])
+    assert ids[0] == "spl.a_slow" and ids[2] == "spl.laeq_10" and ids[3] == "spl.laeq_10_2"
+    assert ids[1] == "spl.a_slow.asio_madiface_usb_channel_8_2" and len(set(ids)) == 4
+    assert spl.slot_labels(2, "SPL C Slow", "X") == {"weighting": "C", "metric": "SPL", "slot": "2", "time_constant": "Slow",
+                                                     "smaart_name": "SPL C Slow", "source": "X"}
+    assert spl.slot_labels(1, "LAeq 10", "") == {"slot": "1", "smaart_name": "LAeq 10"}
 
 
 @pytest.mark.parametrize("host", ["http://x", "x/y", "x y", "a@b", "8.8.8.8", "2001:4860:4860::8888", "224.0.0.1", "0.0.0.0",
@@ -823,6 +577,41 @@ def test_a_newer_release_adding_keys_to_the_section_is_ignored():
     assert SplConfig.model_validate({"enabled": True, "future": "x"}).enabled is True
 
 
+def test_damaged_values_and_password_are_cleaned_on_load_without_losing_the_rest(tmp_path, caplog):
+    """A damaged meters list or password is dropped on its own; the address, port and site survive."""
+    secret = "hunter2-damaged"
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.safe_dump({"schema_version": 2, "site": {"name": "Keep Me"}, "spl": {
+        "enabled": True, "host": "192.168.1.5", "port": 26000, "password": secret + "\x01",
+        "meters": [{"metric": "SPL A Slow"}, {"metric": ""}, {"source": "x"}, "junk", {"metric": "SPL A Slow"},
+                   {"metric": "LAeq 10", "source": INPUT_LABELS[0]}, {"metric": "d"}, {"metric": "e"}]}}), encoding="utf-8")
+    store = ConfigStore(p)
+    cfg = store.load()
+    assert cfg.site.name == "Keep Me" and store.invalid_files() == []
+    assert cfg.spl.host == "192.168.1.5" and cfg.spl.port == 26000 and cfg.spl.enabled
+    assert cfg.spl.password == ""
+    assert cfg.spl.effective_slots() == [("", "SPL A Slow"), (INPUT_LABELS[0], "LAeq 10"), ("", "d")]   # usable, once each, at most three
+    assert secret not in caplog.text
+    # a meters list that is not a list at all falls back to the older slots
+    assert SplConfig.model_validate({"meters": "oops", "slots": ["a_slow"]}).effective_slots() == [("", "SPL A Slow")]
+    # and a whole damaged section (wrong types everywhere) resets only itself
+    cfg, notes = salvage({"schema_version": 2, "site": {"name": "Keep Me"},
+                          "spl": {"enabled": "maybe", "port": "x", "meters": 5, "password": [1]}}, "")
+    assert cfg.site.name == "Keep Me" and cfg.spl == SplConfig() and any("spl" in n for n in notes)
+
+
+def test_the_password_is_not_in_the_repr_or_the_logs_and_is_checked():
+    secret = "s3cret-Smaart-pw"
+    c = SplConfig(password=secret)
+    assert secret not in repr(c) and secret not in str(c) and secret not in repr(Config(spl=c))
+    assert c.password == secret
+    for bad in ("x" * 129, "a\nb", "a\x00b", 5, ["x"]):
+        with pytest.raises(Exception) as exc:
+            SplConfig(password=bad)
+        assert "x" * 129 not in str(exc.value) and "a\nb" not in str(exc.value)
+    assert SplConfig(password="").password == "" and SplConfig(password=None).password == ""
+
+
 # ---------------------------------------------------------------------- cards and API
 def test_the_card_is_known_but_not_on_by_default():
     assert "spl_live" in cards.KNOWN_CARDS
@@ -834,7 +623,7 @@ def test_the_card_is_known_but_not_on_by_default():
 def client_app(tmp_path):
     hub = Hub(tmp_path, emulate=True)
     integ = SmaartIntegration(hub, emulate=True, source_factory=lambda o: EmulatedSplSource(
-        o._reading, o._link, period_s=0.02, first_outage_s=1000))
+        o._reading, o._link, o._catalog, period_s=0.02, first_outage_s=1000))
     hub.add_integration(integ)
     app = create_app(hub, lan_addresses=lambda: ["192.0.2.10"])
     with TestClient(app) as c:
@@ -844,6 +633,17 @@ def client_app(tmp_path):
 
 def admin(c):
     assert c.post("/api/admin/setup", json={"pin": PIN}).status_code == 200
+
+
+def poll(cond, timeout=5.0):
+    """Wait (with a deadline) for something the app does in the background."""
+    import time
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if cond():
+            return
+        time.sleep(0.02)
+    raise AssertionError("timed out waiting")
 
 
 def put(c, **body):
@@ -864,14 +664,21 @@ def test_put_spl_needs_the_admin_session_and_the_same_origin(client_app):
     {"slots": ["a_slow", "c_slow", "z_slow", "a_fast"]}, {"slots": ["nope"]}, {"slots": ["a_slow", "a_slow"]},
     {"slots": "a_slow"}, {"slots": [1]}, {"enabled": "yes"}, {"enabled": 1}, {"port": "26000"}, {"port": 0}, {"port": 70000},
     {"port": 26000.5}, {"host": "8.8.8.8"}, {"host": "http://x"}, {"host": "x" * 300}, {"extra": 1},
+    {"meters": [{"metric": "a"}] * 4}, {"meters": [{"metric": "SPL A Slow"}, {"metric": "SPL A Slow"}]},
+    {"meters": [{"metric": ""}]}, {"meters": [{"metric": "a\x00b"}]}, {"meters": [{"metric": "x" * 65}]},
+    {"meters": [{"metric": "a", "source": "y" * 81}]}, {"meters": [{"metric": "a", "extra": 1}]}, {"meters": "a"},
+    {"meters": [{"metric": "a", "source": "bad\nsource"}]}, {"meters": [5]},
+    {"password": "p" * 129}, {"password": "bad\x01pw"}, {"password": 5}, {"clear_password": "yes"},
+    {"password": "newpw", "clear_password": True},
 ])
 def test_put_spl_refuses_bad_input_with_fixed_text_and_changes_nothing(client_app, body):
     c = client_app
     admin(c)
+    assert put(c, password="old-secret-pw").status_code == 200
     before = c.hub.config.spl.model_dump()
     r = put(c, **body)
     assert r.status_code == 422
-    for echoed in ("8.8.8.8", "http://x", "nope"):
+    for echoed in ("8.8.8.8", "http://x", "nope", "old-secret-pw", "newpw", "bad\x01pw", "p" * 129, "bad\nsource"):
         assert echoed not in r.text
     assert c.hub.config.spl.model_dump() == before
 
@@ -891,14 +698,48 @@ def test_put_spl_applies_at_once_and_the_snapshot_has_the_public_shape_only(clie
     c = client_app
     admin(c)
     r = put(c, slots=["c_slow", "a_fast"])
-    assert r.status_code == 200 and r.json() == {"ok": True, "changed": True}
+    assert r.status_code == 200 and r.json() == {"ok": True, "changed": True, "password_set": False}
     snap = c.get("/api/snapshot").json()
     ents = [e for e in snap["entities"] if e["kind"] == "sound_level"]
     assert [e["id"] for e in ents] == ["spl.c_slow", "spl.a_fast"]
-    assert ents[0]["labels"] == {"weighting": "C", "metric": "SPL", "slot": "1", "time_constant": "Slow"}
+    assert {"weighting": "C", "metric": "SPL", "slot": "1", "time_constant": "Slow",
+            "smaart_name": "SPL C Slow"}.items() <= ents[0]["labels"].items()
+    assert set(ents[0]["labels"]) <= {"weighting", "metric", "slot", "time_constant", "smaart_name", "source"}
     dev = next(d for d in snap["devices"] if d["id"] == "spl")
     assert set(dev) == {"id", "name", "integration", "category", "manufacturer", "model", "area", "status", "status_detail", "input_name"}
     assert dev["category"] == "service"
+
+
+def test_put_spl_with_input_and_metric_slots_makes_one_entity_each_with_smaarts_own_text(client_app):
+    c = client_app
+    admin(c)
+    meters = [{"source": "", "metric": "SPL A Slow"}, {"source": INPUT_LABELS[1], "metric": "LAeq 10"},
+              {"source": INPUT_LABELS[1], "metric": "SPL A Slow"}]
+    assert put(c, meters=meters).status_code == 200
+    ents = [e for e in c.get("/api/snapshot").json()["entities"] if e["kind"] == "sound_level"]
+    assert [e["id"] for e in ents] == ["spl.a_slow", "spl.laeq_10.asio_madiface_usb_channel_8_2",
+                                       "spl.a_slow.asio_madiface_usb_channel_8_2"]
+    assert [e["name"] for e in ents] == ["SPL A Slow", "LAeq 10", "SPL A Slow"]
+    assert [e["labels"]["smaart_name"] for e in ents] == ["SPL A Slow", "LAeq 10", "SPL A Slow"]
+    assert c.hub.config.spl.slots == ["a_slow"]                  # what an older build can still show
+    st = c.get("/api/admin/state").json()
+    assert st["config"]["spl"]["meters"][1] == {"metric": "LAeq 10", "source": INPUT_LABELS[1]}
+    # the simulated Smaart answers: the lists come from it, and each slot says whether it is listed
+    poll(lambda: c.get("/api/admin/state").json()["spl"]["inputs"])
+    sp = c.get("/api/admin/state").json()["spl"]
+    assert sp["inputs"] == list(INPUT_LABELS) and sp["metrics"] == ["SPL A Slow", "SPL C Slow", "LAeq 1", "LAeq 10"]
+    assert [s["metric_listed"] for s in sp["slots"]] == [True, True, True] and [s["source_listed"] for s in sp["slots"]] == [True] * 3
+    assert sp["verified"] is False and sp["default_metrics"]["laeq_15m"] == "LAeq 15"
+
+
+def test_an_unrecognised_input_or_metric_is_kept_and_reported_not_silently_changed(client_app):
+    c = client_app
+    admin(c)
+    assert put(c, meters=[{"source": "Nowhere : Channel 1", "metric": "LAeq 15"}]).status_code == 200
+    poll(lambda: c.get("/api/admin/state").json()["spl"]["inputs"])
+    sl = c.get("/api/admin/state").json()["spl"]["slots"][0]
+    assert sl["source"] == "Nowhere : Channel 1" and sl["metric"] == "LAeq 15"
+    assert sl["source_listed"] is False and sl["metric_listed"] is False and sl["available"] is False
 
 
 def test_the_address_never_reaches_public_endpoints_but_the_admin_sees_it(client_app):
@@ -909,7 +750,7 @@ def test_the_address_never_reaches_public_endpoints_but_the_admin_sees_it(client
     assert "192.168.50.77" not in public and "26000" not in public
     st = c.get("/api/admin/state").json()
     assert st["config"]["spl"]["host"] == "192.168.50.77"
-    assert [m["key"] for m in st["spl"]["metrics"]] == [m.key for m in spl.METRICS] and st["spl"]["max_slots"] == 3
+    assert st["spl"]["max_slots"] == 3 and st["spl"]["password_set"] is False
     assert "host" not in st["spl"]
     c.post("/api/admin/logout")
     assert c.get("/api/admin/state").status_code == 401
@@ -923,6 +764,65 @@ def test_switching_off_removes_the_card_data_and_a_body_over_the_limit_is_refuse
     r = c.put("/api/admin/spl", content=json.dumps({"enabled": True, "pad": "x" * 70_000}),
               headers={"content-type": "application/json"})
     assert r.status_code == 413
+
+
+SECRET = "Sm4art-API-pw-Zq7"
+
+
+def test_the_smaart_password_is_write_only_empty_keeps_it_and_clear_removes_it(client_app):
+    c = client_app
+    admin(c)
+    r = put(c, password=SECRET)
+    assert r.status_code == 200 and r.json()["password_set"] is True and SECRET not in r.text
+    assert c.hub.config.spl.password == SECRET
+    st = c.get("/api/admin/state")
+    assert SECRET not in st.text and "password" not in st.json()["config"]["spl"]
+    assert st.json()["spl"]["password_set"] is True
+    assert put(c, enabled=True, password="").status_code == 200 and c.hub.config.spl.password == SECRET   # empty = unchanged
+    assert put(c, password="").json()["password_set"] is True
+    assert put(c, clear_password=True).json()["password_set"] is False and c.hub.config.spl.password == ""
+    assert c.get("/api/admin/state").json()["spl"]["password_set"] is False
+    # a new password replaces; it is stored in the settings file like the ESPHome key
+    assert put(c, password=SECRET + "2").status_code == 200 and c.hub.config.spl.password == SECRET + "2"
+    assert (SECRET + "2") in (c.hub.data_dir / "config.yaml").read_text(encoding="utf-8")
+
+
+def test_the_smaart_password_is_needed_to_be_admin_to_set_and_never_reaches_a_public_surface(client_app, caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+    c = client_app
+    assert put(c, password=SECRET).status_code == 401 and c.hub.config.spl.password == ""
+    admin(c)
+    assert c.put("/api/admin/spl", json={"enabled": True, "password": SECRET},
+                 headers={"Origin": "http://evil.example"}).status_code == 403
+    assert put(c, password=SECRET, host="192.168.1.5", port=26000).status_code == 200
+    pages = [c.get(u).text for u in ("/api/snapshot", "/api/info", "/api/dashboard/foh", "/api/history?entities=spl.a_slow")]
+    pages += [c.get("/api/admin/state").text, c.get("/api/admin/software").text]
+    assert all(SECRET not in p for p in pages)
+    assert SECRET not in caplog.text
+    integ = c.hub.integrations["smaart"]
+    assert SECRET not in repr(integ) and SECRET not in repr(integ._source) and SECRET not in json.dumps(integ.info())
+    assert SECRET not in repr(c.hub.config) and SECRET not in repr(c.hub.config.spl)
+    # the live WebSocket snapshot is public too
+    with c.websocket_connect("/ws") as ws:
+        assert SECRET not in json.dumps(ws.receive_json())
+
+
+def test_the_smaart_password_is_redacted_from_the_diagnostics_bundle(client_app):
+    import io
+    import zipfile
+    c = client_app
+    admin(c)
+    assert put(c, password=SECRET).status_code == 200
+    (c.hub.data_dir / "logs").mkdir(exist_ok=True)
+    (c.hub.data_dir / "logs" / "stagewatch.log").write_text(f"INFO something password={SECRET}\nplain {SECRET}\n", encoding="utf-8")
+    r = c.get("/api/admin/diagnostics")
+    assert r.status_code == 200
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    blob = "\n".join(z.read(n).decode("utf-8", "replace") for n in z.namelist())
+    assert SECRET not in blob and SECRET.encode() not in r.content
+    cfg = json.loads(z.read("config.json"))
+    assert cfg["spl"]["password"] == "[redacted]"
 
 
 def test_a_sound_level_cannot_be_given_a_calibration_offset(client_app):
@@ -984,38 +884,6 @@ def test_ordinary_names_with_digits_still_work():
     assert SplConfig(host="smaart2.local").host == "smaart2.local" and SplConfig(host="foh-1").host == "foh-1"
 
 
-async def test_resolved_names_must_all_be_local(monkeypatch):
-    from stagewatch.integrations.smaart import client as cl
-
-    def fake(answers):
-        async def getaddrinfo(self, host, port, **kw):
-            return [(0, 0, 0, "", (a, port)) for a in answers]
-        monkeypatch.setattr(asyncio.get_running_loop().__class__, "getaddrinfo", getaddrinfo)
-
-    fake(["192.168.1.9"])
-    assert await cl.resolve_local("smaart.local", 1) == "192.168.1.9"
-    for bad in (["8.8.8.8"], ["192.168.1.9", "8.8.8.8"], ["127.0.0.1"], ["169.254.1.1"], ["2002:808:808::1"],
-                ["2001:0:4136:e378:8000:63bf:3fff:fdd2"], ["::ffff:8.8.8.8"], ["2001:4860:4860::8888"], ["0.0.0.0"], []):
-        fake(bad)
-        with pytest.raises(cl.NotLocal):
-            await cl.resolve_local("smaart.local", 1)
-    assert await cl.resolve_local("127.0.0.1", 1) == "127.0.0.1"   # a typed IP was checked by the settings
-
-
-async def test_a_name_that_resolves_publicly_is_refused_and_nothing_is_connected(monkeypatch):
-    from stagewatch.integrations.smaart import client as cl
-
-    async def getaddrinfo(self, host, port, **kw):
-        return [(0, 0, 0, "", ("8.8.8.8", port))]
-    monkeypatch.setattr(asyncio.get_running_loop().__class__, "getaddrinfo", getaddrinfo)
-    sink = Sink()
-    src = SmaartSource(lambda: ("smaart.example", 1), sink.reading, sink.link, backoff_min_s=0.05, backoff_max_s=0.1)
-    await src.start()
-    await until(lambda: (False, TEXT["not_local"]) in sink.links)
-    await src.stop()
-    assert sink.readings == []
-
-
 def test_a_bad_saved_address_is_cleared_on_load_not_salvaged(tmp_path, caplog):
     p = tmp_path / "config.yaml"
     p.write_text(yaml.safe_dump({"schema_version": 2, "site": {"name": "Keep Me"},
@@ -1039,42 +907,3 @@ def test_entity_dict_sends_no_offset_for_a_sound_level_even_with_a_stale_setting
     hub.config.entities[e.id] = EntitySettings(offset=5.0)
     hub.update_state(e.id, 94.3, 1000.0)
     assert "offset" not in hub.entity_dict(e, 1001.0, 60.0)
-
-
-async def _waits(script, n, **kw):
-    waits = []
-    real = asyncio.sleep
-
-    async def spy(d):
-        waits.append(d)
-        await real(0.01)
-    srv = FakeSmaart(script)
-    srv.close_after_script = True
-    async with srv:
-        src = client(srv.port, Sink(), backoff_min_s=0.05, backoff_max_s=0.4, sleep=spy, **kw)
-        await src.start()
-        try:
-            await until(lambda: len(waits) >= n)
-        finally:
-            await src.stop()
-    return waits[:n]
-
-
-async def test_backoff_grows_when_the_link_drops_quickly_even_after_readings():
-    assert await _waits([frame(a_slow=90.0)], 4, stable_s=30.0) == [0.1, 0.2, 0.4, 0.4]
-
-
-async def test_backoff_starts_over_after_a_stable_link():
-    assert await _waits([0.15, frame(a_slow=90.0)], 2, stable_s=0.1) == [0.05, 0.05]
-
-
-async def test_a_failing_callback_does_not_end_the_simulated_source():
-    calls = []
-
-    def bad(*a):
-        calls.append(a)
-        raise RuntimeError("boom")
-    src = EmulatedSplSource(bad, bad, period_s=0.01, first_outage_s=1000)
-    await src.start()
-    await until(lambda: len(calls) >= 4)
-    await src.stop()

@@ -21,6 +21,7 @@ from ...core.spl import SplReading, clean_input_name
 
 ReadingCallback = Callable[[SplReading], None]
 LinkCallback = Callable[[bool, str], None]
+CatalogCallback = Callable[[list, list], None]   # (inputs, metric names) as the software lists them
 
 
 class SplSource(ABC):
@@ -30,11 +31,29 @@ class SplSource(ABC):
     #: Plain-text name for the admin page.
     label: str = ""
 
-    def __init__(self, on_reading: ReadingCallback, on_link: LinkCallback) -> None:
+    def __init__(self, on_reading: ReadingCallback, on_link: LinkCallback,
+                 on_catalog: CatalogCallback | None = None) -> None:
         self._on_reading = on_reading
         self._on_link = on_link
+        self._on_catalog = on_catalog
         self.version = ""   # the software's version as it reported it (cleaned), "" if unknown
         self._input_name = ""
+        #: The inputs ("deviceName : channelName") and metric names the software lists, in its order,
+        #: once it has told us (empty until then). The admin drop-downs come from these.
+        self.inputs: list[str] = []
+        self.metrics: list[str] = []
+        #: Why the source cannot read right now, as a short code for the admin page ("" = nothing
+        #: wrong): "auth_needed", "wrong_password", "no_inputs", "api".
+        self.problem = ""
+
+    def set_wanted(self, sources: list[str]) -> None:
+        """The input sources the chosen values need ("" = the first input listed). Sources that read
+        from every input anyway (the simulated one) may ignore it."""
+
+    def _catalog(self, inputs: list[str], metrics: list[str]) -> None:
+        self.inputs, self.metrics = list(inputs), list(metrics)
+        if self._on_catalog is not None:
+            self._on_catalog(self.inputs, self.metrics)
 
     @property
     def input_name(self) -> str:

@@ -23,6 +23,7 @@ SW.spl = (function () {
   // its own name (the LAeq wording is unconfirmed). Display only: ids and stored data are untouched.
   spl.label = function (e) {
     const l = e.labels || {};
+    if (typeof l.smaart_name === "string" && l.smaart_name) return l.smaart_name;   // Smaart's own text
     if (l.metric === "SPL" && l.weighting && l.time_constant) return `SPL ${l.weighting} ${l.time_constant}`;
     return e.name || e.id;
   };
@@ -46,7 +47,11 @@ SW.spl = (function () {
   // state: "live" | "stale" (an old value, frozen and dimmed, with its age) | "na" (not available) |
   // "wait" (nothing yet). The text is the number to one decimal or a dash.
   spl.view = function (e, device, now) {
-    const sub = spl.describe(e);
+    // When the values read different inputs the card has no single "Input:" line, so each value says
+    // which input it is (Smaart's own text).
+    const l = e.labels || {};
+    const own = !(device && device.input_name) && typeof l.source === "string" ? l.source : "";
+    const sub = [spl.describe(e), own].filter((x) => x).join(" · ");
     const has = e.value !== null && e.value !== undefined && !Number.isNaN(e.value);
     if (!e.updated) return { state: "wait", text: "—", sub, note: "Waiting for a value" };
     if (!has) {

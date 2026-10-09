@@ -54,6 +54,15 @@ eq([stale.state, stale.text, stale.note], ["stale", "94.3", "Old reading, 2m ago
 eq(SW.spl.label(ent("spl.c_slow", 1, { weighting: "C", metric: "SPL", time_constant: "Slow" }, { name: "C Slow" })), "SPL C Slow", "label C Slow");
 eq(SW.spl.label(ent("spl.a_fast", 1, { weighting: "A", metric: "SPL", time_constant: "Fast" }, { name: "A Fast" })), "SPL A Fast", "label A Fast");
 eq(SW.spl.label(L), L.name, "LAeq label unchanged");
+// a metric Smaart names itself shows Smaart's own text, as it is
+eq(SW.spl.label(ent("spl.laeq_10", 1, { smaart_name: "LAeq 10" }, { name: "LAeq 10" })), "LAeq 10", "Smaart's own label");
+eq(SW.spl.label(ent("spl.x", 1, { smaart_name: "<b>x</b>" })), "<b>x</b>", "markup stays plain text in a label");
+eq(SW.spl.label(ent("spl.x", 1, { smaart_name: "" }, { name: "X" })), "X", "empty Smaart text falls back to the name");
+// each value names its input only when the card has no single "Input:" line
+const two = ent("spl.q", 1, { smaart_name: "LAeq 10", source: "ASIO MADIface USB : Channel 8 (2)" });
+eq(SW.spl.view(two, { status: "ok", input_name: "" }, 1001).sub, "ASIO MADIface USB : Channel 8 (2)", "own input shown");
+eq(SW.spl.view(two, { status: "ok", input_name: "ASIO MADIface USB : Channel 8 (2)" }, 1001).sub, "", "one shared input: not repeated");
+eq(SW.spl.view(Object.assign({}, A, { labels: Object.assign({}, A.labels, { source: "In 1" }) }), null, 1001).sub, "A-weighted, Slow response · In 1", "words then input");
 // the input line: text only, nothing when empty
 eq(SW.spl.inputLine({ input_name: "ASIO MADIface USB : Channel 7 (1)" }), "Input: ASIO MADIface USB : Channel 7 (1)", "input line");
 eq([SW.spl.inputLine({}), SW.spl.inputLine({ input_name: "  " }), SW.spl.inputLine(undefined), SW.spl.inputLine({ input_name: 5 })], ["", "", "", ""], "no name, no line");
