@@ -381,14 +381,14 @@ async def test_both_cards_share_one_source_and_it_stops_with_the_last(tmp_path):
         assert probe.starts == 1 and probe.stops == 0
         assert hub.integrations["ontime"].clock_source.holders == {"wall_clock", "ontime_timer"}
         set_cards(hub, "ontime_timer")                      # the clock card goes: the timer keeps it
-        await until(lambda: not hub.wall_clock.active)
+        await until(lambda: not hub.wall_clock.active and "ontime" in hub.devices)
         assert probe.starts == 1 and probe.stops == 0 and "ontime" in hub.devices
         assert hub.snapshot()["ontime_timer"]["status"] == "ok"
         set_cards(hub, "wall_clock")                        # and back the other way round
         await until(lambda: hub.wall_clock.active and not hub.ontime_timer.active)
         assert probe.starts == 1 and probe.stops == 0 and hub.snapshot()["wall_clock"]["status"] == "ok"
         set_cards(hub)
-        await until(lambda: not hub.wall_clock.active)
+        await until(lambda: not hub.wall_clock.active and probe.stops == 1 and "ontime" not in hub.devices)
         assert probe.starts == 1 and probe.stops == 1 and "ontime" not in hub.devices
     finally:
         await hub.stop()
