@@ -21,6 +21,8 @@ them into a dated release section and tags the commit.
 
 ### Changed
 
+- **The Admin DirectOut GLOBCON card now says why it cannot connect.** While the link is down it shows the address Stagewatch is trying and a plain hint, for example "Nothing answered at 192.168.1.197:9091. Check that GLOBCON is running and that the Windows firewall on its computer allows port 9091." There is a hint for no answer, refused, address not found, a name that is not on the local network, something that is not GLOBCON, GLOBCON going silent and the connection being closed. A refused connection is now told apart from other failures. Only the Admin card shows the address; dashboards keep their short text with no address, and Stagewatch sends GLOBCON nothing new.
+
 - **All Ontime settings are now in one Admin card called Ontime.** It holds the Connection (address, Test connection and the live status of the Wall Clock, Ontime Timer and Ontime Rundown cards), the Wall Clock's warning limit, and the event title switch for the Ontime Timer and Ontime Rundown, with one Save. The Wall Clock card keeps only its time source, format and date, with a pointer to the Ontime card; the separate Ontime Timer card is gone. The Ontime card starts closed, and stays open while Ontime cannot be reached. Nothing is saved differently: same settings, no change to saved files.
 - **The dashboard header now stays at the top while a tablet or phone scrolls**, and is more compact on phones. The wall screen is unchanged.
 

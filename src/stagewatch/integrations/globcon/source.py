@@ -34,6 +34,11 @@ class GlobconSource(ABC):
         #: Why it cannot read right now, as a short code for the admin page ("" = nothing wrong).
         self.problem = ""
 
+    def hint(self) -> str:
+        """Admin page only: the address tried and why it cannot connect, in plain words ("" = nothing to say).
+        Never sent to dashboards or the public snapshot."""
+        return ""
+
     def set_wanted(self, controllers: list[int]) -> None:
         """The controllers (0-based) some dashboard shows. Only these are subscribed to."""
 

@@ -998,7 +998,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     def globcon_admin() -> dict:
         integ = hub.integrations.get("globcon")
         state = integ.admin_status() if integ is not None else {"running": False, "status": "off"}
-        return {"password_set": bool(hub.config.globcon.password), **state}
+        extra = integ.admin_detail() if integ is not None and hasattr(integ, "admin_detail") else {}
+        return {"password_set": bool(hub.config.globcon.password), **state, **extra}
 
     @app.get("/api/admin/state", dependencies=[Depends(require_admin)])
     async def admin_state():

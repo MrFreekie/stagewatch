@@ -280,5 +280,16 @@ class GlobconIntegration(Integration):
                 "problem": self._source.problem if self._source else "",
                 "controllers": sorted(n + 1 for n in self._wanted)}
 
+    def admin_detail(self) -> dict:
+        """Admin card only: the address being tried and why it cannot connect. Not in info() or any
+        public message, because it names the address."""
+        hint = ""
+        if self._source is not None and not self._link_up:
+            try:
+                hint = self._source.hint()
+            except Exception:  # noqa: BLE001
+                log.exception("GLOBCON hint failed")
+        return {"hint": hint}
+
     def info(self) -> dict:
         return {**super().info(), **self.admin_status()}

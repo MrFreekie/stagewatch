@@ -558,6 +558,75 @@ async def test_a_silent_server_is_dropped_after_the_silence_limit():
             await cl.stop()
 
 
+async def test_a_refused_connection_gives_the_admin_a_hint_with_the_address():
+    sink = Sink()
+    port = free_port()
+    cl = make_client(port, sink)
+    cl.set_wanted([0])
+    assert cl.hint() == ""
+    await cl.start()
+    try:
+        await until(lambda: sink.links)
+        assert sink.links[0] == (False, TEXT["refused"]) and "127.0.0.1" not in TEXT["refused"]
+        assert cl.hint() == (f"The computer at 127.0.0.1:{port} answered, but GLOBCON is not listening on port {port}. "
+                             "Check that GLOBCON is running and that the port is the one GLOBCON uses.")
+    finally:
+        await cl.stop()
+
+
+async def test_nothing_answering_gives_the_firewall_hint_and_a_silent_server_its_own():
+    async def never_reply(reader, writer):
+        await asyncio.sleep(5)
+    port = free_port()
+    server = await asyncio.start_server(never_reply, "127.0.0.1", port)
+    sink = Sink()
+    cl = make_client(port, sink, open_timeout_s=0.3)
+    cl.set_wanted([0])
+    await cl.start()
+    try:
+        await until(lambda: sink.links)
+        assert sink.links[0] == (False, TEXT["timeout"])
+        assert cl.hint() == (f"Nothing answered at 127.0.0.1:{port}. Check that GLOBCON is running and that the "
+                             f"Windows firewall on its computer allows port {port}.")
+    finally:
+        await cl.stop()
+        server.close()
+
+    async def mute(ws):
+        async for _ in ws:
+            pass
+    port = free_port()
+    async with serve(mute, "127.0.0.1", port):
+        sink = Sink()
+        cl = make_client(port, sink, silence_s=0.4)
+        cl.set_wanted([0])
+        await cl.start()
+        try:
+            await until(lambda: (False, TEXT["silent"]) in sink.links)
+            assert cl.hint().startswith(f"Connected to 127.0.0.1:{port}, but GLOBCON has sent nothing for 0.4 seconds")
+        finally:
+            await cl.stop()
+
+
+async def test_every_failure_kind_has_a_hint_and_no_address_and_up_means_no_hint():
+    from stagewatch.integrations.globcon.client import HINTS
+    assert set(HINTS) >= {"no_address", "timeout", "refused", "unreachable", "not_local", "not_globcon", "silent", "closed", "too_large"}
+    sink = Sink()
+    cl = GlobconClient(lambda: None, sink.on_values, sink.on_meters, sink.on_link, backoff_min_s=0.05, backoff_max_s=0.1)
+    await cl.start()
+    try:
+        await until(lambda: sink.links)
+        assert cl.hint() == HINTS["no_address"]
+    finally:
+        await cl.stop()
+    cl._target_fn = lambda: ("fe80::1", 9091)
+    for kind in HINTS:
+        cl._down_kind = kind
+        assert cl.hint() and (kind == "no_address" or "[fe80::1]:9091" in cl.hint())
+    cl._down_kind = ""
+    assert cl.hint() == ""
+
+
 def test_addresses_this_computer_and_local_networks_are_fine_public_ones_are_not():
     import ipaddress
     for ok in ("127.0.0.1", "::1", "192.168.1.20", "10.0.0.5", "169.254.1.1"):
@@ -1055,3 +1124,29 @@ def test_node_view_logic():
         pytest.skip("node is not installed")
     r = subprocess.run([node, str(ROOT / "tests" / "js" / "globcon_test.js")], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_the_hint_is_in_the_admin_card_only_never_the_public_snapshot_or_dashboards(client):
+    class Down:
+        verified, label, problem = False, "GLOBCON", ""
+        def hint(self): return "Nothing answered at 192.168.1.197:9091. Check it."
+        def set_wanted(self, c): pass
+        async def start(self): pass
+        async def stop(self): pass
+    integ = client.hub.integrations["globcon"]
+    rows = client.get("/api/info").json()["dashboards"]
+    rows[0]["cards"] = [*rows[0]["cards"], CARD_ID]
+    assert client.put("/api/admin/dashboards", json=rows).status_code == 200
+    import time
+    deadline = time.time() + 5
+    while time.time() < deadline and not integ._registered:
+        time.sleep(0.05)
+    integ._source, integ._link_up = Down(), False
+    admin = client.get("/api/admin/state").json()
+    assert admin["globcon"]["hint"].startswith("Nothing answered at 192.168.1.197:9091")
+    assert "192.168.1.197" not in json.dumps(admin["integrations"])
+    for url in ("/api/snapshot", "/api/info", "/api/dashboard/foh"):
+        assert "192.168.1.197" not in client.get(url).text
+    integ._link_up = True
+    assert client.get("/api/admin/state").json()["globcon"]["hint"] == ""
+    integ._source = None
