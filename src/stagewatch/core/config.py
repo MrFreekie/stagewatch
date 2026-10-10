@@ -18,7 +18,7 @@ import time
 import zoneinfo
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 from urllib.parse import urlsplit
 
 import yaml
@@ -392,12 +392,21 @@ class Threshold(_Model):
     enabled: bool = True
 
 
+# The channel groups a GLOBCON levels card can show: strip numbers as on the controller (1-based fader
+# positions on its current layer) -> (first, last). "range" unset keeps the older "first N strips with a level".
+GLOBCON_RANGES: dict[str, tuple[int, int]] = {
+    "1-4": (1, 4), "5-8": (5, 8), "1-8": (1, 8), "9-12": (9, 12), "13-16": (13, 16), "9-16": (9, 16), "1-16": (1, 16),
+}
+
+
 class GlobconCardOptions(_Model):
-    """Which GLOBCON controller (1 to 16) and how many strips (4 or 8) this dashboard's GLOBCON
-    levels card shows. Loading is lenient (anything unusable falls back to the default, with a warning
-    that never carries the value); the API is strict."""
+    """Which GLOBCON controller (1 to 16) and which channels this dashboard's GLOBCON levels card shows.
+    ``range`` is one of GLOBCON_RANGES; unset (None) keeps the older behaviour: the first ``strips`` (4 or 8)
+    strips that GLOBCON says have a level. Loading is lenient (anything unusable falls back to the default,
+    with a warning that never carries the value); the API is strict."""
     controller: int = Field(1, ge=1, le=16)
     strips: Literal[4, 8] = 8
+    range: Optional[Literal["1-4", "5-8", "1-8", "9-12", "13-16", "9-16", "1-16"]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -405,10 +414,11 @@ class GlobconCardOptions(_Model):
         if not isinstance(data, dict):
             return {}
         out = {}
-        c, s = data.get("controller", 1), data.get("strips", 8)
+        c, s, r = data.get("controller", 1), data.get("strips", 8), data.get("range")
         out["controller"] = c if isinstance(c, int) and not isinstance(c, bool) and 1 <= c <= 16 else 1
         out["strips"] = s if isinstance(s, int) and not isinstance(s, bool) and s in (4, 8) else 8
-        if out["controller"] != c or out["strips"] != s:
+        out["range"] = r if isinstance(r, str) and r in GLOBCON_RANGES else None
+        if out["controller"] != c or out["strips"] != s or out["range"] != r:
             log.warning("A dashboard's GLOBCON card options were not usable and were reset to the defaults")
         return out
 
@@ -426,7 +436,7 @@ class Dashboard(_Model):
     clock_style: str = "digits"
     # Optional card id -> "full" | "half" (core/cards.py HALF_CAPABLE).  Empty = every card full width.
     card_sizes: dict[str, str] = Field(default_factory=dict)
-    # The GLOBCON levels card's controller and strip count on this screen.
+    # The GLOBCON levels card's controller and channel group on this screen.
     globcon: GlobconCardOptions = Field(default_factory=GlobconCardOptions)
 
     @field_validator("slug")

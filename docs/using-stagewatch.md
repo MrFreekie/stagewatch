@@ -571,7 +571,7 @@ Good to know:
   before saving, the ticks change to that layout's set.
 - **Wall Clock**, **Ontime Timer** and **Ontime Rundown** are never switched on by default. Tick them if you want them,
   then choose the time source and look (see below).
-- **Half-size cards.** Beside **Wall Clock** and **Ontime Timer** in **Edit cards** there is a **Size** choice, **Full** or
+- **Half-size cards.** Beside **Wall Clock**, **Ontime Timer**, **Ontime Rundown** and **DirectOut GLOBCON** in **Edit cards** there is a **Size** choice, **Full** or
   **Half**. Half-size cards sit side by side with another half-size card on tablets and wall screens (put the two next to
   each other in the order). A half-size card with no partner stays half width. On a phone, and on any screen narrower than
   900 px, every card is full width. Every card is Full until you choose Half.
@@ -949,14 +949,16 @@ knows Smaart's `/api/v4/` address; check the API is on and the port is right).
 - Limits and alarms for the level are planned for a later version. Until then the card is a display and a
   record only.
 
-### Watch the levels on a DirectOut GLOBCON controller (GLOBCON levels card)
+### Watch the levels on a DirectOut GLOBCON controller (DirectOut GLOBCON card)
 
-The **GLOBCON levels** card shows live level meters from DirectOut's **GLOBCON** for one controller, for the
-question "is the signal there, and roughly how loud is each strip?". It shows **4 or 8 strips** as tall bars
-with the level in dB underneath, the controller's name and the **layer** it is on now, and it says **as
+The **DirectOut GLOBCON** card shows live level meters from DirectOut's **GLOBCON** for one controller, for the
+question "is the signal there, and roughly how loud is each strip?". It shows a **group of channels** (4, 8 or
+16) as tall bars with the channel number, GLOBCON's name for it and the level in dB underneath, the controller's name and the **layer** it is on now, and it says **as
 reported by GLOBCON**. The numbers are GLOBCON's own: Stagewatch does not average, smooth, hold or convert
 them, and it does not say whether they are peak or RMS (GLOBCON does not say). A strip GLOBCON reports as
-"no signal" shows as an empty bar and a dash, never as zero.
+"no signal" shows as an empty bar, never as zero. A channel GLOBCON says has no level meter (the USB
+channels on some set-ups) shows an empty bar and the words **no meter**, and one with no reading yet shows
+**no reading**.
 
 > **Not yet tested on a real GLOBCON beyond one recording.** The connection was written from GLOBCON's own
 > web page and checked against one recording of that page talking to a real GLOBCON. Stagewatch has never
@@ -976,8 +978,13 @@ It crosses the show network as readable text, so use a password you use nowhere 
    runs on another computer on your network. If a controller needs a password, type it; leave it empty
    otherwise. Save.
 2. Add the card to a dashboard under **User dashboards → Edit cards**. Beside the card, choose the
-   **GLOBCON controller** (1 to 16) and **how many strips** (4 or 8). The card shows the first strips that
-   GLOBCON says have a level.
+   **GLOBCON controller** (1 to 16) and **Channels shown**: Channels 1 to 4, 5 to 8, 1 to 8, 9 to 12,
+   13 to 16, 9 to 16 or 1 to 16. These are the strip numbers along the controller's faders on the layer it is
+   showing now (strip 1 is the first fader), so different screens can show different groups. A dashboard saved
+   before these choices existed keeps its older setting, "first 4 or 8 channels with a level", until you pick a
+   group. With 16 channels the card uses two rows on tablets and wall screens and four rows on a phone.
+   The **Size** choice (Full or Half) works as for Wall Clock: at half width the bars get shorter and the
+   channels sit four across (eight across on a wall screen for 16 channels).
 3. Stagewatch only connects to GLOBCON while some dashboard has the card.
 
 **Controllers and layers.** A GLOBCON controller has several layers, but it shows one at a time, and its

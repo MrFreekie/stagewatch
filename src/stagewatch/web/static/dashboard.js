@@ -868,7 +868,7 @@
     card.hidden = false;
     if (!gcc.ui) {
       gcc.ui = SW.gc.createUi();
-      card.replaceChildren(h("h2", {}, gcc.ui.head, h("span", { class: "grow" }), h("span", { class: "gc-sub muted" }, "as reported by GLOBCON")), ...gcc.ui.nodes);
+      card.replaceChildren(h("h2", {}, gcc.ui.head, h("span", { class: "grow" }), h("span", { class: "gc-sub muted" }, "as reported by GLOBCON"), h("img", { class: "card-logo", src: "/static/directout-badge.png", alt: "DirectOut", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } })), ...gcc.ui.nodes);
     }
     tickGlobcon();
   }
