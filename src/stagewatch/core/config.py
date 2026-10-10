@@ -197,6 +197,10 @@ class EsphomeDeviceConfig(_Model):
     noise_psk: str = ""
     mac: str = ""  # the board's MAC (12 lowercase hex), set by the hub on first connect
     role: Literal["environment", "equipment"] = "environment"   # the node's role; a sensor can override it
+    # "Sleeps between readings": the minutes between wake-ups of a deep-sleep node, 0 = off (the
+    # default, nothing changes). Additive with a default: no config schema bump; an older build
+    # ignores the key and treats the node as always on.
+    sleep_minutes: int = Field(0, ge=0, le=1440)
 
     @field_validator("id")
     @classmethod
@@ -843,15 +847,23 @@ class Config(_Model):
         "environment" rather than costing the node. Logs a count, never the value."""
         if not isinstance(v, list):
             return v
-        out, bad = [], 0
+        out, bad, bad_sleep = [], 0, 0
         for rec in v:
             if isinstance(rec, dict) and rec.get("role", ROLE_ENVIRONMENT) not in ROLES:
                 rec = {**rec, "role": ROLE_ENVIRONMENT}
                 bad += 1
+            if isinstance(rec, dict) and "sleep_minutes" in rec:
+                m = rec["sleep_minutes"]
+                if isinstance(m, bool) or not isinstance(m, int) or not 0 <= m <= 1440:
+                    rec = {k: x for k, x in rec.items() if k != "sleep_minutes"}   # unreadable: not sleeping
+                    bad_sleep += 1
             out.append(rec)
         if bad:
             log.warning("Node roles: %d value%s this version can't read treated as Environment",
                         bad, "" if bad == 1 else "s")
+        if bad_sleep:
+            log.warning("Node sleep settings: %d value%s this version can't read treated as off",
+                        bad_sleep, "" if bad_sleep == 1 else "s")
         return out
 
     @field_validator("calibrations")

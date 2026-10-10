@@ -7,6 +7,7 @@ UI converts on the way out.
 
 from __future__ import annotations
 
+import math
 import re
 import time
 from dataclasses import dataclass, field
@@ -106,8 +107,28 @@ class Device:
     # Extra public fields a service device carries (the sound level graph range). Merged into
     # to_dict(); empty for every other device.
     public: dict = field(default_factory=dict)
+    # "Sleeps between readings" (an ESPHome node that deep-sleeps): the wake interval in minutes the
+    # admin set, 0 = off (the default: nothing changes). The hub fills in last_reading (when a
+    # real value last arrived from this device) as readings come in.
+    sleep_minutes: int = 0
+    last_reading: float | None = None
+    sleep_shown: bool = False   # the sleeping state clients were last told about (hub use)
 
-    def to_dict(self) -> dict:
+    @property
+    def sleep_limit_s(self) -> float:
+        """How long a sleeping node's readings count as current: 2.5 wake intervals, rounded up to
+        whole minutes. 0 when the node is not set to sleep."""
+        return math.ceil(self.sleep_minutes * 2.5) * 60.0 if self.sleep_minutes > 0 else 0.0
+
+    def is_sleeping(self, now: float) -> bool:
+        """True only while a node set to sleep is out of contact (missing), has given a real
+        reading and that reading is still within the limit. Never true on a guess: no reading yet,
+        a fault, or past the limit all show as they would for any other node."""
+        limit = self.sleep_limit_s
+        return (limit > 0 and self.status == Status.MISSING and self.last_reading is not None
+                and 0 <= now - self.last_reading <= limit)
+
+    def to_dict(self, now: float | None = None) -> dict:
         out = {
             "id": self.id,
             "name": self.name,
@@ -121,6 +142,12 @@ class Device:
         }
         if self.input_name:
             out["input_name"] = self.input_name
+        # Only for a node set to sleep: whether it is sleeping now and when its last reading came.
+        # Nothing else about the setting goes out.
+        if self.sleep_minutes > 0:
+            out["sleeps"] = True
+            out["sleeping"] = self.is_sleeping(time.time() if now is None else now)
+            out["last_reading"] = self.last_reading
         out.update({k: v for k, v in self.public.items() if k in PUBLIC_EXTRA and k not in out})
         return out
 
@@ -147,7 +174,8 @@ class Entity:
     # label only (never part of an id, key or history). Absent from to_dict() when empty.
     location: str = ""
 
-    def to_dict(self, now: float, stale_after_s: float, offset: float = 0.0, role: str = "environment") -> dict:
+    def to_dict(self, now: float, stale_after_s: float, offset: float = 0.0, role: str = "environment",
+                sleeping: bool = False) -> dict:
         data = {
             "id": self.id,
             "device_id": self.device_id,
@@ -169,6 +197,9 @@ class Entity:
         # public shape of every existing sensor is unchanged.
         if role == "equipment" and not self.derived:
             data["role"] = "equipment"
+        # Only while its node is sleeping between readings: the value is its last real one, not stale.
+        if sleeping and not self.derived:
+            data["sleeping"] = True
         if self.labels:
             data["labels"] = dict(self.labels)
         if self.location:

@@ -278,6 +278,7 @@ class Hub:
             if device.area:
                 existing.area = device.area
             existing.role = device.role
+            existing.sleep_minutes = device.sleep_minutes
             existing.hw_id = device.hw_id  # as reported now; "" when the board gave no MAC
             device = existing
         else:
@@ -301,14 +302,49 @@ class Hub:
         if device is None or (device.status == status and device.status_detail == detail):
             return
         device.status, device.status_detail = status, detail
+        device.sleep_shown = device.is_sleeping(time.time())
         self.bus.publish("device", device)
-        offline = status in (Status.MISSING, Status.FAULT)
+        self._sync_offline_alarm(device, silent_alarm)
+        if device.sleep_minutes > 0:
+            self._republish_device_entities(device_id)   # "sleeping" appears or goes with the status
+
+    def _sync_offline_alarm(self, device: Device, silent: bool = False) -> None:
+        """Raise or clear the node-offline alarm. A node set to sleep between readings is not
+        offline while it is sleeping (inside its limit); once the limit passes it is, as for any node."""
+        now = time.time()
+        offline = device.status in (Status.MISSING, Status.FAULT) and not device.is_sleeping(now)
+        detail = device.status_detail
         change = self.alarms.set_condition(
-            f"device:{device_id}", offline, DEVICE_OFFLINE_LEVEL,
-            f"{device.name}: {status.value}{' (' + alarm_detail(detail) + ')' if detail else ''}", time.time(),
-            silent=silent_alarm, status=status.value)
+            f"device:{device.id}", offline, DEVICE_OFFLINE_LEVEL,
+            f"{device.name}: {device.status.value}{' (' + alarm_detail(detail) + ')' if detail else ''}", now,
+            silent=silent, status=device.status.value)
         if change:
             self._alarm_changed([change])
+
+    def set_node_sleep(self, device_id: str, minutes: int) -> None:
+        """Set a node's "sleeps between readings" interval in minutes (0 = off) and tell every open
+        screen at once. Changes only how long its readings count as current."""
+        device = self.devices.get(device_id)
+        if device is None or minutes < 0:
+            return
+        device.sleep_minutes = minutes
+        device.sleep_shown = device.is_sleeping(time.time())
+        self.bus.publish("device", device)
+        self._republish_device_entities(device_id)
+        self._sync_offline_alarm(device)
+
+    def _check_sleepers(self, now: float) -> None:
+        """Once a second: a sleeping node that has outlasted its limit turns stale and offline
+        without any event arriving, so look for the moment it changes."""
+        for device in list(self.devices.values()):
+            if device.sleep_minutes <= 0:
+                continue
+            sleeping = device.is_sleeping(now)
+            if sleeping != device.sleep_shown:
+                device.sleep_shown = sleeping
+                self.bus.publish("device", device)
+                self._republish_device_entities(device.id)
+            self._sync_offline_alarm(device)
 
     def set_device_input_name(self, device_id: str, name: str) -> None:
         """Set the (already cleaned) input name a measurement source reports; tells clients on change."""
@@ -363,14 +399,24 @@ class Hub:
         entity.raw_value = raw_value
         entity.value = None if raw_value is None else raw_value + offset
         entity.updated = ts
+        device = self.devices.get(entity.device_id)
+        if device is not None and raw_value is not None and not entity.derived:
+            device.last_reading = ts if device.last_reading is None else max(device.last_reading, ts)
         self.recorder.record_state(entity_id, entity.value, ts)
         self.bus.publish("state", entity)
+
+    def stale_after_for(self, entity: Entity) -> float:
+        """Seconds after which this sensor's reading is stale: the site limit, or for a node set to
+        sleep between readings its longer sleep limit (2.5 wake intervals)."""
+        device = self.devices.get(entity.device_id)
+        limit = device.sleep_limit_s if device is not None and not entity.derived else 0.0
+        return max(self.config.site.stale_after_s, limit) if limit > 0 else self.config.site.stale_after_s
 
     def lookup(self, entity_id: str) -> tuple[float | None, bool]:
         entity = self.entities.get(entity_id)
         if entity is None:
             return None, True
-        return entity.value, entity.is_stale(time.time(), self.config.site.stale_after_s)
+        return entity.value, entity.is_stale(time.time(), self.stale_after_for(entity))
 
     # -------------------------------------------------------------- derived
     def role_of(self, entity: Entity) -> str:
@@ -389,10 +435,9 @@ class Hub:
     def _env_inputs(self, kind: Kind, now: float) -> list[Entity]:
         """The sensors that may go into a site average: environment only. Filtering happens here,
         before averaging, so accuracy shares are worked out over environment sensors alone."""
-        stale_after = self.config.site.stale_after_s
         return [e for e in self.entities.values()
                 if e.kind == kind and not e.derived and e.value is not None
-                and not e.is_stale(now, stale_after)
+                and not e.is_stale(now, self.stale_after_for(e))
                 and self.role_of(e) == ROLE_ENVIRONMENT
                 and self.calibration_for(e).include_in_average]
 
@@ -400,7 +445,10 @@ class Hub:
         """Public form of an entity: includes ``offset`` only when a calibration offset is set,
         and ``role`` only for equipment."""
         offset = 0.0 if (entity.derived or entity.kind == Kind.SOUND_LEVEL) else float(self.calibration_for(entity).offset or 0.0)
-        return entity.to_dict(now, stale_after, offset, self.role_of(entity))
+        device = self.devices.get(entity.device_id)
+        sleeping = device is not None and device.is_sleeping(now)
+        return entity.to_dict(now, self.stale_after_for(entity),
+                              offset, self.role_of(entity), sleeping)
 
     def set_node_role(self, device_id: str, role: str) -> None:
         """Change a node's role and tell every open screen about its sensors at once (no reload).
@@ -453,7 +501,6 @@ class Hub:
         ``outlier``, ``stale``, ``off`` = left out by its tick box, ``none`` = no reading yet), its
         share of the average, and fixed text saying why weighting is not in use. Never public."""
         site = self.config.site
-        stale_after = site.stale_after_s
         sensors: dict[str, dict] = {}
         for e in self.entities.values():
             if e.kind != kind or e.derived:
@@ -464,7 +511,7 @@ class Hub:
                 state = "off"
             elif e.value is None:
                 state = "none"
-            elif e.is_stale(now, stale_after):
+            elif e.is_stale(now, self.stale_after_for(e)):
                 state = "stale"
             elif e.id in result.rejected:
                 state = "outlier"
@@ -558,6 +605,7 @@ class Hub:
 
     def tick(self) -> None:
         now = time.time()
+        self._check_sleepers(now)
         self.compute_site(now)
         changes = self.alarms.evaluate(self.config.thresholds, self.lookup, now)
         if changes:
@@ -775,7 +823,7 @@ class Hub:
             "ontime_timer": self.ontime_timer.snapshot(),  # likewise
             "ontime_rundown": self.ontime_rundown.snapshot(),  # likewise
             "globcon_meters": self._globcon_snapshot(),  # likewise
-            "devices": [d.to_dict() for d in self.devices.values()],
+            "devices": [d.to_dict(now) for d in self.devices.values()],
             "entities": [self.entity_dict(e, now, stale_after) for e in self.entities.values()],
             "markers": [m.to_dict() for m in self.recorder.markers()],
             "alarms": self.alarm_notices(),

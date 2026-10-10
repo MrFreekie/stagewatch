@@ -17,6 +17,10 @@ if TYPE_CHECKING:
     from .hub import Hub
 
 Tier = Literal["verified", "community", "experimental"]
+# How an integration gets its data: "local_push" (the device sends changes as they happen, on the
+# local network), "local_poll" (Stagewatch asks every few seconds, on the local network) or
+# "cloud" (needs the internet). Unset means unknown or not applicable: Admin then shows nothing.
+IotClass = Literal["local_push", "local_poll", "cloud"]
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,7 @@ class Manifest:
     protocols: tuple[str, ...] = ()
     entity_kinds: tuple[str, ...] = ()
     vendors: tuple[str, ...] = field(default_factory=tuple)
+    iot_class: IotClass | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)

@@ -271,6 +271,38 @@ it is **stale**.
 If a node goes offline, Stagewatch keeps trying to reconnect. Once it comes back, it is
 used again.
 
+### Nodes that sleep between readings
+
+Some battery nodes switch themselves off (deep sleep) between readings, so they are out of
+contact most of the time. Without help, Stagewatch would show them as stale and missing, and
+raise a "node offline" alarm, between every wake-up.
+
+In **Admin → ESPHome nodes**, type the number of minutes the node sleeps in **Sleeps between
+readings**, then **Save**. Leave it empty for a node that stays on (nothing changes).
+
+- While the node is out of contact but its last reading is no older than **2.5 times that
+  interval** (rounded up to whole minutes, so 5 minutes gives 13 minutes), the node and its
+  sensors say **Sleeping**, and the hover text gives the age of the last reading. No offline
+  alarm is raised, and the value shown is the last real reading, not a guess.
+- After that limit it shows stale and missing as usual, and the offline alarm is raised.
+- Until a sleeping node has given Stagewatch a reading, it is shown as missing like any other
+  node. Stagewatch does not assume it is asleep.
+- Within the limit the reading still counts in the site average (Environment sensors), as it
+  did before. The Environment and Equipment rules are unchanged.
+
+**Not yet tested on a real deep-sleep node.** It has only been checked with simulated times.
+Tell us how it behaves on yours.
+
+If you go back to an older version of Stagewatch, it ignores the setting and treats the node as
+always on.
+
+### How an integration gets its data
+
+In **Admin → Integrations**, a small tag under an integration's name says how it gets its
+data: **Local, live push** (the device sends changes as they happen, on your network), **Local,
+checks every few seconds**, or **Uses the internet** (shown as a warning). No tag means
+Stagewatch has nothing to say about it.
+
 ---
 
 ## The tablet says it's disconnected

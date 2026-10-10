@@ -227,6 +227,7 @@ class DevicePatch(BaseModel):
     name: str | None = None
     area: str | None = None
     role: Literal["environment", "equipment"] | None = None
+    sleep_minutes: int | None = Field(None, ge=0, le=1440)   # 0 = the node does not sleep
     host: str | None = Field(None, max_length=253)
     port: int | None = Field(None, ge=1, le=65535)
 
@@ -1064,6 +1065,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # Each sensor's live share of its kind's site average, and why weighting is not in use.
             "averages": hub.average_info,
             "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id), "role": d.role,
+                               "sleep_minutes": d.sleep_minutes,
                                "host": where.get(d.id, {}).get("host", ""),
                                "address": where.get(d.id, {}).get("address", "")}
                         for d in hub.devices.values() if d.id != "site"},
@@ -1145,7 +1147,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         esp = esphome()
         if (body.host is not None or body.port is not None) and esp.config_of(device_id) is None:
             raise HTTPException(409, "This device has no network address to change")
-        await esp.update(device_id, body.name, body.area, body.host, body.port, body.role)
+        await esp.update(device_id, body.name, body.area, body.host, body.port, body.role, body.sleep_minutes)
         return {"ok": True}
 
     @app.delete("/api/admin/devices/{device_id}", dependencies=admin_deps)

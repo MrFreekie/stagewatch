@@ -543,6 +543,16 @@ SW.age = function (updated, now) {
   return `${(s / 3600).toFixed(1)}h ago`;
 };
 
+// What a node's status pill says. A node set to sleep between readings that is out of contact but
+// still within its limit shows "sleeping", with the age of its last reading in the hover text;
+// anything else shows the node's own status unchanged.
+SW.deviceStatus = function (d, now) {
+  if (d && d.sleeping) {
+    return { text: "sleeping", cls: "sleeping", title: `Sleeping between readings. Last reading ${SW.age(d.last_reading, now)}.` };
+  }
+  return { text: d ? d.status : "", cls: d ? d.status : "", title: (d && d.status_detail) || "" };
+};
+
 // ---- Schedule: NOW / NEXT --------------------------------------------
 // Pure functions, no DOM: the dashboard counts down itself, every second, from the items' planned
 // epoch times and the server-corrected clock. These mirror core/schedule.py (stage_matches,
