@@ -18,6 +18,7 @@ them into a dated release section and tags the commit.
 ### Added
 
 - **Messages bell in the dashboard header.** A bell with a count and the worst kind of message (red `!` alarm, amber `▲` warning, blue `i` information; grey with no number when there is nothing). Tap it for a panel listing the same items as the alarm bar, worst first then newest, each with its age. It closes on a second tap, Esc or a tap elsewhere, and stays open as live updates arrive. It never flashes. It uses the alarm list dashboards already receive, so there are no new public fields. The wall screen does not show it.
+- **Connection status in the dashboard header, beside the bell.** Shows **Online** (green `●`), **Offline** (amber `✕`) or **Error** (red `!`), always with the word (hidden on phones but still read out by screen readers). Tap, or press Enter or Space, for a panel with the state in words, when data last arrived, how long it has been connected or disconnected, and what to try. Online is shown only while the live feed is up and something has arrived in the last 40 seconds, so frozen figures never read as Online. Error means the server answered with a fault or a message could not be used. No addresses or technical text, and it never flashes. The wall screen shows a small mark and word only when not online.
 
 ### Changed
 - **Equipment card: smaller tiles.** A node's Temperature, Pressure and Humidity are now compact tiles that sit on one line and wrap onto more lines only when there are more sensors.

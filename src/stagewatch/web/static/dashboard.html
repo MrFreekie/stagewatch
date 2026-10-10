@@ -22,6 +22,13 @@
   <div class="msg-panel" id="msg-panel" role="region" aria-label="Messages" hidden>
     <ul id="msg-list"></ul>
   </div>
+  <button class="cs-btn cs-offline" id="cs-btn" type="button" aria-expanded="false" aria-controls="cs-panel" aria-label="Offline"><span class="cs-sym" id="cs-sym" aria-hidden="true">✕</span><span class="cs-word" id="cs-word">Offline</span></button>
+  <span class="sr-only" id="cs-live" role="status" aria-live="polite"></span>
+  <div class="msg-panel cs-panel" id="cs-panel" role="region" aria-label="Connection" hidden>
+    <p class="cs-head" id="cs-head"></p>
+    <ul id="cs-list"></ul>
+    <p class="cs-advice" id="cs-advice"></p>
+  </div>
   <button class="theme-toggle" id="theme-toggle" type="button"></button>
   <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="false"><span class="sound-icon" aria-hidden="true"></span><span id="sound-label">Alarm sound: Off</span></button>
   <span class="clock" id="clock"></span>
