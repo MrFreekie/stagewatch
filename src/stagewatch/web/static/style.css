@@ -1018,3 +1018,47 @@ body.layout-wall .eq-tile .label { font-size: 18px; }
 body.layout-wall .eq-tile .value { font-size: 40px; }
 body.layout-wall .eq-tile .value .unit { font-size: 22px; }
 body.layout-wall .eq-tile .foot { font-size: 16px; }
+
+/* ---- Power card (power.js): Shelly power meters, read only. Words and a symbol go with every colour. ---- */
+.pw-tag { font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.pw-meter + .pw-meter { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--grid); }
+.pw-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; margin-bottom: 6px; }
+.pw-name { font-size: 18px; font-weight: 700; }
+.pw-badge { padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; background: var(--panel-2); }
+.pw-b-live { color: var(--ok); }
+.pw-b-waiting { color: var(--muted); }
+.pw-b-frozen { color: var(--stop); }
+.pw-note { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.pw-s-frozen .pw-grid, .pw-s-frozen .pw-table, .pw-s-frozen .pw-energy { opacity: .6; }
+.pw-s-frozen .pw-value .pw-num { text-decoration: line-through; text-decoration-thickness: 1px; }
+.pw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 14px; }
+.pw-cell { min-width: 0; }
+.pw-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.pw-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.pw-value .unit { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+.pw-big { grid-column: 1 / -1; }
+.pw-big .pw-value { font-size: 44px; }
+.pw-table { width: 100%; font-variant-numeric: tabular-nums; }
+.pw-table th[scope="row"] { text-align: left; font-weight: 600; white-space: nowrap; }
+.pw-energy { margin-top: 10px; font-size: 16px; font-variant-numeric: tabular-nums; }
+.pw-energy .pw-num { font-weight: 700; font-size: 20px; }
+.pw-energy .unit { color: var(--muted); }
+.pw-sub { font-size: 12px; }
+.pw-foot { font-size: 12px; margin: 12px 0 0; }
+body.layout-phone .pw-big .pw-value { font-size: 36px; }
+body.layout-phone .pw-grid { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
+body.layout-wall .pw-name { font-size: 30px; }
+body.layout-wall .pw-badge { font-size: 22px; }
+body.layout-wall .pw-note { font-size: 24px; }
+body.layout-wall .pw-label { font-size: 18px; }
+body.layout-wall .pw-value { font-size: 40px; }
+body.layout-wall .pw-value .unit { font-size: 22px; }
+body.layout-wall .pw-big .pw-value { font-size: 88px; }
+body.layout-wall .pw-energy { font-size: 26px; }
+body.layout-wall .pw-energy .pw-num { font-size: 34px; }
+body.layout-wall .pw-sub, body.layout-wall .pw-foot { display: none; }
+body.layout-wall .pw-table { font-size: 28px; }
+main > [data-size="half"] .pw-big .pw-value { font-size: 36px; }
+main > [data-size="half"] .pw-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
+body.layout-wall main > [data-size="half"] .pw-big .pw-value { font-size: 64px; }
+body.layout-wall main > [data-size="half"] .pw-value { font-size: 32px; }

@@ -218,6 +218,54 @@ class EsphomeDeviceConfig(_Model):
         return mac
 
 
+SHELLY_POLL_MIN_S = 2.0
+SHELLY_POLL_MAX_S = 5.0
+SHELLY_POLL_DEFAULT_S = 3.0
+SHELLY_MAX_METERS = 16
+
+
+class ShellyDeviceConfig(_Model):
+    """A Shelly power meter the admin added (read-only: Stagewatch only asks it for its readings).
+    Identity is the meter's MAC, read from the meter itself when it was added; ``host`` is only where
+    to ask now (a private-network address, checked again at every connection). Additive with
+    defaults: no schema bump. An older build ignores the list and drops it on its next save."""
+    id: str
+    host: str = Field(max_length=64)
+    mac: str
+    name: str = Field("", max_length=60)
+    area: str = Field("", max_length=40)
+    poll_interval_s: float = Field(SHELLY_POLL_DEFAULT_S, ge=SHELLY_POLL_MIN_S, le=SHELLY_POLL_MAX_S)
+
+    @field_validator("id")
+    @classmethod
+    def _slug(cls, v: str) -> str:
+        return slugify(v)
+
+    @field_validator("mac")
+    @classmethod
+    def _mac(cls, v: str) -> str:
+        mac = normalise_mac(v)
+        if mac is None:
+            raise ValueError("MAC must be 12 hex characters")
+        return mac
+
+    @field_validator("host")
+    @classmethod
+    def _host(cls, v: str) -> str:
+        try:
+            return str(ipaddress.ip_address((v or "").strip()))
+        except ValueError:
+            raise ValueError("address must be an IP address") from None
+
+    @field_validator("poll_interval_s", mode="before")
+    @classmethod
+    def _interval(cls, v):
+        """On load, a number outside 2 to 5 s is brought into range rather than costing the meter."""
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v:
+            return min(SHELLY_POLL_MAX_S, max(SHELLY_POLL_MIN_S, float(v)))
+        return v
+
+
 # Sensor accuracy ("Accuracy ±"), stored in canonical units (degC, %RH, Pa) per kind. The upper
 # bounds are what the admin API accepts (a datasheet figure above this is a typing slip). A value
 # outside them in a saved file is ignored when averaging.
@@ -770,6 +818,8 @@ class Config(_Model):
     alarms: AlarmsConfig = Field(default_factory=AlarmsConfig)
     spl: SplConfig = Field(default_factory=SplConfig)
     globcon: GlobconConfig = Field(default_factory=GlobconConfig)
+    # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
+    shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list, max_length=SHELLY_MAX_METERS)
 
     @field_validator("globcon", mode="before")
     @classmethod

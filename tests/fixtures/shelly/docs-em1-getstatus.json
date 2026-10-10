@@ -1,0 +1,5 @@
+{
+  "_note": "SYNTHETIC from the EM1 documentation field names (not captured). Two channels; the second has null fields.",
+  "em1:0": {"id": 0, "current": 3.2, "voltage": 231.0, "act_power": 700.0, "aprt_power": 740.0, "pf": 0.95, "freq": 50.0},
+  "em1:1": {"id": 1, "current": null, "voltage": null, "act_power": null, "aprt_power": null, "pf": null, "freq": null}
+}

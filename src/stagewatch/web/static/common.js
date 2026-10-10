@@ -363,6 +363,14 @@ SW.KIND_FMT = {
   battery: { unit: "%", dec: 0, conv: (v) => v },
   signal_strength: { unit: "dBm", dec: 0, conv: (v) => v },
   sound_level: { unit: "dB", dec: 1, conv: (v) => v },   // shown to one decimal, never changed or averaged
+  // Power meter readings (Equipment): shown as the meter sent them, only a unit beside the number.
+  power: { unit: "W", dec: 1, conv: (v) => v },
+  apparent_power: { unit: "VA", dec: 1, conv: (v) => v },
+  current: { unit: "A", dec: 3, conv: (v) => v },
+  voltage: { unit: "V", dec: 1, conv: (v) => v },
+  energy: { unit: "Wh", dec: 1, conv: (v) => v },
+  power_factor: { unit: "", dec: 2, conv: (v) => v },
+  frequency: { unit: "Hz", dec: 1, conv: (v) => v },
 };
 
 // Fixed-point with a comma every three digits and a full stop for decimals ("1,013.2"), whatever
@@ -931,7 +939,7 @@ SW.qrSvg = function (text, size = 176) {
 // Card size (Dashboard.card_sizes, core/cards.py HALF_CAPABLE). A card is half width only when
 // the dashboard says "half" for it, the card is allowed to be half, and the layout is not the
 // phone (a phone always shows full width). Anything else is full.
-SW.HALF_CAPABLE = ["wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters"];
+SW.HALF_CAPABLE = ["wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power"];
 SW.cardIsHalf = function (dash, id, layout) {
   if (layout === "phone" || SW.HALF_CAPABLE.indexOf(id) < 0) return false;
   const sizes = dash && dash.card_sizes;

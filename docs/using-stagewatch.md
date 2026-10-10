@@ -580,13 +580,14 @@ Good to know:
   before saving, the ticks change to that layout's set.
 - **Wall Clock**, **Ontime Timer** and **Ontime Rundown** are never switched on by default. Tick them if you want them,
   then choose the time source and look (see below).
-- **Half-size cards.** Beside **Wall Clock**, **Ontime Timer**, **Ontime Rundown** and **DirectOut GLOBCON** in **Edit cards** there is a **Size** choice, **Full** or
+- **Half-size cards.** Beside **Wall Clock**, **Ontime Timer**, **Ontime Rundown**, **DirectOut GLOBCON** and **Power** in **Edit cards** there is a **Size** choice, **Full** or
   **Half**. Half-size cards sit side by side with another half-size card on tablets and wall screens (put the two next to
   each other in the order). A half-size card with no partner stays half width. On a phone, and on any screen narrower than
   900 px, every card is full width. Every card is Full until you choose Half.
 - **Equipment** is never switched on by default either. It shows the readings of Equipment sensors (see
   above) and stays hidden while there are none.
 - **Barometer** is never switched on by default either. It needs a pressure sensor (see below).
+- **Power** is never switched on by default either. It shows Shelly power meters and stays hidden until one has been added (see below).
 - **Schedule** stays hidden until the show has a schedule, even when it is ticked. Add the
   schedule under **Admin → Schedule → Open schedule editor**.
 - **Open on a tablet** is always at the bottom of the screen, wherever it is in the list. Tick
@@ -1018,3 +1019,65 @@ back. Nothing is recorded: the card is live only, so there is no history and no 
 
 **For the wall.** The bars and numbers grow to be read from across the room. Colour is always paired with
 a word or a symbol.
+### Watch the power (Power card, Shelly power meters)
+
+The **Power** card shows **watts, volts, amps, frequency and energy** from **Shelly power meters** on your
+local network, for the question "is this rack or circuit drawing what I expect?". Each meter has a block
+with its name and area, a big **power** figure in watts, then **voltage**, **current** and **frequency**, and
+an **energy** line. Energy is the meter's own running total (it shows **Wh** below 1,000 and **kWh** above),
+so it only ever counts up from when the meter's counter started. It is not an average. If a meter also
+sends **apparent power** and **power factor**, they appear too. Many don't, and then they are left out.
+
+**Read-only.** Stagewatch only reads. Every few seconds it asks each meter for its readings, and that is
+all it ever sends. It cannot switch a relay, change a setting, restart, update or reset a meter. Some Shelly
+products (a Plug, a Plus 1PM) have a relay in the load path. Stagewatch reads the power from them and **never
+touches the relay**, but it cannot stop the Shelly's own button, schedule or app from switching it. For a
+distro, use a meter with no relay, such as the **Shelly PM Mini**, or a clamp meter.
+
+**Equipment, not air.** Power readings are always **Equipment** readings: they describe a circuit, never the
+air, so they can never change a site average, the speed of sound or the barometer. They are recorded exactly
+as the meter sends them. There is no offset or role setting for them.
+
+> **Phase 1: tried on one meter only.** This first version reads by **HTTP polling only** (Stagewatch asks the
+> meter; the meter does not need changing) and has been tried on **one Shelly PM Mini Gen3**. Other Shelly
+> meters (three-phase meters, single-circuit meters, and relays that measure power) are read by the
+> readings they report, but have **not been tried**, so check their figures against the Shelly's own page.
+> A meter with a **password** set is not supported yet: Stagewatch says so in words. Figures are advisory and
+> do not replace the electrician's inspection and testing. The card works in emulate mode (`--emulate`) with a
+> simulated PM Mini that stops answering for 40 seconds every 5 minutes, to show the frozen state.
+> **Planned, not built yet:** a button to add warnings at 80 % and 100 % of the breaker rating you enter, and
+> a way for meters to push their readings to Stagewatch.
+
+**Add a meter (admin).**
+
+1. Find the meter's **IP address**: in your router's list of devices, or in the Shelly app under the meter's
+   settings. Give the meter a fixed address in your router (a "DHCP reservation") so it stays put.
+2. Open **Admin → Shelly power meters** and type the address under **Add a meter**. It must be an address on
+   your own network (for example `192.168.1.50`). Names such as `shelly.local` and public addresses are refused.
+3. Click **Test**. **What you'll see:** the meter's model and firmware, what it measures, and its live
+   readings. Nothing on the meter is changed. If it fails, the message says why in plain words.
+4. Type a **Name** (for example **Mic rack**) and optionally an **Area**, then click **Save meter**. Stagewatch
+   remembers the meter by its own hardware address, which it reads from the meter.
+5. Add the **Power** card to a dashboard under **User dashboards → Edit cards**. It stays hidden until a
+   meter has been added.
+
+**If the meter's address changes.** Type the new address in the meter's row and click **Save**. Stagewatch
+checks it is the same meter and refuses if a different one answers there. Nothing is changed if it refuses.
+
+**What the card says.**
+
+- **OK**: readings are arriving.
+- **▲ NO READING**: the meter has stopped answering (switched off, Wi-Fi lost, or its address changed). The last
+  readings stay on screen, dimmed and struck through, with how old they are. They are never shown as zero.
+  After a few missed readings a quiet notice appears on the alarm bar, and when the meter comes back a marker
+  **<name>: meter back** is added at that moment. Nothing is filled in for the time in between, so the history
+  has a gap.
+- **▲ PROBLEM**: the meter needs a password, a different meter answered at the saved address, or it is not
+  sending power readings.
+- **… WAITING**: the meter has been added but has not answered yet.
+
+If an energy total ever goes back (someone reset the meter), the new number is recorded as it came, and the
+**Admin → Shelly power meters** row says when it went back.
+
+**For the wall.** The power figure grows large enough to read across the room. Tick **Half** beside the card
+in **Edit cards** to share a row with another half-size card. Colour is always paired with a word or a symbol.

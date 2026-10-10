@@ -46,6 +46,8 @@ from ..core import cards as cards_mod
 from ..core import schedule as sched
 from ..core import spl as spl_mod
 from ..integrations.ontime.client import check_connection
+from ..integrations.shelly import TEXT as SHELLY_TEXT, InUse
+from ..integrations.shelly.http import ShellyError
 from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
 from ..version import build_info
@@ -333,6 +335,47 @@ class GlobconBody(BaseModel):
     port: int = Field(9091, ge=1, le=65535, strict=True)
     password: str = Field("", max_length=PASSWORD_MAX)
     clear_password: StrictBool = False
+
+
+class ShellyTestBody(BaseModel):
+    """POST /api/admin/shelly/test: the address of a meter to look at. An IP address only."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    host: str = Field(min_length=1, max_length=64)
+
+
+class ShellyAddBody(ShellyTestBody):
+    """POST /api/admin/shelly/add. The meter's MAC is never taken from the client: it is read from the meter."""
+    name: str = Field(min_length=1, max_length=60)
+    area: str = Field("", max_length=40)
+    interval_s: float = Field(3.0, ge=2.0, le=5.0, allow_inf_nan=False)
+
+    @field_validator("name", "area")
+    @classmethod
+    def _plain(cls, v: str) -> str:
+        v = v.strip()
+        if _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+
+class ShellyPatchBody(BaseModel):
+    """PATCH /api/admin/shelly/{id}. A new address must be the same meter (checked against its MAC)."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    name: str | None = Field(None, min_length=1, max_length=60)
+    area: str | None = Field(None, max_length=40)
+    interval_s: float | None = Field(None, ge=2.0, le=5.0, allow_inf_nan=False)
+    host: str | None = Field(None, min_length=1, max_length=64)
+
+    @field_validator("name", "area")
+    @classmethod
+    def _plain(cls, v):
+        if v is not None:
+            v = v.strip()
+            if _has_hidden_chars(v):
+                raise ValueError("Use plain text")
+        return v
 
 
 class BaroDemoBody(BaseModel):
@@ -995,6 +1038,16 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         return {"max_slots": spl_mod.MAX_SLOTS, "password_set": bool(hub.config.spl.password),
                 "default_metrics": dict(spl_mod.LEGACY_SMAART_NAMES), "inputs": [], "metrics": [], **state}
 
+    def shelly_integ():
+        integ = hub.integrations.get("shelly")
+        if integ is None:
+            raise HTTPException(404, "Shelly integration not loaded")
+        return integ
+
+    def shelly_admin() -> dict:
+        integ = hub.integrations.get("shelly")
+        return integ.admin_status() if integ is not None else {"meters": [], "transport": "", "max_meters": 0, "emulate": hub.emulate}
+
     def globcon_admin() -> dict:
         integ = hub.integrations.get("globcon")
         state = integ.admin_status() if integ is not None else {"running": False, "status": "off"}
@@ -1031,6 +1084,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "ontime_rundown": hub.ontime_rundown.admin_status(),
             # GLOBCON levels card: is it in use and what is running (no addresses, no password).
             "globcon": globcon_admin(),
+            # Shelly power meters card: the meters (addresses, MACs and firmware are admin-only), no passwords exist.
+            "shelly": shelly_admin(),
             # Sound level card: the values that can be chosen, and what is running (no addresses).
             "spl": spl_admin(),
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
@@ -1147,7 +1202,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def patch_device(device_id: str, body: DevicePatch):
         if device_id not in hub.devices or device_id == "site":
             raise HTTPException(404, "No such device")
-        if hub.devices[device_id].category == "service":
+        if hub.devices[device_id].category in ("service", "meter"):
             raise HTTPException(409, SERVICE_DEVICE)
         esp = esphome()
         if (body.host is not None or body.port is not None) and esp.config_of(device_id) is None:
@@ -1159,7 +1214,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def delete_device(device_id: str):
         if device_id not in hub.devices or device_id == "site":
             raise HTTPException(404, "No such device")
-        if hub.devices[device_id].category == "service":
+        if hub.devices[device_id].category in ("service", "meter"):
             raise HTTPException(409, SERVICE_DEVICE)
         await esphome().remove(device_id)
         return {"ok": True}
@@ -1172,6 +1227,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if entity.kind == Kind.SOUND_LEVEL:
             raise HTTPException(409, "Sound levels are recorded exactly as received and cannot be adjusted. "
                                      "Nothing has been changed.")
+        if entity.locked_equipment:
+            raise HTTPException(409, "Power meter readings are recorded exactly as received and are always "
+                                     "Equipment, so they cannot be adjusted. Nothing has been changed.")
         # Accuracy: only for the three kinds that make the site average, within a sane limit for
         # the kind. Fixed text; the submitted number is never echoed.
         extra = {}
@@ -1386,6 +1444,45 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         hub.save_config()
         log.info("GLOBCON settings saved (password %s)", "set" if password else "not set")
         return {"ok": True, "changed": old != hub.config.globcon, "password_set": bool(password)}
+
+    # Shelly power meters. Read-only toward the meters: Stagewatch asks for readings (two GET requests,
+    # see integrations/shelly/http.py) and sends nothing else. Addresses must be on a private network.
+    @app.post("/api/admin/shelly/test", dependencies=admin_deps)
+    async def shelly_test(body: ShellyTestBody):
+        """Look at a meter without saving it: model, firmware, what it measures and live readings.
+        Fixed-text result; nothing the meter says is repeated."""
+        try:
+            return {"ok": True, **await shelly_integ().test(body.host)}
+        except ShellyError as exc:
+            return {"ok": False, "category": exc.category, "message": SHELLY_TEXT.get(exc.category, SHELLY_TEXT["unreachable"])}
+
+    @app.post("/api/admin/shelly/add", dependencies=admin_deps)
+    async def shelly_add(body: ShellyAddBody):
+        try:
+            cfg = await shelly_integ().add(body.host, body.name, body.area, body.interval_s)
+        except ShellyError as exc:
+            raise HTTPException(422, SHELLY_TEXT.get(exc.category, SHELLY_TEXT["unreachable"])) from None
+        except InUse as exc:
+            raise HTTPException(409, f"{exc}. Nothing has been changed.") from None
+        return {"id": cfg.id}
+
+    @app.patch("/api/admin/shelly/{device_id}", dependencies=admin_deps)
+    async def shelly_patch(device_id: str, body: ShellyPatchBody):
+        try:
+            await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host)
+        except LookupError:
+            raise HTTPException(404, "No such power meter") from None
+        except ShellyError as exc:
+            raise HTTPException(422, f"{SHELLY_TEXT.get(exc.category, SHELLY_TEXT['unreachable'])} Nothing has been changed.") from None
+        return {"ok": True}
+
+    @app.delete("/api/admin/shelly/{device_id}", dependencies=admin_deps)
+    async def shelly_delete(device_id: str):
+        try:
+            await shelly_integ().remove(device_id)
+        except LookupError:
+            raise HTTPException(404, "No such power meter") from None
+        return {"ok": True}
 
     @app.post("/api/admin/spl/refresh", dependencies=admin_deps)
     async def refresh_spl():

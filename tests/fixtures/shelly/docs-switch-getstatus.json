@@ -1,0 +1,9 @@
+{
+  "_note": "SYNTHETIC from the Switch documentation field names (not captured). A metering relay (its output state is deliberately never read) and a plain relay with no power fields.",
+  "switch:0": {
+    "id": 0, "source": "init", "output": true, "apower": 1500.0, "voltage": 231.5, "current": 6.5, "pf": 1.0, "freq": 50.0,
+    "aenergy": {"total": 98765.4, "by_minute": [1.0, 2.0, 3.0], "minute_ts": 1760000000},
+    "ret_aenergy": {"total": 0.0}, "temperature": {"tC": 41.2, "tF": 106.2}
+  },
+  "switch:1": {"id": 1, "source": "init", "output": false}
+}

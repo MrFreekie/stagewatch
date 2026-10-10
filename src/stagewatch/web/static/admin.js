@@ -343,6 +343,85 @@
       h("p", { class: "muted" }, lines.join(" · ")));
   }
 
+  // ------------------------------------------------------------ shelly power meters
+  // Shelly power meters for the Power card. Read-only: Stagewatch only asks a meter for its readings and
+  // never switches a relay, changes a setting, restarts or resets it. Addresses and MACs are shown here
+  // and nowhere public. Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3.
+  let shellyTest = null;   // the last Test result for the Add form: {host, ...} (kept across a re-render)
+  function shellyCard() {
+    const st = admin.shelly || { meters: [] };
+    const meters = st.meters || [];
+    const statusPill = (m) => {
+      const ss = SW.deviceStatus({ status: m.status, status_detail: m.detail }, snap.now);
+      return h("span", { class: `status ${ss.cls}`, title: ss.title }, ss.text);
+    };
+    const rows = meters.map((m) => {
+      const name = h("input", { value: m.name, maxlength: "60", "aria-label": `${m.name} name` });
+      const area = h("input", { value: m.area, maxlength: "40", "aria-label": `${m.name} area` });
+      const host = h("input", { class: "touch", value: m.host, maxlength: "64", autocomplete: "off", spellcheck: "false", "aria-label": `${m.name} address` });
+      const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: m.interval_s, "aria-label": `${m.name} reads every (seconds)` });
+      const facts = [m.model, m.firmware ? `firmware ${m.firmware}` : "", `MAC ${m.mac}`].filter(Boolean).join(" · ");
+      return h("tr", {},
+        h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, m.id)),
+        h("td", {}, area),
+        h("td", {}, statusPill(m), m.detail ? h("div", { class: "muted", style: "font-size:12px" }, m.detail) : null,
+          m.problem ? h("div", { class: "warn-text", style: "font-size:12px" }, m.problem) : null,
+          m.energy_went_back ? h("div", { class: "warn-text", style: "font-size:12px" }, `Energy counter went back at ${m.energy_went_back}`) : null),
+        h("td", {}, host, h("div", { class: "muted", style: "font-size:12px" }, facts)),
+        h("td", {}, h("div", { class: "row" }, every, h("span", { class: "muted" }, "s"))),
+        h("td", {}, h("div", { class: "muted", style: "font-size:12px" }, `${m.ok_polls} ok, ${m.failed_polls} missed`)),
+        h("td", {}, h("div", { class: "row" },
+          h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/shelly/${encodeURIComponent(m.id)}`, {
+            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value) }), "Saved").then(refresh, () => {}) }, "Save"),
+          h("button", { class: "small danger", onclick: () => confirm(`Remove ${m.name}? Its history is kept.`) && run(() => api("DELETE", `/api/admin/shelly/${encodeURIComponent(m.id)}`), "Removed").then(refresh, () => {}) }, "Remove"))));
+    });
+    const table = h("table", {},
+      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Polls"), h("th", {}, ""))),
+      h("tbody", {}, rows));
+
+    // Add a meter: type the address, press Test to see what is there, then Save.
+    const host = h("input", { class: "touch", maxlength: "64", autocomplete: "off", spellcheck: "false", placeholder: "e.g. 192.168.1.50", value: shellyTest ? shellyTest.host : "", "aria-label": "Meter address" });
+    const name = h("input", { maxlength: "60", value: "Power meter", "aria-label": "Name for this meter" });
+    const area = h("input", { maxlength: "40", placeholder: "e.g. FOH", "aria-label": "Area" });
+    const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: "3", "aria-label": "Reads every (seconds)" });
+    const result = h("div", { class: "shelly-result", role: "status" });
+    const save = h("button", { class: "primary touch", disabled: true }, "Save meter");
+    const showResult = (r) => {
+      if (!r) { result.replaceChildren(); save.disabled = true; return; }
+      if (!r.ok) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${r.message} Nothing has been changed.`)); save.disabled = true; return; }
+      const lines = [h("p", {}, `Found ${r.model || "a Shelly"}${r.firmware ? `, firmware ${r.firmware}` : ""}. It measures: ${r.components.join(", ") || "power"}.`)];
+      if (r.already_added) lines.push(h("p", { class: "warn-text" }, "▲ This meter has already been added."));
+      lines.push(h("ul", { class: "shelly-readings" }, r.readings.map((x) => h("li", {}, `${x.name}: ${SW.num(x.value, Math.min(3, x.decimals))}${x.unit ? " " + x.unit : ""}`))));
+      lines.push(h("p", { class: "muted" }, "These are live readings from the meter. Nothing has been changed on it."));
+      result.replaceChildren(...lines);
+      save.disabled = !!r.already_added;
+    };
+    const test = h("button", { class: "touch", onclick: async () => {
+      shellyTest = null; showResult(null);
+      result.replaceChildren(h("p", { class: "muted" }, "Asking the meter…"));
+      try {
+        const r = await api("POST", "/api/admin/shelly/test", { host: val(host) });
+        shellyTest = Object.assign({ host: val(host) }, r);
+        showResult(r);
+      } catch (err) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${err.message}`)); }
+    } }, "Test");
+    save.onclick = () => run(() => api("POST", "/api/admin/shelly/add", { host: val(host), name: val(name), area: val(area), interval_s: Number(every.value) }), "Meter added")
+      .then(() => { shellyTest = null; return refresh(); }, () => {});
+    if (shellyTest && shellyTest.ok) showResult(shellyTest);
+
+    return card("Shelly power meters",
+      h("p", { class: "muted" }, "Shows watts, volts, amps, frequency and energy from Shelly power meters on dashboards that have the Power card (User dashboards → Edit cards). Stagewatch only reads: every few seconds it asks each meter for its readings, and that is all it ever sends. It never switches a relay, changes a setting, restarts or resets a meter."),
+      h("p", { class: "notice" }, "A Shelly Plug or any Shelly with a relay is read for its power only. Stagewatch never touches the relay, but it cannot stop the Shelly's own button, schedule or app from switching it. For a distro, prefer a meter with no relay, such as the PM Mini."),
+      admin.emulate ? h("p", { class: "notice" }, "Emulate mode: meters are simulated, so any private address (such as 192.0.2.20) will \"find\" a simulated PM Mini. The demo meter stops answering for 40 seconds every 5 minutes, to show how a frozen card looks.")
+        : h("p", { class: "notice" }, "Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3. Other Shelly meters are read by what they report, but are not tested. A meter with a password is not supported yet."),
+      meters.length ? h("div", { class: "table-scroll" }, table) : h("p", { class: "muted" }, "No power meters yet. Type the meter's IP address below and press Test."),
+      h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADD A METER"),
+      h("div", { class: "row" }, field("Meter address (an IP address on your local network)", host), test),
+      result,
+      h("div", { class: "row" }, field("Name", name), field("Area (optional)", area), field("Reads every (seconds, 2 to 5)", every), save),
+      h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it. Stagewatch recognises a meter by its own hardware address, so if its address changes, type the new one in its row and press Save. Warnings at the breaker rating are planned for a later version. Figures are advisory and do not replace the electrician's inspection and testing."));
+  }
+
   // ------------------------------------------------------------ alarm notices
   // How long advisory notices stay on dashboards. Only the dashboard list changes: the state behind
   // a notice (a node still Missing) stays visible in the sensor list and here.
@@ -458,7 +537,7 @@
       return h("div", {}, h("div", { style: "font-variant-numeric:tabular-nums" }, w.address || "Not connected"),
         w.host && w.host !== w.address ? h("div", { class: "muted", style: "font-size:12px" }, w.host) : null);
     };
-    const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");   // services (Ontime) are listed under Integrations
+    const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter");   // services (Ontime) are listed under Integrations; power meters under Shelly power meters
     const devTable = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Role"), h("th", {}, "Sleeps between readings"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
       h("tbody", {}, devices.map((d) => {
@@ -573,7 +652,8 @@
   }
 
   function entitiesCard() {
-    const ents = snap.entities.filter((e) => !e.derived);
+    const meterIds = new Set(snap.devices.filter((d) => d.category === "meter").map((d) => d.id));
+    const ents = snap.entities.filter((e) => !e.derived && !meterIds.has(e.device_id));   // power meter readings are never adjusted
     const settingsOf = (e) => (admin.hardware && admin.hardware.settings[e.id]) || admin.config.entities[e.id]
       || { offset: 0, include_in_average: true, accuracy: null, accuracy_basis: "typical", role: "" };
     const nodeRoleOf = (id) => {
@@ -583,7 +663,7 @@
     const averages = (admin.hardware && admin.hardware.averages) || {};
     const shareOf = (e) => ((averages[e.kind] || {}).sensors || {})[e.id];
     // Same order as the adopted-nodes list; anything else (site rows) goes last, in a "Site" group.
-    const devs = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");
+    const devs = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter");   // meter readings are never adjusted
     const groups = devs.map((d) => ({ id: d.id, name: d.name, status: d.status, sleeping: !!d.sleeping, role: nodeRoleOf(d.id), ents: ents.filter((e) => e.device_id === d.id) }));
     const known = new Set(devs.map((d) => d.id));
     const rest = ents.filter((e) => !known.has(e.device_id));
@@ -780,6 +860,7 @@
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
     globcon_meters: ["DirectOut GLOBCON", "Live level meters for a group of channels (for example 1 to 8 or 9 to 16) of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Pick the controller and channels here; set the GLOBCON address in the GLOBCON settings."],
+    power: ["Power", "Watts, volts, amps, frequency and energy from Shelly power meters, as the meters report them. Read only. Never part of a site average. Add meters in the Shelly power meters settings. Stays hidden until a meter has been added."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
   const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
@@ -1601,6 +1682,7 @@
       foldCard(barometerCard(), "barometer", false),
       foldCard(splCard(), "smaart", false),
       foldCard(globconCard(), "globcon", false),
+      foldCard(shellyCard(), "shelly", false),
       foldCard(alarmLogCard(), "alarmlog", true),
       foldCard(supportCard(), "help", false),
       foldCard(catalogCard(), "integrations", false));
