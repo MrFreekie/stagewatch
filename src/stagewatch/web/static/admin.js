@@ -522,13 +522,38 @@
     return store;
   }
   // Expand all / Collapse all for a list of folds.
-  const foldButtons = (onAll) => h("div", { class: "row sg-buttons" },
-    h("button", { class: "touch", onclick: () => onAll(true) }, "Expand all"),
-    h("button", { class: "touch", onclick: () => onAll(false) }, "Collapse all"));
+  const foldButtons = (onAll, what = "") => h("div", { class: "row sg-buttons" },
+    h("button", { class: "touch", onclick: () => onAll(true) }, `Expand all${what}`),
+    h("button", { class: "touch", onclick: () => onAll(false) }, `Collapse all${what}`));
   const sensorFolds = foldStore("sw.admin.sensors.open");
   const connectFolds = foldStore("sw.admin.connect.open2");
   const softwareFolds = foldStore("sw.admin.software.open");
-
+  // Whole cards that fold under their heading, one remembered choice each. The key is a fixed
+  // card name, kept in its own store so it cannot clash with a dashboard slug or a sensor group.
+  const cardFolds = foldStore("sw.admin.cards.open");
+  let pageFolds = [];   // every card fold on the page, for the Expand all / Collapse all cards buttons
+  // Fold a card away under its <h2> (as Connect a tablet does). `dflt` is the first-visit state;
+  // `force` keeps it open and un-foldable while it carries a notice. A re-render builds a new
+  // <details> from the remembered state, so a card never closes itself under someone.
+  function foldCard(c, key, dflt, force) {
+    const head = c.firstChild, rest = Array.from(c.childNodes).slice(1);
+    const whole = h("details", { class: "card-fold", id: `card-fold-${key}` }, h("summary", { id: `card-sum-${key}` }, head));
+    whole.append(...rest);
+    c.append(whole);
+    cardFolds.bind(whole, key, dflt, force);
+    pageFolds.push({ d: whole, store: cardFolds, key, force });
+    return c;
+  }
+  // The one pair of buttons at the top of the page: every card, except those held open by a notice.
+  function setAllCards(open) {
+    pageFolds = pageFolds.filter((f) => f.d.isConnected);
+    const stores = new Set();
+    pageFolds.forEach((f) => {
+      if (f.force) return;
+      f.d.open = open; f.store.state()[f.key] = open; stores.add(f.store);
+    });
+    stores.forEach((st) => st.save());
+  }
   // The server recomputes the averages once a second: wait for that before redrawing the shares.
   const afterTick = (v) => new Promise((resolve) => setTimeout(() => resolve(v), 1200));
   const KIND_WORD = { temperature: "Temperature", humidity: "Humidity", pressure: "Pressure" };
@@ -1146,8 +1171,13 @@
     if (typeof schedData.now === "number") schedSkew = schedData.now - Date.now() / 1000;
   }
   function scheduleCard() {
-    const c = card("Schedule");
+    const c = card("Schedule", scheduleBody());
     c.id = "schedule-admin";
+    return foldCard(c, "schedule", true, !schedData);
+  }
+  // The summary under the heading; redrawn on its own so the fold keeps its focus and state.
+  function scheduleBody() {
+    const c = h("div", { id: "schedule-admin-body" });
     const items = schedData && Array.isArray(schedData.items) ? schedData.items : [];
     const day = (schedData && schedData.day) || (admin.show && admin.show.day) || "";
     const lines = [];
@@ -1168,8 +1198,8 @@
     return c;
   }
   function rerenderScheduleSummary() {
-    const old = document.getElementById("schedule-admin");
-    if (old) old.replaceWith(scheduleCard());
+    const old = document.getElementById("schedule-admin-body");
+    if (old) old.replaceWith(scheduleBody());
   }
 
   function catalogCard() {
@@ -1319,6 +1349,12 @@
   }
 
   function softwareCard() {
+    // Closed once set up; held open while an update is available or running.
+    const last = sw && sw.last_check;
+    const hold = !!(sw && (sw.update_available || sw.restarting || (sw.job && sw.job.running) || (last && last.ok && last.available)));
+    return foldCard(softwareCardBody(), "software", false, hold);
+  }
+  function softwareCardBody() {
     const el = (...body) => { const c = card("Software", ...body); c.id = "software"; return c; };
     if (!sw) return el(h("p", { class: "muted" }, "Software status unavailable."));
     const info = h("table", {}, h("tbody", {},
@@ -1424,6 +1460,7 @@
     whole.append(...rest);
     c.append(whole);
     connectFolds.bind(whole, "_card", true);
+    pageFolds.push({ d: whole, store: connectFolds, key: "_card", force: false });
     api("GET", "/api/admin/connect").then((r) => {
       if (!r.addresses.length) {
         body.replaceChildren(h("p", { class: "warn-text" }, "This computer does not seem to be on a network. Connect it to the show network (Wi-Fi or cable) and reload this page."));
@@ -1476,22 +1513,27 @@
   function render() {
     entityIdsRendered = snap.entities.map((e) => e.id).join(",");
     dirty = false;   // everything on screen now matches saved state
+    pageFolds = [];
+    // Core daily cards start open, set-up-once cards closed. A card with a notice is held open.
+    const oscErr = ((admin.integrations.find((i) => i.manifest.domain === "osc_out") || {}).last_error);
     app.replaceChildren(
-      h("div", { class: "grid-2" }, siteCard(), eventShowCard()),
+      foldButtons(setAllCards, " cards"),
+      h("div", { class: "grid-2" }, foldCard(siteCard(), "site", false, !admin.config.site.timezone), foldCard(eventShowCard(), "event", true)),
       scheduleCard(),     // summary and a link to /schedule
       connectCard(),
       softwareCard(),
-      devicesCard(), entitiesCard(), thresholdsCard(), alarmNoticesCard(),
-      dashboardsCard(),   // full width: room for the "Edit cards" panel
-      h("div", { class: "grid-2" }, oscCard(), securityCard()),
-      wallClockCard(),
-      ontimeTimerCard(),
-      barometerCard(),
-      splCard(),
-      globconCard(),
-      alarmLogCard(),
-      supportCard(),
-      catalogCard());
+      foldCard(devicesCard(), "nodes", true), foldCard(entitiesCard(), "sensors", true),
+      foldCard(thresholdsCard(), "thresholds", true), foldCard(alarmNoticesCard(), "notices", true),
+      foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
+      h("div", { class: "grid-2" }, foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false)),
+      foldCard(wallClockCard(), "wallclock", false),
+      foldCard(ontimeTimerCard(), "ontime", false),
+      foldCard(barometerCard(), "barometer", false),
+      foldCard(splCard(), "smaart", false),
+      foldCard(globconCard(), "globcon", false),
+      foldCard(alarmLogCard(), "alarmlog", true),
+      foldCard(supportCard(), "help", false),
+      foldCard(catalogCard(), "integrations", false));
   }
 
   async function refresh() {
