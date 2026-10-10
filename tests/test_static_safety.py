@@ -54,3 +54,17 @@ def test_the_check_itself_catches_sinks():
     assert SINKS.search("el.insertAdjacentHTML('beforeend', x)")
     assert SINKS.search("document.write(x)")
     assert not SINKS.search(_code_only("// no innerHTML here\nconst a = 1;"))
+
+
+def test_admin_help_links_point_at_real_files():
+    """The Help card's guide links come from one list; every path must exist in the repo."""
+    root = Path(__file__).resolve().parents[1]
+    src = (STATIC / "admin.js").read_text(encoding="utf-8")
+    block = src.split("const HELP_LINKS = [", 1)[1].split("\n  ];", 1)[0]
+    paths = re.findall(r'path: "([^"]+)"', block)
+    assert len(paths) >= 10
+    assert len(set(paths)) == len(paths), "a guide is linked twice"
+    missing = [p for p in paths if not (root / p).is_file()]
+    assert not missing, f"Help card links to files that do not exist: {missing}"
+    assert 'const HELP_REPO = "https://github.com/MrFreekie/stagewatch/blob/main/";' in src
+    assert 'target: "_blank", rel: "noopener noreferrer"' in src

@@ -1504,6 +1504,36 @@
   }
 
   // ------------------------------------------------------------ support
+  // Project guides on GitHub. Each path is checked against the repo by tests/test_static_safety.py.
+  const HELP_REPO = "https://github.com/MrFreekie/stagewatch/blob/main/";
+  const HELP_LINKS = [
+    { group: "Getting started", path: "README.md", title: "Stagewatch overview", about: "What Stagewatch is and how to start it" },
+    { group: "Getting started", path: "docs/install-windows.md", title: "Install on Windows", about: "Set up Stagewatch on a Windows laptop or PC" },
+    { group: "Getting started", path: "docs/install-raspberry-pi.md", title: "Install on a Raspberry Pi", about: "Set up Stagewatch on a Pi for a rack or wall display" },
+    { group: "Day to day", path: "docs/using-stagewatch.md", title: "Using Stagewatch", about: "What each card does" },
+    { group: "Day to day", path: "docs/troubleshooting.md", title: "Troubleshooting", about: "What to try when something is wrong" },
+    { group: "Day to day", path: "docs/updating-and-backups.md", title: "Updating and backups", about: "Update Stagewatch safely and keep your show data" },
+    { group: "Hardware and nodes", path: "docs/first-sensor-node.md", title: "Your first sensor node", about: "Build and connect a weather node" },
+    { group: "Hardware and nodes", path: "docs/pressure-nodes.md", title: "Pressure nodes", about: "Barometer and environment node builds" },
+    { group: "Hardware and nodes", path: "docs/feather-s3-tft-node.md", title: "Feather S3 display node", about: "A node with its own small screen" },
+    { group: "Reference", path: "docs/README.md", title: "All guides", about: "The full list of guides" },
+    { group: "Reference", path: "docs/glossary.md", title: "Glossary", about: "Plain-English meanings of the terms used" },
+    { group: "Reference", path: "CHANGELOG.md", title: "What has changed", about: "Every release and what it changed" },
+  ];
+
+  function helpLinks() {
+    const groups = [];
+    HELP_LINKS.forEach((l) => { if (groups.indexOf(l.group) < 0) groups.push(l.group); });
+    return h("div", { class: "help-links" },
+      h("h3", {}, "Guides"),
+      h("p", { class: "muted" }, "These links need an internet connection and open GitHub in a new tab. Stagewatch itself works offline."),
+      groups.map((g) => h("div", { class: "help-group" },
+        h("h4", {}, g),
+        h("ul", {}, HELP_LINKS.filter((l) => l.group === g).map((l) => h("li", {},
+          h("a", { class: "help-link", href: HELP_REPO + l.path, target: "_blank", rel: "noopener noreferrer" },
+            h("strong", {}, l.title), " ", h("span", { class: "muted" }, l.about))))))));
+  }
+
   function supportCard() {
     const status = h("p", { class: "muted", role: "status" });
     const btn = h("button", { class: "primary", style: "min-height:48px", onclick: async () => {
@@ -1522,7 +1552,7 @@
     } }, "Download diagnostics");
     return card("Help",
       h("p", { class: "muted" }, "If something is not working, download this file and send it to whoever is helping you. It contains recent logs, the device list and your settings. It contains no passwords or keys."),
-      h("div", { class: "row" }, btn), status);
+      h("div", { class: "row" }, btn), status, helpLinks());
   }
 
   function render() {
