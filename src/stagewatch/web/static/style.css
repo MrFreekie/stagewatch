@@ -945,3 +945,10 @@ body.layout-wall main > [data-size="half"] .gc-value, body.layout-wall main > [d
 body.layout-wall main > [data-size="half"] .gc-word .gc-value, body.layout-wall main > [data-size="half"] .gc-strips[data-n="16"] .gc-word .gc-value { font-size: 18px; }
 body.layout-wall main > [data-size="half"] .gc-title, body.layout-wall main > [data-size="half"] .gc-layer { font-size: 30px; }
 body.layout-wall main > [data-size="half"] .gc-badge { font-size: 22px; }
+
+/* Admin Help card: guide links on GitHub */
+.help-links h3 { margin: 18px 0 4px; }
+.help-links h4 { margin: 14px 0 4px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.help-links ul { list-style: none; margin: 0; padding: 0; }
+.help-link { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; min-height: 44px; box-sizing: border-box; padding: 6px 4px; }
+.help-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
