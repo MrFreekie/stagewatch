@@ -68,6 +68,10 @@ SW.gc = (function () {
     const range = opts && typeof opts.range === "string" && Object.prototype.hasOwnProperty.call(gc.RANGES, opts.range) ? gc.RANGES[opts.range] : null;
     const num = (opts && opts.controller) || 1;
     const v = { state: "waiting", title: `Controller ${num}`, layer: "", badge: "… WAITING", note: "", strips: [], cls: "gc-s-waiting", ago: "" };
+    const chan = range ? `Channels ${range[0]}-${range[1]}` : "Channels with a level";
+    // The subtitle: which controller, which layer (both as GLOBCON reports them now) and which channels this card shows.
+    const sub = () => [v.title, v.layer, chan].filter(Boolean).join(" - ");
+    v.sub = sub();
     const name = (m && m.label) || "GLOBCON";
     const c = gc.pick(m, num);
     if (!m || !c) {
@@ -77,6 +81,7 @@ SW.gc = (function () {
     }
     if (c.name) v.title = c.name;
     v.layer = c.layer_label || (typeof c.layer === "number" ? `Layer ${c.layer + 1}` : "");
+    v.sub = sub();
     if (c.locked) {
       v.state = "locked"; v.cls = "gc-s-locked"; v.badge = "▲ PASSWORD NEEDED";
       v.note = `▲ ${name} wants a password for this controller. Enter it in Admin.`;
@@ -159,9 +164,9 @@ SW.gc = (function () {
     };
     ui.nodes = [h("div", { class: "gc-top" }, ui.layer, ui.badge), ui.strips, ui.note, ui.foot];
     ui.update = function (v) {
-      setText(ui.head, v.title);
-      setText(ui.layer, v.layer ? `Layer: ${v.layer}` : "");
-      setHidden(ui.layer, !v.layer);
+      setText(ui.head, "DirectOut GLOBCON");
+      setText(ui.layer, v.sub || v.title);
+      setHidden(ui.layer, false);
       setText(ui.badge, v.badge);
       if (cols.length !== v.strips.length) build(v.strips.length);
       v.strips.forEach((s, i) => {
