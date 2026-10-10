@@ -794,7 +794,7 @@ def test_admin_state_has_the_hardware_map_and_the_snapshot_does_not(client, monk
     _api_fault(client, monkeypatch)
     state = client.get("/api/admin/state").json()
     assert state["hardware"]["entities"]["sim_foh.temperature"] == "mac:025e00000002/temperature"
-    assert state["hardware"]["devices"]["sim_foh"] == {"hw_id": "mac:025e00000002", "conflict": None, "role": "environment", "host": "", "address": ""}
+    assert state["hardware"]["devices"]["sim_foh"] == {"hw_id": "mac:025e00000002", "conflict": None, "role": "environment", "sleep_minutes": 0, "host": "", "address": ""}
     snap = client.get("/api/snapshot").text
     assert "025e0000000" not in snap and "hw_key" not in snap and "hw_id" not in snap
     for form in mac_forms(A) + mac_forms(B):

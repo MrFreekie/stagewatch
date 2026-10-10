@@ -51,6 +51,7 @@ MANIFEST = Manifest(
                 "state only; other states are handled but not yet checked against a real Ontime.",
     tier="experimental",
     direction="in",
+    iot_class="local_push",   # the WebSocket pushes; HTTP polling is only the fallback
     protocols=("WebSocket", "HTTP"),
 )
 

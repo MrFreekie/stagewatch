@@ -57,6 +57,7 @@ MANIFEST = Manifest(
                 "(--emulate) works. Never part of the site averages.",
     tier="experimental",
     direction="in",
+    iot_class="local_push",   # asks Smaart for one update a second over a WebSocket, then just listens
     protocols=("WebSocket",),
     entity_kinds=("sound_level",),
     vendors=("Rational Acoustics (Smaart)",),

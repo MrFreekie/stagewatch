@@ -217,7 +217,7 @@
       const last = Math.max(0, ...mine.filter((e) => !isHealth(e)).map((e) => e.updated || 0));
       return h("tr", {},
         h("td", {}, d.name, d.area ? h("div", { class: "muted", style: "font-size:12px" }, d.area) : null),
-        h("td", {}, h("span", { class: `status ${d.status}`, title: d.status_detail || "" }, d.status)),
+        h("td", {}, (() => { const st = SW.deviceStatus(d, state.now); return h("span", { class: `status ${st.cls}`, title: st.title }, st.text); })()),
         cell("temperature"), cell("humidity"), cell("pressure"),
         showSignal ? healthCell("signal_strength", (v) => v < -75, (v) => `${fmt("signal_strength", v)} ${SW.signalWord(v)}`) : null,
         showBattery ? healthCell("battery", (v) => v < 20, (v) => (v < 20 ? `${fmt("battery", v)} low` : fmt("battery", v))) : null,
@@ -873,12 +873,13 @@
     card.hidden = groups.length === 0;
     $("equipment-body").replaceChildren(...groups.map(({ dev, ents }) =>
       h("div", { class: "eq-node" },
-        h("h3", {}, dev.name || dev.id, dev.status ? h("span", { class: `status ${dev.status}`, title: dev.status_detail || "" }, dev.status) : null),
+        h("h3", {}, dev.name || dev.id, dev.status ? (() => { const st = SW.deviceStatus(dev, state.now); return h("span", { class: `status ${st.cls}`, title: st.title }, st.text); })() : null),
         h("div", { class: "eq-grid" }, ...ents.map((e) =>
           h("div", { class: "tile eq-tile" + (e.stale ? " stale" : "") },
             h("div", { class: "label" }, e.name || e.id),
             h("div", { class: "value" }, eqValue(e), SW.hasOffset(e) ? offsetStar() : null),
-            h("div", { class: "foot" }, e.stale ? `Old reading, ${SW.age(e.updated, state.now)}` : SW.age(e.updated, state.now))))))));
+            h("div", { class: "foot" }, e.stale ? `Old reading, ${SW.age(e.updated, state.now)}`
+              : e.sleeping ? `Sleeping, last reading ${SW.age(e.updated, state.now)}` : SW.age(e.updated, state.now))))))));
   }
 
   // ------------------------------------------------------- sound level

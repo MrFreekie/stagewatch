@@ -459,21 +459,28 @@
     };
     const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");   // services (Ontime) are listed under Integrations
     const devTable = h("table", {},
-      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Role"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
+      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Role"), h("th", {}, "Sleeps between readings"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
       h("tbody", {}, devices.map((d) => {
         const name = h("input", { value: d.name });
         const area = h("input", { value: d.area });
         const hwd = admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id];
         const role = roleSelect(hwd && hwd.role, `${d.name} role`);
+        // Empty = the node stays on. Otherwise the minutes between its wake-ups.
+        const sleep = h("input", { class: "num", type: "number", min: "0", max: "1440", step: "1", value: hwd && hwd.sleep_minutes ? hwd.sleep_minutes : "",
+          placeholder: "Off", "aria-label": `${d.name} wakes every (minutes)`, title: "Leave empty if the node stays on. Otherwise how many minutes it sleeps between readings." });
+        const sleepMin = () => (sleep.value.trim() === "" ? 0 : Math.max(0, Math.min(1440, Math.round(Number(sleep.value)) || 0)));
+        const st = SW.deviceStatus(d, snap.now);
         return h("tr", {},
           h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, d.id)),
           h("td", {}, area),
           h("td", {}, role),
-          h("td", {}, h("span", { class: `status ${d.status}` }, d.status), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null),
+          h("td", {}, h("div", { class: "row" }, sleep, h("span", { class: "muted" }, "min")),
+            h("div", { class: "muted", style: "font-size:12px" }, "Counted as stale after 2.5 times this")),
+          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null),
           h("td", {}, nodeAddress(admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id])),
           h("td", {}, d.model),
           h("td", {}, h("div", { class: "row" },
-            h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/devices/${encodeURIComponent(d.id)}`, { name: val(name), area: val(area), role: role.value }), "Saved").then(refresh) }, "Save"),
+            h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/devices/${encodeURIComponent(d.id)}`, { name: val(name), area: val(area), role: role.value, sleep_minutes: sleepMin() }), "Saved").then(refresh) }, "Save"),
             h("button", { class: "small danger", onclick: () => confirm(`Remove ${d.name}? History is kept.`) && run(() => api("DELETE", `/api/admin/devices/${encodeURIComponent(d.id)}`), "Removed").then(refresh) }, "Remove"))));
       })));
 
@@ -551,7 +558,7 @@
     const shareOf = (e) => ((averages[e.kind] || {}).sensors || {})[e.id];
     // Same order as the adopted-nodes list; anything else (site rows) goes last, in a "Site" group.
     const devs = snap.devices.filter((d) => d.id !== "site" && d.category !== "service");
-    const groups = devs.map((d) => ({ id: d.id, name: d.name, status: d.status, role: nodeRoleOf(d.id), ents: ents.filter((e) => e.device_id === d.id) }));
+    const groups = devs.map((d) => ({ id: d.id, name: d.name, status: d.status, sleeping: !!d.sleeping, role: nodeRoleOf(d.id), ents: ents.filter((e) => e.device_id === d.id) }));
     const known = new Set(devs.map((d) => d.id));
     const rest = ents.filter((e) => !known.has(e.device_id));
     if (rest.length) groups.push({ id: "site", name: "Site", status: "", role: "environment", ents: rest });
@@ -576,7 +583,7 @@
       : sh.state === "none" ? "No reading yet" : sh.capped ? "Capped at 80 %: this sensor would otherwise have counted for more" : "Share of the site average now");
     const groupEl = (g) => {
       const offs = g.ents.map(offsetText).filter(Boolean);
-      const bad = g.status && g.status !== "ok";
+      const bad = g.status && g.status !== "ok" && !g.sleeping;
       const defaultOpen = offs.length > 0 || !!bad;
       const rows = g.ents.map((e) => {
         const s = settingsOf(e);
@@ -660,7 +667,7 @@
       const d = h("details", { class: "sensor-group", id: `sensor-group-${g.id}` },
         h("summary", {},
           h("span", { class: "sg-name" }, g.name),
-          g.status ? h("span", { class: `status ${g.status}` }, g.status) : null,
+          g.status ? h("span", { class: `status ${g.sleeping ? "sleeping" : g.status}` }, g.sleeping ? "sleeping" : g.status) : null,
           h("span", { class: "muted" }, `${g.ents.length} ${g.ents.length === 1 ? "sensor" : "sensors"}`),
           offs.length ? h("span", { class: "muted sg-offs" }, `offset: ${offs.join(", ")}`) : null),
         h("div", { class: "table-scroll" }, h("table", {},
@@ -1172,12 +1179,20 @@
     if (old) old.replaceWith(scheduleCard());
   }
 
+  // How an integration gets its data, in plain words. Unset or unknown shows nothing. "Uses the
+  // internet" is a warning, with words as well as the amber colour.
+  const IOT_WORDS = { local_push: "Local, live push", local_poll: "Local, checks every few seconds", cloud: "Uses the internet" };
+  function iotTag(iotClass) {
+    if (!Object.prototype.hasOwnProperty.call(IOT_WORDS, iotClass)) return null;
+    return h("div", { class: "iot-tag " + (iotClass === "cloud" ? "warn-text" : "muted") }, (iotClass === "cloud" ? "▲ " : "") + IOT_WORDS[iotClass]);
+  }
+
   function catalogCard() {
     return card("Integrations",
       h("div", { class: "table-scroll" }, h("table", {},
         h("thead", {}, h("tr", {}, ["Integration", "Tier", "Direction", "Protocols", "Runtime"].map((x) => h("th", {}, x)))),
         h("tbody", {}, admin.integrations.map((i) => h("tr", {},
-          h("td", {}, h("strong", {}, i.manifest.name), h("div", { class: "muted", style: "font-size:12px" }, i.manifest.description)),
+          h("td", {}, h("strong", {}, i.manifest.name), h("div", { class: "muted", style: "font-size:12px" }, i.manifest.description), iotTag(i.manifest.iot_class)),
           h("td", {}, i.manifest.tier), h("td", {}, i.manifest.direction), h("td", {}, i.manifest.protocols.join(", ")),
           h("td", { class: "muted" }, Object.entries(i).filter(([k]) => k !== "manifest").map(([k, v]) => `${k}: ${v !== null && typeof v === "object" ? JSON.stringify(v) : v}`).join(" · "))))))));
   }

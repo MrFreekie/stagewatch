@@ -54,6 +54,7 @@ MANIFEST = Manifest(
                 "Equipment: never part of the site averages.",
     tier="experimental",
     direction="in",
+    iot_class="local_push",   # SUBSCRIBEs, so GLOBCON sends each meter change itself
     protocols=("WebSocket", "Protobuf"),
     entity_kinds=(),
     vendors=("DirectOut (GLOBCON)",),

@@ -104,6 +104,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--panel-2); }
 .status.ok { color: var(--ok); } .status.initializing { color: var(--muted); }
+.status.sleeping { color: var(--muted); }
+.iot-tag { font-size: 12px; font-weight: 600; margin-top: 4px; }
 .status.compromised { color: var(--warn); } .status.fault, .status.missing { color: var(--stop); }
 
 .alarm-bar { display: none; border-radius: var(--radius); padding: 12px 14px; gap: 12px; align-items: center; flex-wrap: wrap; }

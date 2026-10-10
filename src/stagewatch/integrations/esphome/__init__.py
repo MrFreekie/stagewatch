@@ -62,6 +62,7 @@ MANIFEST = Manifest(
                 "nothing is ever written to a node.",
     tier="experimental",
     direction="in",
+    iot_class="local_push",   # the node sends each reading as it is taken
     protocols=("ESPHome native API", "mDNS"),
     entity_kinds=("temperature", "humidity", "pressure", "contact", "battery", "signal_strength", "generic"),
     vendors=("ESPHome",),
@@ -100,7 +101,8 @@ class _NodeConnection:
     async def start(self) -> None:
         self.hub.register_device(Device(
             self.cfg.id, self.cfg.name or self.cfg.host, MANIFEST.domain,
-            "ESPHome", "", self.cfg.area, Status.INITIALIZING, role=self.cfg.role))
+            "ESPHome", "", self.cfg.area, Status.INITIALIZING, role=self.cfg.role,
+            sleep_minutes=self.cfg.sleep_minutes))
         await self.logic.start()
 
     async def stop(self) -> None:
@@ -150,7 +152,7 @@ class _NodeConnection:
         self.hub.register_device(Device(
             self.cfg.id, self.cfg.name or info.friendly_name or info.name, MANIFEST.domain,
             info.manufacturer or "ESPHome", info.model or info.project_name or "",
-            self.cfg.area, hw_id=node, role=self.cfg.role))
+            self.cfg.area, hw_id=node, role=self.cfg.role, sleep_minutes=self.cfg.sleep_minutes))
         for e in entities:
             object_id = slugify(e.object_id or e.name or str(e.key))
             entity_id = f"{self.cfg.id}.{object_id}"
@@ -365,15 +367,16 @@ class EsphomeIntegration(Integration):
 
     async def update(self, device_id: str, name: str | None, area: str | None,
                      host: str | None = None, port: int | None = None,
-                     role: str | None = None) -> None:
-        """Rename or move a device, or change its role. A new host or port restarts its
+                     role: str | None = None, sleep_minutes: int | None = None) -> None:
+        """Rename or move a device, or change its role or sleep interval. A new host or port restarts its
         connection; its recorded MAC stays, so the same board at the new address carries on with
         its calibration."""
         async with self._lock(device_id):
-            await self._update_locked(device_id, name, area, host, port, role)
+            await self._update_locked(device_id, name, area, host, port, role, sleep_minutes)
 
     async def _update_locked(self, device_id: str, name: str | None, area: str | None,
-                             host: str | None, port: int | None, role: str | None = None) -> None:
+                             host: str | None, port: int | None, role: str | None = None,
+                             sleep_minutes: int | None = None) -> None:
         reconnect = None
         for cfg in self.hub.config.esphome_devices:
             if cfg.id == device_id:
@@ -383,6 +386,8 @@ class EsphomeIntegration(Integration):
                     cfg.area = area
                 if role is not None:
                     cfg.role = role
+                if sleep_minutes is not None:
+                    cfg.sleep_minutes = sleep_minutes
                 if (host is not None and host != cfg.host) or (port is not None and port != cfg.port):
                     cfg.host = host if host is not None else cfg.host
                     cfg.port = port if port is not None else cfg.port
@@ -395,6 +400,8 @@ class EsphomeIntegration(Integration):
                 device.area = area
             if role is not None:
                 self.hub.set_node_role(device_id, role)   # tells every open screen at once
+            if sleep_minutes is not None:
+                self.hub.set_node_sleep(device_id, sleep_minutes)
             self.hub.bus.publish("device", device)
         self.hub.save_config()
         if reconnect is not None:
