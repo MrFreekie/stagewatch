@@ -100,6 +100,32 @@ SW.splitAlarms = function (alarms, elapsedS) {
   }
   return { shown, older, next };
 };
+// The header's messages icon: the same alarm list the alarm bar shows (shown plus folded older
+// notices, so the two always agree), sorted worst first then newest. A loud alarm nobody has
+// acknowledged is an "alarm" (red), an acknowledged one still active is a "warning" (amber), and a
+// quiet notice is "info" (blue). While the alarms are sounding the worst is always "alarm".
+// Nothing is made up here: no alarms in, no messages out.
+SW.MSG_SEV = {
+  alarm: { rank: 3, word: "Alarm", symbol: "!", name: "alarm" },
+  warning: { rank: 2, word: "Warning", symbol: "▲", name: "warning" },
+  info: { rank: 1, word: "Information", symbol: "i", name: "information" },
+};
+SW.messageSummary = function (alarms, elapsedS, sounding) {
+  const split = SW.splitAlarms(alarms || [], elapsedS);
+  const items = [];
+  const add = (a, older) => {
+    const sev = a.silent ? "info" : (a.acked ? "warning" : "alarm");
+    items.push({ id: a.id, sev: sev, text: a.message, since: a.since, older: older });
+  };
+  split.shown.forEach((a) => add(a, false));
+  split.older.forEach((a) => add(a, true));
+  items.sort((a, b) => (SW.MSG_SEV[b.sev].rank - SW.MSG_SEV[a.sev].rank) || ((b.since || 0) - (a.since || 0)));
+  let worst = items.length ? items[0].sev : null;
+  if (items.length && sounding) worst = "alarm";
+  const n = items.length;
+  const label = !n ? "No messages" : `${n} ${n === 1 ? "message" : "messages"}, worst: ${SW.MSG_SEV[worst].name}`;
+  return { items: items, count: n, worst: worst, label: label, next: split.next };
+};
 SW.card = (title, ...body) => SW.h("section", { class: "card" }, SW.h("h2", {}, title), ...body);
 // A normal link that looks like a button, at least 44 px tall.
 SW.linkButton = function (text, href, primary) {

@@ -17,6 +17,11 @@
   <span class="title" id="title">Stagewatch</span>
   <span class="sub" id="show"></span>
   <span class="spacer"></span>
+  <button class="msg-btn" id="msg-btn" type="button" aria-expanded="false" aria-controls="msg-panel" aria-label="No messages"><svg class="msg-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 2a1.6 1.6 0 0 0-1.6 1.6v.7C7.6 5 6 7.4 6 10.2V15l-2 2.4V19h16v-1.6L18 15v-4.8c0-2.8-1.6-5.2-4.4-5.9v-.7A1.6 1.6 0 0 0 12 2zm-2.4 18a2.4 2.4 0 0 0 4.8 0z"/></svg><span class="msg-badge" id="msg-badge" aria-hidden="true" hidden></span></button>
+  <span class="sr-only" id="msg-live" role="status" aria-live="polite"></span>
+  <div class="msg-panel" id="msg-panel" role="region" aria-label="Messages" hidden>
+    <ul id="msg-list"></ul>
+  </div>
   <button class="theme-toggle" id="theme-toggle" type="button"></button>
   <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="false"><span class="sound-icon" aria-hidden="true"></span><span id="sound-label">Alarm sound: Off</span></button>
   <span class="clock" id="clock"></span>

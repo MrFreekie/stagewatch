@@ -61,6 +61,39 @@ header.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
 header.top .title { font-weight: 700; font-size: 18px; }
 header.top .sub { color: var(--muted); font-size: 13px; min-width: 0; overflow-wrap: break-word; word-wrap: break-word; }
 header.top .spacer { flex: 1; }
+/* The header stays at the top while a tablet or phone scrolls (-webkit-sticky for iOS 12). The wall
+   screen does not scroll, so it is left exactly as it was. It sits in normal flow, so nothing jumps. */
+body:not(.layout-wall) header.top { position: -webkit-sticky; position: sticky; top: 0; z-index: 30; }
+/* Messages icon: colour is always paired with a symbol (! alarm, ▲ warning, i information) and the count. */
+.msg-btn { min-width: 44px; min-height: 44px; padding: 6px 8px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); }
+.msg-btn .msg-icon { display: block; }
+.msg-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.msg-badge { margin-left: 4px; padding: 1px 6px; border-radius: 999px; border: 2px solid currentColor; background: var(--panel-2);
+  color: var(--text); font-size: 13px; font-weight: 700; line-height: 1.3; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.msg-badge[hidden] { display: none; }
+.msg-btn.sev-alarm { color: var(--stop); border-color: var(--stop); }
+.msg-btn.sev-warning { color: var(--warn); border-color: var(--warn); }
+.msg-btn.sev-info { color: var(--accent); border-color: var(--accent); }
+.msg-panel { position: absolute; top: 100%; right: 8px; left: 8px; margin: 4px 0 0 auto; max-width: 480px; max-height: 70vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--grid); border-radius: var(--radius); padding: 6px 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .4); -webkit-overflow-scrolling: touch; }
+.msg-panel[hidden] { display: none; }
+.msg-panel ul { list-style: none; margin: 0; padding: 0; }
+.msg-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 10px 0; border-bottom: 1px solid var(--grid); }
+.msg-row:last-child { border-bottom: 0; }
+.msg-sym { display: inline-block; min-width: 1.2em; text-align: center; font-weight: 700; }
+.msg-word { font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: .04em; }
+.msg-row.sev-alarm .msg-sym, .msg-row.sev-alarm .msg-word { color: var(--stop); }
+.msg-row.sev-warning .msg-sym, .msg-row.sev-warning .msg-word { color: var(--warn); }
+.msg-row.sev-info .msg-sym, .msg-row.sev-info .msg-word { color: var(--accent); }
+.msg-text { flex: 1 1 12em; min-width: 0; overflow-wrap: break-word; word-wrap: break-word; }
+.msg-age { font-size: 12px; white-space: nowrap; }
+.msg-empty { padding: 10px 0; }
+body.layout-wall .msg-btn, body.layout-wall .msg-panel { display: none; }
+.no-flex-gap .msg-row > * { margin-right: 8px; }
+.no-flex-gap header.top > .msg-panel { margin-right: 0; }
+@media (max-width: 640px) { header.top { padding: 6px 10px; gap: 8px; } .msg-panel { right: 4px; left: 4px; } }
 .conn { width: 10px; height: 10px; border-radius: 50%; background: var(--stop); display: inline-block; }
 .conn.on { background: var(--ok); }
 .clock { font-variant-numeric: tabular-nums; font-weight: 600; }

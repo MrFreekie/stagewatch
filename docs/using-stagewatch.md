@@ -52,6 +52,14 @@ Stagewatch** instead of a blank page. Use another device or update the browser.
     **Disconnected from Stagewatch - reconnecting...** covers the top and the numbers
     turn grey, so nobody trusts old readings. It goes away by itself when the connection
     returns. See [The tablet says it's disconnected](#the-tablet-says-its-disconnected).
+- **Header and messages bell:** the bar at the top stays in view when you scroll (tablets and
+  phones; the wall screen does not scroll). The bell in it shows how many messages there are and
+  the worst kind: **red !** an alarm (sounding or not yet acknowledged), **amber ▲** a warning
+  (acknowledged, but still active), **blue i** information (a quiet notice). A grey bell with no
+  number means nothing is raised. Tap it to list the messages, worst first and newest first, each
+  with its age. Tap it again, press Esc or tap elsewhere to close it. It lists the same items
+  as the alarm bar and follows the same rules (acknowledged notices drop off, old quiet
+  ones move to "older"); it never makes up a message. The wall screen does not show the bell.
 - **Alarm bar:** only appears when something is wrong (see [Alarms](#what-the-alarm-colours-mean)).
 - **Tiles:** the five numbers below.
 - **History:** a graph. Buttons pick **Temp**, **RH**, **Pressure** or **c** (speed of
