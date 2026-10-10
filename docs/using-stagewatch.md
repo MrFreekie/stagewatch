@@ -631,8 +631,8 @@ the other source by itself: if Ontime stops, the card says so.
 The look is set for each dashboard, so the wall can show the ring while a phone shows plain digits:
 
 - **Plain digits**: the time in large digits.
-- **LED ring**: an outer ring of 60 lights that fill up through each minute (all dark at :00, all
-  lit by :59), an inner ring of 12 brighter hour lights, and the time in the middle. On a card narrower than about 280 pixels it shows plain digits instead.
+- **LED ring**: an outer ring of 60 lights that fill up through each minute (only the top light at :00, the light for each second as it arrives, so the 5-second lights come on at :05, :10 and so on, and all
+  lit at :59), an inner ring of 12 brighter hour lights, and the time in the middle. On a card narrower than about 280 pixels it shows plain digits instead.
 - **7-segment digits**: the time as on a studio clock, with the unlit segments faintly visible.
 
 The ring and the 7-segment look are always red on black, by day and by night.

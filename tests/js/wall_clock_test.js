@@ -143,13 +143,18 @@ const outer = () => circles().filter((c) => c.attrs.class.split(" ").indexOf("ma
 const marks = () => circles().filter((c) => c.attrs.class.split(" ").indexOf("mark") >= 0);
 eq([outer().length, marks().length], [60, 12], "ring: 60 seconds LEDs outside, 12 hour marks inside");
 eq(Math.max(...marks().map((c) => Math.hypot(c.attrs.cx - 110, c.attrs.cy - 110))) < Math.min(...outer().map((c) => Math.hypot(c.attrs.cx - 110, c.attrs.cy - 110))), true, "hour marks sit on the inner ring");
-eq(litIndexes(ring, "on"), Array.from({ length: 30 }, (_, i) => i), "second 30: LEDs 0 to 29 stay lit (cumulative)");
+eq(litIndexes(ring, "on"), Array.from({ length: 31 }, (_, i) => i), "second 30: LEDs 0 to 30 stay lit (cumulative, LED 30 is the current second)");
 ring.update(view(msg({ clock_ms: at(14, 5, 59) * 1000 })), O);
-eq(litIndexes(ring, "on").length, 59, "second 59: 59 LEDs lit");
+eq(litIndexes(ring, "on").length, 60, "second 59: all 60 LEDs lit");
 ring.update(view(msg({ clock_ms: at(14, 6, 0) * 1000 })), O);
-eq(litIndexes(ring, "on"), [], "second 0: all dark, so the minute rollover is unmistakable");
+eq(litIndexes(ring, "on"), [0], "second 0: only the top LED, so the minute rollover is unmistakable");
 ring.update(view(msg({ clock_ms: at(14, 6, 1) * 1000 })), O);
-eq(litIndexes(ring, "on"), [0], "second 1: the first LED");
+eq(litIndexes(ring, "on"), [0, 1], "second 1: LEDs 0 and 1");
+ring.update(view(msg({ clock_ms: at(14, 6, 4) * 1000 })), O);
+eq(litIndexes(ring, "on").indexOf(5) < 0, true, "second 4: the 5-second LED is not lit yet");
+ring.update(view(msg({ clock_ms: at(14, 6, 5) * 1000 })), O);
+eq(litIndexes(ring, "on").indexOf(5) >= 0 && litIndexes(ring, "on").length === 6, true, "second 5: the 5-second LED lights now, not a second later");
+ring.update(view(msg({ clock_ms: at(14, 6, 1) * 1000 })), O);
 // in place: one second later only the changed LED is written
 const writes = () => circles().reduce((a, c) => a + c.writes, 0);
 const writes0 = writes();
@@ -160,7 +165,7 @@ ring.update(view(msg({ clock_ms: at(14, 6, 2) * 1000 })), O);
 eq(writes(), writes1, "an unchanged second writes nothing to the LEDs");
 // states
 ring.update(view(msg(), NOW + 20), O);
-eq([litIndexes(ring, "on").length, ring.el.attrs.class], [9, "wc-face wc-ring wc-s-stale"], "stale: lit LEDs frozen (dimmed by CSS)");
+eq([litIndexes(ring, "on").length, ring.el.attrs.class], [10, "wc-face wc-ring wc-s-stale"], "stale: lit LEDs frozen (dimmed by CSS)");
 eq(marks().length, 12, "stale: hour marks stay");
 ring.update(view(msg({ status: "offline", clock_ms: null })), O);
 eq([litIndexes(ring, "on").length, ring.el.attrs.class], [0, "wc-face wc-ring wc-s-off"], "offline: seconds ring dark");ring.update(view(msg({ offset_s: 3.2, warn: true })), O);

@@ -138,8 +138,8 @@ SW.wc = (function () {
 
   // ring: an OUTER ring of 60 seconds LEDs and an INNER ring of 12 hour marks (always lit,
   // brighter), the time as SVG text in the middle (viewBox 220 x 220). The seconds fill up:
-  // second s lights LEDs 0..s-1, so every earlier second of the minute stays lit and the whole
-  // ring is dark at :00, which makes the minute rollover unmistakable.
+  // second s lights LEDs 0..s (the LED at position s is the current second, so the 5-second marks light exactly at :05, :10 ...); earlier seconds stay lit and the
+  // ring restarts at :00 with only the top LED lit, which makes the minute rollover unmistakable.
   const RING_R = 102, MARK_R = 91.3;  // hour marks: same size as a seconds LED, one seconds-spacing (~10.7) inside it
   function ringFace() {
     const leds = [];
@@ -164,11 +164,11 @@ SW.wc = (function () {
       style: "ring", el,
       update(v, opts) {
         faceClass(el, "ring", v);
-        // Seconds LEDs lit: 0..s-1, frozen (and dimmed by CSS) when stale, none when offline. The hour marks stay lit.
+        // Seconds LEDs lit: 0..s, frozen (and dimmed by CSS) when stale, none when offline. The hour marks stay lit.
         const want = new Array(60).fill("");
         if (v.sec !== null) {
           const s = v.sec % 60;
-          for (let i = 0; i < s; i++) want[i] = "on";
+          for (let i = 0; i <= s; i++) want[i] = "on";
         }
         for (let i = 0; i < 60; i++) {
           if (seen[i] !== want[i]) { seen[i] = want[i]; setAttr(leds[i], "class", "led" + (want[i] ? " on" : "")); }
