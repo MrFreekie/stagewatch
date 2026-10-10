@@ -1465,7 +1465,7 @@
       { key: "installed", label: "Installed", status: sw.describe, dflt: true, body: [info] },
       { key: "updates", label: "Updates", status: updStatus, dflt: true, force: available || updating || !!sw.update_available,
         body: [h("div", { class: "row sw-controls" }, h("label", { class: "field", for: "sw-channel" }, "Channel", chan), checkBtn),
-          sw.channel === "nightly" ? h("p", { class: "warn-text" }, "Nightly is bleeding edge, tested automatically only. Don't run it on show days.") : null,
+          sw.channel === "nightly" ? h("p", { class: "warn-text" }, "Nightly is the newest code, checked only by machines. Try it away from a live show first.") : null,
           sw.restarting ? h("p", { class: "warn-text", role: "status" }, "Restarting for an update…") : null,
           result] },
       { key: "history", label: "History", status: sw.history.length ? (histFailed ? "last update failed" : `${sw.history.length} ${sw.history.length === 1 ? "entry" : "entries"}`) : "no updates yet",

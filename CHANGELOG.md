@@ -20,6 +20,7 @@ them into a dated release section and tags the commit.
 - **Messages bell in the dashboard header.** A bell with a count and the worst kind of message (red `!` alarm, amber `▲` warning, blue `i` information; grey with no number when there is nothing). Tap it for a panel listing the same items as the alarm bar, worst first then newest, each with its age. It closes on a second tap, Esc or a tap elsewhere, and stays open as live updates arrive. It never flashes. It uses the alarm list dashboards already receive, so there are no new public fields. The wall screen does not show it.
 
 ### Changed
+- **Admin Software card wording.** The Nightly note no longer says not to run it on show days; it says Nightly is checked only by machines and to try it away from a live show first.
 - **DirectOut GLOBCON card heading.** The card title is now always **DirectOut GLOBCON**, with a subtitle such as **Controller 1 - Layer 1 - Channels 1-16** (controller name and layer label as GLOBCON reports them now).
 - **DirectOut GLOBCON: all 16 channels in one row.** At every width except phones (including half-width cards) the 16 channels sit in one row as tall, narrow meters, with the channel name turned to read upwards. Phones keep their rows.
 
