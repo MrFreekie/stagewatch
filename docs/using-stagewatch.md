@@ -495,9 +495,16 @@ Equipment row the **Average** tick and the accuracy boxes are greyed out: "Equip
 never averaged". The offset still works.
 
 On the dashboards, the **Sensors** table shows the same two headings once you have any Equipment
-sensor, and the history chart draws only the Environment sensors. Add the **Equipment** card (see
+sensor, and the history chart draws only the Environment sensors unless you tick **Show equipment
+sensors** under the chart (see below). Add the **Equipment** card (see
 below) to show each Equipment reading by node, with its unit, its status and the `*` for an
 offset. The card stays hidden until a sensor has the Equipment role.
+
+Under the history chart, **Show equipment sensors** (off by default) also draws each Equipment
+reading of the chosen kind, for example a rack temperature, as its own dashed line named after the
+sensor, with "(equipment)" in the key under the chart. The tick appears once you have an Equipment
+sensor, and your choice is remembered in that browser only. These lines are never part of the site
+average, the speed of sound or any other site figure.
 
 Threshold alarms work for both roles. For a rack, set an absolute limit on its own sensor, for
 example above 45 °C. It does not depend on the site average.

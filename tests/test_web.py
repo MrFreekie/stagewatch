@@ -113,6 +113,36 @@ def test_history_endpoint(client):
     assert list(r.json()) == ["sim_foh.temperature"]
 
 
+def test_history_serves_equipment_and_the_snapshot_marks_its_role(client):
+    # The chart's "Show equipment sensors" tick needs the role (already public) and the history
+    # of an Equipment sensor; the site line must stay free of it.
+    import time
+    snap = client.get("/api/snapshot").json()
+    eq = [e for e in snap["entities"] if e.get("role") == "equipment" and e["kind"] == "temperature"]
+    assert eq and all(not e["id"].startswith("site.") for e in eq)
+    deadline = time.monotonic() + 5
+    while True:
+        client.hub.recorder.flush()
+        h = client.get("/api/history", params={"entities": f"{eq[0]['id']},site.temperature"}).json()
+        if h.get(eq[0]["id"]) or time.monotonic() > deadline:
+            break
+        time.sleep(0.05)
+    assert h.get(eq[0]["id"])
+    assert "role" not in next(e for e in snap["entities"] if e["id"] == "site.temperature")
+
+
+def test_chart_equipment_toggle_is_wired_per_viewer():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "src" / "stagewatch" / "web" / "static"
+    html = (root / "dashboard.html").read_text(encoding="utf-8")
+    js = (root / "dashboard.js").read_text(encoding="utf-8")
+    assert html.count('id="chart-equip"') == 1 and "Show equipment sensors" in html
+    assert 'localGet("sw.chartEquipment", "off") === "on"' in js and 'localSet("sw.chartEquipment"' in js
+    assert "dash: [7, 4]" in js
+    # The site series and the per-mode sensor list never take equipment.
+    assert "e.kind === mode.kind && !SW.isEquipment(e)" in js
+
+
 def test_recovery_required_blocks_network_onboarding(tmp_path):
     (tmp_path / "config.yaml").write_text("site: [unclosed\n", encoding="utf-8")  # no PIN salvageable
     hub = Hub(tmp_path, emulate=True)
