@@ -1184,3 +1184,23 @@ def test_device_public_extras_are_whitelisted_and_never_overwrite_base_keys():
     d.public = {"chart_range": "auto", "chart_min_db": 22.0, "id": "evil", "status": "evil", "other": 1}
     out = d.to_dict()
     assert out["id"] == "x" and out["status"] == d.status.value and "other" not in out and out["chart_range"] == "auto"
+
+
+def test_chart_line_colours_are_darker_in_light_theme_and_wall_note_is_quiet():
+    """Source check: slot lines use --spl-N tokens (dark = old colours, light = >= 4.5:1 on white)."""
+    root = Path(__file__).resolve().parent.parent / "src" / "stagewatch" / "web" / "static"
+    css = (root / "style.css").read_text(encoding="utf-8")
+    js = (root / "dashboard.js").read_text(encoding="utf-8")
+    assert "--spl-1: #3ecf8e; --spl-2: #c38bff; --spl-3: #ff8a3d;" in css   # dark theme unchanged
+    assert css.count("--spl-1: #0b7a4b; --spl-2: #7a3fc4; --spl-3: #a84a06;") == 2   # OS light and chosen light
+
+    def lum(h):
+        c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+    for h in ("#0b7a4b", "#7a3fc4", "#a84a06"):
+        assert 1.05 / (lum(h) + 0.05) >= 4.5
+    assert js.count("--spl-${(i % 3) + 1}") == 3 and "COLORS[i % COLORS.length]" not in js.split("function renderSpl")[1].split("function ")[0]
+    assert "dash: SW.spl.LINE_STYLES[i % 3]" in js
+    assert "body.layout-wall .spl-note { font-size: 16px; line-height: 1.3;" in css
