@@ -128,7 +128,47 @@
     $("ack").hidden = !(canAck && state.sounding);
     sounder.set(state.sounding);
     renderSound();
+    renderMessages();
   }
+
+  // ---- Messages icon (header): the alarm bar's list as a count, the worst kind and a panel. ----
+  // The panel element stays put; only its rows are rebuilt, so a live update never closes it.
+  let msgOpen = false, msgTimer = null, msgLast = "";
+  function renderMessages() {
+    const sum = SW.messageSummary(state.alarms, Math.max(0, (steadyNow() - alarmsAt) / 1000), state.sounding);
+    const btn = $("msg-btn"), badge = $("msg-badge");
+    btn.className = "msg-btn" + (sum.worst ? ` sev-${sum.worst}` : "");
+    btn.setAttribute("aria-label", sum.label);
+    btn.title = sum.label;
+    badge.hidden = !sum.count;
+    badge.textContent = sum.count ? `${SW.MSG_SEV[sum.worst].symbol}${sum.count > 99 ? "99+" : sum.count}` : "";
+    if (sum.label !== msgLast) { $("msg-live").textContent = sum.label; msgLast = sum.label; }
+    const now = serverNow();
+    $("msg-list").replaceChildren(...(sum.items.length ? sum.items.map((m) => {
+      const sev = SW.MSG_SEV[m.sev];
+      return h("li", { class: `msg-row sev-${m.sev}` },
+        h("span", { class: "msg-sym", "aria-hidden": "true" }, sev.symbol),
+        h("span", { class: "msg-word" }, sev.word),
+        h("span", { class: "sr-only" }, ": "),
+        h("span", { class: "msg-text" }, m.text, m.older ? h("span", { class: "muted" }, " (older)") : null),
+        h("span", { class: "msg-age muted" }, m.since ? SW.age(m.since, now) : ""));
+    }) : [h("li", { class: "msg-empty muted" }, "No messages")]));
+  }
+  function setMessagesOpen(open, refocus) {
+    msgOpen = open;
+    $("msg-panel").hidden = !open;
+    $("msg-btn").setAttribute("aria-expanded", open ? "true" : "false");
+    clearInterval(msgTimer);
+    if (open) msgTimer = setInterval(renderMessages, 15000);   // keeps the ages current
+    if (!open && refocus) $("msg-btn").focus();
+  }
+  $("msg-btn").addEventListener("click", (ev) => { ev.stopPropagation(); setMessagesOpen(!msgOpen); });
+  document.addEventListener("click", (ev) => {
+    if (msgOpen && !$("msg-panel").contains(ev.target)) setMessagesOpen(false);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (msgOpen && (ev.key === "Escape" || ev.key === "Esc")) setMessagesOpen(false, true);
+  });
 
   // ---- Alarm sound On/Off (always visible). The choice is remembered per device (browser). ----
   // "On" needs a tap the first time (browser rule), so tapping the button arms audio; any first
