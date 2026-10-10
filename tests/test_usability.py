@@ -196,3 +196,30 @@ def test_connect_a_tablet_card_folds_away_using_the_shared_fold_store():
     css = (STATIC / "style.css").read_text(encoding="utf-8")
     assert ".card > .card-fold > summary { min-height: 44px;" in css
     assert ".card > .card-fold > summary:focus-visible { outline: 2px solid var(--accent)" in css
+
+
+def test_admin_cards_fold_with_unique_keys_defaults_and_one_page_control():
+    admin = (STATIC / "admin.js").read_text(encoding="utf-8")
+    render = admin[admin.index("  function render() {"):admin.index("  async function refresh()")]
+    # (key, default open) for every card folded in render(); Connect a tablet and Schedule fold themselves
+    expected = {"site": False, "event": True, "nodes": True, "sensors": True, "thresholds": True, "notices": True,
+                "dashboards": True, "osc": False, "security": False, "wallclock": False, "ontime": False,
+                "barometer": False, "smaart": False, "globcon": False, "alarmlog": True, "help": False,
+                "integrations": False}
+    for key, dflt in expected.items():
+        assert f'"{key}", {"true" if dflt else "false"}' in render, key
+    assert 'foldCard(softwareCardBody(), "software", false, hold)' in admin
+    assert 'foldCard(c, "schedule", true, !schedData)' in admin
+    # one store of its own, so no key can meet a dashboard slug; the keys are all different
+    assert 'foldStore("sw.admin.cards.open")' in admin
+    keys = list(expected) + ["software", "schedule"]
+    assert len(set(keys)) == len(keys)
+    # cards held open by a notice stay open; the heading stays the summary
+    assert '"site", false, !admin.config.site.timezone' in render and '"osc", false, !!oscErr' in render
+    assert 'h("summary", { id: `card-sum-${key}` }, head)' in admin
+    # the page-level pair of buttons covers every card, skipping those held open
+    assert 'foldButtons(setAllCards, " cards")' in render and "if (f.force) return;" in admin
+    # the Schedule summary redraws only its body, so its fold keeps focus and state
+    assert 'document.getElementById("schedule-admin-body")' in admin
+    # storage failures are caught, so the folds work without browser storage
+    assert "no storage: groups use their default" in admin
