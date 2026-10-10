@@ -980,7 +980,7 @@
         loc: h("div", { class: "foot spl-loc" }),
         sub: h("div", { class: "foot spl-sub" }), note: h("div", { class: "foot spl-note-line" }),
       };
-      r.chip.style.borderTopColor = `var(${COLORS[i % COLORS.length]})`;
+      r.chip.style.borderTopColor = `var(--spl-${(i % 3) + 1})`;
       r.el = h("div", { class: "tile spl-tile" }, h("div", { class: "label" }, r.chip, r.name),
         r.loc, h("div", { class: "value" }, r.value, r.unit), r.sub, r.note);
       splUi.rows[e.id] = r;
@@ -1028,7 +1028,7 @@
     const ents = SW.spl.entities(state.entities), span = splSpanS(), now = serverNow();
     const gap = SW.spl.gapSeconds(span / SPL_POINTS);
     splChart.series = ents.map((e, i) => ({
-      label: SW.spl.label(e), color: css(COLORS[i % COLORS.length]), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3],
+      label: SW.spl.label(e), color: css(`--spl-${(i % 3) + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3],
       points: state.splHistory[e.id] || [],
     }));
     splChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "spl").map((m) => ({ ...m, selected: false }));
@@ -1043,7 +1043,7 @@
     splChart.defaultRange = null;
     const rangeNote = cr.mode === "custom" ? SW.spl.rangeNote(SW.spl.clipFlags(pts, now - span, now, fr)) : "";
     splChart.draw();
-    $("spl-legend").replaceChildren(...ents.map((e, i) => h("span", {}, h("i", { class: `spl-key spl-line-${i % 3}`, style: `border-top-color:${css(COLORS[i % COLORS.length])}` }),
+    $("spl-legend").replaceChildren(...ents.map((e, i) => h("span", {}, h("i", { class: `spl-key spl-line-${i % 3}`, style: `border-top-color:${css(`--spl-${(i % 3) + 1}`)}` }),
       `${SW.spl.label(e)} (${SW.spl.LINE_NAMES[i % 3]})`)));
     setText($("spl-note"), `${SW.spl.chartNote(span, SPL_POINTS)} Values are as Smaart reports them; this is not a compliance record.${rangeNote ? ` ${rangeNote}` : ""}`);
   }

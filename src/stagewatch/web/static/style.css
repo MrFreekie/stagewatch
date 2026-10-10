@@ -18,6 +18,8 @@
   --marker-crew: #f5b83d; --marker-system: #9aa3b5; --marker-alarm: #ff8a3d; --marker-schedule: #4da3ff; --marker-device: #c38bff;
   --marker-crew-ink: #111; --marker-system-ink: #111; --marker-alarm-ink: #111; --marker-schedule-ink: #111; --marker-device-ink: #111;
   --s1: #4da3ff; --s2: #3ecf8e; --s3: #c38bff; --s4: #ff8a3d; --s5: #f25f9c; --s6: #5fd4e0;
+  /* Sound level chart lines: the same as --s2..--s4 in the dark theme; darker in the light theme (see below) */
+  --spl-1: #3ecf8e; --spl-2: #c38bff; --spl-3: #ff8a3d;
   --radius: 10px;
   color-scheme: dark;
 }
@@ -28,6 +30,7 @@
     --stop: #cc2233; --marker: #d9950b; color-scheme: light;
     --marker-crew: #d9950b; --marker-system: #6b7385; --marker-alarm: #b84e0c; --marker-schedule: #1f6fd1; --marker-device: #8a4fd6;
     --marker-crew-ink: #111; --marker-system-ink: #fff; --marker-alarm-ink: #fff; --marker-schedule-ink: #fff; --marker-device-ink: #fff;
+    --spl-1: #0b7a4b; --spl-2: #7a3fc4; --spl-3: #a84a06;   /* 5.4:1, 6.3:1, 5.8:1 on the white card */
   }
 }
 /* Day mode chosen on this screen (Day/Night button): the same light tokens, whatever the OS says. */
@@ -37,6 +40,7 @@
     --stop: #cc2233; --marker: #d9950b; color-scheme: light;
     --marker-crew: #d9950b; --marker-system: #6b7385; --marker-alarm: #b84e0c; --marker-schedule: #1f6fd1; --marker-device: #8a4fd6;
     --marker-crew-ink: #111; --marker-system-ink: #fff; --marker-alarm-ink: #fff; --marker-schedule-ink: #fff; --marker-device-ink: #fff;
+    --spl-1: #0b7a4b; --spl-2: #7a3fc4; --spl-3: #a84a06;   /* 5.4:1, 6.3:1, 5.8:1 on the white card */
   }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text);
@@ -787,7 +791,7 @@ body.layout-wall .eq-grid { grid-template-columns: repeat(auto-fit, minmax(260px
 body.layout-wall .spl-badge, body.layout-wall .card-logo { width: 44px; height: 44px; }
 .spl-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 8px; }
 .spl-tile .label { display: flex; align-items: center; gap: 8px; }
-.spl-chip { display: inline-block; width: 22px; height: 0; border-top: 4px solid var(--s2); background: none !important; flex: none; }
+.spl-chip { display: inline-block; width: 22px; height: 0; border-top: 4px solid var(--spl-1); background: none !important; flex: none; }
 .spl-key { display: inline-block; width: 26px; height: 0; border-top: 3px solid; background: none !important; vertical-align: middle; margin-right: 6px; }
 .spl-chip.spl-line-0, .spl-key.spl-line-0 { border-top-style: solid; }
 .spl-chip.spl-line-1, .spl-key.spl-line-1 { border-top-style: dashed; }
@@ -823,7 +827,7 @@ body.layout-wall .spl-tile .value { font-size: 72px; }
 body.layout-wall .spl-tile .label, body.layout-wall .spl-tile .foot { font-size: 18px; }
 body.layout-wall .spl-chart-wrap { height: 260px; }
 body.layout-wall #spl-legend { font-size: 18px; }
-body.layout-wall .spl-note { font-size: 16px; }
+body.layout-wall .spl-note { font-size: 16px; line-height: 1.3; margin-top: 4px; color: var(--muted); }   /* 16px is the floor for the wall: smaller than the other wall text, muted, and tight */
 
 /* Sound level settings: input and value drop-downs share a row, never wider than the card (long Smaart input names) */
 .spl-range-nums[hidden] { display: none; }

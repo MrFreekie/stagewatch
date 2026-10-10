@@ -21,6 +21,7 @@ them into a dated release section and tags the commit.
 
 ### Changed
 
+- **Sound level chart is easier to read in the light theme, and the wall note is quieter.** The three lines and their legend keys use darker colours in light mode only (at least 4.5:1 against the white card; the dark theme is unchanged), and still differ by solid, dashed and dotted style. On the wall screen the small note under the chart is tighter and muted (still 16px); tablet and phone are unchanged.
 - **All Ontime settings are now in one Admin card called Ontime.** It holds the Connection (address, Test connection and the live status of the Wall Clock, Ontime Timer and Ontime Rundown cards), the Wall Clock's warning limit, and the event title switch for the Ontime Timer and Ontime Rundown, with one Save. The Wall Clock card keeps only its time source, format and date, with a pointer to the Ontime card; the separate Ontime Timer card is gone. The Ontime card starts closed, and stays open while Ontime cannot be reached. Nothing is saved differently: same settings, no change to saved files.
 - **The dashboard header now stays at the top while a tablet or phone scrolls**, and is more compact on phones. The wall screen is unchanged.
 
