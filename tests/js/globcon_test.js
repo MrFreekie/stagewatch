@@ -37,7 +37,7 @@ function eq(got, exp, what) {
   if (g !== e) { fails++; console.log(`FAIL ${what}\n  got ${g}\n  exp ${e}`); }
 }
 
-const strip = (i, db) => ({ index: i, label: `Strip ${i}`, db });
+const strip = (i, db) => ({ index: i, label: `Strip ${i}`, meter: true, db });
 const msg = (over = {}, cOver = {}) => Object.assign({
   status: "ok", label: "GLOBCON",
   controllers: [Object.assign({ controller: 1, name: "Desk 1", layer: 0, layer_label: "Inputs", locked: false, meters_at: 100,
@@ -95,8 +95,39 @@ eq([v.state, v.badge, v.strips.length], ["locked", "▲ PASSWORD NEEDED", 0], "l
 v = gc.view(msg({}, { layer_label: "", name: "" }), { controller: 1, strips: 8 }, 100.1);
 eq([v.layer, v.title], ["Layer 1", "Controller 1"], "fallback header text");
 // hostile text and numbers
-v = gc.view(msg({}, { strips: [{ index: 0, label: 5, db: "loud" }, { index: 1, label: "ok", db: Infinity }] }), { controller: 1, strips: 8 }, 100.1);
+v = gc.view(msg({}, { strips: [{ index: 0, label: 5, meter: true, db: "loud" }, { index: 1, label: "ok", meter: true, db: Infinity }] }), { controller: 1, strips: 8 }, 100.1);
 eq(v.strips.map((s) => [s.label, s.db, s.text]), [["", null, "—"], ["ok", null, "—"]], "non-numbers are empty");
+
+// ---- channel groups (opts.range): every strip of the group by index, in order, with its channel number.
+// A synthetic controller like the real one: 1-2 input manager, 3-8 flex channel (meters), 9-16 USB (no meter).
+const full = [];
+for (let i = 0; i < 16; i++) full.push({ index: i, label: i < 2 ? `Input Manager #${i + 1}` : i < 8 ? `Flex Channel ${i + 1}` : `USB ${i - 7}`, meter: i < 8, db: i < 8 ? (i === 3 ? null : -20 - i) : null });
+const rm = msg({}, { strips: full });
+const groups = { "1-4": [1, 4], "5-8": [5, 8], "1-8": [1, 8], "9-12": [9, 12], "13-16": [13, 16], "9-16": [9, 16], "1-16": [1, 16] };
+for (const [r, [a, b]] of Object.entries(groups)) {
+  v = gc.view(rm, { controller: 1, strips: 8, range: r }, 100.1);
+  const nums = []; for (let n = a; n <= b; n++) nums.push(n);
+  eq(v.strips.map((s) => s.num), nums, `range ${r} channel numbers`);
+  eq(v.strips.map((s) => s.label), nums.map((n) => full[n - 1].label), `range ${r} labels`);
+  eq(v.state, "ok", `range ${r} is live`);
+}
+eq(Object.keys(gc.RANGES), Object.keys(groups), "the seven groups");
+v = gc.view(rm, { controller: 1, strips: 8, range: "9-12" }, 100.1);
+eq(v.strips.map((s) => [s.text, s.pct, s.db, s.isWord]), [["no meter", 0, null, true], ["no meter", 0, null, true], ["no meter", 0, null, true], ["no meter", 0, null, true]], "no meter: empty bar and a word, never zero");
+v = gc.view(rm, { controller: 1, strips: 8, range: "1-4" }, 100.1);
+eq(v.strips.map((s) => s.text), ["-20", "-21", "-22", "no reading"], "a metered strip with no reading says so");
+eq(v.strips[3].pct, 0, "no reading is an empty bar");
+// a strip GLOBCON has told us nothing about is blank, still empty and never zero
+v = gc.view(msg({}, { strips: [strip(4, -10)] }), { controller: 1, strips: 8, range: "5-8" }, 100.1);
+eq(v.strips.map((s) => [s.num, s.label, s.text, s.pct]), [[5, "Strip 4", "-10", 86.11111111111111], [6, "", "no reading", 0], [7, "", "no reading", 0], [8, "", "no reading", 0]], "missing strips are blank");
+// frozen with a group keeps the last levels
+eq(gc.view(rm, { controller: 1, strips: 8, range: "1-4" }, 110).state, "frozen", "a group freezes like the rest");
+// unknown range -> the older behaviour (first N with a meter)
+v = gc.view(rm, { controller: 1, strips: 4, range: "2-3" }, 100.1);
+eq(v.strips.map((s) => s.num), [1, 2, 3, 4], "an unknown range falls back to the older behaviour");
+// the older behaviour skips strips with no meter and numbers them by index
+v = gc.view(msg({}, { strips: [strip(0, -1), { index: 1, label: "x", meter: false, db: null }, strip(2, -2)] }), { controller: 1, strips: 8 }, 100.1);
+eq(v.strips.map((s) => [s.num, s.text]), [[1, "-1"], [3, "-2"]], "older setting: only strips with a meter");
 
 // the DOM: built once, updated in place, text only
 const ui = gc.createUi();
@@ -115,6 +146,12 @@ eq(cols[3].className.indexOf("gc-hot") > 0, true, "hot class");
 eq(cols[1].className.indexOf("gc-none") > 0, true, "no-signal class");
 ui.update(gc.view(msg(), { controller: 1, strips: 4 }, 100.2));
 eq(ui.strips.children.length, 4, "strip count change rebuilds");
+ui.update(gc.view(rm, { controller: 1, strips: 8, range: "1-16" }, 100.2));
+eq([ui.strips.children.length, ui.strips.getAttribute("data-n")], [16, "16"], "sixteen columns for 1-16");
+eq(ui.strips.children[8].children[0].children[0].textContent, "9", "channel number shown");
+eq(ui.strips.children[8].children[0].children[1].textContent, "USB 1", "label shown");
+eq(ui.strips.children[8].children[2].children[0].textContent, "no meter", "word instead of a number");
+eq(ui.strips.children[8].className.indexOf("gc-word") > 0, true, "word class");
 
 if (fails) { console.log(`${fails} of ${count} checks FAILED`); process.exit(1); }
 console.log(`ok: ${count} checks passed`);

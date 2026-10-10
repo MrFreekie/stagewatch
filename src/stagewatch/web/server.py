@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GlobconConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
     SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_host_error, spl_password_error,
 )
 from ..core.calibration import change_text, set_calibration
@@ -400,14 +400,18 @@ class DashboardBody(Dashboard):
     @field_validator("globcon", mode="before")
     @classmethod
     def _globcon(cls, v):
-        """Overrides the lenient loader: the controller must be a whole number 1 to 16 and the strips 4 or 8."""
-        if not isinstance(v, dict) or set(v) - {"controller", "strips"}:
+        """Overrides the lenient loader: the controller must be a whole number 1 to 16, the strips 4 or 8 and the
+        range (optional) one of the channel groups."""
+        if not isinstance(v, dict) or set(v) - {"controller", "strips", "range"}:
             raise ValueError("GLOBCON card options are not valid")
         c, s = v.get("controller", 1), v.get("strips", 8)
         if type(c) is not int or not 1 <= c <= 16:
             raise ValueError("The GLOBCON controller must be a whole number from 1 to 16")
         if type(s) is not int or s not in (4, 8):
             raise ValueError("The GLOBCON card shows 4 or 8 strips")
+        r = v.get("range")
+        if r is not None and (not isinstance(r, str) or r not in GLOBCON_RANGES):
+            raise ValueError("That GLOBCON channel group is not one of the choices")
         return v
 
     @field_validator("cards", mode="before")

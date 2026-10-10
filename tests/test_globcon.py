@@ -24,7 +24,7 @@ import yaml
 from fastapi.testclient import TestClient
 from websockets.asyncio.server import serve
 
-from stagewatch.core.config import Config, ConfigStore, Dashboard, GlobconCardOptions, GlobconConfig
+from stagewatch.core.config import GLOBCON_RANGES, Config, ConfigStore, Dashboard, GlobconCardOptions, GlobconConfig
 from stagewatch.core.hub import Hub
 from stagewatch.core.model import Status
 from stagewatch.integrations.globcon import (
@@ -207,16 +207,27 @@ def _loaded_state():
     return st
 
 
-def test_public_message_exact_shape_one_based_and_only_strips_with_a_level():
+def test_public_message_exact_shape_one_based_and_every_known_strip():
     msg = mapping.public_message(_loaded_state(), [0], True, 50.5)
     assert set(msg) == {"status", "label", "controllers"} and msg["status"] == "ok"
     (c,) = msg["controllers"]
     assert set(c) == {"controller", "name", "layer", "layer_label", "locked", "meters_at", "strips"}
     assert (c["controller"], c["name"], c["layer"], c["layer_label"], c["locked"], c["meters_at"]) == (1, "Controller 1", 0, "Inputs", False, 50.0)
-    assert [s["index"] for s in c["strips"]] == [0, 1, 2, 3, 4, 5, 6, 7]           # the first 8 that have a level
-    assert all(set(s) == {"index", "label", "db"} for s in c["strips"])
-    assert [s["db"] for s in c["strips"]] == [-20.0, -20.0, -20.0, None, -12.0, -12.0, -12.0, -12.0]   # -250 is None, never 0
+    assert [s["index"] for s in c["strips"]] == list(range(16))                     # all 16, whether or not they have a level
+    assert all(set(s) == {"index", "label", "meter", "db"} for s in c["strips"])
+    assert [s["db"] for s in c["strips"]][:8] == [-20.0, -20.0, -20.0, None, -12.0, -12.0, -12.0, -12.0]   # -250 is None, never 0
+    assert [s["meter"] for s in c["strips"]] == [i < 10 or i == 12 for i in range(16)]   # hasLevel as GLOBCON said
+    assert c["strips"][10]["label"] == "Strip 10" and c["strips"][10]["meter"] is False   # labelled, no meter
     assert "password" not in json.dumps(msg) and "127.0.0.1" not in json.dumps(msg)
+
+
+def test_a_controller_with_nothing_known_has_no_strips_and_unknown_meter_is_none():
+    st = mapping.GlobconState()
+    mapping.apply_value(st, Value("/controller/0/faders/3/label", "s", "Only label"))
+    (c,) = mapping.public_message(st, [0], True, 1.0)["controllers"]
+    assert c["strips"] == [{"index": 3, "label": "Only label", "meter": None, "db": None}]
+    (c,) = mapping.public_message(st, [5], True, 1.0)["controllers"]
+    assert c["strips"] == []
 
 
 def test_status_waiting_ok_stale_offline_and_frozen_levels_are_kept():
@@ -630,7 +641,8 @@ async def test_emulate_card_runs_through_the_hub_and_publishes_slowly(hub):
         (c,) = snap["controllers"]
         assert (c["controller"], c["name"], c["layer_label"]) == (1, "Controller 1", "Inputs")
         assert [s["label"] for s in c["strips"]][:3] == ["Input Manager #1", "Input Manager #2", "Flex Channel 3"]
-        assert len(c["strips"]) == 8
+        assert len(c["strips"]) == 16 and [s["meter"] for s in c["strips"]] == [True] * 8 + [False] * 8   # USB strips: no meter
+        assert all(s["db"] is None for s in c["strips"][8:])
         assert hub.entities.get("globcon") is None and not [e for e in hub.entities.values() if e.device_id == "globcon"]
     finally:
         await integ.stop()
@@ -775,6 +787,7 @@ def test_seed_puts_the_card_on_the_wall_only_for_a_fresh_emulate_config():
 def test_defaults_and_additive_loading_of_an_older_file(tmp_path):
     assert GlobconConfig().host == "127.0.0.1" and GlobconConfig().port == 9091 and GlobconConfig().password == ""
     assert Dashboard(slug="x").globcon == GlobconCardOptions(controller=1, strips=8)
+    assert Dashboard(slug="x").globcon.range is None                  # unset: the older behaviour is kept
     path = tmp_path / "config.yaml"
     store = ConfigStore(path)
     store.config = Config()
@@ -831,6 +844,68 @@ def test_card_options_validation_bounds():
     assert GlobconCardOptions.model_validate("junk") == GlobconCardOptions()
 
 
+@pytest.mark.parametrize("r", ["1-4", "5-8", "1-8", "9-12", "13-16", "9-16", "1-16"])
+def test_each_range_is_accepted_and_survives_a_save_and_load(tmp_path, r):
+    cfg = Config()
+    cfg.dashboards[0].globcon = GlobconCardOptions(controller=2, strips=8, range=r)
+    path = tmp_path / "config.yaml"
+    store = ConfigStore(path)
+    store.config = cfg
+    store.save()
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["dashboards"][0]["globcon"]["range"] == r
+    assert ConfigStore(path).load().dashboards[0].globcon == GlobconCardOptions(controller=2, strips=8, range=r)
+    assert GLOBCON_RANGES[r][1] - GLOBCON_RANGES[r][0] + 1 in (4, 8, 16)
+
+
+def test_the_ranges_are_the_groups_the_owner_asked_for():
+    assert GLOBCON_RANGES == {"1-4": (1, 4), "5-8": (5, 8), "1-8": (1, 8), "9-12": (9, 12), "13-16": (13, 16),
+                              "9-16": (9, 16), "1-16": (1, 16)}
+
+
+def test_a_bad_range_in_a_file_falls_back_to_unset_and_keeps_the_rest(tmp_path, caplog):
+    caplog.set_level(logging.WARNING)
+    for bad in ("17-20", "1-9", 8, ["1-4"], True, "", "9-16 "):
+        assert GlobconCardOptions.model_validate({"controller": 3, "strips": 4, "range": bad}) == GlobconCardOptions(controller=3, strips=4)
+    assert "17-20" not in caplog.text
+    cfg = Config()
+    path = tmp_path / "config.yaml"
+    store = ConfigStore(path)
+    store.config = cfg
+    store.save()
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    raw["dashboards"][0]["globcon"] = {"controller": 5, "strips": 4, "range": "nonsense"}
+    raw["dashboards"][1]["globcon"] = {"controller": 6, "strips": 8, "range": "9-16"}
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    store2 = ConfigStore(path)
+    loaded = store2.load()
+    assert not store2.recovery_required
+    assert loaded.dashboards[0].globcon == GlobconCardOptions(controller=5, strips=4)
+    assert loaded.dashboards[1].globcon == GlobconCardOptions(controller=6, strips=8, range="9-16")
+
+
+def test_an_older_build_ignores_range_and_forgets_it_but_the_old_fields_stay(tmp_path):
+    from pydantic import BaseModel, ConfigDict
+
+    class OldOptions(BaseModel):                         # what the previous build knew: no range
+        model_config = ConfigDict(extra="ignore")
+        controller: int = 1
+        strips: int = 8
+
+    cfg = Config()
+    cfg.dashboards[0].globcon = GlobconCardOptions(controller=4, strips=4, range="13-16")
+    path = tmp_path / "config.yaml"
+    store = ConfigStore(path)
+    store.config = cfg
+    store.save()
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    old = OldOptions.model_validate(raw["dashboards"][0]["globcon"])        # the older build reads it without complaint
+    assert (old.controller, old.strips) == (4, 4)
+    raw["dashboards"][0]["globcon"] = old.model_dump()                     # ... and its next save drops range
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    again = ConfigStore(path).load()
+    assert again.dashboards[0].globcon == GlobconCardOptions(controller=4, strips=4)      # old behaviour, still working
+
+
 # ------------------------------------------------------------------------------------------ API
 @pytest.fixture
 def client(tmp_path):
@@ -854,7 +929,17 @@ def test_dashboard_put_round_trips_options_and_is_strict(client):
     rows[0]["globcon"] = {"controller": 9, "strips": 4}
     assert client.put("/api/admin/dashboards", json=rows).status_code == 200
     assert client.hub.config.dashboards[0].globcon == GlobconCardOptions(controller=9, strips=4)
-    assert client.get("/api/dashboard/foh").json()["globcon"] == {"controller": 9, "strips": 4}
+    assert client.get("/api/dashboard/foh").json()["globcon"] == {"controller": 9, "strips": 4, "range": None}
+    rows[0]["globcon"] = {"controller": 2, "strips": 8, "range": "9-16"}
+    assert client.put("/api/admin/dashboards", json=rows).status_code == 200
+    assert client.get("/api/dashboard/foh").json()["globcon"] == {"controller": 2, "strips": 8, "range": "9-16"}
+    rows[0]["globcon"] = {"controller": 2, "strips": 8, "range": None}
+    assert client.put("/api/admin/dashboards", json=rows).status_code == 200
+    for bad_range in ("9-17", 9, "", ["1-4"], True):
+        rows[0]["globcon"] = {"controller": 2, "strips": 8, "range": bad_range}
+        assert client.put("/api/admin/dashboards", json=rows).status_code == 422
+    rows[0]["globcon"] = {"controller": 9, "strips": 4}
+    assert client.put("/api/admin/dashboards", json=rows).status_code == 200
     for bad in ({"controller": 0, "strips": 4}, {"controller": 17, "strips": 4}, {"controller": 1, "strips": 6},
                 {"controller": "2", "strips": 4}, {"controller": 1.5, "strips": 4}, {"controller": True, "strips": 4},
                 {"controller": 1, "strips": 4, "extra": 1}, [], "x", None):

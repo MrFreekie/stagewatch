@@ -1,7 +1,8 @@
 // GLOBCON levels card: what to show (SW.gc.view, pure) and the card's DOM, built once and updated in
 // place. The server sends a "globcon_meters" message up to four times a second (GLOBCON itself sends
-// ten): per controller its name, the current layer's label, and the first strips that have a level,
-// each with its dB level exactly as GLOBCON reported it. Nothing is averaged, smoothed, peak-held or
+// ten): per controller its name, the current layer's label, and every strip GLOBCON has told us about
+// (index, label, whether it has a level meter, and its dB level exactly as GLOBCON reported it). The
+// dashboard's channel group (opts.range, e.g. "9-16") picks the strips to draw, by index and in order. Nothing is averaged, smoothed, peak-held or
 // converted here, and the card makes no claim about peak or RMS. GLOBCON's "no signal" (-250) arrives
 // as null and is drawn as an empty bar with a dash, never as zero.
 //
@@ -18,6 +19,9 @@ SW.gc = (function () {
   gc.CEIL_DB = 0;
   gc.HIGH_DB = -9;           // display guide only: a bar above this gets one triangle
   gc.HOTTER_DB = -3;         // ... and above this two. Not a claim about clipping or headroom.
+
+  // The channel groups, strip numbers as on the controller (1-based). Same list as core/config.py GLOBCON_RANGES.
+  gc.RANGES = { "1-4": [1, 4], "5-8": [5, 8], "1-8": [1, 8], "9-12": [9, 12], "13-16": [13, 16], "9-16": [9, 16], "1-16": [1, 16] };
 
   const isNum = (x) => typeof x === "number" && isFinite(x);
 
@@ -61,6 +65,7 @@ SW.gc = (function () {
   //   cls     the card's class
   gc.view = function (m, opts, now) {
     const want = Math.max(1, Math.min(8, (opts && opts.strips) || 8));
+    const range = opts && typeof opts.range === "string" && Object.prototype.hasOwnProperty.call(gc.RANGES, opts.range) ? gc.RANGES[opts.range] : null;
     const num = (opts && opts.controller) || 1;
     const v = { state: "waiting", title: `Controller ${num}`, layer: "", badge: "… WAITING", note: "", strips: [], cls: "gc-s-waiting", ago: "" };
     const name = (m && m.label) || "GLOBCON";
@@ -77,13 +82,27 @@ SW.gc = (function () {
       v.note = `▲ ${name} wants a password for this controller. Enter it in Admin.`;
       return v;
     }
-    const strips = Array.isArray(c.strips) ? c.strips.slice(0, want) : [];
+    const all = Array.isArray(c.strips) ? c.strips.filter((s) => s && typeof s === "object") : [];
+    let strips;
+    if (range) {
+      // Every strip of the group, in order, whether or not GLOBCON gave it a meter; one it has not told us about is blank.
+      strips = [];
+      for (let n = range[0]; n <= range[1]; n++) {
+        const f = all.find((s) => s.index === n - 1);
+        strips.push(f ? Object.assign({}, f, { num: n }) : { index: n - 1, num: n, label: "", meter: null, db: null });
+      }
+    } else {
+      // Older setting: the first strips GLOBCON says have a level.
+      strips = all.filter((s) => s.meter === true).slice(0, want).map((s) => Object.assign({}, s, { num: isNum(s.index) ? s.index + 1 : 0 }));
+    }
     const age = isNum(c.meters_at) ? Math.max(0, now - c.meters_at) : null;
     const frozen = age !== null && (age > gc.STALE_S || m.status === "offline");
     v.strips = strips.map((s) => {
       const db = isNum(s.db) ? s.db : null;
       const band = frozen ? "" : gc.band(db);
-      return { label: typeof s.label === "string" ? s.label : "", db, text: gc.fmtDb(db), pct: gc.pct(db), band, mark: gc.BAND_MARK[band], word: gc.BAND_WORD[band] };
+      // With a channel group chosen, a strip with no level shows a plain word, never a zero.
+      const word = range && db === null ? (s.meter === false ? "no meter" : "no reading") : "";
+      return { num: s.num, label: typeof s.label === "string" ? s.label : "", db, text: word || gc.fmtDb(db), isWord: !!word, pct: gc.pct(db), band, mark: gc.BAND_MARK[band], word: gc.BAND_WORD[band] };
     });
     if (age === null) {
       v.note = m.status === "offline" ? `▲ ${name} is not connected. No levels to show.` : `Connected to ${name}, waiting for levels…`;
@@ -123,12 +142,15 @@ SW.gc = (function () {
       for (let i = 0; i < n; i++) {
         const fill = h("div", { class: "gc-fill" });
         const col = {
-          label: h("div", { class: "gc-label" }),
+          num: h("span", { class: "gc-num" }),
+          name: h("span", { class: "gc-name" }),
+          label: null,
           fill,
           bar: h("div", { class: "gc-bar", "aria-hidden": "true" }, fill),
           value: h("div", { class: "gc-value" }),
           mark: h("span", { class: "gc-mark" }),
         };
+        col.label = h("div", { class: "gc-label" }, col.num, col.name);
         col.el = h("div", { class: "gc-col" }, col.label, col.bar, h("div", { class: "gc-reading" }, col.value, col.mark));
         cols.push(col);
       }
@@ -144,11 +166,12 @@ SW.gc = (function () {
       if (cols.length !== v.strips.length) build(v.strips.length);
       v.strips.forEach((s, i) => {
         const c = cols[i];
-        setText(c.label, s.label || `Strip ${i + 1}`);
+        setText(c.num, s.num ? String(s.num) : "");
+        setText(c.name, s.label);
         setText(c.value, s.text);
         setText(c.mark, s.mark);
         c.mark.setAttribute("title", s.word);
-        setClass(c.el, `gc-col${s.band ? ` gc-${s.band}` : ""}${s.db === null ? " gc-none" : ""}`);
+        setClass(c.el, `gc-col${s.band ? ` gc-${s.band}` : ""}${s.db === null ? " gc-none" : ""}${s.isWord ? " gc-word" : ""}`);
         const h2 = `${s.pct.toFixed(0)}%`;
         if (c.fill.style.height !== h2) c.fill.style.height = h2;
       });
