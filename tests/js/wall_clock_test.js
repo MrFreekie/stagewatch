@@ -78,7 +78,7 @@ eq([v.state, v.digits, v.suffix, v.level, v.cls, v.note, v.date], ["live", "14:0
 v = wc.view(msg(), NOW + 2.4);
 eq([v.state, v.digits], ["live", "14:05:11"], "live time runs on from the reading (age 2.4 s)");
 v = wc.view(msg({ source: "pc", label: "Stagewatch PC", offset_s: 0 }), NOW);
-eq([v.state, v.note], ["live", "Stagewatch's own clock"], "PC source note");
+eq([v.state, v.note], ["live", ""], "PC source shows no note");
 v = wc.view(msg({ offset_s: 3.2, warn: true }), NOW);
 eq([v.state, v.level, v.cls, v.note], ["differs", "warn", "wc-differs", "▲ Differs from Stagewatch by +3.2 s (Ontime is ahead)"], "differs ahead");
 v = wc.view(msg({ offset_s: -3.2, warn: true }), NOW);

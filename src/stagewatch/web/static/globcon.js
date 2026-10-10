@@ -139,7 +139,6 @@ SW.gc = (function () {
       badge: h("span", { class: "gc-badge", role: "status" }),
       strips: h("div", { class: "gc-strips" }),
       note: h("p", { class: "gc-note", hidden: true, role: "status" }),
-      foot: h("p", { class: "gc-foot muted" }, "Levels in dB as reported by GLOBCON. Bars run from -72 to 0 dB. ▲ above -9 dB, ▲▲ above -3 dB: a display guide only. Read-only."),
     };
     let cols = [];
     const build = (n) => {
@@ -162,7 +161,7 @@ SW.gc = (function () {
       ui.strips.replaceChildren(...cols.map((c) => c.el));
       ui.strips.setAttribute("data-n", String(n));
     };
-    ui.nodes = [h("div", { class: "gc-top" }, ui.layer, ui.badge), ui.strips, ui.note, ui.foot];
+    ui.nodes = [h("div", { class: "gc-top" }, ui.layer, ui.badge), ui.strips, ui.note];
     ui.update = function (v) {
       setText(ui.head, "DirectOut GLOBCON");
       setText(ui.layer, v.sub || v.title);

@@ -636,8 +636,8 @@ The look is set for each dashboard, so the wall can show the ring while a phone 
 
 The ring and the 7-segment look are always red on black, by day and by night.
 
-**What you'll see:** the time, and nothing under it while Ontime agrees with Stagewatch (a PC clock
-says "Stagewatch's own clock"). A line only appears when something is wrong. In the Stagewatch emulate mode the three stock dashboards each show a different look and
+**What you'll see:** the time, and nothing under it while Ontime agrees with Stagewatch (the PC clock shows no
+extra line either). A line only appears when something is wrong. In the Stagewatch emulate mode the three stock dashboards each show a different look and
 the clock runs through "differs", "stale" and "offline" every two minutes, so you can see them all.
 
 What the card tells you. Each of these has words with a ▲, and a dashed outline or a line through

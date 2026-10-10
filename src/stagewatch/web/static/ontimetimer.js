@@ -196,10 +196,9 @@ SW.ot = (function () {
       extra: h("p", { class: "ot-extra" }),
       note: h("p", { class: "ot-note", hidden: true, role: "status" }),
       thr: h("p", { class: "ot-thr muted", hidden: true }),
-      foot: h("p", { class: "ot-foot muted" }, "From Ontime, not a Stagewatch timer."),
     };
     ui.nodes = [ui.title, h("div", { class: "ot-main" }, ui.count, ui.added), ui.bar,
-      h("div", { class: "ot-tags" }, ui.badge, ui.tag, ui.type), ui.extra, ui.note, ui.thr, ui.foot];
+      h("div", { class: "ot-tags" }, ui.badge, ui.tag, ui.type), ui.extra, ui.note, ui.thr];
     ui.update = function (v) {
       setText(ui.title, v.title);
       setHidden(ui.title, !v.title);

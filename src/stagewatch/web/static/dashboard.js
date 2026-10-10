@@ -794,7 +794,7 @@
       wc.ui.head.replaceChildren(wc.ui.headText, h("span", { class: "grow" }), wc.ui.logo);
       card.replaceChildren(wc.ui.head, wc.ui.host, wc.ui.date, wc.ui.note);
     }
-    wc.ui.headText.textContent = `Wall Clock · ${m.label || "Ontime"}`;
+    wc.ui.headText.textContent = m.source === "pc" ? "Wall Clock" : `Wall Clock · ${m.label || "Ontime"}`;
     wc.ui.logo.hidden = m.source !== "ontime";      // the Ontime logo only while the time comes from Ontime
     tickWallClock();
   }
@@ -908,7 +908,7 @@
     card.hidden = false;
     if (!gcc.ui) {
       gcc.ui = SW.gc.createUi();
-      card.replaceChildren(h("h2", {}, gcc.ui.head, h("span", { class: "grow" }), h("span", { class: "gc-sub muted" }, "as reported by GLOBCON"), h("img", { class: "card-logo", src: "/static/directout-badge.png", alt: "DirectOut", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } })), ...gcc.ui.nodes);
+      card.replaceChildren(h("h2", {}, gcc.ui.head, h("span", { class: "grow" }), h("img", { class: "card-logo", src: "/static/directout-badge.png", alt: "DirectOut", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } })), ...gcc.ui.nodes);
     }
     tickGlobcon();
   }

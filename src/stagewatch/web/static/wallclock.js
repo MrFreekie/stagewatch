@@ -87,7 +87,7 @@ SW.wc = (function () {
       v.note = `▲ Differs from Stagewatch by ${wc.offsetText(m.offset_s)} (${name} is ${ahead})${wc.wholeHours(m.offset_s) ? ". Check the time zones." : ""}`;
     } else {
       v.state = "live"; v.cls = ""; v.level = "";
-      v.note = m.source === "pc" ? "Stagewatch's own clock" : "";   // Ontime agreeing with Stagewatch is the normal case: say nothing
+      v.note = "";   // an agreeing clock (the PC's own, or Ontime) is the normal case: say nothing
     }
     if (o.showDate) {
       const p = SW._siteParts(now + (typeof m.offset_s === "number" ? m.offset_s : 0));
