@@ -60,7 +60,22 @@ TEXT = {
     "too_large": "GLOBCON sent more data than we accept",
     "not_globcon": "That address did not answer like GLOBCON's remote controller",
     "not_local": "That name does not point to a computer on the local network",
+    "refused": "Can't reach GLOBCON",
     "connected": "Connected, waiting for levels",
+}
+
+# Admin page only (never sent to dashboards): why the link is down, in words a crew member can act on.
+# {where} is the address as saved; {port} the port; {secs} the silence limit.
+HINTS = {
+    "no_address": "No GLOBCON address is saved yet. Type the computer GLOBCON runs on (127.0.0.1 if it is this computer) and Save.",
+    "timeout": "Nothing answered at {where}. Check that GLOBCON is running and that the Windows firewall on its computer allows port {port}.",
+    "refused": "The computer at {where} answered, but GLOBCON is not listening on port {port}. Check that GLOBCON is running and that the port is the one GLOBCON uses.",
+    "unreachable": "Could not reach {where}. Check the address is spelt correctly and that this computer is on the same network as GLOBCON.",
+    "not_local": "The name {where} does not point to a computer on the local network, so Stagewatch will not connect to it. Use the address of the GLOBCON computer on your show network.",
+    "not_globcon": "Something answered at {where}, but it did not reply like GLOBCON's remote control. Check the address and port.",
+    "silent": "Connected to {where}, but GLOBCON has sent nothing for {secs} seconds. Check that GLOBCON is still running and responding on its computer.",
+    "closed": "GLOBCON at {where} closed the connection. Stagewatch will keep trying; check GLOBCON has not been restarted or closed.",
+    "too_large": "GLOBCON at {where} sent more data than Stagewatch accepts, so it dropped the connection. Check that this really is GLOBCON.",
 }
 
 
@@ -99,6 +114,8 @@ def describe(exc: BaseException) -> str:
         return "closed"
     if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
         return "timeout"
+    if isinstance(exc, ConnectionRefusedError):
+        return "refused"
     return "unreachable"
 
 
@@ -155,6 +172,7 @@ class GlobconClient(GlobconSource):
         self._wake: asyncio.Event | None = None
         self._up_since: float | None = None
         self.dropped_frames = 0
+        self._down_kind = ""                      # why the link is down, while it is (for hint())
         self.sent_methods: dict[str, int] = {}    # for tests and diagnostics: how many of each method went out
 
     # ------------------------------------------------------------ source API
@@ -173,6 +191,19 @@ class GlobconClient(GlobconSource):
         if task:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+
+    def hint(self) -> str:
+        """Admin page only: the address being tried and why it cannot connect, in plain words. Empty while
+        the link is up. The address is the one saved, so this must never reach a dashboard."""
+        kind = self._down_kind
+        if not kind:
+            return ""
+        target = self._target_fn()
+        if target is None:
+            return HINTS["no_address"]
+        host, port = target
+        where = f"{f'[{host}]' if ':' in host else host}:{port}"
+        return HINTS.get(kind, HINTS["unreachable"]).format(where=where, port=port, secs=f"{self._silence:g}")
 
     # ------------------------------------------------------------- internals
     def _link(self, up: bool, detail: str) -> None:
@@ -208,6 +239,7 @@ class GlobconClient(GlobconSource):
                 category = describe(exc)
                 log.info("GLOBCON connection ended (%s)", category)
             self.problem = "api" if category == "not_globcon" else ""
+            self._down_kind = category
             self._link(False, TEXT.get(category, TEXT["unreachable"]))
             stable = self._up_since is not None and self._clock() - self._up_since >= self._stable_s
             backoff = self._bmin if stable else min(backoff * 2, self._bmax)
@@ -220,6 +252,7 @@ class GlobconClient(GlobconSource):
     async def _session(self, ip: str, port: int) -> None:
         async with self._open(ws_url(ip, port)) as ws:
             self._up_since = self._clock()
+            self._down_kind = ""
             self._link(True, TEXT["connected"])
             subscribed: set[int] = set()
             auth = {"requires": set(), "authorized": set(), "tried": set()}

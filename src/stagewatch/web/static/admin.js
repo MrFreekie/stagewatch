@@ -325,6 +325,7 @@
     if (!st.running) lines.push(st.card_assigned ? "Starting…" : "Not running. It starts when a dashboard has the DirectOut GLOBCON card (User dashboards → Edit cards).");
     else {
       lines.push(st.status === "ok" ? (st.detail || "Receiving levels") : `▲ ${st.status}${st.detail ? `: ${st.detail}` : ""}`);
+      if (st.hint && st.status !== "ok") lines.push(st.hint);
       if (st.controllers && st.controllers.length) lines.push(`Controller${st.controllers.length === 1 ? "" : "s"} ${st.controllers.join(", ")} in use`);
     }
     return card("DirectOut GLOBCON",
