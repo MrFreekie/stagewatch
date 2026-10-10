@@ -162,13 +162,55 @@
     if (open) msgTimer = setInterval(renderMessages, 15000);   // keeps the ages current
     if (!open && refocus) $("msg-btn").focus();
   }
-  $("msg-btn").addEventListener("click", (ev) => { ev.stopPropagation(); setMessagesOpen(!msgOpen); });
+  $("msg-btn").addEventListener("click", (ev) => { ev.stopPropagation(); if (!msgOpen && cs.open) setConnOpen(false); setMessagesOpen(!msgOpen); });
   document.addEventListener("click", (ev) => {
     if (msgOpen && !$("msg-panel").contains(ev.target)) setMessagesOpen(false);
   });
   document.addEventListener("keydown", (ev) => {
     if (msgOpen && (ev.key === "Escape" || ev.key === "Esc")) setMessagesOpen(false, true);
   });
+
+  // ---- Connection status (header, beside the messages icon): Online / Offline / Error. ----
+  // Fed by the existing live feed (SW.connect reconnects with back-off on its own). "Heard" is any
+  // message from the server, including its reply to our 15 s ping, so a quiet but healthy feed stays
+  // Online while a silent one turns Offline: stale beats online. Plain words only on screen.
+  const cs = { wsUp: false, since: Date.now(), lastHeard: null, fault: false, open: false, last: "", timer: null };
+  function renderConn() {
+    const st = SW.connStatus({ now: Date.now(), wsUp: cs.wsUp, since: cs.since, lastHeard: cs.lastHeard, fault: cs.fault });
+    const btn = $("cs-btn");
+    btn.className = `cs-btn cs-${st.cls}`;
+    btn.setAttribute("aria-label", st.label);
+    btn.title = st.label;
+    $("cs-sym").textContent = st.symbol;
+    $("cs-word").textContent = st.word;
+    $("cs-head").textContent = st.headline;
+    $("cs-list").replaceChildren(...st.lines.map((t) => h("li", {}, t)));
+    $("cs-advice").textContent = st.advice;
+    if (st.state !== cs.last) { $("cs-live").textContent = st.label; cs.last = st.state; }
+  }
+  function setConnOpen(open, refocus) {
+    cs.open = open;
+    $("cs-panel").hidden = !open;
+    $("cs-btn").setAttribute("aria-expanded", open ? "true" : "false");
+    clearInterval(cs.timer);
+    if (open) { renderConn(); cs.timer = setInterval(renderConn, 1000); }
+    if (!open && refocus) $("cs-btn").focus();
+  }
+  $("cs-btn").addEventListener("click", (ev) => { ev.stopPropagation(); if (!cs.open && msgOpen) setMessagesOpen(false); setConnOpen(!cs.open); });
+  document.addEventListener("click", (ev) => {
+    if (cs.open && !$("cs-panel").contains(ev.target)) setConnOpen(false);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (cs.open && (ev.key === "Escape" || ev.key === "Esc")) setConnOpen(false, true);
+  });
+  // The server answering with a fault (HTTP 5xx) is "Error"; no answer at all is the feed's business.
+  function checkServer() {
+    if (!cs.wsUp) return;
+    SW.api("GET", "/api/info").then(() => { cs.fault = false; renderConn(); })
+      .catch((err) => { if (err && err.status >= 500) { cs.fault = true; renderConn(); } });
+  }
+  setInterval(checkServer, 30000);
+  setInterval(renderConn, 5000);
 
   // ---- Alarm sound On/Off (always visible). The choice is remembered per device (browser). ----
   // "On" needs a tap the first time (browser rule), so tapping the button arms audio; any first
@@ -1334,7 +1376,15 @@
   let loadedBuild = null;
   const buildKey = (i) => (i && i.build ? `${i.version}+${i.build.commit}` : null);
   let wasDown = false;
-  SW.connect(`?dashboard=${encodeURIComponent(slug)}`, onMessage, (up) => {
+  const heardMessage = (msg) => {
+    cs.lastHeard = Date.now();
+    try { onMessage(msg); cs.fault = false; } catch (_) { cs.fault = true; }   // a message that cannot be used is a feed fault
+    renderConn();
+  };
+  SW.connect(`?dashboard=${encodeURIComponent(slug)}`, heardMessage, (up) => {
+    cs.wsUp = up; cs.since = Date.now();
+    if (!up) cs.fault = false;
+    renderConn();
     $("conn").classList.toggle("on", up);
     SW.connection.report(up);
     if (!up) { wasDown = true; return; }
@@ -1350,6 +1400,7 @@
   }).catch(() => {});
   if (soundWanted()) sounder.enable(); // works in kiosk mode (autoplay allowed); otherwise tap the sound button
   renderSound();
+  renderConn();
   setInterval(() => { $("clock").textContent = SW.fmtTime(serverNow(), { seconds: true }); }, 1000);
   // Re-bucket history so long views stay tidy; refresh the sensors' "Updated" ages. Each only
   // does work while its card is on this dashboard.
