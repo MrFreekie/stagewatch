@@ -50,7 +50,7 @@ A bookmark in time, such as **Aligned** or **Headliner**. Stagewatch shows how m
 (and so the sound travel time) has changed since each one.
 
 **Nightly**
-An update channel with the newest code, checked only by machines. Not for show days. See
+An update channel with the newest code, checked only by machines. Best tried away from a live show. See
 **Stable**.
 
 **Node**

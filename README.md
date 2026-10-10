@@ -225,7 +225,7 @@ only available on a managed install; update those with `git pull`.
 
 - **Channels.** *Stable* (default) is the newest `vX.Y.Z` release tag reachable from `main`.
   *Nightly* is the `nightly` branch, which only CI moves, to a `main` commit that passed the
-  Windows test run. Nightly is bleeding edge, tested automatically only: don't run it on show days.
+  Windows test run. Nightly is bleeding edge, tested automatically only, so try it away from a live show first.
   The channel you pick is stored in `config.yaml`; the installer's choice is the default.
 - **Check, then update.** *Check for updates* fetches from GitHub (at most once every 30 s) and
   shows the target version, its full commit id and the changelog. *Update now* asks you to

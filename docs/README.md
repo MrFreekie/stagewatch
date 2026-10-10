@@ -70,7 +70,7 @@ Every guide tells you what you should see after each step.
 - The managed install is **tested on Windows 11 and Windows 10 (virtual machines), and on
   Debian 13.7 (virtual machine). It is not yet tested on Raspberry Pi hardware.** Try it at
   home first. Do not meet it for the first time at a festival.
-- Do not update Stagewatch on a show day. See [Updating and backups](updating-and-backups.md).
+- Updates take a backup first and can be rolled back. See [Updating and backups](updating-and-backups.md).
 
 Stagewatch is free and open source (GPL-3.0). Problems and ideas are welcome on the
 [GitHub issues page](https://github.com/MrFreekie/stagewatch/issues).

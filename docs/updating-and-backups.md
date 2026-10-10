@@ -3,9 +3,9 @@
 How to update Stagewatch from its own admin page, how your data is protected, and what to
 do if you forget your PIN.
 
-> **Golden rule: do not update on a show day.** Update at home, days before, then test.
+> **Update when it suits you.** Every update takes a backup first and can be rolled back.
 > Stagewatch does **not** check whether a show is running. Updating restarts it for about
-> a minute and nothing is recorded while it restarts.
+> a minute and nothing is recorded while it restarts, so pick a quiet moment if you can.
 >
 > Stagewatch is an advisory tool with no warranty. See the
 > [main README](../README.md#stagewatch).
@@ -37,7 +37,7 @@ from a downloaded folder). That copy cannot update itself here. Follow the
 | Channel | What it is | Use it |
 |---|---|---|
 | **Stable** (the default) | Proper numbered releases, like v0.2.0. | **For shows.** |
-| **Nightly** | The newest code that passed the automatic tests. Only checked by a machine. | **Never on a show day.** For trying new things at home. |
+| **Nightly** | The newest code that passed the automatic tests. Only checked by a machine. | For trying new things. It is only checked by machines, so try it away from a live show first. |
 
 To change channel, use the **Channel** menu on the Software card. The card warns you if
 Nightly is selected.

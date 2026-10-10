@@ -146,7 +146,7 @@ What the options mean:
 |---|---|
 | `--kiosk` | After the Pi logs in, opens the **wall** dashboard full screen on the Pi's screen. Leave this off if the Pi has no screen. |
 | `--ref <tag-or-sha>` | Advanced. Install a particular version instead of the latest release. Leave it off normally. |
-| `--channel nightly` | Advanced. Follow the Nightly build instead of Stable. Not for show days. |
+| `--channel nightly` | Advanced. Follow the Nightly build instead of Stable. Checked only by machines. |
 | `--port 8080` | Optional. The default is 8080. |
 
 **What you should see near the end:**
