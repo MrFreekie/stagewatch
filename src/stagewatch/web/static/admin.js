@@ -773,8 +773,8 @@
     markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
     sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
     wall_clock: ["Wall Clock", "The time of day, as plain digits, an LED ring or 7-segment digits. Choose the source in the Wall Clock settings."],
-    ontime_timer: ["Ontime Timer", "The countdown Ontime is running, with the event title. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings."],
-    ontime_rundown: ["Ontime Rundown", "The running event, whether Ontime is ahead or behind, the planned and expected end and the list of events with their times. Read from Ontime; set its address in the Wall Clock and Ontime Timer settings. Event titles and notes are shown on the dashboard, and follow the Ontime Timer setting \"Show the event title on dashboards\"."],
+    ontime_timer: ["Ontime Timer", "The countdown Ontime is running, with the event title. Read from Ontime; set its address in the Ontime card."],
+    ontime_rundown: ["Ontime Rundown", "The running event, whether Ontime is ahead or behind, the planned and expected end and the list of events with their times. Read from Ontime; set its address in the Ontime card. Event titles and notes are shown on the dashboard, and follow the Ontime card setting \"Show the event title on dashboards\"."],
     equipment: ["Equipment", "Readings from Equipment sensors (amp racks, power supplies), by node. Never part of the site average. Stays hidden until a sensor has the Equipment role."],
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
@@ -944,42 +944,16 @@
   // Where the Wall Clock card gets its time: this computer, or Ontime. One source for the whole
   // installation; Stagewatch never switches by itself. Read-only: it only listens. Ontime is only
   // contacted while a dashboard has the Wall Clock card. The look (digits, ring, segments) is
-  // chosen per dashboard under User dashboards → Edit cards.
+  // chosen per dashboard under User dashboards → Edit cards. Everything about Ontime itself
+  // (address, test, warning limit) is in the Ontime card.
   function wallClockCard() {
     const w = admin.config.wall_clock, st = admin.wall_clock || {};
     const d = w.display || {};
-    const url = h("input", { value: w.ontime_url, placeholder: "http://127.0.0.1:4001", autocomplete: "off", spellcheck: "false", style: "min-width:260px" });
-    const warn = h("input", { class: "num", type: "number", step: "0.5", min: "1", max: "60", value: w.warn_offset_s });
     const source = h("select", {}, h("option", { value: "pc" }, "Stagewatch PC"), h("option", { value: "ontime" }, "Ontime"));
     source.value = w.source === "ontime" ? "ontime" : "pc";
     const hour12 = h("select", {}, h("option", { value: "24" }, "24-hour"), h("option", { value: "12" }, "12-hour (am/pm)"));
     hour12.value = d.hour12 ? "12" : "24";
     const showDate = h("input", { type: "checkbox", checked: !!d.show_date });
-    // The address and the test serve both Ontime cards: show them when the clock uses Ontime or
-    // any dashboard has the Ontime Timer card. The warning limit is the clock's alone.
-    const timerOn = (admin.config.dashboards || []).some((x) => (x.cards || []).indexOf("ontime_timer") >= 0);
-    const rundownOn = (admin.config.dashboards || []).some((x) => (x.cards || []).indexOf("ontime_rundown") >= 0);
-    const addressField = field(timerOn ? "Ontime address (also used by the Ontime Timer card)"
-      : rundownOn ? "Ontime address (also used by the Ontime Rundown card)" : "Ontime address", url);
-    const warnField = field("Warn if more than this many seconds out", warn);
-    const ontimeOnly = [addressField, warnField];
-    const result = h("p", { class: "muted", role: "status" });
-    const testBtn = h("button", { style: "align-self:flex-end", onclick: async (ev) => {
-      const btn = ev.target; btn.disabled = true; result.textContent = "Testing…";
-      try {
-        const r = await api("POST", "/api/admin/wall-clock/test", { ontime_url: val(url) });
-        result.textContent = r.ok ? `Ontime ${r.version} answered.` : r.message;
-      } catch (err) { result.textContent = err.message; }
-      finally { btn.disabled = false; }
-    } }, "Test connection");
-    // Only Ontime has an address to set and test (display:none, because label.field would override [hidden]).
-    const showOntime = () => {
-      const clockOnOntime = source.value === "ontime";
-      addressField.style.display = testBtn.style.display = clockOnOntime || timerOn ? "" : "none";
-      warnField.style.display = clockOnOntime ? "" : "none";
-    };
-    source.onchange = showOntime;
-    showOntime();
     const lines = [];
     if (!st.active) {
       lines.push(st.card_assigned ? "Starting…"
@@ -995,41 +969,83 @@
       if (st.version) lines.push(`Ontime version ${st.version}`);
     }
     return card("Wall Clock",
-      h("p", { class: "muted" }, "Shows the time on dashboards that have the Wall Clock card. Choose where the time comes from: this computer, or Ontime (then it warns if Ontime differs from Stagewatch). Stagewatch only listens: it never sends anything to Ontime. If the source stops, the clock says so. It never switches to another source by itself."),
-      h("div", { class: "row" }, field("Time source", source), ...ontimeOnly, testBtn),
-      h("div", { class: "row", style: "margin-top:10px" }, field("Time format", hour12), field("Show the date", showDate),
+      h("p", { class: "muted" }, "Shows the time on dashboards that have the Wall Clock card. Choose where the time comes from: this computer, or Ontime. If the source stops, the clock says so. It never switches to another source by itself."),
+      h("p", { class: "muted", id: "wallclock-ontime-pointer" }, "Ontime settings are in the Ontime card."),
+      h("div", { class: "row" }, field("Time source", source),
+        field("Time format", hour12), field("Show the date", showDate),
         h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/wall-clock", {
-          source: source.value, ontime_url: val(url), warn_offset_s: Number(warn.value) || 2,
+          source: source.value, ontime_url: w.ontime_url, warn_offset_s: w.warn_offset_s,
           display: { hour12: hour12.value === "12", show_date: showDate.checked, ring: d.ring === "fill" ? "fill" : "sweep" },
         }), "Wall Clock saved").then(refresh, () => {}) }, "Save")),
       h("p", { class: "muted hint" }, "These apply to every dashboard. The look (plain digits, LED ring or 7-segment) is set for each dashboard under User dashboards → Edit cards. Ring and 7-segment are always red on black."),
-      result,
       h("p", { class: "muted" }, lines.join(" · ")));
   }
-  // ------------------------------------------------------- ontime timer
-  // The Ontime Timer card shows the countdown Ontime is running. It uses the Ontime address from
-  // the Wall Clock settings (one connection serves both cards). Read-only: it only listens.
-  function ontimeTimerCard() {
-    const t = admin.config.ontime_timer || { show_title: true }, st = admin.ontime_timer || {};
-    const title = h("input", { type: "checkbox", checked: t.show_title !== false });
+  // ------------------------------------------------------------ ontime
+  // Every Ontime setting in one card: the connection shared by the Wall Clock, Ontime Timer and
+  // Ontime Rundown cards, the Wall Clock's warning limit, and the Timer/Rundown title switch.
+  // Read-only: Stagewatch only listens to Ontime. The old API endpoints and config fields are kept.
+  function ontimeStatusLines(adm) {
+    const wc = adm.wall_clock || {}, tm = adm.ontime_timer || {}, rd = adm.ontime_rundown || {};
+    const clockOnOntime = adm.config.wall_clock.source === "ontime";
+    const one = (name, st, offText) => {
+      if (!st.active) return `${name}: ${st.card_assigned ? "starting…" : offText}`;
+      if (st.status === "ok") {
+        return `${name}: connected${st.last_message ? `, last message ${SW.fmtTime(st.last_message, { seconds: true })}` : ""}${st.version ? `, Ontime version ${st.version}` : ""}`;
+      }
+      return `${name}: ▲ not connected${st.detail ? ` (${st.detail})` : ""}`;
+    };
     const lines = [];
-    if (!st.active) {
-      lines.push(st.card_assigned ? "Starting…"
-        : "Not running. It starts when a dashboard has the Ontime Timer card (User dashboards → Edit cards).");
-    } else if (st.status === "ok") {
-      lines.push("Connected");
-      if (st.last_message) lines.push(`Last message ${SW.fmtTime(st.last_message, { seconds: true })}`);
-    } else {
-      lines.push(`▲ Not connected${st.detail ? `: ${st.detail}` : ""}`);
-    }
-    return card("Ontime Timer",
-      h("p", { class: "muted" }, "Shows the countdown Ontime is running on dashboards that have the Ontime Timer card. It reads the Ontime address under Wall Clock, so set and test that first. Stagewatch only listens: it never starts, pauses or changes anything in Ontime. It is Ontime's timer on a screen, not a Stagewatch timer, so don't use it as a cue."),
-      h("div", { class: "row" }, field("Show the event title on dashboards (also the Ontime Rundown card's titles and notes)", title),
-        h("button", { class: "primary", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/ontime-timer", {
-          show_title: title.checked,
-        }), "Ontime Timer saved").then(refresh, () => {}) }, "Save")),
-      h("p", { class: "muted hint" }, "The title is the event's name in Ontime, often an artist. Dashboards are not password protected, so untick this if the name should stay off the screens."),
-      h("p", { class: "muted" }, lines.join(" · ")));
+    if (clockOnOntime) lines.push(one("Wall Clock", wc, "not running (no dashboard has the Wall Clock card)"));
+    lines.push(one("Ontime Timer", tm, "not running (no dashboard has the Ontime Timer card)"));
+    lines.push(one("Ontime Rundown", rd, "not running (no dashboard has the Ontime Rundown card)"));
+    return lines;
+  }
+  // An error is a running source that cannot reach Ontime. It holds the card open, as Software does
+  // for an update. A source that is not running (no card on any dashboard) is not an error.
+  function ontimeHasError(adm) {
+    const list = [adm.ontime_timer || {}, adm.ontime_rundown || {}];
+    if (adm.config.wall_clock.source === "ontime") list.push(adm.wall_clock || {});
+    return list.some((st) => st.active && st.status && st.status !== "ok");
+  }
+  function ontimeCard() {
+    const w = admin.config.wall_clock, t = admin.config.ontime_timer || { show_title: true };
+    const url = h("input", { id: "ontime-address", value: w.ontime_url, placeholder: "http://127.0.0.1:4001", autocomplete: "off", spellcheck: "false", style: "min-width:260px" });
+    const warn = h("input", { id: "ontime-warn", class: "num", type: "number", step: "0.5", min: "1", max: "60", value: w.warn_offset_s });
+    const title = h("input", { id: "ontime-show-title", type: "checkbox", checked: t.show_title !== false });
+    const result = h("p", { class: "muted", role: "status", id: "ontime-test-result" });
+    const testBtn = h("button", { id: "ontime-test", style: "align-self:flex-end", onclick: async (ev) => {
+      const btn = ev.target; btn.disabled = true; result.textContent = "Testing…";
+      try {
+        const r = await api("POST", "/api/admin/wall-clock/test", { ontime_url: val(url) });
+        result.textContent = r.ok ? `Ontime ${r.version} answered.` : r.message;
+      } catch (err) { result.textContent = err.message; }
+      finally { btn.disabled = false; }
+    } }, "Test connection");
+    // One Save: the address and clock warning limit go to the Wall Clock settings, the title switch to
+    // the Ontime Timer settings. The clock's own source and look are kept as they are saved.
+    const save = () => run(async () => {
+      await api("PUT", "/api/admin/wall-clock", {
+        source: w.source, ontime_url: val(url), warn_offset_s: Number(warn.value) || 2, display: w.display,
+      });
+      return api("PUT", "/api/admin/ontime-timer", { show_title: title.checked });
+    }, "Ontime saved").then(refresh, () => {});
+    const heading = (text) => h("h3", { class: "ontime-sub" }, text);
+    return card("Ontime",
+      h("p", { class: "muted" }, "Settings for the three Ontime cards: Wall Clock (when it uses Ontime), Ontime Timer and Ontime Rundown. Stagewatch only listens to Ontime: it never starts, pauses or changes anything in it. Ontime is only contacted while a dashboard has one of these cards."),
+      heading("Connection"),
+      h("p", { class: "muted" }, "One address serves all three cards. Test it, then click Save."),
+      h("div", { class: "row" }, field("Ontime address (Ontime computer's address and port)", url), testBtn),
+      result,
+      h("div", { id: "ontime-status", class: "muted" }, ontimeStatusLines(admin).map((l) => h("p", {}, l))),
+      heading("Wall Clock"),
+      h("div", { class: "row" }, field("Warn if more than this many seconds out", warn)),
+      h("p", { class: "muted hint" }, "Only used when the Wall Clock takes its time from Ontime (choose that in the Wall Clock card). The clock then warns if Ontime differs from the Stagewatch computer by more than this."),
+      heading("Ontime Timer"),
+      h("div", { class: "row" }, field("Show the event title on dashboards (also the Ontime Rundown card's titles and notes)", title)),
+      h("p", { class: "muted hint" }, "The title is the event's name in Ontime, often an artist. Dashboards are not password protected, so untick this if the name should stay off the screens. The Ontime Timer is Ontime's timer on a screen, not a Stagewatch timer, so don't use it as a cue."),
+      heading("Ontime Rundown"),
+      h("p", { class: "muted hint" }, "No settings of its own. It uses the address above and the event title switch under Ontime Timer, so one tick hides every title and note."),
+      h("div", { class: "row", style: "margin-top:10px" }, h("button", { id: "ontime-save", class: "primary", onclick: save }, "Save")));
   }
   // ------------------------------------------------------- event & show
   // An event (a festival, a tour leg) is a group of show days. Markers, alarms and history
@@ -1550,7 +1566,7 @@
       foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false)),
       foldCard(wallClockCard(), "wallclock", false),
-      foldCard(ontimeTimerCard(), "ontime", false),
+      foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin)),
       foldCard(barometerCard(), "barometer", false),
       foldCard(splCard(), "smaart", false),
       foldCard(globconCard(), "globcon", false),
@@ -1612,6 +1628,15 @@
         try { await loadSchedule(); } catch (_) { /* keep the last summary */ }
       }
       rerenderScheduleSummary();
+      // Ontime connection status, refreshed in place (text only, so nothing typed is lost).
+      const ot = document.getElementById("ontime-status");
+      if (ot) {
+        try {
+          const live = await api("GET", "/api/admin/state");
+          admin.wall_clock = live.wall_clock; admin.ontime_timer = live.ontime_timer; admin.ontime_rundown = live.ontime_rundown;
+          ot.replaceChildren(...ontimeStatusLines(admin).map((l) => h("p", {}, l)));
+        } catch (err) { if (err.status === 401) throw err; }
+      }
       // The Sound level drop-downs follow Smaart's lists (a renamed or new input) without a rebuild.
       if (pollN % 3 === 1 && admin.spl && admin.spl.running) await pullSplLists();
       // Software status changes on its own (history entry once a new build is confirmed healthy,

@@ -607,11 +607,12 @@ the other source by itself: if Ontime stops, the card says so.
 
 1. Open **Admin** and find the **Wall Clock** card.
 2. Choose the **Time source**.
-3. If you chose Ontime, type the **Ontime address**, for example `http://192.168.1.50:4001` (your
-   Ontime computer's address and port). If Ontime runs on this computer, leave
-   `http://127.0.0.1:4001`. Click **Test connection**. **What you'll see:** "Ontime 4.14.0 answered."
-   (your version number). Optional: change **Warn if more than this many seconds out**. The
-   default is 2 seconds.
+3. If you chose Ontime, open the **Ontime** card (all Ontime settings are there) and type the
+   **Ontime address**, for example `http://192.168.1.50:4001` (your Ontime computer's address and
+   port). If Ontime runs on this computer, leave `http://127.0.0.1:4001`. Click **Test connection**.
+   **What you'll see:** "Ontime 4.14.0 answered." (your version number). Optional: change **Warn if
+   more than this many seconds out** under **Wall Clock** in that card. The default is 2 seconds.
+   Click **Save** in the **Ontime** card.
 4. Optional: choose **24-hour** or **12-hour (am/pm)**, and tick **Show the date**. These
    apply to every dashboard.
 5. Click **Save**.
@@ -660,16 +661,15 @@ you should not use it as a cue.
 
 Stagewatch only listens to Ontime. It never starts, pauses or changes anything in Ontime. It reads the
 main timer and the title and warning times of the loaded event, and nothing else: not your rundown,
-notes or messages. It uses the same **Ontime address** as the Wall Clock, and the two cards share one
+notes or messages. It uses the same **Ontime address** as the Wall Clock (set in the **Ontime** card), and the two cards share one
 connection.
 
-1. Open **Admin** and find the **Wall Clock** card. Type the **Ontime address** and click **Test
-   connection** (the address box shows when a dashboard has the Ontime Timer card, even if the clock
-   itself uses the Stagewatch PC). **What you'll see:** "Ontime 4.14.0 answered." (your version).
+1. Open **Admin** and find the **Ontime** card. Under **Connection**, type the **Ontime address** and
+   click **Test connection**. **What you'll see:** "Ontime 4.14.0 answered." (your version).
    Click **Save**.
 2. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Ontime Timer** and click
    **Save dashboards**.
-3. Optional: in the **Ontime Timer** card on the Admin page, untick **Show the event title on
+3. Optional: in the **Ontime** card on the Admin page, under **Ontime Timer**, untick **Show the event title on
    dashboards** (this one switch also hides the titles and notes on the Ontime Rundown card) and click **Save**. The title is the event's name in Ontime, often an artist. Dashboards
    have no password, so untick this if the name should stay off the screens.
 
@@ -730,13 +730,13 @@ event counters, times and the ahead/behind figure, the **title and note of the r
 request Stagewatch makes to Ontime: a plain read of its current rundown, only while a dashboard has this card,
 when the event changes and at least once a minute. It does not read colours, custom fields or triggers.
 **Anyone who can open a dashboard with this card can see the event titles and the running event's note**, and
-dashboards have no password. Untick **Show the event title on dashboards** in the **Ontime Timer** card on the
-Admin page to hide every title and note here as well (the list then shows times and cues, with "Event" for each
+dashboards have no password. Untick **Show the event title on dashboards** in the **Ontime**
+card on the Admin page to hide every title and note here as well (the list then shows times and cues, with "Event" for each
 title); that one switch covers both cards. Or leave the card off any dashboard that should not show them. It uses the same **Ontime address** as
-the Wall Clock and the Ontime Timer, and all the cards share one connection.
+the Wall Clock and the Ontime Timer, set in the **Ontime** card, and all the cards share one connection.
 
-1. Open **Admin**, find the **Wall Clock** card, type the **Ontime address** and click **Test connection**
-   (the address box shows when a dashboard has any Ontime card). Click **Save**.
+1. Open **Admin**, find the **Ontime** card, type the **Ontime address** under **Connection** and click
+   **Test connection**. Click **Save**.
 2. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Ontime Rundown** and click **Save
    dashboards**. It is never switched on by default.
 

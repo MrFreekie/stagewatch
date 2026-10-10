@@ -576,7 +576,8 @@ def test_rundown_script_uses_only_safe_dom_and_no_animation_loop():
 
 def test_admin_names_the_card_and_the_address_hint():
     js = (STATIC / "admin.js").read_text(encoding="utf-8")
-    assert "ontime_rundown:" in js and "also used by the Ontime Rundown card" in js
+    assert "ontime_rundown:" in js and "set its address in the Ontime card" in js
+    assert "Ontime Rundown card" in js
 
 
 def test_nothing_in_the_ontime_code_writes_or_adds_a_path():
