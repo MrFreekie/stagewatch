@@ -106,6 +106,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .status.ok { color: var(--ok); } .status.initializing { color: var(--muted); }
 .status.sleeping { color: var(--muted); }
 .iot-tag { font-size: 12px; font-weight: 600; margin-top: 4px; }
+/* Admin: plain sub-headings inside the one Ontime card */
+.ontime-sub { font-size: 15px; margin: 16px 0 6px; }
 .status.compromised { color: var(--warn); } .status.fault, .status.missing { color: var(--stop); }
 
 .alarm-bar { display: none; border-radius: var(--radius); padding: 12px 14px; gap: 12px; align-items: center; flex-wrap: wrap; }

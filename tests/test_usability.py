@@ -223,3 +223,18 @@ def test_admin_cards_fold_with_unique_keys_defaults_and_one_page_control():
     assert 'document.getElementById("schedule-admin-body")' in admin
     # storage failures are caught, so the folds work without browser storage
     assert "no storage: groups use their default" in admin
+
+
+def test_all_ontime_controls_live_in_the_one_ontime_card():
+    admin = (STATIC / "admin.js").read_text(encoding="utf-8")
+    ontime = admin[admin.index("  function ontimeCard() {"):admin.index("  // ------------------------------------------------------- event & show")]
+    wall = admin[admin.index("  function wallClockCard() {"):admin.index("  // ------------------------------------------------------------ ontime")]
+    for needle in ('id: "ontime-address"', 'id: "ontime-test"', 'id: "ontime-warn"', 'id: "ontime-show-title"',
+                   '"/api/admin/wall-clock/test"', '"/api/admin/wall-clock"', '"/api/admin/ontime-timer"',
+                   'heading("Connection")', 'heading("Wall Clock")', 'heading("Ontime Timer")', 'heading("Ontime Rundown")'):
+        assert needle in ontime, needle
+    for gone in ("Ontime address", "Test connection", "Warn if more than", "wall-clock/test", "Show the event title"):
+        assert gone not in wall, gone
+    assert "Ontime settings are in the Ontime card." in wall and "Time source" in wall
+    assert "function ontimeTimerCard" not in admin
+    assert 'foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin))' in admin

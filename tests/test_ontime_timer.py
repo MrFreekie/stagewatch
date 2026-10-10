@@ -661,7 +661,7 @@ def test_timer_script_uses_only_safe_dom_and_no_animation_loop():
 def test_admin_names_the_card_and_has_the_title_option():
     js = (STATIC / "admin.js").read_text(encoding="utf-8")
     assert "ontime_timer:" in js and "/api/admin/ontime-timer" in js and "Show the event title on dashboards" in js
-    assert "also used by the Ontime Timer card" in js
+    assert 'card("Ontime",' in js and "set its address in the Ontime card" in js
 
 
 def test_timer_logic_in_node():
