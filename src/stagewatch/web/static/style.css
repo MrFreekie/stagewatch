@@ -963,7 +963,7 @@ body.layout-wall main > [data-size="half"] .gc-badge { font-size: 22px; }
 .gc-strips { --gc-w: 44px; }
 body.layout-wall .gc-strips { --gc-w: 64px; }
 body:not(.layout-phone) .gc-strips, body.layout-phone .gc-strips:not([data-n="16"]) { grid-template-columns: none !important; grid-auto-flow: column !important; grid-auto-columns: minmax(0, var(--gc-w)) !important; justify-content: center; gap: 4px; row-gap: 0; }
-body:not(.layout-phone) .gc-strips .gc-bar, body.layout-phone .gc-strips:not([data-n="16"]) .gc-bar { height: 240px; border-radius: 4px; }
+body:not(.layout-phone) .gc-strips .gc-bar, body.layout-phone .gc-strips:not([data-n="16"]) .gc-bar { height: 240px !important; border-radius: 4px; }
 body:not(.layout-phone) .gc-strips .gc-label, body.layout-phone .gc-strips:not([data-n="16"]) .gc-label { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; min-height: 0; }
 body:not(.layout-phone) .gc-strips .gc-num, body.layout-phone .gc-strips:not([data-n="16"]) .gc-num { font-size: 13px; }
 body:not(.layout-phone) .gc-strips .gc-name, body.layout-phone .gc-strips:not([data-n="16"]) .gc-name { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12px; height: 7.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -971,10 +971,10 @@ body:not(.layout-phone) .gc-strips .gc-reading, body.layout-phone .gc-strips:not
 body:not(.layout-phone) .gc-strips .gc-value, body.layout-phone .gc-strips:not([data-n="16"]) .gc-value { font-size: 13px; }
 body:not(.layout-phone) .gc-strips .gc-word .gc-value, body.layout-phone .gc-strips:not([data-n="16"]) .gc-word .gc-value { font-size: 12px; writing-mode: vertical-rl; transform: rotate(180deg); }
 body:not(.layout-phone) .gc-strips .gc-mark, body.layout-phone .gc-strips:not([data-n="16"]) .gc-mark { font-size: 12px; min-width: 0; }
-main > [data-size="half"] .gc-strips .gc-bar { height: 200px; }
+main > [data-size="half"] .gc-strips .gc-bar { height: 200px !important; }
 body.layout-wall .gc-strips { gap: 6px; }
-body.layout-wall .gc-strips .gc-bar { height: 38vh; }
-body.layout-wall main > [data-size="half"] .gc-strips .gc-bar { height: 34vh; }
+body.layout-wall .gc-strips .gc-bar { height: 38vh !important; }
+body.layout-wall main > [data-size="half"] .gc-strips .gc-bar { height: 34vh !important; }
 body.layout-wall .gc-strips .gc-num { font-size: 20px; }
 body.layout-wall .gc-strips .gc-name { font-size: 18px; height: 8em; }
 body.layout-wall .gc-strips .gc-value { font-size: 22px; }
