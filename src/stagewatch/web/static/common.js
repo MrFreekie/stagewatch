@@ -126,6 +126,51 @@ SW.messageSummary = function (alarms, elapsedS, sounding) {
   const label = !n ? "No messages" : `${n} ${n === 1 ? "message" : "messages"}, worst: ${SW.MSG_SEV[worst].name}`;
   return { items: items, count: n, worst: worst, label: label, next: split.next };
 };
+// The header's connection indicator: Online, Offline or Error, always a colour AND a symbol AND a
+// word. Stale beats online: Online is shown only while the live feed is up AND something (a data
+// message or the server's reply to our ping) arrived within SW.FEED_SILENT_S. Times are ms from
+// one clock (Date.now()). o = { now, wsUp, since (when wsUp last changed), lastHeard (or null),
+// fault (the server answered but with an error, or a message could not be read) }.
+// Plain words only: no addresses, host names, ports or internal error text.
+SW.FEED_SILENT_S = 40;   // the page pings every 15 s; two missed replies and a bit
+SW.CONN_STATES = {
+  online: { word: "Online", symbol: "●", cls: "ok" },
+  offline: { word: "Offline", symbol: "✕", cls: "off" },
+  error: { word: "Error", symbol: "!", cls: "err" },
+};
+SW.connStatus = function (o) {
+  const secs = (ms) => Math.max(0, Math.floor(ms / 1000));
+  const heardAge = o.lastHeard === null || o.lastHeard === undefined ? null : secs(o.now - o.lastHeard);
+  const sinceAge = o.since === null || o.since === undefined ? null : secs(o.now - o.since);
+  const silent = !!o.wsUp && (heardAge === null || heardAge > SW.FEED_SILENT_S);
+  let state;
+  if (!o.wsUp || silent) state = "offline";
+  else if (o.fault) state = "error";
+  else state = "online";
+  const meta = SW.CONN_STATES[state];
+  const dur = (s) => SW.fmtDuration(s, false);
+  const lastData = heardAge === null ? "No data received yet" : `Last data ${dur(heardAge)} ago`;
+  const lines = [];
+  let headline, advice;
+  if (state === "online") {
+    headline = "Live data is arriving.";
+    lines.push(sinceAge === null ? "Connected" : `Connected for ${dur(sinceAge)}`, lastData);
+    advice = "Nothing to do.";
+  } else if (state === "error") {
+    headline = "Stagewatch answers, but something is wrong with the data.";
+    lines.push(lastData, sinceAge === null ? "" : `Connected for ${dur(sinceAge)}`);
+    advice = "Wait a minute, then reload the page. If it stays like this, tell the system admin.";
+  } else {
+    headline = o.wsUp ? "Connected, but no data is coming through. The figures on screen are frozen."
+      : "This screen has lost its connection to Stagewatch. The figures on screen are frozen.";
+    lines.push(lastData, !o.wsUp && sinceAge !== null ? `Disconnected for ${dur(sinceAge)}` : "");
+    advice = "Check the Wi-Fi, then reload the page.";
+  }
+  const label = state === "online" ? "Online" : state === "error" ? "Error. Data may be wrong"
+    : heardAge === null ? "Offline. No data yet" : `Offline. Last data ${dur(heardAge)} ago`;
+  return { state: state, word: meta.word, symbol: meta.symbol, cls: meta.cls, headline: headline,
+    lines: lines.filter((x) => x), advice: advice, label: label, heardAge: heardAge, sinceAge: sinceAge };
+};
 SW.card = (title, ...body) => SW.h("section", { class: "card" }, SW.h("h2", {}, title), ...body);
 // A normal link that looks like a button, at least 44 px tall.
 SW.linkButton = function (text, href, primary) {

@@ -60,6 +60,7 @@ Stagewatch** instead of a blank page. Use another device or update the browser.
   with its age. Tap it again, press Esc or tap elsewhere to close it. It lists the same items
   as the alarm bar and follows the same rules (acknowledged notices drop off, old quiet
   ones move to "older"); it never makes up a message. The wall screen does not show the bell.
+- **Connection status:** next to the bell, **green ● Online** means the screen is connected to Stagewatch and data is arriving. **Amber ✕ Offline** means the connection is lost, or nothing has arrived for 40 seconds: the figures on screen are frozen, and the panel says how old the last data is. **Red ! Error** means Stagewatch answered but something is wrong with the data. On phones only the symbol shows; tap it (or press Enter) for the details and what to try, such as checking the Wi-Fi and reloading the page. Tap again, press Esc or tap elsewhere to close it. The wall screen shows a small mark and word only when not online, and nothing when all is well.
 - **Alarm bar:** only appears when something is wrong (see [Alarms](#what-the-alarm-colours-mean)).
 - **Tiles:** the five numbers below.
 - **History:** a graph. Buttons pick **Temp**, **RH**, **Pressure** or **c** (speed of

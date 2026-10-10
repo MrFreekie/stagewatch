@@ -97,7 +97,26 @@ body:not(.layout-wall) header.top { position: -webkit-sticky; position: sticky; 
 body.layout-wall .msg-btn, body.layout-wall .msg-panel { display: none; }
 .no-flex-gap .msg-row > * { margin-right: 8px; }
 .no-flex-gap header.top > .msg-panel { margin-right: 0; }
-@media (max-width: 640px) { header.top { padding: 6px 10px; gap: 8px; } .msg-panel { right: 4px; left: 4px; } }
+/* Connection status beside the messages icon: colour + symbol + word. No animation at all. */
+.cs-btn { min-width: 44px; min-height: 44px; padding: 6px 8px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); font-weight: 700; }
+.cs-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.cs-sym { display: inline-block; min-width: 1.1em; text-align: center; font-size: 18px; line-height: 1; }
+.cs-word { margin-left: 4px; font-size: 13px; }
+.cs-btn.cs-ok { color: var(--ok); }
+.cs-btn.cs-off { color: var(--warn); }
+.cs-btn.cs-err { color: var(--stop); }
+.cs-head { margin: 6px 0; font-weight: 600; }
+.cs-panel ul { list-style: none; margin: 0 0 6px; padding: 0; }
+.cs-panel li { padding: 4px 0; }
+.cs-advice { margin: 6px 0; padding-top: 6px; border-top: 1px solid var(--grid); }
+/* The wall stays calm: nothing when online, a small mark and word otherwise; no pop-out. */
+body.layout-wall .cs-panel { display: none; }
+body.layout-wall .cs-btn { min-width: 0; min-height: 0; padding: 2px 6px; pointer-events: none; }
+body.layout-wall .cs-btn.cs-ok { display: none; }
+.no-flex-gap .cs-word { margin-left: 4px; }
+@media (max-width: 640px) { header.top { padding: 6px 10px; gap: 8px; } .msg-panel { right: 4px; left: 4px; }
+  body:not(.layout-wall) .cs-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; } }
 .conn { width: 10px; height: 10px; border-radius: 50%; background: var(--stop); display: inline-block; }
 .conn.on { background: var(--ok); }
 .clock { font-variant-numeric: tabular-nums; font-weight: 600; }
