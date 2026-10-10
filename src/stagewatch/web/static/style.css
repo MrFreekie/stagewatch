@@ -982,3 +982,20 @@ body.layout-wall .gc-strips .gc-mark { font-size: 18px; }
 /* 16 channels in a half-width card on a tablet: the columns are about 20px wide, so the dB figure is turned upright
    like the name (a horizontal "-26" would wrap). Wide cards and the wall keep it horizontal. */
 body:not(.layout-wall):not(.layout-phone) main > [data-size="half"] .gc-strips[data-n="16"] .gc-value { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; font-size: 13px; }
+
+/* Equipment card: compact tiles so a node's Temperature, Pressure and Humidity sit on one line, wrapping to more
+   lines only when there are more sensors. */
+.eq-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.eq-tile { padding: 8px 10px; }
+.eq-tile .label { font-size: 12px; }
+.eq-tile .value { font-size: 22px; margin-top: 2px; }
+.eq-tile .value .unit { font-size: 13px; margin-left: 3px; }
+.eq-tile .foot { font-size: 11px; margin-top: 0; }
+body.layout-phone .eq-grid { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 6px; }
+body.layout-phone .eq-tile { padding: 6px 8px; }
+body.layout-phone .eq-tile .value { font-size: 20px; }
+body.layout-wall .eq-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+body.layout-wall .eq-tile .label { font-size: 18px; }
+body.layout-wall .eq-tile .value { font-size: 40px; }
+body.layout-wall .eq-tile .value .unit { font-size: 22px; }
+body.layout-wall .eq-tile .foot { font-size: 16px; }
