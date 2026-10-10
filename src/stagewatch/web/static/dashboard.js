@@ -802,6 +802,16 @@
     }
   }
 
+  // A card's own status (Online / Offline / Error) for an external source, in its header just before the logo.
+  // SW.sourceStatusUi / SW.sourceStatus decide and draw it. On the wall it shows only when not online (CSS).
+  function addCardStatus(card, source) {
+    const ui = SW.sourceStatusUi(source);
+    const h2 = card.querySelector("h2");
+    const logo = h2 && h2.querySelector(".card-logo");
+    if (h2) h2.insertBefore(ui.el, logo || null);
+    return ui;
+  }
+
   // --------------------------------------------------------- wall clock
   // The time of day from one source (this computer, or Ontime), shown as received (no zone
   // conversion), with a note when it differs from Stagewatch's own time. The server sends a
@@ -835,9 +845,11 @@
         date: h("p", { class: "wc-date" }), note: h("p", { class: "wc-note", role: "status" }) };
       wc.ui.head.replaceChildren(wc.ui.headText, h("span", { class: "grow" }), wc.ui.logo);
       card.replaceChildren(wc.ui.head, wc.ui.host, wc.ui.date, wc.ui.note);
+      wc.ui.status = addCardStatus(card, "ontime");
     }
     wc.ui.headText.textContent = m.source === "pc" ? "Wall Clock" : `Wall Clock · ${m.label || "Ontime"}`;
     wc.ui.logo.hidden = m.source !== "ontime";      // the Ontime logo only while the time comes from Ontime
+    wc.ui.status.el.hidden = m.source !== "ontime";   // so is the status: the PC's own clock is not an external source
     tickWallClock();
   }
 
@@ -854,6 +866,7 @@
       ui.host.replaceChildren(ui.face.el);
     }
     ui.face.update(v, { reduced: SW.wc.reducedMotion() });
+    if (m.source === "ontime") ui.status.update(SW.sourceInput.ontime(m, SW.wc.STALE_S), now);
     setText(ui.date, v.date);
     ui.date.hidden = !v.date;
     setText(ui.note, v.note);
@@ -883,6 +896,7 @@
     if (!ot.ui) {
       ot.ui = SW.ot.createUi();
       card.replaceChildren(card.querySelector("h2") || h("h2", {}, "Ontime Timer"), ...ot.ui.nodes);
+      ot.status = addCardStatus(card, "ontime");
     }
     tickOntimeTimer();
   }
@@ -894,6 +908,7 @@
     const now = serverNow();
     const v = SW.ot.view(m, now);
     ui.update(v);
+    ot.status.update(SW.sourceInput.ontime(m, SW.ot.STALE_S), now);
     setClass($("ontime-timer-card"), `card ${v.cls}${v.level ? ` lvl-${v.level}` : ""}${v.over ? " ot-over" : ""}`);
     ot.timer = setTimeout(tickOntimeTimer, SW.ot.nextDelayMs(m, now));
   }
@@ -917,6 +932,7 @@
     if (!rdc.ui) {
       rdc.ui = SW.rd.createUi();
       card.replaceChildren(card.querySelector("h2") || h("h2", {}, "Ontime Rundown"), ...rdc.ui.nodes);
+      rdc.status = addCardStatus(card, "ontime");
     }
     tickOntimeRundown();
   }
@@ -925,8 +941,10 @@
     stopOntimeRundown();
     const m = state.ontimeRundown, ui = rdc.ui;
     if (!m || !ui || !has("ontime_rundown")) return;
-    const v = SW.rd.view(m, serverNow(), (state.dash && state.dash.layout) || "tablet");
+    const now = serverNow();
+    const v = SW.rd.view(m, now, (state.dash && state.dash.layout) || "tablet");
     ui.update(v);
+    rdc.status.update(SW.sourceInput.ontime(m, SW.rd.STALE_S), now);
     setClass($("ontime-rundown-card"), `card ${v.cls}${v.level ? ` rd-lvl-${v.level}` : ""}`);
     rdc.timer = setTimeout(tickOntimeRundown, 1000);
   }
@@ -951,6 +969,7 @@
     if (!gcc.ui) {
       gcc.ui = SW.gc.createUi();
       card.replaceChildren(h("h2", {}, gcc.ui.head, h("span", { class: "grow" }), h("img", { class: "card-logo", src: "/static/directout-badge.png", alt: "DirectOut", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } })), ...gcc.ui.nodes);
+      gcc.status = addCardStatus(card, "globcon");
     }
     tickGlobcon();
   }
@@ -959,8 +978,10 @@
     stopGlobcon();
     const ui = gcc.ui;
     if (!ui || !state.globcon || !has("globcon_meters")) return;
-    const v = SW.gc.view(state.globcon, gcOpts(), serverNow());
+    const now = serverNow();
+    const v = SW.gc.view(state.globcon, gcOpts(), now);
     ui.update(v);
+    gcc.status.update(SW.sourceInput.globcon(state.globcon, SW.gc.pick(state.globcon, gcOpts().controller || 1), SW.gc.STALE_S), now);
     setClass($("globcon-card"), `card ${v.cls}`);
     gcc.timer = setTimeout(tickGlobcon, 1000);
   }
@@ -1050,6 +1071,8 @@
       setClass(r.el, `tile spl-tile spl-${v.state}`);
     }
     setText($("spl-title"), SW.spl.title(ents));
+    if (!splUi.status) { splUi.status = SW.sourceStatusUi("smaart"); const badge = card.querySelector(".spl-badge"); badge.parentNode.insertBefore(splUi.status.el, badge); }
+    splUi.status.update(SW.sourceInput.smaart(dev, ents), state.now);
     const inp = $("spl-input"), line = SW.spl.inputLine(dev);
     inp.hidden = !line;
     setText(inp, line);
@@ -1385,7 +1408,6 @@
     cs.wsUp = up; cs.since = Date.now();
     if (!up) cs.fault = false;
     renderConn();
-    $("conn").classList.toggle("on", up);
     SW.connection.report(up);
     if (!up) { wasDown = true; return; }
     if (!wasDown) return;
