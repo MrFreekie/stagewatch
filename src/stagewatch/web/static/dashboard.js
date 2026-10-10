@@ -31,6 +31,7 @@
     site: {}, show: {}, schedule: { items: [] }, scheduleMeta: null, dash: null, isAdmin: false, now: Date.now() / 1000,
     mode: localGet("sw.mode", "temperature"), span: Number(localGet("sw.span", 3600)),
     selectedMarker: null, history: {}, showHidden: false,
+    showEquipment: localGet("sw.chartEquipment", "off") === "on",
     splSpan: Number(localGet("sw.splspan", 3600)), splHistory: {},
   };
   // The marker whose note is being edited ({id, text}), or null.
@@ -375,9 +376,20 @@
     return ids;
   }
 
+  // Equipment readings of the same kind, only when the viewer has ticked "Show equipment sensors".
+  // They are separate dashed lines; the site line and every average come from the server and never
+  // include them.
+  function equipmentChartIds() {
+    const mode = SERIES_MODES[state.mode];
+    if (!state.showEquipment || mode.kind === "speed_of_sound") return [];
+    return Object.values(state.entities).filter((e) => SW.isEquipment(e) && e.kind === mode.kind).map((e) => e.id);
+  }
+
   function updateChartSeries() {
     const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+    renderEquipToggle();
     const ids = chartEntities();
+    const eqIds = equipmentChartIds();
     chart.series = ids.map((id, i) => {
       const e = state.entities[id];
       const dev = e && state.devices[e.device_id];
@@ -388,23 +400,46 @@
         width: i === 0 ? 3 : 1.3,
         points: state.history[id] || [],
       };
-    });
+    }).concat(eqIds.map((id, j) => {
+      const e = state.entities[id];
+      return {
+        adjusted: SW.hasOffset(e),
+        label: `${e.name} (equipment)`,
+        color: css(COLORS[(ids.length - 1 + j) % COLORS.length]),
+        width: 1.6,
+        dash: [7, 4],
+        dashed: true,
+        points: state.history[id] || [],
+      };
+    }));
     const now = serverNow();
     chart.range = [now - state.span, now];
     chart.defaultRange = (SERIES_MODES[state.mode] || {}).range || null;
     chart.draw();
-    $("legend").replaceChildren(...chart.series.map((s) => h("span", {}, h("i", { style: `background:${s.color}` }), s.label,
+    $("legend").replaceChildren(...chart.series.map((s) => h("span", {}, h("i", { class: s.dashed ? "dashed" : "", style: s.dashed ? `color:${s.color}` : `background:${s.color}` }), s.label,
       s.adjusted ? offsetStar(s === chart.series[0] ? "Calibration offset applied to a sensor in this average" : SW.OFFSET_NOTE) : null)));
   }
 
   async function loadHistory() {
-    const ids = chartEntities();
+    const ids = chartEntities().concat(equipmentChartIds());
     const since = serverNow() - state.span;
     try {
       state.history = await SW.api("GET", `/api/history?entities=${encodeURIComponent(ids.join(","))}&since=${since}&points=500`);
     } catch (_) { state.history = {}; }
     updateChartSeries();
   }
+
+  // Per-viewer choice, kept in this browser only (and the page works without it).
+  function renderEquipToggle() {
+    const hasEq = Object.values(state.entities).some((e) => SW.isEquipment(e));
+    $("chart-equip-toggle").hidden = !hasEq || SERIES_MODES[state.mode].kind === "speed_of_sound";
+    $("chart-equip").checked = state.showEquipment;
+  }
+  $("chart-equip").addEventListener("change", (ev) => {
+    state.showEquipment = !!ev.target.checked;
+    localSet("sw.chartEquipment", state.showEquipment ? "on" : "off");
+    loadHistory();
+  });
 
   // ------------------------------------------------------------ markers
   async function selectMarker(id) {

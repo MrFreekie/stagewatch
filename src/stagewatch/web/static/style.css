@@ -142,6 +142,8 @@ body.layout-wall .alarm-bar { max-height: 25vh; overflow-y: auto; }
 .marker-hidden-toggle { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px;
   color: var(--muted); cursor: pointer; margin-top: 4px; }
 .marker-hidden-toggle[hidden] { display: none; }
+.marker-hidden-toggle input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.legend i.dashed { height: 0; border-top: 3px dashed currentColor; }
 .marker-hidden-toggle input { width: 22px; height: 22px; margin: 0; }
 .marker-note { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--grid); }
 .marker-note h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
