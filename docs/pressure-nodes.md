@@ -59,6 +59,9 @@ option 2 if you want the speed of sound to come from the same box.
 | Seeed XIAO ESP32C6 | DPS310 (4494) **and** SHT45 (5665), sharing the same four jumper wires | Header pins on the XIAO | `stagewatch-xiao-esp32c6-dps310-sht45.yaml` |
 | Adafruit Feather HUZZAH ESP8266 (product 2821) | Adafruit MPL3115A2 (product 1893) | Headers on both | `stagewatch-feather-esp8266-mpl3115a2.yaml` |
 | Adafruit Feather HUZZAH ESP8266 (2821) | BME280 or BMP280 breakout | Headers on the HUZZAH | `stagewatch-feather-esp8266-bme280.yaml` |
+| Seeed XIAO ESP32C3 (with its 2.4 GHz antenna fitted) | DPS310 (4494) **and** SHT45 (5665) on STEMMA QT cables | A STEMMA QT (JST SH) connector on D4 and D5 | `stagewatch-xiao-esp32c3-dps310-sht45.yaml` (**not yet tested on hardware**) |
+| Seeed XIAO ESP32C3 | A BME280 STEMMA QT breakout (cheaper, reads slightly warm, less accurate) | The same connector | `stagewatch-xiao-esp32c3-bme280.yaml` (**not yet tested on hardware**) |
+| Seeed XIAO ESP32C3 | A TMP117 STEMMA QT breakout, for a **rack or amp temperature** (Equipment) | The same connector | `stagewatch-xiao-esp32c3-tmp117.yaml` (**not yet tested on hardware**; set the node to **Equipment** in Admin first, or its temperature would count in the site average) |
 
 How they differ:
 
