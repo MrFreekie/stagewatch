@@ -919,15 +919,18 @@ def test_every_shelly_route_needs_admin_and_the_same_origin(client):
 def test_test_returns_fixed_text_and_never_the_address_or_meter_text(client):
     ok = client.post("/api/admin/shelly/test", json={"host": "192.0.2.60"}).json()
     assert ok["ok"] is True and ok["model"] == "MiniPMG3" and ok["components"] == ["Power meter"] and len(ok["readings"]) == 5
-    for category in ("timeout", "refused", "unreachable", "needs_password", "not_shelly", "redirect", "too_large", "bad_reply"):
-        client.fetch.fail = category
-        r = client.post("/api/admin/shelly/test", json={"host": "192.0.2.60"})
-        assert r.status_code == 200 and r.json()["ok"] is False and r.json()["category"] == category
-        assert "192.0.2.60" not in r.text
     r = client.post("/api/admin/shelly/test", json={"host": "8.8.8.8"})
     assert r.json() == {"ok": False, "category": "not_local", "message": r.json()["message"]} and "8.8.8.8" not in r.text
     client.fetch.fail = "needs_password"
     assert "needs a password: not supported yet" in client.post("/api/admin/shelly/test", json={"host": "192.0.2.60"}).json()["message"]
+
+
+@pytest.mark.parametrize("category", ["timeout", "refused", "unreachable", "needs_password", "not_shelly", "redirect", "too_large", "bad_reply"])
+def test_each_failure_category_is_fixed_text(client, category):
+    client.fetch.fail = category
+    r = client.post("/api/admin/shelly/test", json={"host": "192.0.2.60"})
+    assert r.status_code == 200 and r.json()["ok"] is False and r.json()["category"] == category
+    assert "192.0.2.60" not in r.text
 
 
 @pytest.mark.parametrize("bad", [{"host": ""}, {"host": "x" * 65}, {"host": HOST, "extra": 1}, {}, {"host": 5}])
@@ -1057,3 +1060,60 @@ def test_admin_has_the_foldable_card_and_the_plain_words():
 def test_card_makes_no_claim_it_cannot_keep():
     html = (STATIC / "dashboard.html").read_text(encoding="utf-8")
     assert "do not replace the electrician" in html and "never switches anything" in html
+
+
+# ============================================================================ security review fixes
+def _meter(i, **kw):
+    return {"id": f"m{i}", "host": f"192.0.2.{i}", "mac": f"025e0000{i:04x}", **kw}
+
+
+def test_salvage_with_more_than_sixteen_valid_meters_still_loads_with_sixteen(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump({"site": {"name": "Kept"}, "shelly_devices": [_meter(i) for i in range(1, 18)],
+                                    "alarms": {"hide_acked_min": "junk"}}), encoding="utf-8")
+    cfg = ConfigStore(path).load()
+    assert len(cfg.shelly_devices) == 16 and cfg.site.name == "Kept"
+
+
+def test_a_plain_load_of_seventeen_meters_keeps_sixteen():
+    assert len(Config.model_validate({"shelly_devices": [_meter(i) for i in range(1, 18)]}).shelly_devices) == 16
+
+
+def test_duplicate_ids_and_macs_keep_only_the_first():
+    cfg = Config.model_validate({"shelly_devices": [
+        _meter(1), _meter(2, id="m1"), _meter(3, mac=_meter(1)["mac"]), _meter(4)]})
+    assert [d.id for d in cfg.shelly_devices] == ["m1", "m4"]
+
+
+def test_hostile_reply_cannot_register_thousands_of_readings():
+    status = {f"{c}:{i}": {"apower": 1.0, "voltage": 1.0} for c in ("pm1", "em1", "em", "emdata", "switch") for i in range(0, 300)}
+    assert all(i <= 7 for _, i in rd.components(status))
+    assert len(rd.readings_from_status(status)) <= rd.MAX_READINGS == 64
+
+
+async def test_meter_temperature_is_never_sent_as_a_node_reading_over_osc(hub):
+    from stagewatch.integrations.osc_out import OscOutIntegration
+    integ, _ = await make(hub)
+    hot = fx("docs-switch-getstatus.json")
+    hot["switch:0"]["temperature"]["tC"] = 70.0
+    feed(integ, hot, __import__("time").time())
+    hub.config.osc_out.per_node = True
+    msgs = dict(OscOutIntegration(hub).build_messages())
+    import math
+    assert all(math.isnan(v) for v in msgs["/stagewatch/node/rack/env"])
+
+
+def test_test_and_add_are_limited_to_ten_a_minute(client):
+    codes = [client.post("/api/admin/shelly/test", json={"host": "192.0.2.60"}).status_code for _ in range(12)]
+    assert codes[:10] == [200] * 10 and codes[10:] == [429, 429]
+    r = client.post("/api/admin/shelly/add", json=ADD)
+    assert r.status_code == 429 and "192.0.2" not in r.text and client.hub.config.shelly_devices == []
+
+
+def test_diagnostics_hide_meter_addresses_but_not_esphome_hosts():
+    from stagewatch import diagnostics
+    raw = {"shelly_devices": [{"id": "a", "host": "192.0.2.60", "mac": MAC, "name": "Rack"}],
+           "esphome_devices": [{"id": "e", "host": "192.0.2.9"}]}
+    out = diagnostics.redact_config(raw, diagnostics.known_secrets(raw))
+    assert out["shelly_devices"][0]["host"] == out["shelly_devices"][0]["mac"] == diagnostics.REDACTED
+    assert out["shelly_devices"][0]["name"] == "Rack" and out["esphome_devices"][0]["host"] == "192.0.2.9"

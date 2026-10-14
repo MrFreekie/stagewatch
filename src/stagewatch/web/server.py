@@ -1447,8 +1447,19 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     # Shelly power meters. Read-only toward the meters: Stagewatch asks for readings (two GET requests,
     # see integrations/shelly/http.py) and sends nothing else. Addresses must be on a private network.
+    shelly_calls: list[float] = []
+
+    def shelly_rate_limit() -> None:
+        """At most 10 Test or Save requests a minute: each one makes the server contact an address."""
+        now = time.time()
+        shelly_calls[:] = [t for t in shelly_calls if now - t < 60]
+        if len(shelly_calls) >= 10:
+            raise HTTPException(429, "Too many requests. Wait a minute and try again. Nothing has been changed.")
+        shelly_calls.append(now)
+
     @app.post("/api/admin/shelly/test", dependencies=admin_deps)
     async def shelly_test(body: ShellyTestBody):
+        shelly_rate_limit()
         """Look at a meter without saving it: model, firmware, what it measures and live readings.
         Fixed-text result; nothing the meter says is repeated."""
         try:
@@ -1458,6 +1469,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     @app.post("/api/admin/shelly/add", dependencies=admin_deps)
     async def shelly_add(body: ShellyAddBody):
+        shelly_rate_limit()
         try:
             cfg = await shelly_integ().add(body.host, body.name, body.area, body.interval_s)
         except ShellyError as exc:

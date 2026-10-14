@@ -24,7 +24,8 @@ from dataclasses import dataclass
 from ...core.model import Kind
 
 # Components that can carry power readings. A key like "pm1:0" -> ("pm1", 0).
-_COMPONENT_RE = re.compile(r"^(pm1|em1|em|emdata|switch):(\d{1,3})$")
+_COMPONENT_RE = re.compile(r"^(pm1|em1|em|emdata|switch):([0-7])$")   # no real meter has more than 8 of a kind
+MAX_READINGS = 64    # per meter: a hostile reply cannot register thousands of entities
 
 _PHASES = ("a", "b", "c")
 
@@ -173,7 +174,7 @@ def readings_from_status(status: object) -> list[Reading]:
             out.extend(_BUILDERS[prefix](status, n))
         except Exception:  # noqa: BLE001 - a strange component must never stop the others
             continue
-    return out
+    return out[:MAX_READINGS]
 
 
 # --------------------------------------------------------------------- names for people

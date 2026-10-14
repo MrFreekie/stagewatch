@@ -819,7 +819,23 @@ class Config(_Model):
     spl: SplConfig = Field(default_factory=SplConfig)
     globcon: GlobconConfig = Field(default_factory=GlobconConfig)
     # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
-    shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list, max_length=SHELLY_MAX_METERS)
+    shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list)
+
+    @field_validator("shelly_devices")
+    @classmethod
+    def _shelly_unique_and_capped(cls, v: list) -> list:
+        """Later duplicates (same id or same MAC) are dropped and the list is cut to SHELLY_MAX_METERS, so a
+        hand-edited or salvaged file can never stop the hub starting. Logs a count only."""
+        seen_id, seen_mac, kept = set(), set(), []
+        for d in v:
+            if d.id in seen_id or d.mac in seen_mac or len(kept) >= SHELLY_MAX_METERS:
+                continue
+            seen_id.add(d.id)
+            seen_mac.add(d.mac)
+            kept.append(d)
+        if len(kept) < len(v):
+            log.warning("Shelly meters: %d duplicate or surplus entr%s left out", len(v) - len(kept), "y" if len(v) - len(kept) == 1 else "ies")
+        return kept
 
     @field_validator("globcon", mode="before")
     @classmethod

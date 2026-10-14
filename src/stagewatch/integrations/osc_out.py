@@ -78,7 +78,7 @@ class OscOutIntegration(Integration):
                     continue
                 vals = {Kind.TEMPERATURE: None, Kind.HUMIDITY: None, Kind.PRESSURE: None}
                 for ent in e.values():
-                    if ent.device_id == device.id and ent.kind in vals:
+                    if ent.device_id == device.id and ent.kind in vals and not ent.locked_equipment:
                         value, stale = hub.lookup(ent.id)
                         vals[ent.kind] = None if stale else value
                 msgs.append((f"/stagewatch/node/{device.id}/env",
