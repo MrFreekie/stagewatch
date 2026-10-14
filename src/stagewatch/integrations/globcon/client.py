@@ -1,7 +1,8 @@
 """Read-only GLOBCON client over WebSocket (``ws://host:9091/api/v1``, binary protobuf).
 
 Written from the generated protocol code in GLOBCON's own web app and checked against a real capture
-of that app (see protocol.py). NOT tested against a live GLOBCON by Stagewatch.
+of that app (see protocol.py). Names, layers and labels checked on one real controller (2026-10); live
+level meters, the metering scale for different channel types and password login not yet tested.
 
 What it does: opens one connection, subscribes to ``/general/`` (controller names), and for each
 controller a dashboard shows, to ``/controller/N/`` (strip labels, layer and layer labels) and the

@@ -5,7 +5,8 @@
 #   cd ~/stagewatch && bash deploy/pi/install.sh [--channel stable|nightly] [--ref <tag-or-sha>]
 #        [--source-url https://github.com/MrFreekie/stagewatch.git] [--kiosk] [--port 8080] [--emulate]
 #
-# *** Tested on a Debian 13.7 virtual machine; UNTESTED ON RASPBERRY PI HARDWARE ***
+# *** Tested on a Debian 13.7 virtual machine and on a Raspberry Pi 4 (4 GB), owner report 2026-10;
+# *** not tested on a Pi 5 or with the kiosk ***
 # Installs into /opt/stagewatch (a fresh clone; the checkout you run this script from is not used by
 # the service), run by a dedicated no-login system user "stagewatch" (no sudo), with data in
 # /var/lib/stagewatch (mode 0700). The service runs the launcher (crash restart, in-app updates and
@@ -200,7 +201,7 @@ WantedBy=multi-user.target
 EOF
   sudo systemctl daemon-reload
   sudo systemctl enable --now stagewatch.service
-  echo "Service enabled (tested on a Debian VM, UNTESTED ON RASPBERRY PI HARDWARE): sudo systemctl status stagewatch"
+  echo "Service enabled (tested on a Raspberry Pi 4 (4 GB), owner report 2026-10; not tested on Pi 5 or with the kiosk): sudo systemctl status stagewatch"
   echo "Code: $CODE ($SHA, detached)   Data: $DATA_DIR (0700, user $SVC_USER)"
 }
 

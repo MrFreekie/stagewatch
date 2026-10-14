@@ -1102,7 +1102,7 @@ def test_script_uses_only_safe_dom_and_makes_no_requests():
 def test_admin_names_the_card_and_has_the_settings():
     js = (STATIC / "admin.js").read_text(encoding="utf-8")
     assert "globcon_meters:" in js and "/api/admin/globcon" in js and "GLOBCON controller" in js
-    assert "Not yet tested on a real GLOBCON" in js
+    assert "checked on one real controller" in js and "not yet tested" in js
 
 
 def test_only_the_client_module_opens_a_socket_and_only_through_the_gate():

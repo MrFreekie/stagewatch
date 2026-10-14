@@ -8,7 +8,8 @@
 # Devices, thresholds and history are not touched. Until you set a new PIN, anyone on the
 # network can set it, so do it straight away.
 #
-# *** UNTESTED ON HARDWARE ***
+# *** The install it belongs to is tested on a Raspberry Pi 4 (4 GB), owner report 2026-10; not tested on
+# *** Pi 5 or with the kiosk. This reset script itself has not yet been reported as tested on a Pi ***
 set -uo pipefail
 
 CODE=/opt/stagewatch

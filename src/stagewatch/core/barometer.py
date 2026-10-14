@@ -104,7 +104,7 @@ def zambretti_trend(delta_tenths: int) -> int:
 # github.com/sassoftware/iot-zambretti-weather-forcasting. Only the winter rule is from an openHAB
 # community post: outside April-September a falling Z is lowered by 1 and a rising Z raised by 1.
 # Written out here as facts of the instrument, no source code copied. Quirk of the published
-# winter rule (documented in docs/using-stagewatch.md): near 965 and 980 hPa a falling trend can
+# winter rule (documented in docs/cards/barometer.md): near 965 and 980 hPa a falling trend can
 # read better than steady, and a rising trend can read worse than steady between about 966 and
 # 1034 hPa. The card says it is not a forecast.
 _ZAMBRETTI = {
