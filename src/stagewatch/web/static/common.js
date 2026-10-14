@@ -171,6 +171,160 @@ SW.connStatus = function (o) {
   return { state: state, word: meta.word, symbol: meta.symbol, cls: meta.cls, headline: headline,
     lines: lines.filter((x) => x), advice: advice, label: label, heardAge: heardAge, sinceAge: sinceAge };
 };
+// A card's own status for an EXTERNAL source (Ontime, Smaart, DirectOut GLOBCON): Online, Offline or
+// Error, always colour AND symbol AND word. One pure function decides; SW.sourceStatusUi draws it.
+// o = { source: "ontime" | "smaart" | "globcon",
+//       reported: "ok" | "stale" | "waiting" | "offline" | "error" | "locked"  (what the source's own status says),
+//       ageS: seconds since the last data (null = none seen yet),  staleS: older than this is stale (optional),
+//       stateS: seconds in this state (null = unknown),  stateExact: true when this page saw the change happen }
+// Precedence: an explicit error (or locked) shows Error; otherwise stale beats online, and offline beats the rest.
+// "Waiting" (connected, no data yet) is Offline, never Online. No Online without fresh data.
+// Plain words only: no addresses, host names, ports or internal error text (this runs on public screens).
+SW.SOURCES = {
+  ontime: { name: "Ontime", offline: "Check Ontime is running and its address in Admin → Ontime.",
+    error: "Check Ontime is up to date, then tell the system admin." },
+  smaart: { name: "Smaart", offline: "Check Smaart is running with its API on.",
+    error: "Check the input and the chosen values in Smaart, then tell the system admin." },
+  globcon: { name: "GLOBCON", offline: "Check GLOBCON is running and the Windows firewall allows it.",
+    error: "Tell the system admin." },
+};
+SW.sourceStatus = function (o) {
+  const src = SW.SOURCES[o.source] || { name: "The source", offline: "Check it is running.", error: "Tell the system admin." };
+  const dur = (s) => SW.fmtDuration(s, false);
+  const num = (x) => typeof x === "number" && Number.isFinite(x);
+  const age = num(o.ageS) ? Math.max(0, o.ageS) : null;
+  const reported = o.reported || "offline";
+  let state, kind;   // kind: why it is not online
+  if (reported === "error" || reported === "locked") { state = "error"; kind = reported; }
+  else if (reported === "offline") { state = "offline"; kind = "offline"; }
+  else if (reported === "waiting" || (reported === "ok" && age === null)) { state = "offline"; kind = "waiting"; }
+  else if (reported === "stale" || (reported === "ok" && num(o.staleS) && age > o.staleS)) { state = "offline"; kind = "stale"; }
+  else { state = "online"; kind = ""; }
+  const meta = SW.CONN_STATES[state];
+  const lastData = age === null ? "No data received yet" : `Last data ${dur(age)} ago`;
+  const st = num(o.stateS) ? Math.max(0, o.stateS) : null;
+  const how = (word) => (st === null ? "" : `${word} for ${o.stateExact ? "" : "at least "}${dur(st)}`);
+  let headline, advice, lines;
+  if (state === "online") {
+    headline = `${src.name} is sending live data.`;
+    lines = [how("Online"), lastData];
+    advice = "Nothing to do.";
+  } else if (state === "error") {
+    headline = kind === "locked" ? `${src.name} wants a password for this controller.`
+      : `${src.name} is answering, but Stagewatch cannot use what it sends.`;
+    lines = [lastData, how("Problem")];
+    advice = kind === "locked" ? "Ask the system admin to enter the password in Admin." : src.error;
+  } else if (kind === "waiting") {
+    headline = `Connected to ${src.name}, but no data has arrived yet. Waiting.`;
+    lines = ["Waiting for the first data", how("Waiting")];
+    advice = `If this goes on: ${src.offline.charAt(0).toLowerCase()}${src.offline.slice(1)}`;
+  } else if (kind === "stale") {
+    headline = `${src.name} has stopped sending data. The figures on this card are frozen.`;
+    lines = [lastData, how("Quiet")];
+    advice = src.offline;
+  } else {
+    headline = `Stagewatch is not getting data from ${src.name}.`;
+    lines = [lastData, how("Offline")];
+    advice = src.offline;
+  }
+  const label = `${src.name}: ` + (state === "online" ? "Online"
+    : state === "error" ? (kind === "locked" ? "Error. Password needed" : "Error. Data may be wrong")
+    : kind === "waiting" ? "Offline. Waiting for data" : age === null ? "Offline. No data yet" : `Offline. Last data ${dur(age)} ago`);
+  return { state: state, kind: kind, word: meta.word, symbol: meta.symbol, cls: meta.cls, headline: headline,
+    lines: lines.filter((x) => x), advice: advice, label: label, ageS: age };
+};
+// What each card's own status data means, as input for SW.sourceStatus (and SW.sourceStatusUi.update).
+// Pure. dataAt is the server time (seconds) of the newest data, or null.
+SW.sourceInput = {
+  // "ontime_timer" / "ontime_rundown" / "wall_clock" message: status ok | offline | error, received_at.
+  ontime: function (m, staleS) {
+    if (!m) return { source: "ontime", reported: "offline", dataAt: null };
+    const ok = m.status === "ok";
+    return { source: "ontime", reported: m.status === "error" ? "error" : ok ? "ok" : "offline", staleS: staleS,
+      dataAt: ok && typeof m.received_at === "number" ? m.received_at : null };
+  },
+  // "globcon_meters" message and the dashboard's controller (with meters_at): status ok | stale | waiting | offline.
+  globcon: function (m, ctrl, staleS) {
+    if (!m) return { source: "globcon", reported: "waiting", dataAt: null };
+    const at = ctrl && typeof ctrl.meters_at === "number" ? ctrl.meters_at : null;
+    const reported = ctrl && ctrl.locked ? "locked" : m.status === "offline" ? "offline" : at === null ? "waiting" : "ok";
+    return { source: "globcon", reported: reported, staleS: staleS, dataAt: at };
+  },
+  // Smaart: its device status (initializing | ok | missing | fault | compromised) and the shown values.
+  smaart: function (dev, ents) {
+    const list = ents || [];
+    const stamps = list.filter((e) => typeof e.updated === "number" && e.updated > 0).map((e) => e.updated);
+    const at = stamps.length ? Math.max.apply(null, stamps) : null;
+    const fresh = list.some((e) => e.updated && !e.stale && typeof e.value === "number" && !Number.isNaN(e.value));
+    const s = dev ? dev.status : "";
+    let reported;
+    if (s === "missing") reported = "offline";
+    else if (s === "fault" || s === "compromised") reported = "error";
+    else if (!dev || s === "initializing") reported = "waiting";
+    else reported = fresh ? "ok" : at === null ? "waiting" : "stale";
+    return { source: "smaart", reported: reported, dataAt: at };
+  },
+};
+// The small indicator in a card's header: a button (symbol + word) and a pop-out. Build once, then call
+// ui.update(input, nowServerSeconds) whenever the card redraws. It remembers when it last saw the state
+// change and the newest data time. aria-expanded, a polite announcement on change, Escape or a click
+// elsewhere closes. A 1 s timer runs only while the pop-out is open. Nothing flashes.
+SW.sourceStatusUi = function (source) {
+  const h = SW.h;
+  const sym = h("span", { class: "ss-sym", "aria-hidden": "true" });
+  const word = h("span", { class: "ss-word" });
+  const btn = h("button", { class: "ss-btn ss-off", type: "button", "aria-expanded": "false" }, sym, word);
+  const live = h("span", { class: "sr-only", role: "status", "aria-live": "polite" });
+  const head = h("p", { class: "ss-head" }), list = h("ul", {}), adv = h("p", { class: "ss-advice" });
+  const panel = h("div", { class: "ss-panel", role: "region", hidden: true }, head, list, adv);
+  const el = h("span", { class: "ss" }, btn, live, panel);
+  const ui = { el: el, btn: btn, open: false, input: null, key: "", since: Date.now(), exact: false, dataAt: null, timer: null, at: Date.now(), now: 0 };
+  function status(stateS) {
+    const now = ui.now + (Date.now() - ui.at) / 1000;
+    const ageS = ui.dataAt === null ? null : Math.max(0, now - ui.dataAt);
+    return SW.sourceStatus(Object.assign({}, ui.input, { ageS: ageS, stateS: stateS, stateExact: ui.exact }));
+  }
+  function draw() {
+    if (!ui.input) return null;
+    const s = status((Date.now() - ui.since) / 1000);
+    const cls = `ss-btn ss-${s.cls}`;
+    if (btn.className !== cls) btn.className = cls;
+    if (btn.title !== s.label) { btn.title = s.label; btn.setAttribute("aria-label", s.label); }
+    if (sym.textContent !== s.symbol) sym.textContent = s.symbol;
+    if (word.textContent !== s.word) word.textContent = s.word;
+    if (ui.open) {
+      head.textContent = s.headline;
+      list.replaceChildren(...s.lines.map((t) => h("li", {}, t)));
+      adv.textContent = s.advice;
+    }
+    return s;
+  }
+  ui.update = function (input, now) {
+    ui.input = input; ui.now = now; ui.at = Date.now();
+    if (typeof input.dataAt === "number") ui.dataAt = input.dataAt;
+    const probe = status(0);
+    const key = `${probe.state}:${probe.kind}`;
+    if (key !== ui.key) {
+      const first = ui.key === "";
+      ui.key = key; ui.since = Date.now(); ui.exact = !first;
+      if (!first || probe.state !== "online") live.textContent = probe.label;   // a change is announced; so is a bad start
+    }
+    return draw();
+  };
+  ui.setOpen = function (open, refocus) {
+    ui.open = open;
+    panel.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    clearInterval(ui.timer);
+    if (open) { draw(); ui.timer = setInterval(draw, 1000); }
+    if (!open && refocus) btn.focus();
+  };
+  btn.addEventListener("click", () => { ui.setOpen(!ui.open); });
+  document.addEventListener("click", (ev) => { if (ui.open && !el.contains(ev.target)) ui.setOpen(false); });
+  document.addEventListener("keydown", (ev) => { if (ui.open && (ev.key === "Escape" || ev.key === "Esc")) ui.setOpen(false, true); });
+  panel.setAttribute("aria-label", `${(SW.SOURCES[source] || { name: "Source" }).name} status`);
+  return ui;
+};
 SW.card = (title, ...body) => SW.h("section", { class: "card" }, SW.h("h2", {}, title), ...body);
 // A normal link that looks like a button, at least 44 px tall.
 SW.linkButton = function (text, href, primary) {
