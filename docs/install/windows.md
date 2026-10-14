@@ -1,5 +1,408 @@
-# Install on Windows
+# Install Stagewatch on Windows
 
-Install Stagewatch on a Windows PC that starts it at boot.
+This puts Stagewatch on a Windows 10 or 11 PC so that it **starts by itself whenever the
+PC boots**, restarts itself if it crashes, and can be updated from a web page.
 
-> **Being written.** This page is a placeholder so links keep working. Back to the [guides index](../README.md).
+Time needed: about 20 minutes, mostly waiting for downloads.
+Do this **at home or in the office**, with internet. Not at the venue.
+
+> **Tested on hardware: pending.** This boot install is **tested on Windows 11 and
+> Windows 10 in virtual machines**. It has not yet been tested on a real show PC.
+> Try it on your own PC before you rely on it at a show.
+> Stagewatch is an advisory tool with no warranty. See the [Notices](../integrations/README.md#notices).
+
+You will need:
+
+- A Windows PC where you can be an **Administrator** (you can approve the "Do you want to
+  allow this app to make changes?" box).
+- Internet.
+- About 1 GB of free disk space.
+
+---
+
+## Words you will meet
+
+- **PowerShell** is Windows' built-in command window. You paste a line, press Enter, and it
+  runs.
+- **Administrator** means "allowed to change the computer". The installer needs this.
+- **IP address** is the computer's address on your network, like `192.168.1.50`.
+
+More in the [glossary](../glossary.md).
+
+---
+
+## Step 1. Install Git
+
+Git is a free tool that downloads Stagewatch for you.
+
+1. On the PC, open <https://git-scm.com/download/win>.
+2. Click the link for the **64-bit Git for Windows Setup**. The file downloads.
+3. Open the file. Click **Yes** if Windows asks to allow changes.
+4. Click **Next** on every screen and leave every choice **as it is**. Then click
+   **Install** and **Finish**.
+
+**What you should see:** the installer finishes. Nothing else happens.
+
+> **Important:** leave the install folder as the default (`C:\Program Files\Git`).
+> The Stagewatch installer looks for Git there.
+
+> **Quicker way, if you prefer.** Open PowerShell as Administrator (Step 2) and paste
+> `winget install --id Git.Git -e --source winget`. It does the same job.
+
+---
+
+## Step 2. Open PowerShell as Administrator
+
+1. Click the **Start** button (or press the Windows key).
+2. Type `powershell`.
+3. Right-click **Windows PowerShell** and choose **Run as administrator**.
+4. Click **Yes** on the "Do you want to allow..." box.
+
+**What you should see:** a blue (or black) window. The title bar says **Administrator:
+Windows PowerShell**. If it does not say Administrator, close it and try again.
+
+Keep this window handy. You will use it again.
+
+---
+
+## Step 3. Install uv
+
+`uv` is a free tool that fetches and runs the right version of Python for Stagewatch.
+You never have to touch Python yourself.
+
+Paste this into the **Administrator PowerShell** window and press **Enter**:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+(This is the official command from [docs.astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/),
+with one addition at the start. Some Windows 10 PCs don't use the modern secure connection
+(TLS 1.2) by default, and without it the download fails with *"Could not create SSL/TLS
+secure channel"*. The addition switches it on for this window only. It's harmless on
+Windows 11.)
+
+**What you should see:** a few lines of text ending with something like
+"everything's installed".
+
+Now **close the PowerShell window and open a new Administrator one** (Step 2 again).
+Windows only notices new programs in a new window.
+
+Check both tools work. Paste this and press Enter:
+
+```powershell
+git --version; uv --version
+```
+
+**What you should see:** two lines, one starting `git version` and one starting `uv`.
+
+If you get "not recognised" instead, see [If it doesn't work](#if-it-doesnt-work).
+
+---
+
+## Step 4. Download and run the Stagewatch installer
+
+> **Which version do I get?**
+> The installer picks the **latest release** for you (see the
+> [Releases page](https://github.com/MrFreekie/stagewatch/releases)). You don't need to add
+> anything. To choose differently, see [Installer options](#installer-options).
+
+**4a. Download the installer.** In the Administrator PowerShell window, paste this and
+press Enter:
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/MrFreekie/stagewatch/main/deploy/windows/install-service.ps1" -OutFile "$HOME\Downloads\install-service.ps1"
+```
+
+(The first part switches on the modern secure connection, as in Step 3.)
+
+**What you should see:** nothing at all, and the prompt comes back. That is normal. A
+file called `install-service.ps1` is now in your **Downloads** folder. It is plain text,
+so you can open it in Notepad and read it if you like.
+
+**4b. Run it.** Paste this and press Enter:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\install-service.ps1"
+```
+
+This takes **several minutes**. It downloads Stagewatch and its own copy of Python. Do not
+close the window. Lots of text will scroll past.
+
+**What you should see, in order:**
+
+- `Cloning https://github.com/... into C:\Stagewatch ...`
+- `Latest release tag: vX.Y.Z` (the newest release)
+- `Checked out ... (detached).`
+- A lot of `uv` output as it downloads Python and libraries.
+- `marker ok: stable 8080`
+- At the end:
+
+```text
+Installed (managed). Stagewatch starts at every boot; the launcher restarts the server if it stops.
+  Code:      C:\Stagewatch  ...
+  Dashboard: http://localhost:8080   (tablets: http://<this-pc-ip>:8080)
+  Data/logs: C:\ProgramData\Stagewatch  ...
+Note: set the show network adapter to the 'Private' network profile so the firewall rules apply.
+Note: tested on Windows 11 and 10 virtual machines, not yet on a real show PC. Try it before show day.
+```
+
+**That last block means it worked.** Step 6 explains the first "Note" line.
+
+### What the installer did
+
+| Where | What |
+|---|---|
+| `C:\Stagewatch` | The program, with its own copy of Python. Only Administrators can change it. |
+| `C:\ProgramData\Stagewatch` | Your settings, history, PIN and logs (the data folder). Only Administrators and the system can read it. More in [Where your data lives](../updating-and-backups.md#where-your-data-lives). |
+| Task Scheduler, task **Stagewatch** | Starts Stagewatch every time the PC boots, even before anyone logs in. A small helper (the *launcher*) restarts Stagewatch if it stops, and applies updates. |
+| Windows Firewall | Two rules, **Stagewatch web (TCP 8080)** and **Stagewatch mDNS (UDP 5353)**. They let tablets in and let them find Stagewatch by name. They apply to **Private** and **Domain** networks only. |
+
+### Installer options
+
+You do not need any of these for a normal install. Add them to the end of the command in 4b.
+
+| Option | What it does |
+|---|---|
+| `-Ref <tag-or-sha>` | Install a particular version (for example a release tag from the Releases page) instead of the latest release. |
+| `-Channel nightly` | Follow the Nightly build instead of Stable. See [Updating and backups](../updating-and-backups.md#stable-or-nightly-use-stable). |
+| `-Port 8080` | The port tablets use. The default is 8080. The firewall rule uses the same number. |
+| `-InstallDir C:\Stagewatch` | Where to put the program. |
+| `-DataDir C:\ProgramData\Stagewatch` | Where to keep your data. |
+| `-GitPath "C:\path\to\git.exe"` | Use this if Git is not in `C:\Program Files\Git\cmd\git.exe`. |
+| `-SourceUrl <https address>` | Install from a different copy of the project, such as your own fork. It must start with `https://`. In-app updates then follow that address. |
+| `-Emulate` | Fake sensors. **Do not use this on the show PC**: fake readings would mix into the real history. |
+
+**Run the installer again any time.** If `C:\Stagewatch` is already a Stagewatch install,
+the installer fetches the latest release (or the one you ask for), keeps your data, and
+starts Stagewatch again.
+
+---
+
+## Step 5. Open Stagewatch on the PC
+
+1. Wait about 30 seconds.
+2. Open a web browser on the same PC.
+3. Go to `http://localhost:8080`
+
+**What you should see:** a page called **Stagewatch** with tiles for the dashboards
+(**FOH**, **Phone**, **Wall**).
+
+### Set your admin PIN
+
+1. Go to `http://localhost:8080/admin`
+2. It says **Welcome: set an admin PIN**. Choose a PIN of **at least 4 characters**.
+   Type it twice.
+3. Click **Set admin PIN**.
+
+**Write the PIN down somewhere safe.** If you forget it there is a way back
+([Updating and backups](../updating-and-backups.md#forgotten-pin-or-recovery-required)), but it takes a
+few steps.
+
+> **Do this straight away.** Until a PIN is set, **anyone on the network** who opens
+> `/admin` can set it.
+
+**What you should see:** the admin page, with cards such as Site, Event & show, Software and
+ESPHome nodes. More in [Security and data](../admin/security-and-data.md).
+
+---
+
+## Step 6. Set the network to Private
+
+The installer only opens the firewall for networks Windows calls **Private** (or
+**Domain**). If your network is set to **Public**, tablets will not get in.
+
+**Windows 11**
+
+1. Open **Settings** > **Network & internet**.
+2. Click **Wi-Fi** (or **Ethernet** if the PC is plugged in by cable).
+3. Click the **properties** of the connected network (its name, or **Properties**).
+4. Under **Network profile type**, choose **Private network**.
+
+**Windows 10**
+
+1. Open **Settings** > **Network & Internet**.
+2. Click **Wi-Fi** (or **Ethernet**), then click the name of your network.
+3. Under **Network profile**, choose **Private**.
+
+**Only do this on your own show network**, not on public Wi-Fi.
+
+### PCs with more than one network
+
+You don't need to choose a network in Stagewatch. It works on all of them at once: tablets can
+reach it on any network, it finds sensor nodes on any network, and **Admin > Connect a tablet**
+shows one address per network. Use the address on the same network as the tablet.
+
+But Windows sets **Private** or **Public** separately for each network. Tablets on a network left
+as **Public** can't get in, even if another network works. Set each network you use for Stagewatch
+to **Private**, and leave networks you don't trust (venue Wi-Fi, guest networks) as **Public**.
+
+**Check them all at once.** In an **Administrator PowerShell** window, paste this and press Enter:
+
+```powershell
+Get-NetConnectionProfile | Format-Table InterfaceAlias, Name, NetworkCategory
+```
+
+**What you'll see:** one line per connected network, for example `Ethernet 2  Unidentified network  Public`.
+
+**"Unidentified network" (common on show networks).** A show network with fixed IP addresses and
+no internet usually shows up as **Unidentified network**. Windows treats it as **Public**, and the
+Settings screen often won't let you change it. Fix it with this command, using the
+**InterfaceAlias** from the list above (here `Ethernet 2`):
+
+```powershell
+Set-NetConnectionProfile -InterfaceAlias "Ethernet 2" -NetworkCategory Private
+```
+
+Run the check again. That line should now say **Private**.
+
+**If it goes back to Public after a restart:**
+
+- **Windows Pro:** press **Windows + R**, type `secpol.msc`, press Enter. Click
+  **Network List Manager Policies**, double-click **Unidentified Networks**, set **Location type**
+  to **Private**, click **OK**. This is the lasting fix, but it applies to **every** unidentified
+  network the PC joins, so only do it on a dedicated show PC.
+- **Windows Home** (no `secpol.msc`): run the `Set-NetConnectionProfile` command again after each
+  restart, or give that network a **default gateway** address in its IP settings (any free address
+  on the same network, and a DNS server such as `1.1.1.1`) so Windows can recognise it.
+
+**Dante, AVB and other audio networks.** Stagewatch also listens there, and its node discovery adds
+a little mDNS traffic. That's harmless. Leaving that network as **Public** stops tablets and nodes
+reaching Stagewatch through it, but Stagewatch's own small discovery messages can still go out on
+it. A setting to choose exactly which networks Stagewatch uses is planned.
+
+---
+
+## Step 7. Open Stagewatch on a tablet or phone
+
+1. Find the PC's **IP address**:
+   - Open a normal PowerShell window (Start, type `powershell`, press Enter).
+   - Paste `ipconfig` and press Enter.
+   - Find your network in the list (Wi-Fi or Ethernet). Look for the line
+     **IPv4 Address**. It looks like `192.168.1.50`. That is the address.
+   - Or: **Settings** > **Network & internet** > your connection > **Properties**, and
+     read **IPv4 address**.
+2. Put the tablet on the **same Wi-Fi network** as the PC.
+3. On the tablet, open the browser and type the address followed by `:8080`, for example
+   `http://192.168.1.50:8080`
+4. Bookmark a dashboard, or add it to the home screen. The dashboards are described in
+   [Dashboard cards](../cards/README.md).
+
+**What you should see:** the same Stagewatch page as on the PC.
+
+> **Tip: fix the PC's address.** Routers can change addresses when the PC restarts. Ask
+> your router (or its owner) to always give this PC the same address. It is often called
+> a "DHCP reservation" or "static lease". Then your tablet bookmarks keep working.
+
+> **Also try** `http://stagewatch.local:8080`. Stagewatch announces this name on the
+> network. It works on many phones, tablets and PCs but not all, so use the IP address
+> if it doesn't.
+
+---
+
+## Step 8. Stop the PC going to sleep
+
+A sleeping PC is not watching the air.
+
+1. **Settings** > **System** > **Power** (or **Power & battery**).
+2. Set **Screen and sleep** so the PC **never sleeps** while plugged in.
+3. If it is a laptop, plug it in and think about what happens when you close the lid.
+
+Nodes and tablets reconnect on their own after a restart.
+
+### Turn off Fast Startup (recommended)
+
+Windows "Fast Startup" makes **Shut down** a kind of hibernate, not a real shutdown. Stagewatch
+then can't tell the PC was switched off, so its history may say *"restarted after an unexpected
+stop"* instead of *"the computer restarted or lost power"*. It can also leave old network settings
+in place after you move venues.
+
+1. Open **Control Panel** > **Hardware and Sound** > **Power Options**.
+2. Click **Choose what the power buttons do** (on the left).
+3. Click **Change settings that are currently unavailable**. Windows may ask for an admin password.
+4. Untick **Turn on fast startup (recommended)**, then click **Save changes**.
+
+**What you'll see:** nothing changes straight away. Start-up may take a few seconds longer.
+(If the tick box isn't there, Fast Startup is already off on this PC.)
+
+---
+
+## How to check it worked
+
+- The installer ended with the **Installed (managed)** block (Step 4b).
+- `http://localhost:8080` opens the Stagewatch page (Step 5).
+- **Admin > Software** says **Install: Managed**.
+- Restart the PC, wait a minute, and the page opens again without you starting anything.
+
+---
+
+## Try it without any sensors (optional)
+
+Want to look around first? You can run a demo with **fake** sensors. It stores its data
+separately and does not touch your real install. Only do this **if you have not yet
+installed the boot install, or after you stop it**, because both use port 8080.
+
+Paste this into a normal PowerShell window:
+
+```powershell
+git clone https://github.com/MrFreekie/stagewatch.git "$HOME\stagewatch-try"; cd "$HOME\stagewatch-try"; uv run stagewatch --emulate
+```
+
+The first run downloads a few things. When you see lines about "starting on
+http://0.0.0.0:8080", open `http://localhost:8080`. A banner says **EMULATE MODE:
+simulated sensors, not real data**.
+
+Windows may pop up a firewall question. For a home demo you can click **Allow**.
+
+Press **Ctrl + C** in the window to stop it.
+
+---
+
+## If it doesn't work
+
+| What you see | What it means | What to do |
+|---|---|---|
+| `Run this from an elevated (Administrator) PowerShell.` | The window is not an Administrator one. | Close it. Open a new one with **Run as administrator** (Step 2). |
+| `git.exe not found at C:\Program Files\Git\cmd\git.exe` | Git is not installed, or it went somewhere else. | Redo Step 1 with the default folder. If Git is somewhere else, add `-GitPath "C:\path\to\git.exe"` to the run command. |
+| `Could not create SSL/TLS secure channel` | This Windows 10 PC isn't using the modern secure connection (TLS 1.2) for downloads. | Use the commands exactly as shown in Steps 3 and 4a: they start with a part that switches it on. If you opened a new window, run the whole command again. If it still fails, run Windows Update and check the PC's date and time are correct. |
+| `uv not found on PATH` or `'uv' is not recognized` | uv is not installed, or you did not open a **new** window after installing it. | Close PowerShell, open a **new Administrator** PowerShell, run `uv --version`. If it still fails, redo Step 3. |
+| `git : The term 'git' is not recognized` | Same, for Git. | Close PowerShell and open a new one. If still no, redo Step 1. |
+| `...public and reachable from this machine?` | The PC could not reach GitHub. | Check the internet. Open <https://github.com/MrFreekie/stagewatch> in a browser on that PC. Try again. Work networks sometimes block GitHub. |
+| `No release tag (vX.Y.Z) found in the repository. Pass -Ref <tag-or-sha>.` | The installer could not find a release to use. | Check the PC can reach GitHub, then run Step 4b again. If it still fails, add `-Ref` and a release tag from the [Releases page](https://github.com/MrFreekie/stagewatch/releases) to the end of the command. |
+| `C:\Stagewatch already exists and is not owned by BUILTIN\Administrators` | A folder called `C:\Stagewatch` was made by something else. The installer refuses on purpose. | Look inside it. If you made it and it holds nothing you need, delete it and try again. |
+| `... is not empty and is not a Stagewatch clone` | Same, with files in it. | Same. Move or delete the folder, or choose another with `-InstallDir`. |
+| Antivirus or SmartScreen warns about a download or script | Common with scripts and new programs. | Only continue if the file came from the links in this guide. The scripts are plain text you can read on the [GitHub page](https://github.com/MrFreekie/stagewatch). If your antivirus keeps blocking, pause it while installing, then turn it back on. |
+
+Once it is running, problems with the page, tablets or sensor nodes are in
+[Troubleshooting](../troubleshooting.md). That page also says where the log files are.
+
+Still stuck? Copy the **last lines** of the red error text and ask on the
+[GitHub issues page](https://github.com/MrFreekie/stagewatch/issues). Do not post PINs or
+Wi-Fi passwords.
+
+---
+
+## Uninstall
+
+1. Open PowerShell **as Administrator** (Step 2).
+2. Paste this and press Enter:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Stagewatch\deploy\windows\uninstall-service.ps1" -RemoveCode
+```
+
+**What you should see:** `Removed C:\Stagewatch.` then
+`Stagewatch autostart removed. Data in C:\ProgramData\Stagewatch was kept.`
+
+This removes the auto-start, the firewall rules and the program.
+**Your data is always kept**, in `C:\ProgramData\Stagewatch`.
+If you want it gone too, delete that folder yourself. It holds your history, PIN and
+node keys, so make sure you want that first.
+
+Leave out ` -RemoveCode` to remove only the auto-start and keep the program folder.
+
+Git and uv stay installed. Remove them in **Settings** > **Apps** if you want.
+
+---
+
+**Next:** [Build your first sensor node](../nodes/README.md).
