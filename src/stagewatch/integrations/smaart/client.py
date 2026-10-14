@@ -1,7 +1,7 @@
 """Read-only Smaart client over WebSocket.
 
-UNVERIFIED: written from the script Smaart's own SPL web page uses (the protocol notes), NOT tested
-against a live Smaart, and no real data message has been seen. See mapping.py for the shapes.
+Tested live on the owner's Smaart Suite 9.6.4 (2026-10); other versions not tested. Written from the script Smaart's own SPL web page uses (the protocol notes), not tested
+against other Smaart versions. See mapping.py for the shapes.
 
 How it talks to Smaart (all plain ``ws://``, the same host and port the SPL web page is served from):
 
@@ -76,7 +76,7 @@ TEXT = {
     "wrong_password": "Smaart did not accept the password. Check it in the Sound level settings; "
                       "Stagewatch will not try again until you save it",
     "no_inputs": "Connected, but Smaart has no active inputs. Start logging in Smaart",
-    "connected": "Connected, waiting for values (not yet tested against a live Smaart)",
+    "connected": "Connected, waiting for values",
 }
 
 

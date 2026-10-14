@@ -10,7 +10,7 @@ these four shapes is refused before it reaches the socket, and a test pins the l
 
 None of them changes Smaart's measurement, gain, calibration, logging, alarms or mix. Nothing else is
 ever sent: no other ``set``, no control, no history stream request. (The shapes are from Smaart's own
-web page script; not yet tested against a live Smaart.)
+web page script; checked live on Smaart Suite 9.6.4; other versions not tested.)
 """
 
 from __future__ import annotations

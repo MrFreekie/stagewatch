@@ -140,8 +140,8 @@ def test_oversize_message_is_dropped_before_it_is_decoded():
     assert mapping.parse_stream_message(big) is None and mapping.decode(big) is None
 
 
-def test_the_shipped_mapping_is_marked_unverified():
-    assert mapping.VERIFIED is False and SmaartSource.verified is False
+def test_the_shipped_mapping_is_marked_verified_on_one_smaart_version():
+    assert mapping.VERIFIED is True
     assert mapping.API_PATH == "/api/v4/"
 
 
@@ -266,7 +266,7 @@ async def test_values_are_delivered_exactly_with_the_input_they_came_from():
             r = sink.readings[0]
             assert r.values == {A: 63.2, C: 68.05, LEQ1: 70.0, LEQ10: 71.123456789} and r.source == INPUT_LABELS[0]
             assert sink.catalogs[0] == (list(INPUT_LABELS), [A, C, LEQ1, LEQ10])      # FS Peak left out
-            assert sink.links[0] == (True, TEXT["connected"]) and "not yet tested" in TEXT["connected"]
+            assert sink.links[0] == (True, TEXT["connected"])
             assert src.problem == ""
         finally:
             await src.stop()
@@ -769,10 +769,10 @@ async def test_two_inputs_through_the_hub_each_slot_gets_its_own_input_and_metri
             labels = hub.entities["spl.a_slow.asio_madiface_usb_channel_8_2"].labels
             assert labels["source"] == INPUT_LABELS[1] and labels["smaart_name"] == A
             assert hub.entities["spl.a_slow"].labels["source"] == INPUT_LABELS[0]      # "" resolved to the first input
-            assert hub.devices["spl"].status == Status.OK and "not yet tested against a live Smaart" in hub.devices["spl"].status_detail
+            assert hub.devices["spl"].status == Status.OK and "not yet tested" not in hub.devices["spl"].status_detail
             assert hub.devices["spl"].input_name == ""          # two inputs: each value says its own
             st = integ.admin_status()
-            assert st["inputs"] == list(INPUT_LABELS) and st["metrics"] == [A, C, LEQ1, LEQ10] and st["verified"] is False
+            assert st["inputs"] == list(INPUT_LABELS) and st["metrics"] == [A, C, LEQ1, LEQ10] and st["verified"] is True
             assert [s["source_listed"] for s in st["slots"]] == [True, True, True]
             assert srv.paths.count("/stream/0") == 1 and srv.paths.count("/stream/1") == 1
             assert all(outbound.allowed(t) for _p, t in srv.received)

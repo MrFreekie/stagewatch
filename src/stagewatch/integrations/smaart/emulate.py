@@ -15,7 +15,7 @@ Two things live here, both built from the same message makers so they behave ali
 
 The numbers are synthetic: not worked out from each other, not real measurements, and they mean
 nothing for a licence limit. The shapes follow the protocol notes read from Smaart's own web page and
-are not yet tested against a live Smaart.
+were checked live on Smaart Suite 9.6.4 (other versions not tested).
 """
 
 from __future__ import annotations

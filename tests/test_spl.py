@@ -362,8 +362,8 @@ async def test_callbacks_after_switch_off_do_nothing(hub):
 def test_manifest_is_honest():
     assert MANIFEST.tier == "experimental" and MANIFEST.direction == "in" and MANIFEST.entity_kinds == ("sound_level",)
     text = MANIFEST.description.lower()
-    assert "not tested" in text and "four fixed messages" in text and "never averages" in text
-    assert "history" in text and "live smaart" in text
+    assert "other versions are not tested" in text and "four fixed messages" in text and "never averages" in text
+    assert "history" in text and "smaart suite 9.6.4" in text
 
 
 # --------------------------------------------------------------------------- emulate

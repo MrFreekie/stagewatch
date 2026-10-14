@@ -8,9 +8,8 @@ never changes a mix. It does not work anything out: no averaging, smoothing, rou
 A value Smaart did not give, or flagged overload, is "not available" (never zero). If Smaart goes
 quiet or away, that is a gap in the record, not a value; a marker says when the readings came back.
 
-STATUS: UNVERIFIED. The client was written from the script Smaart's own SPL web page uses, not from
-Rational Acoustics' SDK, and has NOT been tested against a live Smaart (no real data message has been
-seen). Use ``--emulate`` to see how the card behaves. See client.py and mapping.py.
+STATUS: tested live on the owner's Smaart Suite 9.6.4 (2026-10); other versions not tested. The client was written from the script Smaart's own SPL web page uses, not from
+Rational Acoustics' SDK, and has not been tested against other Smaart versions. Use ``--emulate`` to see how the card behaves. See client.py and mapping.py.
 """
 
 from __future__ import annotations
@@ -52,9 +51,10 @@ MANIFEST = Manifest(
                 "not read Smaart's history, logs or alarms. It sends Smaart four fixed messages and "
                 "nothing else (is a password needed, the input list, the password, one update a second) "
                 "and never changes Smaart's measurement, gain, calibration, logging, alarms or mix. It "
-                "does no sound-level maths and never averages, smooths or rounds. NOT TESTED against a "
-                "live Smaart: written from the script Smaart's own web page uses; the simulated source "
-                "(--emulate) works. Never part of the site averages.",
+                "does no sound-level maths and never averages, smooths or rounds. Tested live on "
+                "Smaart Suite 9.6.4; other versions are not tested. Written from the script "
+                "Smaart's own web page uses; the simulated source (--emulate) also works. Never part "
+                "of the site averages.",
     tier="experimental",
     direction="in",
     iot_class="local_push",   # asks Smaart for one update a second over a WebSocket, then just listens

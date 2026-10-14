@@ -1,11 +1,10 @@
 """Where Smaart's message shapes and field names live: the ONE place that knows them. Nothing else in
 Stagewatch knows how a Smaart message is built.
 
-STATUS: UNVERIFIED. These shapes were read from the script Smaart's own SPL web page uses (the page
-the Smaart computer serves to a browser), not from Rational Acoustics' SDK, and they have NOT been
-tested against a live Smaart. No real data message has been seen, so every parser here is tolerant:
+STATUS: tested live on the owner's Smaart Suite 9.6.4 (2026-10); other versions are not tested. These shapes were read from the script Smaart's own SPL web page uses (the page
+the Smaart computer serves to a browser), not from Rational Acoustics' SDK. Every parser here is tolerant:
 a field that is missing or the wrong type gives "not available" (``None``), never a guess and never
-zero. ``VERIFIED`` goes True only after a session on real Smaart.
+zero. ``VERIFIED`` is True: a session on a real Smaart Suite 9.6.4 has been run.
 
 What is read (all plain ``ws://`` on the port the SPL web page is served from, path ``/api/v4/``):
 
@@ -27,7 +26,7 @@ from dataclasses import dataclass
 
 from ...core.spl import clean_input_name, clean_level, clean_metric_name
 
-VERIFIED = False
+VERIFIED = True
 
 MAX_BYTES = 64 * 1024          # a message bigger than this is dropped (the socket also refuses it)
 API_PATH = "/api/v4/"          # the only API path this build knows; another version would say so
