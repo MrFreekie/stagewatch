@@ -144,7 +144,7 @@ eq(gc.view(msg(), { controller: 1, strips: 8 }, 100).sub, "Desk 1 - Inputs - Cha
 const v16 = gc.view(msg(), { controller: 1, range: "1-16" }, 100);
 eq(v16.sub, "Desk 1 - Inputs - Channels 1-16", "subtitle text for a channel group");
 eq(cols[3].children[2].children[0].textContent, "-2", "value text");
-eq(cols[3].children[2].children[1].textContent, "▲▲", "symbol text");
+eq(cols[3].children[2].children.length, 1, "no symbol under the value");
 eq(cols[3].className.indexOf("gc-hot") > 0, true, "hot class");
 eq(cols[1].className.indexOf("gc-none") > 0, true, "no-signal class");
 ui.update(gc.view(msg(), { controller: 1, strips: 4 }, 100.2));
@@ -155,6 +155,19 @@ eq(ui.strips.children[8].children[0].children[0].textContent, "9", "channel numb
 eq(ui.strips.children[8].children[0].children[1].textContent, "USB 1", "label shown");
 eq(ui.strips.children[8].children[2].children[0].textContent, "no meter", "word instead of a number");
 eq(ui.strips.children[8].className.indexOf("gc-word") > 0, true, "word class");
+
+// mute: shown when GLOBCON says muted, never guessed
+{
+  const m2 = msg();
+  const base = gc.view(m2, { controller: 1, range: "1-8" }, 100.2);
+  eq(base.strips.every((s) => s.mute === false), true, "nothing muted unless GLOBCON says so");
+  m2.controllers[0].strips[2].mute = true;
+  const v2 = gc.view(m2, { controller: 1, range: "1-8" }, 100.2);
+  eq(v2.strips.map((s) => s.mute).indexOf(true), 2, "a muted strip is flagged");
+  const ui2 = gc.createUi();
+  ui2.update(v2);
+  eq(ui2.strips.children[2].className.indexOf("gc-muted") > 0, true, "muted class");
+}
 
 if (fails) { console.log(`${fails} of ${count} checks FAILED`); process.exit(1); }
 console.log(`ok: ${count} checks passed`);

@@ -21,7 +21,7 @@ LEVEL_STALE_S = 3.0         # meters normally arrive every 0.1 s: this long with
 
 _GENERAL_NAME = re.compile(r"^/general/(name|requiresPassword|authorized)/(\d{1,2})$")
 _CHANNELS = "/general/channelsNumber"
-_FADER = re.compile(r"^/controller/(\d{1,2})/faders/(\d{1,2})/(label|hasLevel)$")
+_FADER = re.compile(r"^/controller/(\d{1,2})/faders/(\d{1,2})/(label|hasLevel|mute)$")
 _LAYER = re.compile(r"^/controller/(\d{1,2})/controls/layer$")
 _LAYER_LABEL = re.compile(r"^/controller/(\d{1,2})/controls/layerLabel/(\d{1,2})$")
 
@@ -42,6 +42,7 @@ class Controller:
     layer_labels: dict[int, str] = field(default_factory=dict)
     labels: dict[int, str] = field(default_factory=dict)       # strip index -> label
     has_level: dict[int, bool] = field(default_factory=dict)   # strip index -> shows a level
+    mutes: dict[int, bool] = field(default_factory=dict)       # strip index -> muted on the controller (read only: shown, never set)
     levels: list[float | None] = field(default_factory=list)   # latest block, as received
     meters_at: float | None = None
     requires_password: bool = False
@@ -103,6 +104,8 @@ def apply_value(state: GlobconState, v: Value) -> bool:
             c.labels[i] = clean_title(v.value, LABEL_MAX)
         elif m.group(3) == "hasLevel" and v.kind == "b":
             c.has_level[i] = bool(v.value)
+        elif m.group(3) == "mute" and v.kind == "b":
+            c.mutes[i] = bool(v.value)
         else:
             return False
         return True
@@ -174,7 +177,7 @@ def public_message(state: GlobconState, wanted: list[int], link_up: bool, now: f
         for i in known_strips(c):
             lv = c.levels[i] if i < len(c.levels) else None
             # meter: True / False as GLOBCON says (hasLevel), None while it has not said.
-            strips.append({"index": i, "label": c.labels.get(i, ""), "meter": c.has_level.get(i), "db": lv})
+            strips.append({"index": i, "label": c.labels.get(i, ""), "meter": c.has_level.get(i), "mute": c.mutes.get(i), "db": lv})
         controllers.append({
             "controller": n + 1,
             "name": c.name,

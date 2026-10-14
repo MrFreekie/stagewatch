@@ -107,7 +107,7 @@ SW.gc = (function () {
       const band = frozen ? "" : gc.band(db);
       // With a channel group chosen, a strip with no level shows a plain word, never a zero.
       const word = range && db === null ? (s.meter === false ? "no meter" : "no reading") : "";
-      return { num: s.num, label: typeof s.label === "string" ? s.label : "", db, text: word || gc.fmtDb(db), isWord: !!word, pct: gc.pct(db), band, mark: gc.BAND_MARK[band], word: gc.BAND_WORD[band] };
+      return { num: s.num, label: typeof s.label === "string" ? s.label : "", db, text: word || gc.fmtDb(db), isWord: !!word, mute: s.mute === true, pct: gc.pct(db), band, mark: gc.BAND_MARK[band], word: gc.BAND_WORD[band] };
     });
     if (age === null) {
       v.note = m.status === "offline" ? `▲ ${name} is not connected. No levels to show.` : `Connected to ${name}, waiting for levels…`;
@@ -150,12 +150,14 @@ SW.gc = (function () {
           name: h("span", { class: "gc-name" }),
           label: null,
           fill,
-          bar: h("div", { class: "gc-bar", "aria-hidden": "true" }, fill),
+          mutetag: h("span", { class: "gc-mutetag", hidden: true }, "MUTED"),
+          bar: null,
           value: h("div", { class: "gc-value" }),
           mark: h("span", { class: "gc-mark" }),
         };
+        col.bar = h("div", { class: "gc-bar", "aria-hidden": "true" }, fill, col.mutetag);
         col.label = h("div", { class: "gc-label" }, col.num, col.name);
-        col.el = h("div", { class: "gc-col" }, col.label, col.bar, h("div", { class: "gc-reading" }, col.value, col.mark));
+        col.el = h("div", { class: "gc-col" }, col.label, col.bar, h("div", { class: "gc-reading" }, col.value));
         cols.push(col);
       }
       ui.strips.replaceChildren(...cols.map((c) => c.el));
@@ -175,7 +177,8 @@ SW.gc = (function () {
         setText(c.value, s.text);
         setText(c.mark, s.mark);
         c.mark.setAttribute("title", s.word);
-        setClass(c.el, `gc-col${s.band ? ` gc-${s.band}` : ""}${s.db === null ? " gc-none" : ""}${s.isWord ? " gc-word" : ""}`);
+        setClass(c.el, `gc-col${s.band ? ` gc-${s.band}` : ""}${s.db === null ? " gc-none" : ""}${s.isWord ? " gc-word" : ""}${s.mute ? " gc-muted" : ""}`);
+        setHidden(c.mutetag, !s.mute);
         const h2 = `${s.pct.toFixed(0)}%`;
         if (c.fill.style.height !== h2) c.fill.style.height = h2;
       });

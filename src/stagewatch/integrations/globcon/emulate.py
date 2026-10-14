@@ -38,6 +38,7 @@ def _values_for(n: int, layer: int) -> list[Value]:
     for i, (label, has) in enumerate(strips):
         out.append(Value(f"/controller/{n}/faders/{i}/label", "s", label))
         out.append(Value(f"/controller/{n}/faders/{i}/hasLevel", "b", has))
+        out.append(Value(f"/controller/{n}/faders/{i}/mute", "b", i == 4))   # one simulated muted channel (read only)
     return out
 
 

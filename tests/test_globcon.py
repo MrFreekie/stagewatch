@@ -214,7 +214,7 @@ def test_public_message_exact_shape_one_based_and_every_known_strip():
     assert set(c) == {"controller", "name", "layer", "layer_label", "locked", "meters_at", "strips"}
     assert (c["controller"], c["name"], c["layer"], c["layer_label"], c["locked"], c["meters_at"]) == (1, "Controller 1", 0, "Inputs", False, 50.0)
     assert [s["index"] for s in c["strips"]] == list(range(16))                     # all 16, whether or not they have a level
-    assert all(set(s) == {"index", "label", "meter", "db"} for s in c["strips"])
+    assert all(set(s) == {"index", "label", "meter", "mute", "db"} for s in c["strips"])
     assert [s["db"] for s in c["strips"]][:8] == [-20.0, -20.0, -20.0, None, -12.0, -12.0, -12.0, -12.0]   # -250 is None, never 0
     assert [s["meter"] for s in c["strips"]] == [i < 10 or i == 12 for i in range(16)]   # hasLevel as GLOBCON said
     assert c["strips"][10]["label"] == "Strip 10" and c["strips"][10]["meter"] is False   # labelled, no meter
@@ -225,7 +225,7 @@ def test_a_controller_with_nothing_known_has_no_strips_and_unknown_meter_is_none
     st = mapping.GlobconState()
     mapping.apply_value(st, Value("/controller/0/faders/3/label", "s", "Only label"))
     (c,) = mapping.public_message(st, [0], True, 1.0)["controllers"]
-    assert c["strips"] == [{"index": 3, "label": "Only label", "meter": None, "db": None}]
+    assert c["strips"] == [{"index": 3, "label": "Only label", "meter": None, "mute": None, "db": None}]
     (c,) = mapping.public_message(st, [5], True, 1.0)["controllers"]
     assert c["strips"] == []
 
@@ -1074,13 +1074,14 @@ def test_public_snapshot_carries_only_the_agreed_fields(client):
         assert forbidden not in text
 
 
-def test_gain_fader_and_mute_values_never_reach_the_public_message():
+def test_gain_and_solo_never_reach_the_public_message_and_mute_only_as_the_read_only_strip_flag():
     st = mapping.GlobconState()
     for v in (Value("/controller/0/faders/0/gain", "d", -3.0), Value("/controller/0/faders/0/mute", "b", True),
               Value("/controller/0/faders/0/solo", "b", True), Value("/controller/0/faders/0/hasLevel", "b", True)):
         mapping.apply_value(st, v)
     text = json.dumps(mapping.public_message(st, [0], True, 1.0))
-    assert "gain" not in text and "mute" not in text and "solo" not in text
+    assert "gain" not in text and "solo" not in text
+    assert json.loads(text)["controllers"][0]["strips"][0]["mute"] is True
 
 
 # ------------------------------------------------------------------------------------- static
@@ -1150,3 +1151,18 @@ def test_the_hint_is_in_the_admin_card_only_never_the_public_snapshot_or_dashboa
     integ._link_up = True
     assert client.get("/api/admin/state").json()["globcon"]["hint"] == ""
     integ._source = None
+
+
+def test_mute_is_read_for_display_and_never_set():
+    """A channel's mute state is read from GLOBCON and shown; the client has no way to send it (the gate allows only reads)."""
+    st = mapping.GlobconState()
+    mapping.apply_value(st, Value("/controller/0/faders/2/hasLevel", "b", True))
+    mapping.apply_value(st, Value("/controller/0/faders/2/mute", "b", True))
+    mapping.apply_value(st, Value("/controller/0/faders/3/hasLevel", "b", True))
+    mapping.apply_value(st, Value("/controller/0/faders/3/mute", "b", False))
+    mapping.apply_value(st, Value("/controller/0/faders/4/mute", "s", "true"))   # wrong kind: ignored, never guessed
+    strips = {s["index"]: s for s in mapping.public_message(st, [0], True, 1000.0)["controllers"][0]["strips"]}
+    assert strips[2]["mute"] is True and strips[3]["mute"] is False
+    assert 4 not in strips or strips[4]["mute"] is None
+    assert not protocol.allowed(protocol.encode_container(protocol.SET, "Value", protocol.encode_value("/controller/0/faders/2/mute", bval=False)))
+
