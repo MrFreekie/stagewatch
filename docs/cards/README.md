@@ -1,0 +1,53 @@
+# Dashboard cards
+
+A **dashboard** is a page of **cards**. Your tech chooses which cards each dashboard shows and in
+what order (see [Admin: Dashboards](../admin/dashboards.md)). So your screen may show fewer cards than
+are listed here.
+
+This page is the one list of every card. Each card has its own page.
+
+## Every card
+
+| Card | What it shows | On by default | Half size | Needs |
+|---|---|---|---|---|
+| [Tiles](env-tiles.md) | The site numbers: temperature, humidity, pressure, speed of sound and dew point | Tablet, phone, wall | No | A sensor node |
+| [History](chart.md) | A graph of the site average and single sensors, with markers | Tablet, phone, wall | No | A sensor node |
+| [Markers](markers.md) | Add and read markers such as **Aligned**, and the drift since each | Tablet, phone | No | A sensor node |
+| [Sensors](sensors.md) | Each node, whether it is working, and its latest readings | Tablet | No | A sensor node |
+| [Schedule](schedule.md) | NOW, NEXT and CURFEW, and the running order. Hidden until the show has a schedule | Tablet, phone, wall | No | A schedule (entered in Admin) |
+| [Wall Clock](wall-clock.md) | A big clock for a wall screen | No | Yes | Optional: [Ontime](../integrations/ontime.md) |
+| [Ontime Timer](ontime-timer.md) | The countdown Ontime is running | No | Yes | [Ontime](../integrations/ontime.md) |
+| [Ontime Rundown](ontime-rundown.md) | Event position and ahead or behind, from Ontime | No | Yes | [Ontime](../integrations/ontime.md) |
+| Open on a tablet | This dashboard's address and a QR code to open it on a phone or tablet | Wall | No | Nothing |
+| [Barometer](barometer.md) | Sea-level pressure dial, 3-hour tendency and a rough outlook | No | No | A pressure sensor |
+| [Equipment](equipment.md) | Readings from Equipment-role sensors, such as amp racks. Hidden while there are none | No | No | An Equipment sensor |
+| [Sound level](sound-level.md) | Up to three sound level values from Smaart, and their timeline. Hidden until set up | No | No | [Smaart](../integrations/smaart.md) |
+| [DirectOut GLOBCON](globcon.md) | Level meters for 4 or 8 channels of one controller. Hidden until GLOBCON has answered | No | Yes | [DirectOut GLOBCON](../integrations/globcon.md) |
+| [Power](power.md) | Watts, volts, amps and energy from power meters. Hidden until a meter is added | No | Yes | [Shelly](../integrations/shelly.md) |
+
+"On by default" is what a new dashboard of that layout starts with. A dashboard from an earlier
+version keeps the cards it already had.
+
+## Always there
+
+These are on every dashboard and are not cards.
+
+- **Alarm bar.** Appears only when something is wrong.
+- **Messages bell.** Counts the messages and shows the worst kind. Not shown on the wall screen.
+- **Connection status.** **Online**, **Offline** or **Error** for the whole screen.
+- **Disconnected banner.** A red bar across the top when the screen loses contact with Stagewatch.
+  The numbers turn grey so nobody trusts old readings. It clears by itself.
+- **Alarm sound button.**
+
+Cards that read from other software (Ontime, Smaart, GLOBCON) also show their own small
+**Online**, **Offline** or **Error** beside their logo.
+
+> **Being written.** The full explanation of the header, the messages bell and the status marks
+> will be added here. Until then see [Using Stagewatch on show day](../using-stagewatch.md).
+
+## Choose the cards on a dashboard
+
+Open **Admin**, find **User dashboards**, and click **Edit cards**. Steps are in
+[Admin: Dashboards](../admin/dashboards.md).
+
+Related: [Glossary](../glossary.md), [Troubleshooting](../troubleshooting.md).

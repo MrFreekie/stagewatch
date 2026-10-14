@@ -2,7 +2,7 @@
 
 Stagewatch runs on show control networks and can update itself, so security
 reports are taken seriously, even though this is a one-person, 100 % vibe-coded
-project (see the README).
+project (see the [notices](docs/integrations/README.md#notices)).
 
 ## Reporting a vulnerability
 
@@ -20,5 +20,6 @@ Only the latest release on the Stable channel (and the current Nightly) receive 
 ## Scope notes
 
 - Stagewatch is designed for a **private show network**, not the public internet.
-- It is an **advisory tool**, not a certified safety system (see the README).
+- It is an **advisory tool**, not a certified safety system (see the [notices](docs/integrations/README.md#notices)).
 - Please don't test against installations you don't own.
+- Stagewatch's dashboards have no login. Anyone on the show network can see them. The admin page needs a PIN.
