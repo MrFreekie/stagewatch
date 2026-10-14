@@ -49,6 +49,8 @@ def redact_config(obj, known: tuple[str, ...] = (), _key: str = ""):
     """Deep copy of a config dict with every secret replaced.  Empty values stay empty so the
     file still shows whether something was set."""
     if isinstance(obj, dict):
+        if _key == "shelly_devices":   # a meter's address and hardware address stay out of the bundle
+            obj = {k: (REDACTED if k in ("host", "mac") and v else v) for k, v in obj.items()}
         return {k: redact_config(v, known, str(k)) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [redact_config(v, known, _key) for v in obj]

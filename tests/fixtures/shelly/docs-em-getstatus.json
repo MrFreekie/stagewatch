@@ -1,0 +1,18 @@
+{
+  "_note": "SYNTHETIC from the EM and EMData documentation field names (not captured). Phase A reuses the example numbers in the EM documentation (4.029 A, 236.1 V, 951.2 W). n_current is null (no neutral CT).",
+  "em:0": {
+    "id": 0,
+    "a_current": 4.029, "a_voltage": 236.1, "a_act_power": 951.2, "a_aprt_power": 951.2, "a_pf": 1.0, "a_freq": 50.0,
+    "b_current": 2.0, "b_voltage": 235.0, "b_act_power": 470.0, "b_aprt_power": 475.0, "b_pf": 0.99, "b_freq": 50.0,
+    "c_current": 0.0, "c_voltage": 236.0, "c_act_power": 0.0, "c_aprt_power": 0.0, "c_pf": null, "c_freq": 50.0,
+    "n_current": null,
+    "total_current": 6.029, "total_act_power": 1421.2, "total_aprt_power": 1426.2
+  },
+  "emdata:0": {
+    "id": 0,
+    "a_total_act_energy": 5000.5, "a_total_act_ret_energy": 0.0,
+    "b_total_act_energy": 3000.25, "b_total_act_ret_energy": 0.0,
+    "c_total_act_energy": 10.0, "c_total_act_ret_energy": 0.0,
+    "total_act": 8010.75, "total_act_ret": 0.0
+  }
+}

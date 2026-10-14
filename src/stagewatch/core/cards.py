@@ -23,6 +23,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "equipment",       # readings from Equipment-role sensors (amp racks, PSUs), by node; hidden while there are none; never added by default
     "spl_live",        # sound level from Smaart: up to 3 chosen values and their timeline; hidden while none are set up; never added by default
     "globcon_meters",  # DirectOut GLOBCON level meters for 4 or 8 strips of one controller; hidden until GLOBCON has answered; never added by default
+    "power",           # Shelly power meters (watts, volts, amps, energy): read-only Equipment readings; hidden while there are none; never added by default
 )
 KNOWN_CARDS = KNOWN_CARDS_0_3
 
@@ -71,7 +72,7 @@ def unknown_cards(cards: list[str]) -> list[str]:
 # Per-dashboard card size ("full" is the default and is never needed in the map). A card can be
 # made half width only if it is listed here; add an id to allow another card later.
 CARD_SIZES: tuple[str, ...] = ("full", "half")
-HALF_CAPABLE: tuple[str, ...] = ("wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters")
+HALF_CAPABLE: tuple[str, ...] = ("wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power")
 
 
 def clean_card_sizes(v) -> tuple[dict[str, str], int]:

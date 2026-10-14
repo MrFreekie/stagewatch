@@ -41,6 +41,17 @@ class Kind(str, Enum):
     # never averaged, smoothed, rounded or calibrated here, and never part of a site average. The
     # weighting, time constant and metric travel as Entity.labels.
     SOUND_LEVEL = "sound_level"
+    # Electrical readings from a power meter (Shelly and similar). All are Equipment readings: they
+    # are about the circuit, never the air, so none is in ENV_KINDS and none can reach a site value.
+    # Recorded exactly as received (no calibration offset, no averaging). ENERGY is a running total
+    # (watt-hours since the meter's counter started), not a level: never averaged or smoothed.
+    POWER = "power"                    # real (active) power, W
+    APPARENT_POWER = "apparent_power"  # VA
+    CURRENT = "current"                # A
+    VOLTAGE = "voltage"                # V
+    ENERGY = "energy"                  # Wh, cumulative counter
+    POWER_FACTOR = "power_factor"      # no unit
+    FREQUENCY = "frequency"            # Hz
     GENERIC = "generic"
 
 
@@ -54,6 +65,13 @@ UNITS = {
     Kind.BATTERY: "%",
     Kind.SIGNAL: "dBm",
     Kind.SOUND_LEVEL: "dB",
+    Kind.POWER: "W",
+    Kind.APPARENT_POWER: "VA",
+    Kind.CURRENT: "A",
+    Kind.VOLTAGE: "V",
+    Kind.ENERGY: "Wh",
+    Kind.POWER_FACTOR: "",
+    Kind.FREQUENCY: "Hz",
 }
 
 ENV_KINDS = (Kind.TEMPERATURE, Kind.HUMIDITY, Kind.PRESSURE)
@@ -173,6 +191,9 @@ class Entity:
     # The owner's own label for where a sound level value is measured ("FOH"): cleaned plain text, a
     # label only (never part of an id, key or history). Absent from to_dict() when empty.
     location: str = ""
+    # Power-meter readings: always Equipment (no per-sensor override can change that) and recorded
+    # exactly as received (no calibration offset). Runtime only; never in to_dict().
+    locked_equipment: bool = False
 
     def to_dict(self, now: float, stale_after_s: float, offset: float = 0.0, role: str = "environment",
                 sleeping: bool = False) -> dict:

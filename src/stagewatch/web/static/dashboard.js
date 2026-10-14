@@ -272,7 +272,7 @@
   }
 
   function sensorDevices() {
-    return Object.values(state.devices).filter((d) => d.id !== "site" && d.category !== "service")
+    return Object.values(state.devices).filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter")   // power meters have their own Power card
       .sort((a, b) => (a.area || a.name).localeCompare(b.area || b.name));
   }
 
@@ -994,6 +994,7 @@
     const byDev = {};
     for (const e of Object.values(state.entities)) {
       if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery") continue;
+      if (state.devices[e.device_id] && state.devices[e.device_id].category === "meter") continue;   // shown on the Power card
       (byDev[e.device_id] = byDev[e.device_id] || []).push(e);
     }
     return Object.keys(byDev).map((id) => ({ dev: state.devices[id] || { id, name: id, status: "" }, ents: byDev[id] }))
@@ -1018,6 +1019,20 @@
             h("div", { class: "value" }, eqValue(e), SW.hasOffset(e) ? offsetStar() : null),
             h("div", { class: "foot" }, e.stale ? `Old reading, ${SW.age(e.updated, state.now)}`
               : e.sleeping ? `Sleeping, last reading ${SW.age(e.updated, state.now)}` : SW.age(e.updated, state.now))))))));
+  }
+
+  // ------------------------------------------------------------ power
+  // Power meters (Shelly): readings exactly as the meters reported them, in place (SW.pw, power.js).
+  // The card hides itself while there is no meter. A meter that stops answering keeps its last readings
+  // on screen, dimmed, with the word NO READING and their age. Nothing here changes a meter.
+  const pwUi = { ui: null };
+  function renderPower() {
+    const card = $("power-card");
+    if (!has("power")) { card.hidden = true; return; }
+    const view = SW.pw.view(state.entities, state.devices, state.now);
+    card.hidden = view.meters.length === 0;
+    if (!pwUi.ui) pwUi.ui = SW.pw.build($("power-body"));
+    pwUi.ui.update(view, state.entities);
   }
 
   // ------------------------------------------------------- sound level
@@ -1232,6 +1247,8 @@
     equipment: { el: cardEl("equipment"), render: renderEquipment, empty: () => equipmentGroups().length === 0 },
     // Live GLOBCON levels. Hidden until the first message arrives (the server sends one with the snapshot).
     globcon_meters: { el: cardEl("globcon_meters"), wide: true, render: renderGlobcon, empty: () => !state.globcon },
+    // Power meters (Shelly). Hidden while no meter has been added (renderPower keeps it in step).
+    power: { el: cardEl("power"), wide: true, render: renderPower, empty: () => !Object.keys(state.devices).some((k) => state.devices[k].category === "meter") },
     // Hidden while no sound level values are set up (renderSpl keeps it in step).
     spl_live: { el: cardEl("spl_live"), render: renderSpl, empty: () => SW.spl.entities(state.entities).length === 0 },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
@@ -1361,6 +1378,7 @@
         if (has("sensors")) renderSensors();
         if (has("barometer")) renderBarometer();
         if (has("equipment")) renderEquipment();
+        if (has("power")) renderPower();
         if (has("spl_live")) { splOnStates(msg.entities); renderSpl(); }
         if (has("chart")) updateChartSeries();
         break;
@@ -1369,6 +1387,7 @@
         state.devices[msg.device.id] = msg.device;
         if (has("sensors")) renderSensors();
         if (has("equipment")) renderEquipment();
+        if (has("power")) renderPower();
         if (has("spl_live")) renderSpl();
         break;
       case "marker":
@@ -1428,5 +1447,5 @@
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
   setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("spl_live")) renderSpl(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("spl_live")) renderSpl(); }, 5000);
 })();

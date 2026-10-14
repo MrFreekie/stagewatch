@@ -19,7 +19,7 @@ from .statustext import alarm_detail, safe_status_detail
 from .barometer import BarometerService
 from .bus import EventBus
 from .calibration import calibration_for as _calibration_for
-from .config import (ACCURACY_MAX, ACCURACY_MIN, ROLE_ENVIRONMENT, ROLES, Calibration, ConfigStore,
+from .config import (ACCURACY_MAX, ACCURACY_MIN, ROLE_ENVIRONMENT, ROLE_EQUIPMENT, ROLES, Calibration, ConfigStore,
                      EntitySettings)
 from .derived import OUTLIER_LIMITS, AvgInput, AvgResult, Ema, average
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
@@ -374,6 +374,7 @@ class Hub:
             existing.hw_key = entity.hw_key
             existing.labels = dict(entity.labels)
             existing.location = entity.location
+            existing.locked_equipment = entity.locked_equipment
             entity = existing
         else:
             self.entities[entity.id] = entity
@@ -388,8 +389,8 @@ class Hub:
         if entity is None:
             return
         ts = ts if ts is not None else time.time()
-        if entity.kind == Kind.SOUND_LEVEL:
-            # Recorded exactly as the measurement software sent it: no calibration offset, no
+        if entity.kind == Kind.SOUND_LEVEL or entity.locked_equipment:
+            # Recorded exactly as the measurement software or meter sent it: no calibration offset, no
             # maths. Anything that is not a finite number is "not available", never a number.
             ok = isinstance(raw_value, (int, float)) and not isinstance(raw_value, bool) and math.isfinite(raw_value)
             raw_value = float(raw_value) if ok else None
@@ -425,6 +426,8 @@ class Hub:
         environment. Read-only."""
         if entity.derived:
             return ROLE_ENVIRONMENT
+        if entity.locked_equipment:
+            return ROLE_EQUIPMENT   # a power meter's readings: nothing can make them an air reading
         own = getattr(self.calibration_for(entity), "role", "")
         if own in ROLES:
             return own
@@ -444,7 +447,7 @@ class Hub:
     def entity_dict(self, entity: Entity, now: float, stale_after: float) -> dict:
         """Public form of an entity: includes ``offset`` only when a calibration offset is set,
         and ``role`` only for equipment."""
-        offset = 0.0 if (entity.derived or entity.kind == Kind.SOUND_LEVEL) else float(self.calibration_for(entity).offset or 0.0)
+        offset = 0.0 if (entity.derived or entity.kind == Kind.SOUND_LEVEL or entity.locked_equipment) else float(self.calibration_for(entity).offset or 0.0)
         device = self.devices.get(entity.device_id)
         sleeping = device is not None and device.is_sleeping(now)
         return entity.to_dict(now, self.stale_after_for(entity),

@@ -1,0 +1,14 @@
+{
+  "_note": "Shape of Shelly.GetDeviceInfo from a PM Mini Gen3; MAC and id replaced with a made-up locally administered address.",
+  "name": null,
+  "id": "shellypmminig3-025E00000099",
+  "mac": "025E00000099",
+  "slot": 0,
+  "model": "S3PM-001PCEU16",
+  "gen": 3,
+  "fw_id": "20250000-000000/2.1.0-beta2-gabcdef0",
+  "ver": "2.1.0-beta2",
+  "app": "MiniPMG3",
+  "auth_en": false,
+  "auth_domain": null
+}
