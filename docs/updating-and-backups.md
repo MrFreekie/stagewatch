@@ -1,14 +1,19 @@
 # Updating and backups
 
-How to update Stagewatch from its own admin page, how your data is protected, and what to
-do if you forget your PIN.
+How to update Stagewatch from its own admin page, where your data lives, how it is
+protected, and what to do if you forget your PIN.
 
 > **Update when it suits you.** Every update takes a backup first and can be rolled back.
 > Stagewatch does **not** check whether a show is running. Updating restarts it for about
 > a minute and nothing is recorded while it restarts, so pick a quiet moment if you can.
 >
-> Stagewatch is an advisory tool with no warranty. See the
-> [main README](../README.md#stagewatch).
+> Stagewatch is an advisory tool with no warranty. See the [Notices](integrations/README.md#notices).
+
+> **Tested on hardware: pending.** Updating and rolling back from the admin page have been tested in
+> a Windows 11 virtual machine and a Debian 13.7 virtual machine. They have not been reported as
+> tested on a real show PC or on a Raspberry Pi. Rolling back an update that changed the data format
+> was tested in a virtual machine, but whether history recorded after the update survives a roll back
+> was not checked. Treat that history as set aside (see Roll back).
 
 ---
 
@@ -17,18 +22,23 @@ do if you forget your PIN.
 1. Open the admin page: the Stagewatch computer's address plus `/admin`, for example
    `http://192.168.1.50:8080/admin`.
 2. Log in with your PIN.
-3. Find the card called **Software**.
+3. Find the card called **Software** and open it.
 
-It shows:
+It has these sections:
 
-- **Version** and **Commit** (the exact build you are running).
-- **Channel**: Stable or Nightly.
-- **Install**: says **Managed** if you used the installers in this guide.
+- **Installed**: the **Version** and **Commit** (the exact build you are running), the **Channel**
+  (Stable or Nightly) and **Install**. **Install** says **Managed** if you used the installers in
+  this guide.
+- **Updates**: the **Channel** menu, the **Check for updates** button and the result.
+- **History**: every update and roll back so far. Says **No updates yet.** until there is one.
+- **Data backups** and **Displaced data**: appear once there is something to list (see below).
 
 **If it says "In-app updates are only available on a managed install":** this copy was not
 installed with the Windows or Raspberry Pi installer (for example it was started by hand
-from a downloaded folder). That copy cannot update itself here. Follow the
-[install guide](README.md) to move to a managed install.
+from a downloaded folder). That copy cannot update itself here. Follow an
+[install guide](install/windows.md) ([Raspberry Pi](install/raspberry-pi.md),
+[Debian Linux](install/debian-linux.md)) to move to a managed install. A copy started by hand
+from a downloaded folder can be updated by updating that folder yourself.
 
 ---
 
@@ -36,11 +46,12 @@ from a downloaded folder). That copy cannot update itself here. Follow the
 
 | Channel | What it is | Use it |
 |---|---|---|
-| **Stable** (the default) | Proper numbered releases, like v0.2.0. | **For shows.** |
-| **Nightly** | The newest code that passed the automatic tests. Only checked by a machine. | For trying new things. It is only checked by machines, so try it away from a live show first. |
+| **Stable** (the default) | Proper numbered releases, like v1.2.3. | **For shows.** |
+| **Nightly** | The newest code that passed the automatic tests (the Windows test run). Only checked by a machine. | For trying new things. Try it away from a live show first. |
 
-To change channel, use the **Channel** menu on the Software card. The card warns you if
-Nightly is selected.
+To change channel, use the **Channel** menu in the **Updates** section of the Software
+card. The card warns you if Nightly is selected. The installer's choice is the starting
+channel; your pick is saved in your settings.
 
 ---
 
@@ -55,9 +66,6 @@ Nightly is selected.
 
 You can only check about once every 30 seconds.
 
-If you installed from `main` before v0.2.0 was released, you have a pre-release build.
-Set **Channel** to **Stable** and tap **Check for updates** to move onto the numbered releases.
-
 ## Update
 
 1. On the **Update available** panel, tap **Update now...**.
@@ -71,12 +79,15 @@ Set **Channel** to **Stable** and tap **Check for updates** to move onto the num
 update..."** with a timer. It says it takes about a minute. The page reloads by itself when
 Stagewatch is back. Dashboards reconnect by themselves too.
 
-After the restart, the **Update history** list shows the update with a tick.
+After the restart, the **History** section lists the update with a tick.
 
 Check the dashboards, and that your nodes show **ok**.
 
 If the message says **"Stagewatch has not come back"** after 10 minutes, see
 [What to do if an update goes wrong](#what-to-do-if-an-update-goes-wrong).
+
+Stagewatch will not install an update that changes where its parts come from or which
+version of Python it needs. It tells you so, and those need a technical person to update by hand.
 
 ---
 
@@ -87,21 +98,25 @@ You do not have to do anything.
 - Before an update that **changes the format of your data**, Stagewatch makes a backup of
   your data first.
 - It keeps the **last 10** backups.
-- They are in a `backups` folder inside your data folder (see below).
+- They are in a `backups` folder inside your data folder (see
+  [Where your data lives](#where-your-data-lives)).
 - The Software card lists them under **Data backups**, with their sizes.
+- A backup holds your settings (`config.yaml`), the login key, contacts, event logos and the
+  history database. It does **not** hold event documents or logs. Make your own backup
+  (below) to keep everything.
 
 Plain updates that do not change the data format do not need a backup, so you may see
 none for a while.
 
-Backups only ever cover your **real** data. If you run Stagewatch in demo mode (`-Emulate`,
-fake sensors), its data lives in a separate `emulate` folder inside the data folder. That
-folder is never backed up or restored, and it never mixes with your real history.
+Backups only ever cover your **real** data. If you run Stagewatch in demo mode (`-Emulate`
+or `--emulate`, fake sensors), its data lives in a separate `emulate` folder inside the data
+folder. That folder is never backed up or restored, and it never mixes with your real history.
 
 ## Roll back
 
 If the new version misbehaves, you can go back.
 
-1. In **Update history**, find the update.
+1. In **History**, find the update.
 2. Tap **Roll back...** next to it.
 3. Enter your **admin PIN** and confirm.
 
@@ -111,9 +126,49 @@ is put back as it was.
 **Anything recorded since the update is set aside, not deleted.** It goes in
 `backups\displaced-...` inside the data folder. The Software card lists it under
 **Displaced data**. Markers you added after the update are not in the restored data.
+Stagewatch never deletes the displaced folders by itself.
 
 **Automatic rollback:** if a new version cannot start, Stagewatch goes back to the old
 version and restores the backup **by itself**.
+
+---
+
+## Where your data lives
+
+The program and your data are kept apart. You can update, re-install or delete and re-clone the
+program and your data stays exactly as it was. Old settings and history are upgraded
+automatically when a newer version starts.
+
+| How Stagewatch was started | Data folder |
+|---|---|
+| Windows boot install | `C:\ProgramData\Stagewatch` |
+| Raspberry Pi or Debian boot install | `/var/lib/stagewatch` |
+| Run by hand on Windows | `%USERPROFILE%\StagewatchData` |
+| Run by hand on Linux | `~/.local/share/stagewatch` |
+| Demo (emulate) mode | an `emulate` folder inside whichever folder above applies |
+
+The boot install's data folder is **not readable by ordinary users, on purpose**. Use an
+Administrator PowerShell (Windows) or `sudo` (Pi, Debian) to look inside or copy it.
+
+The data folder holds:
+
+- `config.yaml`: your devices, thresholds, dashboards, PIN (as a one-way hash) and ESPHome keys.
+- `config.yaml.bak`: the last good copy of the settings.
+- `stagewatch.sqlite3`: the history.
+- `secret.key`: the key that signs admin logins.
+- `contacts`, `branding` and `documents`: contacts, event logos and event documents (these can
+  hold personal details).
+- `logs`: see [Troubleshooting](troubleshooting.md#where-the-log-files-are).
+- `backups`: the automatic backups and any displaced data (above).
+
+**It holds secrets, so keep every copy private.**
+
+To change the folder for a copy you run by hand, use `--data-dir DIR` or set `STAGEWATCH_DATA`.
+To print the folder that copy would use, run `uv run stagewatch --print-data-dir`. For the boot
+installs the folder is fixed by the installer (see the installer options on the install pages).
+
+To keep your settings in a private online repository as well, see
+[Security and data](admin/security-and-data.md#keep-your-site-settings-in-a-private-repository-optional).
 
 ---
 
@@ -124,22 +179,27 @@ copy the **data folder**. It holds your settings, history, PIN and node keys, so
 copy private**. Do not email it or put it online.
 
 **Windows.** Open PowerShell **as Administrator**. Paste this and press Enter. It stops
-Stagewatch, copies the data to a folder called `stagewatch-backup` in your user folder
-(`C:\Users\YOUR_NAME`), and starts it again:
+Stagewatch, copies the data to a new dated folder called `stagewatch-backup-` plus today's date
+in your user folder (`C:\Users\YOUR_NAME`), and starts it again:
 
 ```powershell
-Stop-ScheduledTask -TaskName "Stagewatch"; Start-Sleep -Seconds 10; Copy-Item "C:\ProgramData\Stagewatch" "$HOME\stagewatch-backup" -Recurse; Start-ScheduledTask -TaskName "Stagewatch"
+Stop-ScheduledTask -TaskName "Stagewatch"; Start-Sleep -Seconds 10; Copy-Item "C:\ProgramData\Stagewatch" "$HOME\stagewatch-backup-$(Get-Date -Format yyyy-MM-dd)" -Recurse; Start-ScheduledTask -TaskName "Stagewatch"
 ```
+
+Stagewatch notes this stop in its history as an unexpected stop. That is expected here.
 
 Then copy that folder to a USB stick you keep safe. Do not put it in a cloud folder.
 
-**Raspberry Pi.** Paste this in a Terminal:
+**Raspberry Pi or Debian.** Paste this in a Terminal:
 
 ```bash
-sudo systemctl stop stagewatch && sudo cp -r /var/lib/stagewatch ~/stagewatch-backup && sudo chown -R $USER ~/stagewatch-backup && sudo systemctl start stagewatch
+sudo systemctl stop stagewatch; sudo cp -r /var/lib/stagewatch ~/stagewatch-backup-$(date +%F); sudo chown -R $USER ~/stagewatch-backup-$(date +%F); sudo systemctl start stagewatch
 ```
 
 You will be without live readings for about half a minute while it copies.
+
+Putting a whole copy back by hand is not covered here and has not been tested. To undo an
+update, use **Roll back...** above. To fix a damaged settings file, see the last section.
 
 ---
 
@@ -147,9 +207,9 @@ You will be without live readings for about half a minute while it copies.
 
 | What you see | What to do |
 |---|---|
-| **Check failed: Update source not reachable (repository is private or offline).** | The computer has no internet, or GitHub cannot be reached. Try again with internet. |
+| **Check failed: Update source not reachable (repository is private or offline).** | The computer has no internet, or GitHub cannot be reached. Try again with internet. Updates need the project's page on GitHub to be public. They do not support signing in to a private one. |
 | **Not enough free disk space for a data backup.** | Free up space on the computer, then try again. |
-| **The update source rejected the fetch (a release tag may have changed)** | Stagewatch refuses on purpose. Do **not** force it. Ask whoever looks after Stagewatch to check with the project. |
+| **The update source rejected the fetch (a release tag may have changed)** | Stagewatch refuses on purpose. Do **not** force it. Ask whoever looks after Stagewatch to check with the project. They can follow [A release tag was changed](#a-release-tag-was-changed). |
 | **This install has local changes; refusing to update.** | Someone edited files in the program folder. Ask a technical person. |
 | Page stays on "restarting" | Wait 2 minutes. If nothing, reload the page. If nothing after 10 minutes, restart the computer. Then look at the log (see [Troubleshooting](troubleshooting.md#where-the-log-files-are)) and the `launcher.log`. |
 | Stagewatch works, but the new version behaves badly | Use **Roll back...** (above). |
@@ -160,6 +220,37 @@ few minutes. If it has not, restart the computer, and check the log.
 Other messages you may see are short and say what to do, such as "Check for updates
 first." or "The target changes the Python requirement; update manually." Those last
 ones need a technical person to update by hand.
+
+### A release tag was changed
+
+*For whoever looks after the install.* If a release is deleted and re-created on GitHub, even
+with the same contents, Stagewatch refuses to update and the log says **Changed tag: vX.Y.Z**.
+This is deliberate: a moved tag is what tampering looks like, so Stagewatch never accepts it
+by itself. After you have confirmed with the project that the change was intended, delete the
+local copy of the tag and check again.
+
+Windows, in an Administrator PowerShell:
+
+```powershell
+git -C C:\Stagewatch tag -d vX.Y.Z
+```
+
+Raspberry Pi or Debian: the program folder belongs to the `stagewatch` user, so run git as that user:
+
+```bash
+sudo -u stagewatch git -c safe.directory=/opt/stagewatch -C /opt/stagewatch tag -d vX.Y.Z
+```
+
+Put the real tag in place of `vX.Y.Z`. If git on Windows complains about "dubious ownership",
+add `-c safe.directory=C:/Stagewatch` straight after `git`. The Linux command has not been
+tested on a real machine. Then tap **Check for updates** again.
+
+### What the updater will and will not do
+
+It refuses downgrades, targets that are not part of the project's main line, moved release tags
+and changes to where its parts come from. It only fetches from the address the installer
+recorded. It **cannot** protect you if the project's own GitHub account were taken over, so do
+not treat it as a substitute for your own judgement about what you install.
 
 ---
 
@@ -174,10 +265,10 @@ Instead, someone with access to the Stagewatch **computer itself** resets it.
 
 You may see **Recovery required** on the admin page. It means Stagewatch's settings file
 (`config.yaml`) could not be read and the PIN could not be saved from it. Stagewatch
-keeps the bad file, tries hard to keep every part that is still good (including the PIN),
-and normally starts fine. It only shows this screen if the PIN itself was lost. While it
-is showing, setting a new PIN over the network is switched off so a stranger cannot take
-over.
+keeps the bad file as `config.invalid...yaml`, tries hard to keep every part that is still
+good (including the PIN), and normally starts fine. It only shows this screen if the PIN
+itself was lost. While it is showing, setting a new PIN over the network is switched off so
+a stranger cannot take over.
 
 Stagewatch also keeps `config.yaml.bak`, a copy of the last good settings. It uses it by
 itself when the main file is empty or damaged.
@@ -188,7 +279,7 @@ working during all of this.
 ### Reset the PIN on Windows
 
 1. On the Stagewatch PC, open PowerShell **as Administrator**
-   ([how](install-windows.md#step-2-open-powershell-as-administrator)).
+   ([how](install/windows.md#step-2-open-powershell-as-administrator)).
 2. Paste this and press Enter. It stops Stagewatch, resets the PIN and starts Stagewatch
    again, all in one go:
 
@@ -206,12 +297,12 @@ If you installed to a different folder, add `-InstallDir "D:\Your\Folder"` to th
 The script reads the data folder from the install, so you do not need to know where it is.
 
 If the script says the file does not exist, your copy is older than this feature. Update
-Stagewatch first if you can, or use the manual command in the
-[README](../README.md) (`stagewatch reset-admin-pin --data-dir <data folder>`).
+Stagewatch first if you can, or use the command in
+[Reset by hand](#reset-by-hand-advanced).
 
-### Reset the PIN on a Raspberry Pi
+### Reset the PIN on a Raspberry Pi or Debian PC
 
-1. On the Pi, open a **Terminal**.
+1. On the computer, open a **Terminal**.
 2. Paste this and press Enter. It stops Stagewatch, resets the PIN and starts Stagewatch
    again:
 
@@ -223,7 +314,17 @@ bash /opt/stagewatch/deploy/pi/reset-admin-pin.sh
 
 3. Wait 30 seconds. **Straight away**, open `http://localhost:8080/admin` and set a new PIN.
 
-> The Pi steps have not been tested on real hardware.
+> The Pi steps have not been reported as tested on real Raspberry Pi hardware. The script
+> itself says so.
+
+### Reset by hand (advanced)
+
+The scripts above run `stagewatch reset-admin-pin --data-dir <data folder>` for you. It needs
+file access to the data folder and is not available over the network. Stop the Stagewatch
+service first: the command refuses to run while it detects a running server, and `--force`
+overrides that check. Add `--emulate` to reset a demo copy's PIN. After a reset, **anyone on
+the network can set the new PIN until you do**, so set it promptly.
+
 ### Or restore a backup instead
 
 If you do not want to reset, the alternative is to copy a good `config.yaml` back into the
