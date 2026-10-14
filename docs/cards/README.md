@@ -32,7 +32,7 @@ version keeps the cards it already had.
 
 These are on every dashboard and are not cards.
 
-- **Alarm bar.** Appears only when something is wrong.
+- **Alarm bar.** Appears only when something is wrong. See [Alarm bar and notices](alarm-bar.md).
 - **Messages bell.** Counts the messages and shows the worst kind. Not shown on the wall screen.
 - **Connection status.** **Online**, **Offline** or **Error** for the whole screen.
 - **Disconnected banner.** A red bar across the top when the screen loses contact with Stagewatch.
