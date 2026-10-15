@@ -82,7 +82,7 @@ eq(gc.view(msg(), { controller: 1, strips: 99 }, 100.1).strips.length, 8, "never
 v = gc.view(msg(), { controller: 2, strips: 8 }, 100.1);
 eq([v.state, v.strips.length], ["waiting", 0], "a controller not in the message waits");
 v = gc.view(msg({ status: "offline", controllers: [] }), { controller: 1, strips: 8 }, 100.1);
-eq([v.state, v.badge], ["offline", "▲ OFFLINE"], "offline with nothing");
+eq([v.state, v.badge, v.note], ["offline", "", ""], "offline with nothing: the card's corner status says it, not the card");
 v = gc.view(null, { controller: 1, strips: 8 }, 1);
 eq(v.state, "waiting", "no message");
 // connected, no levels yet

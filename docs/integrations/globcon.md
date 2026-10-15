@@ -11,7 +11,7 @@ Stagewatch is independent. It is not made, approved or supported by DirectOut. S
 [notices](README.md#notices).
 
 > **Test status.** Controller names and layers have been checked on one real controller (the
-> project owner's). **Live level meters with audio running have not yet been tested.** Please check
+> project owner's). **Live level meters have been checked and work.** Please still check
 > the levels against GLOBCON's own screen before you rely on them.
 
 ## What Stagewatch does
@@ -129,10 +129,9 @@ More: [Troubleshooting](../troubleshooting.md).
 
 ## Tested status
 
-- **Checked on one real controller:** names and layers (the project owner's). **Also checked** against
+- **Checked on one real controller:** names, layers and live level meters (the project owner's). **Also checked** against
   one recording of GLOBCON's own web page talking to a real GLOBCON.
 - **Not yet tested:**
-  - Live level meters with audio running.
   - Whether levels use the same scale on every type of channel. The card draws its bars from -72 dB to
     0 dB, as GLOBCON's own web page does.
   - What GLOBCON does when it is given a wrong password.

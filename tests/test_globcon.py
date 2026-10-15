@@ -813,7 +813,7 @@ async def test_real_client_through_the_integration_and_the_hub(hub):
             assert c["strips"][2]["db"] is None and c["strips"][0]["db"] is not None      # strip 3 sent -250
             await until(lambda: hub.devices["globcon"].status == Status.OK)
             dev = hub.devices["globcon"]
-            assert dev.status == Status.OK and "live level meters not yet tested" in dev.status_detail
+            assert dev.status == Status.OK and "metering scale for different channel types not yet tested" in dev.status_detail
             assert srv.ids(protocol.SUBSCRIBE, "RTValue") == ["/controller/2/meters"]
             assert integ.admin_status()["verified"] is False
             await srv.drop()

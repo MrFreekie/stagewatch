@@ -328,12 +328,12 @@
       if (st.hint && st.status !== "ok") lines.push(st.hint);
       if (st.controllers && st.controllers.length) lines.push(`Controller${st.controllers.length === 1 ? "" : "s"} ${st.controllers.join(", ")} in use`);
     }
-    return card("DirectOut GLOBCON",
+    return SW.brandCard("DirectOut GLOBCON", "directout-badge.png", "DirectOut",
       h("p", { class: "muted" }, "Shows live level meters from GLOBCON on dashboards that have the DirectOut GLOBCON card. Stagewatch only listens: it never moves a fader, mutes, solos, changes a layer or runs a function in GLOBCON. Levels are shown exactly as GLOBCON reports them, nothing is recorded, and if GLOBCON goes quiet the card freezes on the last levels and says how old they are."),
       h("details", {}, h("summary", { class: "muted" }, "What Stagewatch sends to GLOBCON"),
         h("p", { class: "muted" }, "Only \"are you there?\", \"tell me this\" and \"tell me when it changes\" (and \"stop telling me\"), for controller names, strip labels, the layer and the meter levels. If you save a password, it is sent to log in, and only when GLOBCON asks for one. It is sent as plain text on the show network, so use a password you use nowhere else.")),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated GLOBCON with 16 controllers, so no GLOBCON or address is needed. It drops out for a few seconds every minute and a half, to show how a frozen card looks.")
-        : h("p", { class: "notice" }, "Names, layers and labels checked on one real controller (2026-10). Live level meters, the metering scale for different channel types and password login are not yet tested. Please check the levels against GLOBCON's own screen."),
+        : h("p", { class: "notice" }, "Names, layers and labels checked on one real controller (2026-10). Live level meters work. The metering scale for different channel types and password login are not yet tested. Please check the levels against GLOBCON's own screen."),
       admin.emulate ? null : h("div", { class: "row" }, field("GLOBCON computer (127.0.0.1 is this computer)", host), field("Port (9091 unless GLOBCON says otherwise)", port)),
       admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "GLOBCON password: one is saved, type here to replace it" : "GLOBCON password (leave empty if GLOBCON has none)", pw),
         st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
@@ -1112,7 +1112,7 @@
       return api("PUT", "/api/admin/ontime-timer", { show_title: title.checked });
     }, "Ontime saved").then(refresh, () => {});
     const heading = (text) => h("h3", { class: "ontime-sub" }, text);
-    return card("Ontime",
+    return SW.brandCard("Ontime", "ontime-badge.png", "Ontime",
       h("p", { class: "muted" }, "Settings for the three Ontime cards: Wall Clock (when it uses Ontime), Ontime Timer and Ontime Rundown. Stagewatch only listens to Ontime: it never starts, pauses or changes anything in it. Ontime is only contacted while a dashboard has one of these cards."),
       heading("Connection"),
       h("p", { class: "muted" }, "One address serves all three cards. Test it, then click Save."),

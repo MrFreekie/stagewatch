@@ -34,9 +34,10 @@ The channel groups are 1-4, 5-8, 1-8, 9-12, 13-16, 9-16 and 1-16. These are the 
 |---|---|
 | **● LIVE** | Levels are arriving. |
 | **▲ FROZEN** | No new levels for a few seconds, or GLOBCON is not connected. The last levels stay on screen, dimmed grey, with the figures struck through. The note says how long ago they arrived. Nothing is shown as zero and nothing is filled in afterwards. |
-| **▲ OFFLINE** | Stagewatch is not connected to GLOBCON and has no levels to show. |
 | **▲ PASSWORD NEEDED** | GLOBCON wants a password for this controller. Ask your tech to enter it in Admin. |
 | **… WAITING** | The card has not heard from GLOBCON yet. |
+
+When GLOBCON is not connected, the card shows **Offline** in its top-right corner (click it for what to check) and nothing else.
 
 When GLOBCON goes quiet or away, Stagewatch raises a quiet notice in the alarm bar. It never makes a sound. The notice clears when GLOBCON is back. Nothing is recorded: the card is live only, so there is no history and no marker.
 
@@ -50,7 +51,7 @@ Dashboards have no password. Anyone on the show network can see the channel name
 
 ## Tested on real kit
 
-Not tested on a live GLOBCON. The connection was built from GLOBCON's own web page and checked against one recording of that page talking to a real GLOBCON. Please check the levels against GLOBCON's own screen before you rely on them.
+Names, layers and live level meters have been checked on one real GLOBCON. The connection was built from GLOBCON's own web page and checked against one recording of that page talking to a real GLOBCON. Please check the levels against GLOBCON's own screen before you rely on them.
 
 Which scale GLOBCON uses for each type of channel is not known yet, so do not compare a bar with a meter on another device.
 

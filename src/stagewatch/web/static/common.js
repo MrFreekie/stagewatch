@@ -326,6 +326,9 @@ SW.sourceStatusUi = function (source) {
   return ui;
 };
 SW.card = (title, ...body) => SW.h("section", { class: "card" }, SW.h("h2", {}, title), ...body);
+// The same, with the maker's badge at the right of the heading (as on the dashboard cards).
+SW.brandCard = (title, badge, alt, ...body) => SW.h("section", { class: "card" },
+  SW.h("h2", {}, SW.h("span", {}, title), SW.h("span", { class: "grow" }), SW.h("img", { class: "card-logo", src: `/static/${badge}`, alt, width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } })), ...body);
 // A normal link that looks like a button, at least 44 px tall.
 SW.linkButton = function (text, href, primary) {
   return SW.h("a", { href: href, class: "touch",

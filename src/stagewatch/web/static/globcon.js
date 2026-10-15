@@ -75,7 +75,7 @@ SW.gc = (function () {
     const name = (m && m.label) || "GLOBCON";
     const c = gc.pick(m, num);
     if (!m || !c) {
-      if (m && m.status === "offline") { v.state = "offline"; v.cls = "gc-s-offline"; v.badge = "▲ OFFLINE"; v.note = `▲ ${name} is not connected. No levels to show.`; }
+      if (m && m.status === "offline") { v.state = "offline"; v.cls = "gc-s-offline"; v.badge = ""; }
       else v.note = `Waiting for ${name}…`;
       return v;
     }
@@ -110,8 +110,8 @@ SW.gc = (function () {
       return { num: s.num, label: typeof s.label === "string" ? s.label : "", db, text: word || gc.fmtDb(db), isWord: !!word, mute: s.mute === true, pct: gc.pct(db), band, mark: gc.BAND_MARK[band], word: gc.BAND_WORD[band] };
     });
     if (age === null) {
-      v.note = m.status === "offline" ? `▲ ${name} is not connected. No levels to show.` : `Connected to ${name}, waiting for levels…`;
-      if (m.status === "offline") { v.state = "offline"; v.cls = "gc-s-offline"; v.badge = "▲ OFFLINE"; }
+      v.note = m.status === "offline" ? "" : `Connected to ${name}, waiting for levels…`;
+      if (m.status === "offline") { v.state = "offline"; v.cls = "gc-s-offline"; v.badge = ""; }
       return v;
     }
     if (frozen) {
