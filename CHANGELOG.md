@@ -15,6 +15,8 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-15
+
 ### Added
 
 - **Power card and Shelly power meters (first version).** A new **Power** card shows watts, volts, amps, frequency and energy (watt-hours, the meter's running total, shown as Wh or kWh) from **Shelly power meters** on your local network. Add a meter under **Admin → Shelly power meters**: type its address, click **Test** to see its model, firmware and live readings, then **Save meter**. Stagewatch only reads: every few seconds it asks the meter for its readings (and nothing else), and it can never switch a relay, change a setting, restart or reset a meter. Power readings are always **Equipment**, so they never reach a site average, the speed of sound or the barometer, and are recorded exactly as the meter sends them. If a meter stops answering, its last readings stay on the card, dimmed, with their age and the words NO READING (never zero), a quiet notice is raised, and a **meter back** marker is added when it returns; nothing is filled in for the gap. Apparent power and power factor show only when a meter sends them. **Tried on one Shelly PM Mini Gen3 only**; other models are read by what they report but are untested, and a meter with a password is not supported yet. Planned, not built: breaker-rating warnings and meters that push their readings. Works in emulate mode with a simulated meter that drops out for 40 seconds every 5 minutes. **Going back to an older version** ignores the saved meters and forgets them at its next save (nothing else is affected).
@@ -652,6 +654,7 @@ The sections below list every change in detail.
 - Version tracking: build info (version, git commit, schema versions) in the API,
   admin UI and logs; config and database schema versions with migration hooks.
 
-[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/MrFreekie/stagewatch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/MrFreekie/stagewatch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MrFreekie/stagewatch/releases/tag/v0.1.0
