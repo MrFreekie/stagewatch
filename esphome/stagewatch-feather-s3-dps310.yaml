@@ -65,7 +65,9 @@
 # is fine); paste the same key into Stagewatch when adopting. Secrets used: wifi_ssid, wifi_password,
 # ota_password, api_encryption_key, wifi_ap_password.
 #
-# Status: validated with `esphome config`; untested on hardware.
+# Status: validated with `esphome config`. A first try on a real board failed (the I2C bus was held low),
+# but the same file later ran on a real board with nothing changed, so the cause is not known.
+# See docs/nodes/pressure-nodes.md (Test status).
 #
 # Battery gauge chip depends on board revision: MAX17048 (0x36, newer) or
 # LC709203F (0x0B, older); see the sensor section.

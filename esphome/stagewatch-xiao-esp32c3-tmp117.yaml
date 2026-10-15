@@ -20,7 +20,7 @@
 #   board; press the plug straight down, never pull on the lead. A metal amp rack
 #   blocks Wi-Fi: if the WiFi signal reads about -80 dBm or worse, or the node keeps
 #   dropping, route an external antenna outside the rack or use a wired node; see
-#   "Built-in or external antenna?" in docs/pressure-nodes.md. Unlike the C6, the C3
+#   "Built-in or external antenna?" in docs/nodes/pressure-nodes.md. Unlike the C6, the C3
 #   has no antenna-select switch: nothing to enable in this file. Source:
 #   https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/
 #

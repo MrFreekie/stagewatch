@@ -314,8 +314,8 @@ bash /opt/stagewatch/deploy/pi/reset-admin-pin.sh
 
 3. Wait 30 seconds. **Straight away**, open `http://localhost:8080/admin` and set a new PIN.
 
-> The Pi steps have not been reported as tested on real Raspberry Pi hardware. The script
-> itself says so.
+> The install this script belongs to is tested on a Raspberry Pi 4. This reset script itself has not
+> yet been reported as tested on a Pi.
 
 ### Reset by hand (advanced)
 

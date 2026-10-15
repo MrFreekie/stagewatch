@@ -18,6 +18,11 @@ This is the one table of integrations. Other pages link here rather than repeati
 | Ontime | Carlos Valente (open source) | Time of day, countdown, rundown position and ahead or behind | Yes | Wall Clock, Ontime Timer, Ontime Rundown | Rolling state tested on real Ontime 4.14.0. The rest is not yet tested | [Ontime](ontime.md) |
 | OSC output | Not applicable | Nothing. It sends the site average and alarm state out | Not applicable (send only) | Not applicable | Messages built and tested. Not yet tested with a real receiver | [OSC output](osc-output.md) |
 
+In **Admin → Integrations**, a small tag under each name says how it gets its data: **Local, live push**
+(the device sends changes as they happen, on your network), **Local, checks every few seconds** (Stagewatch
+asks, as it does for Shelly) or, shown as a warning, **Uses the internet**. No tag means Stagewatch has
+nothing to say about it, as for OSC output.
+
 "Not yet tested" means built and checked with simulated data only. Check Stagewatch against the
 product's own screen before you rely on it.
 
