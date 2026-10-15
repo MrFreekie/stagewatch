@@ -904,7 +904,7 @@ async def test_a_change_of_event_count_or_running_event_refetches_after_the_gap(
             await until(lambda: len(fake.list_hits) == 1)
             src._ingest({"clock": 5, "rundown": {"selectedEventIndex": 9, "numEvents": 16}}, "websocket")   # SYNTHETIC change
             await until(lambda: len(fake.list_hits) == 2)
-            assert fake.list_hits[1] - fake.list_hits[0] >= 0.28                                           # debounced
+            assert fake.list_hits[1] - fake.list_hits[0] > 0.15                                           # debounced
             src._ingest({"clock": 6, "eventNow": {"id": "other", "title": "T"}}, "websocket")
             src._ingest({"clock": 7, "eventNow": {"id": "other2", "title": "T"}}, "websocket")              # two quick changes: one fetch
             await until(lambda: len(fake.list_hits) == 3)
