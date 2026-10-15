@@ -113,6 +113,8 @@ def test_apply_writes_history_marker_and_live_value(client):
     {"format": 1, "calibrations": {"../etc/passwd": {}}},
     {"format": 1, "calibrations": {KEY: {"offset": "x"}}},
     {"format": 1, "calibrations": {KEY: {"offset": 1e999}}},
+    {"format": 1, "calibrations": {KEY: {"offset": 1e308}}},
+    {"format": 1, "calibrations": {KEY: {"offset": 0, "accuracy": 5000}}},
 ])
 def test_bad_files_are_refused_without_echo(client, data):
     _save_offset(client, 0.5)

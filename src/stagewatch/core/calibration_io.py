@@ -58,11 +58,13 @@ class ImportPlan:
 
 
 def plan_import(config: Config, data: Any, known_nodes: set[str],
-                refuse: Callable[[str], bool] = lambda key: False) -> ImportPlan:
+                refuse: Callable[[str], bool] = lambda key: False,
+                acceptable: Callable[[str, Calibration], bool] = lambda key, cal: True) -> ImportPlan:
     """Check a file and work out what importing it would do. Changes nothing.
 
     ``known_nodes``: node keys (``mac:…`` / ``dev:…``) of boards the hub knows. ``refuse(key)`` is
-    true for a sensor that is recorded exactly as received (sound levels, power meters)."""
+    true for a sensor that is recorded exactly as received (sound levels, power meters).
+    ``acceptable(key, record)`` is false for a record outside the limits the normal save enforces."""
     if not isinstance(data, dict) or not isinstance(data.get("calibrations"), dict):
         raise ImportError_(BAD_FILE)
     if data.get("format") != FORMAT:
@@ -78,6 +80,8 @@ def plan_import(config: Config, data: Any, known_nodes: set[str],
             incoming = Calibration.model_validate(items[key])
         except ValidationError:
             raise ImportError_(BAD_RECORD) from None
+        if not acceptable(key, incoming):
+            raise ImportError_(BAD_RECORD)
         if refuse(key):
             plan.refused.append(key)
             continue

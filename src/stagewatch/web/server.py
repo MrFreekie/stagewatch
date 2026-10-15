@@ -69,10 +69,14 @@ DEFAULT_BODY_OVERRIDES: dict[str, int] = {
     # case must reach validation (422), not be cut off as too large (413).
     "/api/admin/schedule": 640 * 1024,
     "/api/admin/schedule/import": 256 * 1024,  # 64 KB of text, JSON-escaped
-    # Calibration import (plan §1.9): up to 500 records with 20 history entries each, read by the
-    # browser's FileReader and sent as JSON.
+    # Calibration import (plan §1.9): read by the browser's FileReader and sent as JSON without
+    # the file's history (the page strips it), so 500 records fit well inside this.
     "/api/admin/calibrations/import": 1024 * 1024,
 }
+
+
+# Largest offset an import accepts, in canonical units (degC, %RH, Pa); "" = sensor not live now.
+OFFSET_MAX = {"temperature": 50.0, "humidity": 50.0, "pressure": 20000.0, "": 20000.0}
 
 
 # ---------------------------------------------------------------- payloads
@@ -1326,8 +1330,19 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         def refuse(key: str) -> bool:
             e = by_key.get(key)
             return e is not None and (e.kind == Kind.SOUND_LEVEL or e.locked_equipment)
+        def acceptable(key: str, cal) -> bool:
+            # The limits the normal save enforces: a sane offset, accuracy only where it is allowed.
+            e = by_key.get(key)
+            kind = e.kind.value if e is not None else ""
+            if abs(cal.offset) > OFFSET_MAX.get(kind, OFFSET_MAX[""]):
+                return False
+            if cal.accuracy is not None and e is not None:
+                lo, hi = ACCURACY_MIN.get(kind), ACCURACY_MAX.get(kind)
+                if lo is None or hi is None or not lo <= cal.accuracy <= hi:
+                    return False
+            return True
         try:
-            plan = calibration_io.plan_import(hub.config, body.data, nodes, refuse)
+            plan = calibration_io.plan_import(hub.config, body.data, nodes, refuse, acceptable)
         except calibration_io.ImportError_ as exc:
             raise HTTPException(422, str(exc)) from None
         result = {"dry_run": body.dry_run, **plan.summary()}
