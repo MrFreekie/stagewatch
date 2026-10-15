@@ -581,7 +581,7 @@
   const resolveBlock = (d, conflict) => {
     if (!conflict) return null;
     const send = (action, ask) => (!ask || confirm(ask)) && run(() => api("POST", `/api/admin/esphome/${encodeURIComponent(d.id)}/resolve`, { action }), "Node settled").then(refresh, () => {});
-    const btn = (text, action, ask) => h("button", { class: "small", onclick: () => send(action, ask) }, text);
+    const btn = (text, action, ask) => h("button", { class: "small", style: "min-height:44px", onclick: () => send(action, ask) }, text);
     const why = {
       different: "A different board is answering at this address. Its readings are ignored until you choose.",
       known_board: "This board already has calibration saved from before. Its readings are ignored until you choose.",
@@ -613,7 +613,7 @@
     const diffBox = h("div", { role: "status" });
     const offsetOf = (e, o) => (SW.OFFSET_KINDS.indexOf(e.kind) >= 0 ? SW.fmtCalOffset(e.kind, o) : `${SW.signed(o, 1)} ${e.unit}`.trim());
 
-    const exportBtn = h("button", { class: "small", onclick: async () => {
+    const exportBtn = h("button", { class: "small", style: "min-height:44px", onclick: async () => {
       try {
         const res = await fetch("/api/admin/calibrations/export", { credentials: "same-origin", cache: "no-store" });
         if (!res.ok) throw new Error("Could not make the file");
@@ -628,21 +628,22 @@
     const sensorWord = (key) => {
       const id = Object.keys(hw.entities).find((i) => hw.entities[i] === key);
       const ent = id && snap.entities.find((x) => x.id === id);
-      return ent ? ent.name : `${macText(key.split("/")[0])} ${key.split("/")[1]}`;
+      const dev = ent && snap.devices.find((x) => x.id === ent.device_id);
+      return ent ? (dev ? `${dev.name}: ${ent.name}` : ent.name) :`${macText(key.split("/")[0])} ${key.split("/")[1]}`;
     };
     const showDiff = (data, r) => {
       const n = r.added.length + r.changed.length;
       const changed = r.changed.map((c) => h("li", {}, `${sensorWord(c.key)}: ` + Object.entries(c.fields).map(([f, v]) => `${fieldWord[f] || f} ${showVal(v.from)} → ${showVal(v.to)}`).join(", ")));
       diffBox.replaceChildren(h("div", { class: "notice" },
         h("p", {}, n ? `Nothing has been changed yet. Applying this file would add ${r.added.length} and change ${r.changed.length}; ${r.unchanged.length} already match.` : "Nothing to apply: every sensor in this file already matches."),
-        list("New", r.added.map((k) => h("li", {}, sensorWord(k)))),
+        list("New", r.added.map((k) => { const o = data.calibrations && data.calibrations[k] && data.calibrations[k].offset; return h("li", {}, sensorWord(k) + (typeof o === "number" ? `: offset ${showVal(o)}` : "")); })),
         list("Changed", changed),
         list("For a board this hub does not know (it applies if that board is added later)", r.unknown_hardware.map((k) => h("li", {}, sensorWord(k)))),
         list("Skipped (recorded exactly as received, never adjusted)", r.refused.map((k) => h("li", {}, sensorWord(k)))),
         h("div", { class: "row" },
-          n ? h("button", { class: "primary small", onclick: () => run(() => api("POST", "/api/admin/calibrations/import", { data, dry_run: false }), "Calibration imported")
+          n ? h("button", { class: "primary small", style: "min-height:44px", onclick: () => run(() => api("POST", "/api/admin/calibrations/import", { data, dry_run: false }), "Calibration imported")
             .then(() => { diffBox.replaceChildren(); return refresh(); }, () => {}) }, "Apply to this hub") : null,
-          h("button", { class: "small", onclick: () => diffBox.replaceChildren() }, n ? "Cancel" : "Close"))));
+          h("button", { class: "small", style: "min-height:44px", onclick: () => diffBox.replaceChildren() }, n ? "Cancel" : "Close"))));
     };
     const fileInput = h("input", { type: "file", accept: "application/json,.json", "aria-label": "Calibration file to read", onchange: () => {
       const f = fileInput.files[0]; fileInput.value = "";
@@ -651,7 +652,7 @@
       const rd = new FileReader();
       rd.onload = () => {
         let data;
-        try { data = JSON.parse(String(rd.result)); } catch (_) { toast("That is not a Stagewatch calibration file. Nothing has been changed.", true); return; }
+        try { data = JSON.parse(String(rd.result)); if (data && typeof data.calibrations === "object" && data.calibrations) Object.values(data.calibrations).forEach((c) => { if (c && typeof c === "object") delete c.history; }); } catch (_) { toast("That is not a Stagewatch calibration file. Nothing has been changed.", true); return; }
         run(() => api("POST", "/api/admin/calibrations/import", { data, dry_run: true })).then((r) => showDiff(data, r), () => {});
       };
       rd.onerror = () => toast("Could not read that file. Nothing has been changed.", true);
@@ -664,22 +665,24 @@
       return h("div", {}, h("strong", {}, d.name), resolveBlock(d, hw.devices[id].conflict));
     });
 
+    const meterIds = new Set(snap.devices.filter((d) => d.category === "meter").map((d) => d.id));
     const ids = Object.keys(hw.entities).sort((a, b) => hw.entities[a].localeCompare(hw.entities[b]) || a.localeCompare(b));
     const rows = ids.map((id) => {
       const e = snap.entities.find((x) => x.id === id);
-      if (!e) return null;
+      if (!e || meterIds.has(e.device_id)) return null;   // power meter readings are never adjusted
+      const dev = snap.devices.find((x) => x.id === e.device_id);
       const hist = (hw.calibrations && hw.calibrations[id]) || [];
       const last = hist[0];
       const s = hw.settings[id] || { offset: 0 };
-      const ref = h("input", { maxlength: "120", placeholder: "Checked against (optional)", "aria-label": `${e.name} checked against` });
-      const note = h("input", { maxlength: "200", placeholder: "Note", "aria-label": `${e.name} note` });
-      const add = h("button", { class: "small", "aria-label": `Add note to ${e.name}`, disabled: !last, title: last ? "" : "Save an offset first",
+      const ref = h("input", { maxlength: "120", style: "min-height:44px", placeholder: "Checked against (optional)", "aria-label": `${e.name} checked against` });
+      const note = h("input", { maxlength: "200", style: "min-height:44px", placeholder: "Note", "aria-label": `${e.name} note` });
+      const add = h("button", { class: "small", style: "min-height:44px", "aria-label": `Add note to ${e.name}`, disabled: !last, title: last ? "" : "Save an offset first",
         onclick: () => run(() => api("POST", `/api/admin/calibrations/${encodeURIComponent(id)}/note`, { reference: ref.value.trim(), note: note.value.trim() }), "Note saved").then(refresh, () => {}) }, "Add note");
       const histEl = hist.length ? h("details", {}, h("summary", {}, `History (${hist.length})`),
         h("ul", {}, hist.map((x) => h("li", {}, `${isoDate(x.date)}: offset ${offsetOf(e, x.offset)}, ${methodWord[x.method] || x.method}`
           + (x.reference ? ` (${x.reference})` : "") + (x.note ? ` – ${x.note}` : ""))))) : null;
       return h("tr", {},
-        h("td", {}, e.name, h("div", { class: "muted", style: "font-size:12px" }, macText(hw.entities[id].split("/")[0]))),
+        h("td", {}, e.name, h("div", { class: "muted", style: "font-size:12px" }, (dev ? `${dev.name} · ` : "") + macText(hw.entities[id].split("/")[0]))),
         h("td", {}, offsetOf(e, Number(s.offset) || 0)),
         h("td", {}, last ? h("span", { title: isoDate(last.date) }, ageText(last.date)) : h("span", { class: "muted" }, "Never saved"),
           last ? h("div", { class: "muted", style: "font-size:12px" }, methodWord[last.method] || last.method) : null),
