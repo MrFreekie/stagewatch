@@ -32,6 +32,7 @@ A live value shows no time, because live is the normal case.
 - The buttons **15m**, **1h** and **Show** choose how far back to look. **Show** means since the show started. Your choice is remembered on that screen.
 - Each value has its own line style, solid, dashed or dotted, so you can tell them apart without colour. The legend names the style. In the light theme the lines use darker colours.
 - **A gap in the line means no readings** for that time. Nothing is filled in. When readings come back after a gap, one marker is added, such as "Sound level readings resumed after a gap".
+- **Schedule markers appear on the chart too.** Doors, soundchecks and acts going on and off stage (as set on the Schedule) show as markers, so you can see the level against the plan. They are the same markers as on the history chart, and appear only as the times pass live.
 - On a long view the graph shows the last reading in each interval, and the note under the graph says so. Nothing is averaged.
 - The up and down scale is set by your tech. Automatic fits the readings in steps of 5 dB, and is never narrower than 20 dB. Custom uses a fixed range. On a custom graph a reading outside the range is drawn at the edge with a small triangle and a note under the graph, never hidden. The numbers in the boxes are never affected.
 

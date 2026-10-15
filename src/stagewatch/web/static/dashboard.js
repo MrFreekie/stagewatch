@@ -1111,7 +1111,7 @@
       label: SW.spl.label(e), color: css(`--spl-${(i % 3) + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3],
       points: state.splHistory[e.id] || [],
     }));
-    splChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "spl").map((m) => ({ ...m, selected: false }));
+    splChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "spl" || m.source === "schedule").map((m) => ({ ...m, selected: false }));
     splChart.range = [now - span, now];
     // The vertical range comes from the Smaart device's public settings: automatic (fits the readings,
     // tidy values, steady) or custom (exactly min..max; readings outside are drawn at the edge, marked).
