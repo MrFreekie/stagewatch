@@ -21,7 +21,7 @@
 #   board; press the plug straight down, never pull on the lead. If the WiFi signal
 #   reads about -80 dBm or worse, or the node keeps dropping, move it, keep it
 #   clear of metal racks and cases, or fit a larger antenna: see "Built-in or
-#   external antenna?" in docs/pressure-nodes.md. Unlike the C6, the C3 has no
+#   external antenna?" in docs/nodes/pressure-nodes.md. Unlike the C6, the C3 has no
 #   antenna-select switch: nothing to enable in this file. Source:
 #   https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/
 #

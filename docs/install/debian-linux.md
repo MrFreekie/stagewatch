@@ -61,12 +61,12 @@ options (`--ref`, `--channel`, `--port`, `--source-url`) are in the table in the
 **What you should see near the end:**
 
 ```text
-Service enabled (tested on a Debian VM, UNTESTED ON RASPBERRY PI HARDWARE): sudo systemctl status stagewatch
+Service enabled (tested on a Raspberry Pi 4 (4 GB), owner report 2026-10; not tested on Pi 5 or with the kiosk): sudo systemctl status stagewatch
 Code: /opt/stagewatch (...)   Data: /var/lib/stagewatch (0700, user stagewatch)
 Done. Open http://YOUR-PC-NAME.local:8080 from a tablet on the same network.
 ```
 
-The "UNTESTED ON RASPBERRY PI HARDWARE" wording is about the Pi. It does not matter on a PC.
+The text in brackets is about the Raspberry Pi. It does not matter on a PC.
 
 The program goes in `/opt/stagewatch`. Your data goes in `/var/lib/stagewatch`, which only
 `sudo` can read. More in [Where your data lives](../updating-and-backups.md#where-your-data-lives).

@@ -41,5 +41,3 @@ Forgotten the PIN? See [Updating and backups](../updating-and-backups.md).
 | **Integrations** | A list of what Stagewatch can connect to | [Integrations](../integrations/README.md) |
 
 Admin only changes Stagewatch's own settings. It never controls rigging, power or safety kit.
-
-> **Being written.** Some linked pages are placeholders until the guides are finished.

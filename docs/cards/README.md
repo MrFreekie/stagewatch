@@ -22,7 +22,7 @@ This page is the one list of every card. Each card has its own page.
 | [Barometer](barometer.md) | Sea-level pressure dial, 3-hour tendency and a rough outlook | No | No | A pressure sensor |
 | [Equipment](equipment.md) | Readings from Equipment-role sensors, such as amp racks. Hidden while there are none | No | No | An Equipment sensor |
 | [Sound level](sound-level.md) | Up to three sound level values from Smaart, and their timeline. Hidden until set up | No | No | [Smaart](../integrations/smaart.md) |
-| [DirectOut GLOBCON](globcon.md) | Level meters for 4 or 8 channels of one controller. Hidden until GLOBCON has answered | No | Yes | [DirectOut GLOBCON](../integrations/globcon.md) |
+| [DirectOut GLOBCON](globcon.md) | Level meters for 4, 8 or 16 channels of one controller. Hidden until GLOBCON has answered | No | Yes | [DirectOut GLOBCON](../integrations/globcon.md) |
 | [Power](power.md) | Watts, volts, amps and energy from power meters. Hidden until a meter is added | No | Yes | [Shelly](../integrations/shelly.md) |
 
 "On by default" is what a new dashboard of that layout starts with. A dashboard from an earlier
@@ -37,13 +37,13 @@ These are on every dashboard and are not cards.
 - **Connection status.** **Online**, **Offline** or **Error** for the whole screen.
 - **Disconnected banner.** A red bar across the top when the screen loses contact with Stagewatch.
   The numbers turn grey so nobody trusts old readings. It clears by itself.
-- **Alarm sound button.**
+- **Alarm sound button.** Tap it once at soundcheck so the tablet is allowed to beep.
 
 Cards that read from other software (Ontime, Smaart, GLOBCON) also show their own small
 **Online**, **Offline** or **Error** beside their logo.
 
-> **Being written.** The full explanation of the header, the messages bell and the status marks
-> will be added here. Until then see [Using Stagewatch on show day](../using-stagewatch.md).
+The full explanation of the header, the messages bell, the status marks, the disconnected banner and
+the alarm sound button is on [The dashboard header](sensors.md#the-dashboard-header).
 
 ## Choose the cards on a dashboard
 

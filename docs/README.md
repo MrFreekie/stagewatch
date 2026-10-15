@@ -53,13 +53,11 @@ You do not need to know how to code. Every guide tells you what you should see a
 7. [Troubleshooting](troubleshooting.md). Find your symptom, get the fix.
 8. [Glossary](glossary.md). Plain meanings of the odd words.
 
-> **Being written.** Some of these guides are placeholders for now. Until they are filled in, the
-> older [Using Stagewatch on show day](using-stagewatch.md) guide still covers the dashboards and Admin.
-
 ## Honest notes
 
-- The managed install is **tested on Windows 11 and Windows 10 (virtual machines), and on
-  Debian 13.7 (virtual machine). It is not yet tested on Raspberry Pi hardware.** Try it at
+- The managed install is **tested on Windows 11 and Windows 10 (virtual machines), on
+  Debian 13.7 (virtual machine) and on a Raspberry Pi 4 (4 GB), by the project owner in
+  October 2026. It is not tested on a Raspberry Pi 5, or with the Pi kiosk.** Try it at
   home first. Do not meet it for the first time at a festival.
 - Which integrations have been tried on real kit is in one table: [Integrations at a glance](integrations/README.md#at-a-glance).
 - Updates take a backup first and can be rolled back. See [Updating and backups](updating-and-backups.md).

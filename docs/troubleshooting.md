@@ -4,7 +4,7 @@ Find what you see in the left column, then try the fix on the right. Work down e
 list in order.
 
 > Stagewatch is an advisory tool. If it stops working, carry on with your event's normal
-> monitoring. See the [main README](../README.md#stagewatch).
+> monitoring. See the [Notices](integrations/README.md#notices).
 
 Jump to: [Install problems](#install-problems) |
 [Cannot open the page](#cannot-open-the-page) |
@@ -17,17 +17,13 @@ Jump to: [Install problems](#install-problems) |
 
 ## Install problems
 
-| What you see | Try this |
-|---|---|
-| `Run this from an elevated (Administrator) PowerShell.` | Close PowerShell. Start, type `powershell`, right-click **Windows PowerShell**, **Run as administrator**. |
-| `git.exe not found at C:\Program Files\Git\...` | Install Git for Windows with the default settings ([Windows guide, Step 1](install-windows.md#step-1-install-git)). |
-| `uv not found on PATH` / `uv is not recognized` | Install uv, then close PowerShell and open a **new Administrator** PowerShell ([Step 3](install-windows.md#step-3-install-uv)). |
-| `...public and reachable from this machine?` | No internet, or GitHub is blocked. Open <https://github.com/MrFreekie/stagewatch> in a browser on that computer. |
-| You installed from `main` before v0.2.0 was released | You have a pre-release build. Open **Admin → Software**. If **Channel** says **Nightly**, change it to **Stable**, then tap **Check for updates**. |
-| `No release tag ... Pass -Ref <tag-or-sha>` | The installer could not find a release. Check the computer can reach GitHub and run it again. If it still fails, add `-Ref v0.2.0` (Windows) or `--ref v0.2.0` (Pi) to the end of the command. |
-| `C:\Stagewatch already exists and is not owned by...` | Something else made that folder. Delete it if it holds nothing you need, then run the installer again. |
-| Pi: `uv not found`, `git not found`, `no release tag found` | See the table at the bottom of the [Pi guide](install-raspberry-pi.md#if-it-doesnt-work). |
-| Antivirus or SmartScreen warns | Only continue with files from the links in the guide. If it keeps blocking, pause the antivirus while installing, then turn it back on. |
+Each install guide ends with an **If it doesn't work** table for its own error messages:
+
+- [Windows](install/windows.md#if-it-doesnt-work): Administrator PowerShell, Git, uv, release not found, SmartScreen.
+- [Raspberry Pi](install/raspberry-pi.md#if-it-doesnt-work): uv, Git, release not found, kiosk.
+- [Debian Linux](install/debian-linux.md#if-it-didnt-work): the same installer as the Pi, without the kiosk.
+
+If **Admin → Software** shows **Nightly** and you want **Stable**, see [Updating and backups](updating-and-backups.md#stable-or-nightly-use-stable).
 
 ---
 
@@ -93,10 +89,10 @@ Get-NetConnectionProfile
 
    If **NetworkCategory** says **Public**, change it in **Settings** > **Network & internet**
    > your connection > **Network profile type** > **Private network**
-   ([Windows guide, Step 6](install-windows.md#step-6-set-the-network-to-private)).
+   ([Windows guide, Step 6](install/windows.md#step-6-set-the-network-to-private)).
    **More than one network card?** Each network has its own setting: check the line for the
    network the tablet is on. If it says **Unidentified network** and Settings won't change it, see
-   [PCs with more than one network](install-windows.md#pcs-with-more-than-one-network).
+   [PCs with more than one network](install/windows.md#pcs-with-more-than-one-network).
 5. **Windows only: is the firewall rule there?** Paste:
 
 ```powershell
@@ -129,9 +125,9 @@ Get-NetFirewallRule -DisplayName "Stagewatch*" | Select-Object DisplayName, Enab
 | The dashboard address just bounces back to the home page | There is no dashboard with that name. Use the tiles on the home page. |
 | The page only says **This browser is too old for Stagewatch** | That device's browser is too old. Dashboards need an iPad or iPhone on iOS 12 or later, or a recent Chrome, Edge, Firefox or Safari. The admin page needs iOS 13 or later. Use another device, or update this one. |
 | An **EMULATE MODE** banner at the top | This is a demo with fake sensors, not the real install. |
-| Times are wrong | The times come from the Stagewatch computer. On a Raspberry Pi with no internet, its clock may be out ([Pi guide](install-raspberry-pi.md#the-pi-has-no-clock-battery)). |
+| Times are wrong | The times come from the Stagewatch computer. On a Raspberry Pi with no internet, its clock may be out ([Pi guide](install/raspberry-pi.md#the-pi-has-no-clock-battery)). |
 | Temperature or speed of sound looks silly | Check each sensor in the **Sensors** card. One sensor in the sun or by a lamp can be wrong. Untick **Average** for it in Admin, or move it. |
-| The **Barometer** says **No pressure sensor** | No pressure sensor is reporting. Add a node with a BME280 (see the [first sensor node guide](first-sensor-node.md)) and check it shows in the **Sensors** card. |
+| The **Barometer** says **No pressure sensor** | No pressure sensor is reporting. Add a node with a BME280 (see [Build a sensor node](nodes/README.md)) and check it shows in the **Sensors** card. |
 | The **Barometer** says **Collecting** or **Pressure gap** | It needs 3 hours of unbroken readings for the 3-hour change and the hint. A gap of more than 3 minutes (a sensor or Stagewatch stopped) starts the wait again. It does not guess what it missed. The card says when it will be ready. |
 | The **Barometer** reads a few hPa away from the Met Office figure | Check the **Altitude** in **Admin → Site**, or use **Set altitude from today's sea-level pressure…** there. The card uses the measured temperature, so a hPa or so of difference from an airport figure is normal. |
 
@@ -139,7 +135,7 @@ Get-NetFirewallRule -DisplayName "Stagewatch*" | Select-Object DisplayName, Enab
 
 ## Sensor node problems
 
-See also the table at the end of the [sensor node guide](first-sensor-node.md#if-it-doesnt-work).
+See also the table at the end of [Build a sensor node](nodes/README.md#if-it-didnt-work).
 
 | What you see | Try this |
 |---|---|
@@ -169,7 +165,7 @@ See also the table at the end of the [sensor node guide](first-sensor-node.md#if
 
 | What you see | Try this |
 |---|---|
-| Software card: "In-app updates are only available on a managed install" | This copy was not installed with the installer. Use the [install guide](README.md). |
+| Software card: "In-app updates are only available on a managed install" | This copy was not installed with the installer. Install it with the [Windows](install/windows.md), [Raspberry Pi](install/raspberry-pi.md) or [Debian Linux](install/debian-linux.md) guide. |
 | "Update source not reachable (repository is private or offline)" | The PC has no internet, or cannot reach GitHub. On a Raspberry Pi or Linux PC that has moved to a different network, also check it can look up web addresses: `ping github.com`. |
 | Update history says **refused (unsafe_permissions)** | Stagewatch will not update a program folder that someone other than its owner could change. On a Raspberry Pi or Linux PC, run the installer again from your Stagewatch folder (`bash deploy/pi/install.sh`, plus `--kiosk` if you use it). It fixes the folder permissions and keeps your data. Then tap **Check for updates** again. On Windows, run the installer again too. |
 | Page stuck on "Stagewatch is restarting for an update" | Wait 2 minutes, reload, then see [Updating and backups](updating-and-backups.md#what-to-do-if-an-update-goes-wrong). |
@@ -251,4 +247,4 @@ Logs can include your node names and network addresses. Look through them first.
 ### A sensor node's log
 
 Use **Logs** on the node's card in ESPHome Device Builder, or run `esphome logs` with the
-node's file (see the [sensor node guide](first-sensor-node.md)).
+node's file (see [Build a sensor node, Step 6](nodes/README.md#step-6-check-the-boot-log)).

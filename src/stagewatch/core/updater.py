@@ -275,7 +275,7 @@ def run_check(ctx: uc.GitContext, marker: uc.Marker, channel: str) -> dict:
             raise UpdaterError("unreachable", e.detail) from e
         tag = _moved_tag(ctx)
         log.error("Update fetch rejected%s: a release tag may have been re-created upstream. "
-                  "See README > Updating for recovery. git said: %s", f" (tag {tag})" if tag else "", e.detail)
+                  "See docs/updating-and-backups.md (A release tag was changed) for recovery. git said: %s", f" (tag {tag})" if tag else "", e.detail)
         err = UpdaterError("fetch_rejected", e.detail)
         err.tag = tag
         raise err from e
@@ -554,7 +554,7 @@ class Updater:
                 message = message_for(e.category)
                 tag = getattr(e, "tag", None)
                 if e.category == "fetch_rejected" and tag:  # strict vX.Y.Z only: safe to show
-                    message += f" Changed tag: {tag}. An administrator must review it (see README, Updating)."
+                    message += f" Changed tag: {tag}. An administrator must review it (see Updating and backups in the guides: A release tag was changed)."
                 result = {**base, "ok": False, "category": e.category, "message": message,
                           "available": False}
             except Exception:  # never crash the hub

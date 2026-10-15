@@ -11,8 +11,9 @@ frozen and marked with their age.
 
 The source runs only while some dashboard has the GLOBCON levels card.
 
-STATUS: UNVERIFIED on a real GLOBCON. Written from GLOBCON's own web app and checked against one real
-capture of it; never run against a live GLOBCON by Stagewatch. Use ``--emulate`` to see the card.
+STATUS: written from GLOBCON's own web app and checked against one real capture of it. Names, layers and
+labels checked on one real controller (2026-10); live level meters, the metering scale for different
+channel types and password login not yet tested. Use ``--emulate`` to see the card.
 """
 
 from __future__ import annotations

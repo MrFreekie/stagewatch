@@ -10,8 +10,7 @@ Do this **at home or in the office**, with internet. Not at the venue.
 > **Raspberry Pi 4 (4 GB)** worked, and so did a reboot afterwards (October 2026).
 > The same installer is also tested in a **Debian 13.7 virtual machine**.
 > **Not yet reported as tested:** a Raspberry Pi 5, the full-screen kiosk, in-app updates on a Pi,
-> and a power cut. The installer's own closing message still says "UNTESTED ON RASPBERRY PI
-> HARDWARE"; it has not been reworded yet.
+> and a power cut.
 > Try it at home before you rely on it at a show.
 > Stagewatch is an advisory tool with no warranty. See the [Notices](../integrations/README.md#notices).
 
@@ -159,15 +158,14 @@ What the options mean:
 
 ```text
 Latest release tag: vX.Y.Z
-Service enabled (tested on a Debian VM, UNTESTED ON RASPBERRY PI HARDWARE): sudo systemctl status stagewatch
+Service enabled (tested on a Raspberry Pi 4 (4 GB), owner report 2026-10; not tested on Pi 5 or with the kiosk): sudo systemctl status stagewatch
 Code: /opt/stagewatch (...)   Data: /var/lib/stagewatch (0700, user stagewatch)
 Kiosk enabled: the 'wall' dashboard opens full screen after login.
 Enable desktop auto-login in raspi-config (System Options > Boot / Auto Login).
 Done. Open http://YOUR-PI-NAME.local:8080 from a tablet on the same network.
 ```
 
-The "UNTESTED ON RASPBERRY PI HARDWARE" wording is the project being honest. See the note at the top
-for what has been tried since.
+The text in brackets says what has been tested. It matches the note at the top of this page.
 
 What the installer did, in plain words:
 
