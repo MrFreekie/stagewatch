@@ -201,6 +201,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .alarm-bar li.silent { font-weight: 400; }
 .alarm-bar.notice li { color: var(--text); }
 .alarm-bar.sounding { animation: pulse 1s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .alarm-bar.sounding { animation: none; } }
 @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.35); } }
 .alarm-bar ul { margin: 0; padding: 0; list-style: none; flex: 1; }
 .alarm-bar li { font-weight: 600; }
