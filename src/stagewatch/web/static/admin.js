@@ -537,6 +537,26 @@
       return h("div", {}, h("div", { style: "font-variant-numeric:tabular-nums" }, w.address || "Not connected"),
         w.host && w.host !== w.address ? h("div", { class: "muted", style: "font-size:12px" }, w.host) : null);
     };
+    // A node held by the hardware check says why, in plain words, and offers the ways out. Admin only.
+    const resolveBlock = (d, conflict) => {
+      if (!conflict) return null;
+      const send = (action, ask) => (!ask || confirm(ask)) && run(() => api("POST", `/api/admin/esphome/${encodeURIComponent(d.id)}/resolve`, { action }), "Node settled").then(refresh, () => {});
+      const btn = (text, action, ask) => h("button", { class: "small", onclick: () => send(action, ask) }, text);
+      const why = {
+        different: "A different board is answering at this address. Its readings are ignored until you choose.",
+        known_board: "This board already has calibration saved from before. Its readings are ignored until you choose.",
+        unreadable: "The board did not give its hardware address, so it cannot be checked. Its readings are ignored until you choose.",
+        duplicate: `This is the same board as ${conflict.other || "another node"}. Remove one of the two nodes.`,
+      }[conflict.reason] || "Held by the hardware check. Its readings are ignored.";
+      const buttons = conflict.reason === "different" ? [
+        btn("New board, start fresh", "new_hardware", `Treat this as a new board with no calibration? ${d.name} keeps no offsets.`),
+        btn("New board, keep calibration", "move_calibration")]
+        : conflict.reason === "known_board" ? [
+          btn("Use the saved calibration", "move_calibration"),
+          btn("Start fresh", "new_hardware", "Start fresh? The calibration saved for this board is deleted.")]
+        : conflict.reason === "unreadable" ? [btn("Accept this board", "forget_mac")] : [];
+      return h("div", { class: "notice", style: "margin-top:6px" }, h("div", {}, why), buttons.length ? h("div", { class: "row", style: "margin-top:6px" }, ...buttons) : null);
+    };
     const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter");   // services (Ontime) are listed under Integrations; power meters under Shelly power meters
     const devTable = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Role"), h("th", {}, "Sleeps between readings"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
@@ -556,7 +576,7 @@
           h("td", {}, role),
           h("td", {}, h("div", { class: "row" }, sleep, h("span", { class: "muted" }, "min")),
             h("div", { class: "muted", style: "font-size:12px" }, "Counted as stale after 2.5 times this")),
-          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null),
+          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null, resolveBlock(d, hwd && hwd.conflict)),
           h("td", {}, nodeAddress(admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id])),
           h("td", {}, d.model),
           h("td", {}, h("div", { class: "row" },

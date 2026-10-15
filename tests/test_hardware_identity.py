@@ -831,3 +831,13 @@ async def test_node_addresses_are_admin_only_and_show_the_connected_ip(tmp_path)
     assert esp.node_addresses() == {"foh": {"host": "stagewatch-foh.local", "address": "192.0.2.77"}}
     assert "192.0.2.77" not in repr(hub.snapshot())
     hub.recorder.close()
+
+
+def test_admin_offers_the_ways_out_of_a_hardware_fault():
+    """The node list explains a held node and posts to the resolve endpoint (WP10a had no screen for it)."""
+    from pathlib import Path
+    js = (Path(__file__).resolve().parents[1] / "src" / "stagewatch" / "web" / "static" / "admin.js").read_text(encoding="utf-8")
+    assert "/api/admin/esphome/${encodeURIComponent(d.id)}/resolve" in js
+    for action in ("new_hardware", "move_calibration", "forget_mac"):
+        assert f'"{action}"' in js
+    assert "hwd && hwd.conflict" in js

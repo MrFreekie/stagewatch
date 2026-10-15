@@ -290,6 +290,7 @@ them into a dated release section and tags the commit.
   - the same board is added twice ("same board as another device");
   - a board you calibrated before is added under a new name ("board needs checking in
     Admin"), so old offsets are never used without you saying so.
+  - **Admin → ESPHome nodes** explains each fault in plain words under the node's status and offers the way out: use the new board with or without the old calibration, start fresh, or accept a board that gave no hardware address. For the same board added twice, remove one of the two nodes.
 
   Readings never mix into the wrong board's history. The hardware address is shown on the
   admin page only, never on dashboards or in alarms. A MAC can be faked, so set an encryption
