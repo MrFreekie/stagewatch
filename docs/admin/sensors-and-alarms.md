@@ -4,6 +4,7 @@ This page is for the person who looks after Stagewatch. It covers the Admin card
 counts in the site average and when Stagewatch raises an alarm:
 
 - **Sensors: calibration & averaging**
+- **Calibration & hardware**
 - **Threshold alarms**
 - **Alarm notices**
 - **Alarm log (this show)**
@@ -136,6 +137,30 @@ watch the **Share** column change to match. Turn the switch off and the shares g
 
 If a battery node sleeps between readings, set **Sleeps between readings** under **ESPHome nodes**.
 See [ESPHome: sleeping nodes](../integrations/esphome.md#sleeping-nodes).
+
+## Calibration & hardware
+
+An offset belongs to the **board** it was set on, not to the name or address you gave the node. If you
+remove a node and add it again, or change its address, the same board keeps its offsets. Open
+**Calibration & hardware** to see, for every sensor on a known board:
+
+- the board's hardware address (only ever shown here, never on dashboards),
+- the offset in use,
+- when it was last saved and how (set by hand, checked against a reference, imported, and so on),
+- the history, newest first, with a note field. Type what you checked it against (for example a
+  Kestrel) and a short note, then **Add note**. This adds a line to the history and does not change
+  the offset. Change the offset itself under **Sensors: calibration & averaging**.
+
+**A board that needs a decision.** If a different board answers at a node's address, or a board
+already has saved calibration, Stagewatch ignores its readings until you choose. The card says why
+and offers the choices (start fresh, keep the calibration, or use the saved calibration).
+
+**Back up or move to another hub.** **Save calibration to a file** downloads every offset with the
+hardware address it belongs to. **Read a file** shows what would change, in plain words (new,
+changed, for a board this hub does not know yet, and skipped), and changes nothing until you press
+**Apply to this hub**. Applying adds an "imported from a file" line to each sensor's history and puts
+one marker on the timeline. Sound levels and power meter readings are recorded exactly as received,
+so a file can never adjust them. The file contains hardware addresses: keep it private.
 
 ## Threshold alarms
 

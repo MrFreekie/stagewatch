@@ -541,26 +541,6 @@
       return h("div", {}, h("div", { style: "font-variant-numeric:tabular-nums" }, w.address || "Not connected"),
         w.host && w.host !== w.address ? h("div", { class: "muted", style: "font-size:12px" }, w.host) : null);
     };
-    // A node held by the hardware check says why, in plain words, and offers the ways out. Admin only.
-    const resolveBlock = (d, conflict) => {
-      if (!conflict) return null;
-      const send = (action, ask) => (!ask || confirm(ask)) && run(() => api("POST", `/api/admin/esphome/${encodeURIComponent(d.id)}/resolve`, { action }), "Node settled").then(refresh, () => {});
-      const btn = (text, action, ask) => h("button", { class: "small", onclick: () => send(action, ask) }, text);
-      const why = {
-        different: "A different board is answering at this address. Its readings are ignored until you choose.",
-        known_board: "This board already has calibration saved from before. Its readings are ignored until you choose.",
-        unreadable: "The board did not give its hardware address, so it cannot be checked. Its readings are ignored until you choose.",
-        duplicate: `This is the same board as ${conflict.other || "another node"}. Remove one of the two nodes.`,
-      }[conflict.reason] || "Held by the hardware check. Its readings are ignored.";
-      const buttons = conflict.reason === "different" ? [
-        btn("New board, start fresh", "new_hardware", `Treat this as a new board with no calibration? ${d.name} keeps no offsets.`),
-        btn("New board, keep calibration", "move_calibration")]
-        : conflict.reason === "known_board" ? [
-          btn("Use the saved calibration", "move_calibration"),
-          btn("Start fresh", "new_hardware", "Start fresh? The calibration saved for this board is deleted.")]
-        : conflict.reason === "unreadable" ? [btn("Accept this board", "forget_mac")] : [];
-      return h("div", { class: "notice", style: "margin-top:6px" }, h("div", {}, why), buttons.length ? h("div", { class: "row", style: "margin-top:6px" }, ...buttons) : null);
-    };
     const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter");   // services (Ontime) are listed under Integrations; power meters under Shelly power meters
     const devTable = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Role"), h("th", {}, "Sleeps between readings"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
@@ -580,7 +560,7 @@
           h("td", {}, role),
           h("td", {}, h("div", { class: "row" }, sleep, h("span", { class: "muted" }, "min")),
             h("div", { class: "muted", style: "font-size:12px" }, "Counted as stale after 2.5 times this")),
-          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null, resolveBlock(d, hwd && hwd.conflict)),
+          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null, hwd && hwd.conflict ? h("div", { style: "font-size:12px" }, h("a", { href: "#calibration-card" }, "Held by the hardware check: choose what to do under Calibration & hardware")) : null),
           h("td", {}, nodeAddress(admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id])),
           h("td", {}, d.model),
           h("td", {}, h("div", { class: "row" },
@@ -595,6 +575,130 @@
       adoptForm(),
       h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADOPTED"),
       h("div", { class: "table-scroll" }, devices.length ? devTable : h("p", { class: "muted" }, "None yet.")));
+  }
+
+  // A node held by the hardware check says why, in plain words, and offers the ways out. Admin only.
+  const resolveBlock = (d, conflict) => {
+    if (!conflict) return null;
+    const send = (action, ask) => (!ask || confirm(ask)) && run(() => api("POST", `/api/admin/esphome/${encodeURIComponent(d.id)}/resolve`, { action }), "Node settled").then(refresh, () => {});
+    const btn = (text, action, ask) => h("button", { class: "small", onclick: () => send(action, ask) }, text);
+    const why = {
+      different: "A different board is answering at this address. Its readings are ignored until you choose.",
+      known_board: "This board already has calibration saved from before. Its readings are ignored until you choose.",
+      unreadable: "The board did not give its hardware address, so it cannot be checked. Its readings are ignored until you choose.",
+      duplicate: `This is the same board as ${conflict.other || "another node"}. Remove one of the two nodes.`,
+    }[conflict.reason] || "Held by the hardware check. Its readings are ignored.";
+    const buttons = conflict.reason === "different" ? [
+      btn("New board, start fresh", "new_hardware", `Treat this as a new board with no calibration? ${d.name} keeps no offsets.`),
+      btn("New board, keep calibration", "move_calibration")]
+      : conflict.reason === "known_board" ? [
+        btn("Use the saved calibration", "move_calibration"),
+        btn("Start fresh", "new_hardware", "Start fresh? The calibration saved for this board is deleted.")]
+      : conflict.reason === "unreadable" ? [btn("Accept this board", "forget_mac")] : [];
+    return h("div", { class: "notice", style: "margin-top:6px" }, h("div", {}, why), buttons.length ? h("div", { class: "row", style: "margin-top:6px" }, ...buttons) : null);
+  };
+
+  // ------------------------------------------------- calibration & hardware (plan 1.9)
+  const macText = (key) => { const m = /^mac:([0-9a-f]{12})$/.exec(key || ""); return m ? m[1].match(/../g).join(":") : (key || ""); };
+  const methodWord = { manual: "set by hand", reference: "checked against a reference", import: "imported from a file", migrated: "kept from before the upgrade", moved: "copied from another board" };
+  const isoDate = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }); };
+  const ageText = (iso) => { const d = new Date(iso); if (isNaN(d)) return ""; const s = Math.max(0, (Date.now() - d.getTime()) / 1000); return s < 60 ? "just now" : `${SW.fmtDuration(s, false)} ago`; };
+  const fieldWord = { offset: "offset", include_in_average: "in site average", accuracy: "accuracy", accuracy_basis: "accuracy basis", role: "role" };
+  const showVal = (v) => (v === null || v === "" ? "none" : v === true ? "yes" : v === false ? "no" : String(v));
+  const hasHeldNode = () => !!(admin.hardware && Object.values(admin.hardware.devices || {}).some((d) => d.conflict));
+
+  function calibrationCard() {
+    const hw = admin.hardware || { entities: {}, settings: {}, devices: {}, calibrations: {} };
+    const status = h("p", { class: "muted", role: "status" });
+    const diffBox = h("div", { role: "status" });
+    const offsetOf = (e, o) => (SW.OFFSET_KINDS.indexOf(e.kind) >= 0 ? SW.fmtCalOffset(e.kind, o) : `${SW.signed(o, 1)} ${e.unit}`.trim());
+
+    const exportBtn = h("button", { class: "small", onclick: async () => {
+      try {
+        const res = await fetch("/api/admin/calibrations/export", { credentials: "same-origin", cache: "no-store" });
+        if (!res.ok) throw new Error("Could not make the file");
+        const a = h("a", { href: URL.createObjectURL(await res.blob()), download: "stagewatch-calibration.json" });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        status.textContent = "Saved. Keep this file with your show files: it says which board each offset belongs to.";
+      } catch (err) { toast(err.message, true); }
+    } }, "Save calibration to a file");
+
+    const list = (title, items) => (items.length ? h("div", {}, h("strong", {}, title), h("ul", {}, items)) : null);
+    const sensorWord = (key) => {
+      const id = Object.keys(hw.entities).find((i) => hw.entities[i] === key);
+      const ent = id && snap.entities.find((x) => x.id === id);
+      return ent ? ent.name : `${macText(key.split("/")[0])} ${key.split("/")[1]}`;
+    };
+    const showDiff = (data, r) => {
+      const n = r.added.length + r.changed.length;
+      const changed = r.changed.map((c) => h("li", {}, `${sensorWord(c.key)}: ` + Object.entries(c.fields).map(([f, v]) => `${fieldWord[f] || f} ${showVal(v.from)} → ${showVal(v.to)}`).join(", ")));
+      diffBox.replaceChildren(h("div", { class: "notice" },
+        h("p", {}, n ? `Nothing has been changed yet. Applying this file would add ${r.added.length} and change ${r.changed.length}; ${r.unchanged.length} already match.` : "Nothing to apply: every sensor in this file already matches."),
+        list("New", r.added.map((k) => h("li", {}, sensorWord(k)))),
+        list("Changed", changed),
+        list("For a board this hub does not know (it applies if that board is added later)", r.unknown_hardware.map((k) => h("li", {}, sensorWord(k)))),
+        list("Skipped (recorded exactly as received, never adjusted)", r.refused.map((k) => h("li", {}, sensorWord(k)))),
+        h("div", { class: "row" },
+          n ? h("button", { class: "primary small", onclick: () => run(() => api("POST", "/api/admin/calibrations/import", { data, dry_run: false }), "Calibration imported")
+            .then(() => { diffBox.replaceChildren(); return refresh(); }, () => {}) }, "Apply to this hub") : null,
+          h("button", { class: "small", onclick: () => diffBox.replaceChildren() }, n ? "Cancel" : "Close"))));
+    };
+    const fileInput = h("input", { type: "file", accept: "application/json,.json", "aria-label": "Calibration file to read", onchange: () => {
+      const f = fileInput.files[0]; fileInput.value = "";
+      if (!f) return;
+      if (f.size > 1024 * 1024) { toast("That file is too big to be a calibration file. Nothing has been changed.", true); return; }
+      const rd = new FileReader();
+      rd.onload = () => {
+        let data;
+        try { data = JSON.parse(String(rd.result)); } catch (_) { toast("That is not a Stagewatch calibration file. Nothing has been changed.", true); return; }
+        run(() => api("POST", "/api/admin/calibrations/import", { data, dry_run: true })).then((r) => showDiff(data, r), () => {});
+      };
+      rd.onerror = () => toast("Could not read that file. Nothing has been changed.", true);
+      rd.readAsText(f);
+    } });
+
+    // Boards the hardware check is holding: say why, offer the ways out.
+    const held = Object.keys(hw.devices).filter((id) => hw.devices[id].conflict).map((id) => {
+      const d = snap.devices.find((x) => x.id === id) || { id, name: id };
+      return h("div", {}, h("strong", {}, d.name), resolveBlock(d, hw.devices[id].conflict));
+    });
+
+    const ids = Object.keys(hw.entities).sort((a, b) => hw.entities[a].localeCompare(hw.entities[b]) || a.localeCompare(b));
+    const rows = ids.map((id) => {
+      const e = snap.entities.find((x) => x.id === id);
+      if (!e) return null;
+      const hist = (hw.calibrations && hw.calibrations[id]) || [];
+      const last = hist[0];
+      const s = hw.settings[id] || { offset: 0 };
+      const ref = h("input", { maxlength: "120", placeholder: "Checked against (optional)", "aria-label": `${e.name} checked against` });
+      const note = h("input", { maxlength: "200", placeholder: "Note", "aria-label": `${e.name} note` });
+      const add = h("button", { class: "small", "aria-label": `Add note to ${e.name}`, disabled: !last, title: last ? "" : "Save an offset first",
+        onclick: () => run(() => api("POST", `/api/admin/calibrations/${encodeURIComponent(id)}/note`, { reference: ref.value.trim(), note: note.value.trim() }), "Note saved").then(refresh, () => {}) }, "Add note");
+      const histEl = hist.length ? h("details", {}, h("summary", {}, `History (${hist.length})`),
+        h("ul", {}, hist.map((x) => h("li", {}, `${isoDate(x.date)}: offset ${offsetOf(e, x.offset)}, ${methodWord[x.method] || x.method}`
+          + (x.reference ? ` (${x.reference})` : "") + (x.note ? ` – ${x.note}` : ""))))) : null;
+      return h("tr", {},
+        h("td", {}, e.name, h("div", { class: "muted", style: "font-size:12px" }, macText(hw.entities[id].split("/")[0]))),
+        h("td", {}, offsetOf(e, Number(s.offset) || 0)),
+        h("td", {}, last ? h("span", { title: isoDate(last.date) }, ageText(last.date)) : h("span", { class: "muted" }, "Never saved"),
+          last ? h("div", { class: "muted", style: "font-size:12px" }, methodWord[last.method] || last.method) : null),
+        h("td", {}, h("div", { class: "row" }, ref, note, add), histEl));
+    }).filter(Boolean);
+
+    const c = card("Calibration & hardware",
+      h("p", { class: "muted" }, "Each offset belongs to the board it was set on, so it follows that board if you re-adopt it or change its address. Offsets are set under Sensors: calibration & averaging. Hardware addresses are only shown here, never on dashboards."),
+      held.length ? h("div", {}, h("h3", { class: "muted", style: "font-size:13px;margin:10px 0 6px" }, "NEEDS A DECISION"), held) : null,
+      h("h3", { class: "muted", style: "font-size:13px;margin:10px 0 6px" }, "SENSORS"),
+      rows.length ? h("div", { class: "table-scroll" }, h("table", {},
+        h("thead", {}, h("tr", {}, h("th", {}, "Sensor and board"), h("th", {}, "Offset"), h("th", {}, "Last saved"), h("th", {}, "Note"))),
+        h("tbody", {}, rows))) : h("p", { class: "muted" }, "No sensors with a known board yet. A node shows up here once it has connected."),
+      h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "BACK UP OR MOVE TO ANOTHER HUB"),
+      h("p", { class: "muted hint" }, "Reading a file shows what would change first. Nothing is applied until you press Apply."),
+      h("div", { class: "row" }, exportBtn, h("label", { class: "field inline" }, "Read a file: ", fileInput)),
+      status, diffBox);
+    c.id = "calibration-card";
+    return c;
   }
 
   // Which sensor groups are open, remembered per node in this browser. Kept in memory too, so a
@@ -1700,7 +1804,7 @@
       scheduleCard(),     // summary and a link to /schedule
       connectCard(),
       softwareCard(),
-      foldCard(devicesCard(), "nodes", true), foldCard(entitiesCard(), "sensors", true),
+      foldCard(devicesCard(), "nodes", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
       foldCard(thresholdsCard(), "thresholds", true), foldCard(alarmNoticesCard(), "notices", true),
       foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false)),

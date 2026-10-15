@@ -33,10 +33,11 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
     SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_host_error, spl_password_error,
 )
-from ..core.calibration import change_text, set_calibration
+from ..core.calibration import change_text, set_calibration, utc_now_iso
+from ..core import calibration_io
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Kind, Marker, slugify
 from ..core.recorder import clean_note, valid_day
@@ -68,6 +69,9 @@ DEFAULT_BODY_OVERRIDES: dict[str, int] = {
     # case must reach validation (422), not be cut off as too large (413).
     "/api/admin/schedule": 640 * 1024,
     "/api/admin/schedule/import": 256 * 1024,  # 64 KB of text, JSON-escaped
+    # Calibration import (plan §1.9): up to 500 records with 20 history entries each, read by the
+    # browser's FileReader and sent as JSON.
+    "/api/admin/calibrations/import": 1024 * 1024,
 }
 
 
@@ -213,6 +217,22 @@ class ResolveBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: Literal["new_hardware", "move_calibration", "forget_mac"]
+
+
+class CalibrationImportBody(BaseModel):
+    """POST /api/admin/calibrations/import: the parsed export file, and whether to only look."""
+    model_config = ConfigDict(extra="forbid")
+
+    data: dict
+    dry_run: bool = True   # the safe way round: a caller that forgets it changes nothing
+
+
+class CalibrationNoteBody(BaseModel):
+    """POST /api/admin/calibrations/{entity_id}/note: a line in the sensor's calibration history."""
+    model_config = ConfigDict(extra="forbid")
+
+    reference: str = Field("", max_length=120)   # e.g. the instrument it was checked against
+    note: str = Field("", max_length=200)
 
 
 SERVICE_DEVICE = "This device is managed by its integration. Nothing has been changed."
@@ -1123,6 +1143,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                                 "accuracy": c.accuracy, "accuracy_basis": c.accuracy_basis,
                                 "role": c.role,          # the sensor's own override ("" = follows the node)
                                 "role_now": hub.role_of(e)} for e in sensors},
+            # Calibration log per sensor (newest first): date, method, offset, reference, note.
+            "calibrations": {e.id: [h.model_dump(mode="json") for h in cal.history]
+                             for e in sensors if e.hw_key and (cal := hub.config.calibrations.get(e.hw_key))},
             # Each sensor's live share of its kind's site average, and why weighting is not in use.
             "averages": hub.average_info,
             "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id), "role": d.role,
@@ -1268,6 +1291,63 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         else:
             hub.bus.publish("entity", entity)   # screens still learn the new offset
         return body
+
+    @app.post("/api/admin/calibrations/{entity_id}/note", dependencies=admin_deps)
+    async def add_calibration_note(entity_id: str, body: CalibrationNoteBody):
+        """Log a check against a reference, or a note, on a sensor's calibration (offset unchanged)."""
+        entity = hub.entities.get(entity_id)
+        cal = hub.config.calibrations.get(entity.hw_key) if entity is not None and entity.hw_key else None
+        if cal is None:
+            raise HTTPException(404, "This sensor has no saved calibration to add a note to. Save an offset first.")
+        reference, note = body.reference.strip(), body.note.strip()
+        if not reference and not note:
+            raise HTTPException(422, "Type a reference or a note")
+        if _has_hidden_chars(reference) or _has_hidden_chars(note):
+            raise HTTPException(422, "Notes cannot contain control characters")
+        entry = CalibrationEntry(offset=cal.offset, date=utc_now_iso(), method="reference" if reference else "manual",
+                                 reference=reference, note=note)
+        hub.config.calibrations[entity.hw_key] = cal.model_copy(
+            update={"history": [entry, *cal.history][:CALIBRATION_HISTORY_MAX]})
+        hub.save_config()
+        return {"ok": True}
+
+    @app.get("/api/admin/calibrations/export", dependencies=[Depends(require_admin)])
+    async def export_calibrations():
+        data = json.dumps(calibration_io.build_export(hub.config, hub.config.site.name), indent=2).encode()
+        return Response(data, media_type="application/json", headers={
+            "Content-Disposition": 'attachment; filename="stagewatch-calibration.json"',
+            "Content-Length": str(len(data)), "Cache-Control": "no-store"})
+
+    @app.post("/api/admin/calibrations/import", dependencies=admin_deps)
+    async def import_calibrations(body: CalibrationImportBody):
+        nodes = {k.rsplit("/", 1)[0] for k in (e.hw_key for e in hub.entities.values()) if k}
+        nodes |= {f"mac:{d.mac}" for d in hub.config.esphome_devices if d.mac}
+        by_key = {e.hw_key: e for e in hub.entities.values() if e.hw_key}
+        def refuse(key: str) -> bool:
+            e = by_key.get(key)
+            return e is not None and (e.kind == Kind.SOUND_LEVEL or e.locked_equipment)
+        try:
+            plan = calibration_io.plan_import(hub.config, body.data, nodes, refuse)
+        except calibration_io.ImportError_ as exc:
+            raise HTTPException(422, str(exc)) from None
+        result = {"dry_run": body.dry_run, **plan.summary()}
+        if body.dry_run or not plan.records:
+            return result
+        written = calibration_io.apply_import(hub.config, plan)
+        for key in written:   # keep the rollback mirror in step and refresh live values
+            e = by_key.get(key)
+            if e is None:
+                continue
+            if e.id in hub.config.entities:
+                cal = hub.config.calibrations[key]
+                hub.config.entities[e.id] = EntitySettings(offset=cal.offset, include_in_average=cal.include_in_average)
+        hub.save_config()
+        hub.add_marker(f"Calibration imported from a file: {len(plan.added)} added, {len(plan.changed)} changed", "hub")
+        for key in written:
+            e = by_key.get(key)
+            if e is not None and e.raw_value is not None and not e.derived:
+                hub.update_state(e.id, e.raw_value, e.updated)
+        return result
 
     @app.get("/api/admin/averages", dependencies=[Depends(require_admin)])
     async def admin_averages():
