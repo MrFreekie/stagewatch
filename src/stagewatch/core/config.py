@@ -235,6 +235,9 @@ class ShellyDeviceConfig(_Model):
     name: str = Field("", max_length=60)
     area: str = Field("", max_length=40)
     poll_interval_s: float = Field(SHELLY_POLL_DEFAULT_S, ge=SHELLY_POLL_MIN_S, le=SHELLY_POLL_MAX_S)
+    # The rating (amps) of the meter or of the breaker/circuit it watches, typed in by the admin. Shown
+    # on the Power card as a load bar with warnings at 80 % and 100 %. None = no bar. Advisory only.
+    rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)
 
     @field_validator("id")
     @classmethod

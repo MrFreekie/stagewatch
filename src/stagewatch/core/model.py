@@ -97,7 +97,7 @@ def normalise_mac(value: object) -> str | None:
 
 
 # The only extra public fields a device may carry (the sound level graph range).
-PUBLIC_EXTRA = frozenset({"chart_range", "chart_min_db", "chart_max_db"})
+PUBLIC_EXTRA = frozenset({"chart_range", "chart_min_db", "chart_max_db", "rating_a"})
 
 
 @dataclass
@@ -194,6 +194,9 @@ class Entity:
     # Power-meter readings: always Equipment (no per-sensor override can change that) and recorded
     # exactly as received (no calibration offset). Runtime only; never in to_dict().
     locked_equipment: bool = False
+    # Power meters only: this show day's figures worked out from the readings Stagewatch received
+    # (highest, lowest, energy since the first reading). Public, plain numbers; absent when unset.
+    day: dict | None = None
 
     def to_dict(self, now: float, stale_after_s: float, offset: float = 0.0, role: str = "environment",
                 sleeping: bool = False) -> dict:
@@ -225,6 +228,8 @@ class Entity:
             data["labels"] = dict(self.labels)
         if self.location:
             data["location"] = self.location
+        if self.day:
+            data["day"] = self.day
         return data
 
     def is_stale(self, now: float, stale_after_s: float) -> bool:

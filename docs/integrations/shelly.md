@@ -32,6 +32,11 @@ the [notices](README.md#notices).
 - **Energy is the meter's own running total** (watt-hours). It only counts up from when the meter's
   counter started. It is not an average. If someone resets the meter, the new number is recorded as
   it came, and the meter's row in Admin says when the total went back.
+- **This show day's figures** (energy used, highest power and current, lowest and highest voltage, each
+  with its time) are worked out from the readings Stagewatch received since the show day began (the
+  site's day rollover). Energy used is the meter's total now minus its total at the first reading of the
+  day. Stagewatch never fills in time it was not reading: the card lists those times instead. See the
+  [Power card](../cards/power.md#this-show-day).
 - **Apparent power and power factor** show only when a meter sends them.
 
 ### Which Shelly meters

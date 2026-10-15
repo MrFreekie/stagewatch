@@ -27,10 +27,11 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from ...core import sitetime
-from ...core.config import SHELLY_MAX_METERS, ShellyDeviceConfig
+from ...core.config import SHELLY_MAX_METERS, ShellyDeviceConfig, Threshold
 from ...core.model import UNITS, Device, Entity, Status, slugify
 from ...core.plugin import Integration, Manifest
 from ..smaart.client import is_local_address
+from . import dayfigures as df
 from . import readings as rd
 from .emulate import DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac
 from .http import GET_DEVICE_INFO, GET_STATUS, Fetch, ShellyError, get_json
@@ -39,6 +40,15 @@ from .transport import DeviceInfo, HttpPollTransport, Target, Transport, parse_d
 log = logging.getLogger(__name__)
 
 CARD_ID = "power"
+# Mains limits for a 230 V supply in the UK: 230 V +10 % / -6 % (Electricity Safety, Quality and
+# Continuity Regulations 2002; BS EN 50160) = 216.2 to 253.0 V. Advisory only. A supply under 180 V
+# (110 V site power, say) is not judged against it.
+UK_V_LOW, UK_V_HIGH, MAINS_MIN_V = 216.2, 253.0, 180.0
+LOAD_HIGH_PCT, LOAD_OVER_PCT = 80.0, 100.0
+# Frequency, 50 Hz grid: 49.5 to 50.5 Hz is the statutory band (+/-1 %); 49.8 to 50.2 Hz is the grid
+# operator's normal band, so outside that is "close to the limit". Not judged outside 40 to 55 Hz.
+UK_F_LOW, UK_F_HIGH, UK_F_NEAR_LOW, UK_F_NEAR_HIGH, F_JUDGED = 49.5, 50.5, 49.8, 50.2, (40.0, 55.0)
+SW_NUM = lambda v: f"{v:.2f}".rstrip("0").rstrip(".")  # noqa: E731
 HEARTBEAT_S = 10.0          # an unchanged value is re-recorded at most this often
 FAILURES_BEFORE_MISSING = 3  # missed polls in a row before the meter counts as not answering
 
@@ -122,6 +132,10 @@ class _Meter:
     gap: bool = False                                 # went quiet while we were watching: say "back" on return
     problem: str = ""
     energy_reset_at: float | None = None
+    freq_level: dict = field(default_factory=dict)    # object_id -> 0 fine, 1 close to a limit, 2 outside
+    volts_out: dict = field(default_factory=dict)     # object_id -> outside the UK range now
+    day_key: str = ""                                 # the show day the figures below belong to
+    figures: dict = field(default_factory=dict)       # object_id -> DayFigures for that show day
 
 
 def seed_emulate_shelly(config) -> bool:
@@ -132,7 +146,7 @@ def seed_emulate_shelly(config) -> bool:
             or any(CARD_ID in d.cards for d in config.dashboards):
         return False
     config.shelly_devices = [ShellyDeviceConfig(id="mic_rack_sim", host=DEMO_HOST, mac=emulated_mac(DEMO_HOST),
-                                                name=DEMO_NAME, area="Stage L")]
+                                                name=DEMO_NAME, area="Stage L", rating_a=16)]
     for d in config.dashboards:
         if d.slug == "wall":
             d.cards = [*d.cards[:1], CARD_ID, *d.cards[1:]]
@@ -172,8 +186,11 @@ class ShellyIntegration(Integration):
 
     def _device(self, cfg: ShellyDeviceConfig, info: DeviceInfo | None, status: Status) -> Device:
         model = (info.app or info.model) if info else ""
-        return Device(cfg.id, cfg.name or "Power meter", MANIFEST.domain, "Shelly", model, cfg.area,
-                      status, hw_id=f"mac:{cfg.mac}", category="meter", role="equipment")
+        dev = Device(cfg.id, cfg.name or "Power meter", MANIFEST.domain, "Shelly", model, cfg.area,
+                     status, hw_id=f"mac:{cfg.mac}", category="meter", role="equipment")
+        if cfg.rating_a:
+            dev.public = {"rating_a": cfg.rating_a}      # public: the Power card draws its load bar from it
+        return dev
 
     def _meter_of(self, mac: str) -> _Meter | None:
         return self._meters.get(mac)
@@ -251,7 +268,70 @@ class ShellyIntegration(Integration):
             hw_key=f"mac:{m.cfg.mac}/{r.object_id}", labels=labels, locked_equipment=True))
         m.entities.add(r.object_id)
 
+    def _day_figures(self, m: _Meter, r: rd.Reading, eid: str, ts: float) -> None:
+        """Add one reading to this show day's figures and hand them to the entity (see dayfigures.py).
+        After a restart the day so far is rebuilt from the readings already recorded, never invented."""
+        entity = self.hub.entities.get(eid)
+        if entity is None or r.value is None or not (r.cumulative or r.field in df.MAX_FIELDS):
+            return
+        site = self.hub.config.site
+        day = sitetime.show_day(ts, site).isoformat()
+        if m.day_key != day:
+            m.day_key, m.figures = day, {}
+        fig = m.figures.get(r.object_id)
+        if fig is None:
+            fig = m.figures[r.object_id] = df.DayFigures(r.field, r.cumulative, day)
+            try:
+                for t, v in self.hub.recorder.raw_states(eid, sitetime.resolve(day, site.day_rollover, site), ts):
+                    fig.feed(v, t)
+            except Exception:  # noqa: BLE001 - no history just means the day starts from this reading
+                log.exception("Shelly %s: could not read the day so far", m.cfg.id)
+        fig.feed(r.value, ts)
+        entity.day = fig.to_dict()
+
+    def _set_notice(self, key: str, on: bool, level: int, text: str) -> None:
+        """A quiet on-screen notice (never sounds) for a load or voltage warning."""
+        change = self.hub.alarms.set_condition(f"power:{key}", on, level, text, time.time(), silent=True)
+        if change:
+            self.hub._alarm_changed([change])
+
+    def _check_limits(self, m: _Meter, r: rd.Reading, ts: float) -> None:
+        """Quiet warnings from the latest readings: mains voltage and frequency against the UK ranges.
+        (Load warnings are normal thresholds the admin creates with "Add warnings", see apply_warnings.) Advisory only; they clear with a little
+        margin so a reading on the edge does not flicker."""
+        if r.value is None:
+            return
+        name = m.cfg.name or "Power meter"
+        if r.field == "voltage" and r.group in ("", "a", "b", "c") and r.value >= MAINS_MIN_V:
+            was = m.volts_out.get(r.object_id, False)
+            out = not (UK_V_LOW <= r.value <= UK_V_HIGH)
+            if was and not out:
+                out = not (UK_V_LOW + 0.5 <= r.value <= UK_V_HIGH - 0.5)
+            m.volts_out[r.object_id] = out
+            bad = any(m.volts_out.values())
+            self._set_notice(m.cfg.id + ".volts", bad, 1,
+                             f"{name}: voltage {r.value:.1f} V is outside the UK range ({UK_V_LOW:g} to {UK_V_HIGH:g} V)")
+
+        elif r.field == "freq" and F_JUDGED[0] <= r.value <= F_JUDGED[1]:
+            was = m.freq_level.get(r.object_id, 0)
+            v = r.value
+            level = 2 if not (UK_F_LOW <= v <= UK_F_HIGH) else 1 if not (UK_F_NEAR_LOW <= v <= UK_F_NEAR_HIGH) else 0
+            if was and level < was:      # clear with a little margin (0.02 Hz) so the edge does not flicker
+                if was == 2 and UK_F_LOW + 0.02 <= v <= UK_F_HIGH - 0.02:
+                    level = max(level, 1)
+                elif was == 1 and UK_F_NEAR_LOW + 0.02 <= v <= UK_F_NEAR_HIGH - 0.02:
+                    level = 0
+                else:
+                    level = was
+            m.freq_level[r.object_id] = level
+            worst = max(m.freq_level.values(), default=0)
+            word = "outside" if worst == 2 else "close to the limit of"
+            self._set_notice(m.cfg.id + ".freq", worst > 0, max(worst, 1),
+                             f"{m.cfg.name or 'Power meter'}: frequency {v:.2f} Hz is {word} the UK range ({UK_F_LOW:g} to {UK_F_HIGH:g} Hz)")
+
     def _record(self, m: _Meter, r: rd.Reading, eid: str, ts: float) -> None:
+        self._day_figures(m, r, eid, ts)
+        self._check_limits(m, r, ts)
         if r.cumulative and r.value is not None:
             before = m.energy.get(r.object_id)
             if before is not None and r.value < before - 1e-6:
@@ -317,7 +397,7 @@ class ShellyIntegration(Integration):
             return cfg
 
     async def update(self, device_id: str, name: str | None, area: str | None, interval_s: float | None,
-                     host: str | None) -> None:
+                     host: str | None, rating_a: float | None = None) -> None:
         async with self._lock:
             cfg = next((c for c in self.hub.config.shelly_devices if c.id == device_id), None)
             if cfg is None:
@@ -335,19 +415,52 @@ class ShellyIntegration(Integration):
                 cfg.area = area.strip()
             if interval_s is not None:
                 cfg.poll_interval_s = interval_s
+            if rating_a is not None:
+                cfg.rating_a = rating_a or None      # 0 clears it
             cfg.host = new_host
             self.hub.save_config()
             m = self._meters.get(cfg.mac)
             dev = self.hub.devices.get(cfg.id)
             if dev is not None:
                 self.hub.register_device(self._device(cfg, m.info if m else None, dev.status))
+            self.hub.set_device_public(cfg.id, {"rating_a": cfg.rating_a} if cfg.rating_a else {})
             self._transport.add(Target(cfg.mac, cfg.host, cfg.poll_interval_s))
+
+    def apply_warnings(self, device_id: str) -> int:
+        """Admin button "Add warnings at 80 % and 100 %": for each circuit's current reading, two ordinary
+        thresholds from the rating the admin typed in (level 1 at 80 %, level 2 at 100 %, held 5 s, 2 %
+        hysteresis). Running it again replaces only the ones made here. Returns how many were made.
+        Raises LookupError (no such meter) or ValueError (fixed text: no rating, or no reading yet)."""
+        cfg = next((c for c in self.hub.config.shelly_devices if c.id == device_id), None)
+        if cfg is None:
+            raise LookupError
+        if not cfg.rating_a:
+            raise ValueError("Enter the meter's rating in amps and save first")
+        currents = [e for e in self.hub.entities.values() if e.device_id == cfg.id
+                    and e.labels.get("field") == "current" and e.labels.get("group", "") in ("", "a", "b", "c")]
+        if not currents:
+            raise ValueError("Wait for the first reading, then try again")
+        prefix = f"shelly_{cfg.id}_"
+        keep = [t for t in self.hub.config.thresholds if not t.id.startswith(prefix)]
+        made = []
+        for e in sorted(currents, key=lambda x: x.id):
+            tag = e.id.split(".", 1)[1]
+            for pct, level in ((80, 1), (100, 2)):
+                made.append(Threshold(id=f"{prefix}{tag}_{pct}", entity=e.id, label=f"{cfg.name}: load {pct}% of {cfg.rating_a:g} A",
+                                      above=round(cfg.rating_a * pct / 100, 3), level=level,
+                                      hysteresis=round(cfg.rating_a * 0.02, 3), hold_s=5.0))
+        self.hub.config.thresholds = keep + made
+        self.hub.save_config()
+        return len(made)
 
     async def remove(self, device_id: str) -> None:
         async with self._lock:
             cfg = next((c for c in self.hub.config.shelly_devices if c.id == device_id), None)
             if cfg is None:
                 raise LookupError
+            self.hub.config.thresholds = [t for t in self.hub.config.thresholds if not t.id.startswith(f"shelly_{cfg.id}_")]
+            self._set_notice(cfg.id + ".volts", False, 0, "")
+            self._set_notice(cfg.id + ".freq", False, 0, "")
             self._transport.remove(cfg.mac)
             self._meters.pop(cfg.mac, None)
             self.hub.config.shelly_devices.remove(cfg)
@@ -363,7 +476,7 @@ class ShellyIntegration(Integration):
             dev = self.hub.devices.get(cfg.id)
             meters.append({
                 "id": cfg.id, "name": cfg.name, "area": cfg.area, "host": cfg.host, "mac": cfg.mac,
-                "interval_s": cfg.poll_interval_s,
+                "interval_s": cfg.poll_interval_s, "rating_a": cfg.rating_a,
                 "model": (m.info.app or m.info.model) if m and m.info else "",
                 "firmware": m.info.firmware if m and m.info else "",
                 "status": dev.status.value if dev else "off", "detail": dev.status_detail if dev else "",

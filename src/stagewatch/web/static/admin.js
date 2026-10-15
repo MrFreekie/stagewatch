@@ -360,6 +360,7 @@
       const area = h("input", { value: m.area, maxlength: "40", "aria-label": `${m.name} area` });
       const host = h("input", { class: "touch", value: m.host, maxlength: "64", autocomplete: "off", spellcheck: "false", "aria-label": `${m.name} address` });
       const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: m.interval_s, "aria-label": `${m.name} reads every (seconds)` });
+      const rating = h("input", { class: "num", type: "number", min: "0", max: "200", step: "0.5", value: m.rating_a || "", placeholder: "none", "aria-label": `${m.name} rating (amps)` });
       const facts = [m.model, m.firmware ? `firmware ${m.firmware}` : "", `MAC ${m.mac}`].filter(Boolean).join(" · ");
       return h("tr", {},
         h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, m.id)),
@@ -369,14 +370,17 @@
           m.energy_went_back ? h("div", { class: "warn-text", style: "font-size:12px" }, `Energy counter went back at ${m.energy_went_back}`) : null),
         h("td", {}, host, h("div", { class: "muted", style: "font-size:12px" }, facts)),
         h("td", {}, h("div", { class: "row" }, every, h("span", { class: "muted" }, "s"))),
+        h("td", {}, h("div", { class: "row" }, rating, h("span", { class: "muted" }, "A"))),
         h("td", {}, h("div", { class: "muted", style: "font-size:12px" }, `${m.ok_polls} ok, ${m.failed_polls} missed`)),
         h("td", {}, h("div", { class: "row" },
           h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/shelly/${encodeURIComponent(m.id)}`, {
-            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value) }), "Saved").then(refresh, () => {}) }, "Save"),
+            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value), rating_a: Number(rating.value) || 0 }), "Saved").then(refresh, () => {}) }, "Save"),
+          h("button", { class: "small", title: "Makes two warnings from the rating: a notice at 80% and an alarm at 100%. Your own limits: Stagewatch does not protect or switch anything.",
+            onclick: () => run(() => api("POST", `/api/admin/shelly/${encodeURIComponent(m.id)}/warnings`), "Warnings added at 80% and 100% (see Thresholds)").then(refresh, () => {}) }, "Add warnings"),
           h("button", { class: "small danger", onclick: () => confirm(`Remove ${m.name}? Its history is kept.`) && run(() => api("DELETE", `/api/admin/shelly/${encodeURIComponent(m.id)}`), "Removed").then(refresh, () => {}) }, "Remove"))));
     });
     const table = h("table", {},
-      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Polls"), h("th", {}, ""))),
+      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Rating (amps)"), h("th", {}, "Polls"), h("th", {}, ""))),
       h("tbody", {}, rows));
 
     // Add a meter: type the address, press Test to see what is there, then Save.
@@ -409,8 +413,8 @@
       .then(() => { shellyTest = null; return refresh(); }, () => {});
     if (shellyTest && shellyTest.ok) showResult(shellyTest);
 
-    return card("Shelly power meters",
-      h("p", { class: "muted" }, "Shows watts, volts, amps, frequency and energy from Shelly power meters on dashboards that have the Power card (User dashboards → Edit cards). Stagewatch only reads: every few seconds it asks each meter for its readings, and that is all it ever sends. It never switches a relay, changes a setting, restarts or resets a meter."),
+    return SW.brandCard("Shelly power meters", "shelly-badge.svg", "Shelly",
+      h("p", { class: "muted" }, "Shows watts, volts, amps, frequency and energy from Shelly power meters on dashboards that have the Power card (User dashboards → Edit cards). Stagewatch only reads: every few seconds it asks each meter for its readings, and that is all it ever sends. It never switches a relay, changes a setting, restarts or resets a meter. Type a meter's rating in amps (for example 16 for a PM Mini, or the breaker it watches) to get a load bar with warnings at 80% and 100%. Voltage and frequency are checked against the UK ranges."),
       h("p", { class: "notice" }, "A Shelly Plug or any Shelly with a relay is read for its power only. Stagewatch never touches the relay, but it cannot stop the Shelly's own button, schedule or app from switching it. For a distro, prefer a meter with no relay, such as the PM Mini."),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: meters are simulated, so any private address (such as 192.0.2.20) will \"find\" a simulated PM Mini. The demo meter stops answering for 40 seconds every 5 minutes, to show how a frozen card looks.")
         : h("p", { class: "notice" }, "Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3. Other Shelly meters are read by what they report, but are not tested. A meter with a password is not supported yet."),

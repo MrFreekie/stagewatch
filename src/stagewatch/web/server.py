@@ -366,6 +366,7 @@ class ShellyPatchBody(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=60)
     area: str | None = Field(None, max_length=40)
     interval_s: float | None = Field(None, ge=2.0, le=5.0, allow_inf_nan=False)
+    rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)   # 0 clears the rating
     host: str | None = Field(None, min_length=1, max_length=64)
 
     @field_validator("name", "area")
@@ -1481,12 +1482,22 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     @app.patch("/api/admin/shelly/{device_id}", dependencies=admin_deps)
     async def shelly_patch(device_id: str, body: ShellyPatchBody):
         try:
-            await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host)
+            await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host, body.rating_a)
         except LookupError:
             raise HTTPException(404, "No such power meter") from None
         except ShellyError as exc:
             raise HTTPException(422, f"{SHELLY_TEXT.get(exc.category, SHELLY_TEXT['unreachable'])} Nothing has been changed.") from None
         return {"ok": True}
+
+    @app.post("/api/admin/shelly/{device_id}/warnings", dependencies=admin_deps)
+    async def shelly_warnings(device_id: str):
+        """Make the 80 % and 100 % load warnings from the rating typed in (ordinary thresholds)."""
+        try:
+            return {"ok": True, "made": shelly_integ().apply_warnings(device_id)}
+        except LookupError:
+            raise HTTPException(404, "No such meter")
+        except ValueError as e:
+            raise HTTPException(409, str(e))
 
     @app.delete("/api/admin/shelly/{device_id}", dependencies=admin_deps)
     async def shelly_delete(device_id: str):

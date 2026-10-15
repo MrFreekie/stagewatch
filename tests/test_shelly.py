@@ -26,7 +26,7 @@ from pydantic import create_model
 from stagewatch import acoustics
 from stagewatch.core import cards
 from stagewatch.core.calibration import set_calibration
-from stagewatch.core.config import (SHELLY_POLL_DEFAULT_S, Config, ConfigStore, ShellyDeviceConfig, _Model)
+from stagewatch.core.config import (SHELLY_POLL_DEFAULT_S, Config, ConfigStore, ShellyDeviceConfig, Threshold, _Model)
 from stagewatch.core.hub import Hub
 from stagewatch.core.model import ENV_KINDS, UNITS, Device, Entity, Kind, Status
 from stagewatch.integrations.shelly import (InUse, ShellyIntegration, seed_emulate_shelly, validate_host)
@@ -780,7 +780,7 @@ def test_config_round_trip_and_mac_is_normalised(tmp_path):
     again = ConfigStore(tmp_path / "config.yaml").load()
     assert again.shelly_devices == [ShellyDeviceConfig(id="mic_rack", host="192.0.2.50", mac=MAC, name="Mic rack", area="FOH", poll_interval_s=2.5)]
     raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
-    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s"}   # no password field exists
+    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a"}   # no password field exists
 
 
 def test_interval_outside_two_to_five_seconds_is_brought_into_range():
@@ -1117,3 +1117,187 @@ def test_diagnostics_hide_meter_addresses_but_not_esphome_hosts():
     out = diagnostics.redact_config(raw, diagnostics.known_secrets(raw))
     assert out["shelly_devices"][0]["host"] == out["shelly_devices"][0]["mac"] == diagnostics.REDACTED
     assert out["shelly_devices"][0]["name"] == "Rack" and out["esphome_devices"][0]["host"] == "192.0.2.9"
+
+# ===================================================================== this show day's figures
+from datetime import datetime  # noqa: E402
+from zoneinfo import ZoneInfo  # noqa: E402
+
+from stagewatch.integrations.shelly import dayfigures as df  # noqa: E402
+
+
+def london(y, mo, d, h, mi=0, s=0):
+    return datetime(y, mo, d, h, mi, s, tzinfo=ZoneInfo("Europe/London")).timestamp()
+
+
+T0 = london(2026, 10, 14, 20, 0)      # 20:00 British Summer Time, show day 2026-10-14 (rollover 06:00)
+
+
+def pm(power, volts, amps, wh):
+    st = fx("docs-pm1-getstatus.json")
+    st["pm1:0"].update(apower=power, voltage=volts, current=amps)
+    st["pm1:0"]["aenergy"]["total"] = wh
+    return st
+
+
+def test_highest_lowest_and_energy_worked_out_by_hand():
+    """Power 100, 250, 180 -> highest 250 W at +5 s. Voltage 230, 236.5, 228 -> low 228 (at +10), high
+    236.5 (at +5). Counter 1000, 1010.5, 1030 -> 30 Wh. Counter then goes back to 5 and on to 12:
+    30 kept, plus 12 - 5 = 7, so 37 Wh, and the moment it went back is noted."""
+    p, v, e = df.DayFigures("power", False, "d"), df.DayFigures("voltage", False, "d"), df.DayFigures("energy", True, "d")
+    for i, (pw_, vv, wh) in enumerate([(100, 230, 1000), (250, 236.5, 1010.5), (180, 228, 1030)]):
+        p.feed(pw_, T0 + 5 * i); v.feed(vv, T0 + 5 * i); e.feed(wh, T0 + 5 * i)
+    assert (p.to_dict()["max"], p.to_dict()["max_at"]) == (250, T0 + 5)
+    assert v.to_dict() == {"day": "d", "max": 236.5, "max_at": T0 + 5, "min": 228, "min_at": T0 + 10}
+    assert e.to_dict() == {"day": "d", "wh": 30.0, "since": T0}
+    e.feed(5, T0 + 15); e.feed(12, T0 + 20)
+    assert e.to_dict()["wh"] == 37.0 and e.to_dict()["went_back_at"] == T0 + 15
+
+
+def test_a_silence_is_a_gap_and_nothing_is_filled_in():
+    p = df.DayFigures("power", False, "d")
+    p.feed(100, T0); p.feed(110, T0 + 20); p.feed(90, T0 + 120)
+    assert p.to_dict()["gaps"] == [[T0 + 20, T0 + 120]]          # 20 s is a normal pause, 100 s is a gap
+    assert p.to_dict()["max"] == 110                             # nothing was invented for the gap
+
+
+async def test_entities_carry_the_day_figures_and_nothing_before_a_reading(hub):
+    hub.config.site.timezone = "Europe/London"
+    integ, _ = await make(hub)
+    assert "day" not in {e["id"]: e for e in hub.snapshot()["entities"]}.get("rack.pm1_0_power", {})
+    feed(integ, pm(100.0, 230.0, 0.5, 1000.0), T0)
+    feed(integ, pm(250.0, 236.5, 1.1, 1010.5), T0 + 5)
+    feed(integ, pm(None, None, None, None), T0 + 10)             # a meter that reads nothing: no change, no zero
+    snap = {e["id"]: e for e in hub.snapshot()["entities"]}
+    assert snap["rack.pm1_0_power"]["day"] == {"day": "2026-10-14", "max": 250.0, "max_at": T0 + 5}
+    assert snap["rack.pm1_0_current"]["day"]["max"] == 1.1
+    assert snap["rack.pm1_0_voltage"]["day"]["min"] == 230.0
+    assert snap["rack.pm1_0_energy"]["day"] == {"day": "2026-10-14", "wh": 10.5, "since": T0}
+
+
+async def test_a_new_show_day_starts_afresh_at_the_rollover(hub):
+    hub.config.site.timezone = "Europe/London"
+    integ, _ = await make(hub)
+    feed(integ, pm(900.0, 230.0, 4.0, 2000.0), london(2026, 10, 15, 5, 59))
+    feed(integ, pm(50.0, 231.0, 0.2, 2001.0), london(2026, 10, 15, 6, 1))
+    day = hub.entities["rack.pm1_0_power"].day
+    assert (day["day"], day["max"]) == ("2026-10-15", 50.0)       # 900 W belonged to yesterday's show day
+    assert hub.entities["rack.pm1_0_energy"].day["wh"] == 0.0     # counting from this show day's first reading
+
+
+async def test_after_a_restart_the_day_is_rebuilt_from_what_was_recorded_with_the_gap_shown(tmp_path):
+    h1 = Hub(tmp_path); h1.config.site.timezone = "Europe/London"
+    integ, _ = await make(h1)
+    feed(integ, pm(300.0, 232.0, 1.3, 5000.0), T0)
+    feed(integ, pm(120.0, 233.0, 0.5, 5004.0), T0 + 5)
+    h1.recorder.close()
+    h2 = Hub(tmp_path); h2.config.site.timezone = "Europe/London"
+    try:
+        integ2, _ = await make(h2)
+        feed(integ2, pm(150.0, 234.0, 0.6, 5100.0), T0 + 600)   # Stagewatch was not reading for ten minutes
+        d = h2.entities["rack.pm1_0_power"].day
+        assert (d["max"], d["max_at"]) == (300.0, T0)
+        assert d["gaps"] == [[T0 + 5, T0 + 600]]
+        assert h2.entities["rack.pm1_0_energy"].day["wh"] == 100.0   # the meter's own counter: 5100 - 5000
+    finally:
+        h2.recorder.close()
+
+
+def test_the_card_never_back_fills_or_shows_zero():
+    src = (PKG / "dayfigures.py").read_text(encoding="utf-8")
+    assert "or 0" not in src and "= 0.0 if" not in src
+
+
+def test_js_day_figure_cases_run_in_node():
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    r = subprocess.run([node, str(ROOT / "tests" / "js" / "power_day_test.js")], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+async def test_add_warnings_makes_two_ordinary_thresholds_from_the_rating_and_replaces_only_its_own(hub):
+    """Rating 16 A: above 12.8 A (80 %, level 1) and above 16 A (level 2), hysteresis 2 % = 0.32 A, held 5 s."""
+    cfg = ShellyDeviceConfig(id="rack", host=HOST, mac=MAC, name="Mic rack", area="FOH", rating_a=16)
+    integ, _ = await make(hub, cfg)
+    with pytest.raises(ValueError):
+        integ.apply_warnings("rack")                              # no reading yet
+    feed(integ, pm(100.0, 230.0, 1.8, 1000.0), T0)
+    mine = Threshold(id="my_own", entity="rack.pm1_0_power", above=500)
+    hub.config.thresholds = [mine]
+    assert integ.apply_warnings("rack") == 2
+    assert integ.apply_warnings("rack") == 2                      # again: replaced, not doubled
+    got = {t.id: t for t in hub.config.thresholds}
+    assert set(got) == {"my_own", "shelly_rack_pm1_0_current_80", "shelly_rack_pm1_0_current_100"}
+    t80, t100 = got["shelly_rack_pm1_0_current_80"], got["shelly_rack_pm1_0_current_100"]
+    assert (t80.above, t80.level, t80.hysteresis, t80.hold_s) == (12.8, 1, 0.32, 5.0)
+    assert (t100.above, t100.level, t100.entity) == (16.0, 2, "rack.pm1_0_current")
+    await integ.remove("rack")
+    assert [t.id for t in hub.config.thresholds] == ["my_own"]    # its warnings go with the meter
+
+
+async def test_add_warnings_needs_a_rating(hub):
+    integ, _ = await make(hub)
+    feed(integ, pm(100.0, 230.0, 1.8, 1000.0), T0)
+    with pytest.raises(ValueError):
+        integ.apply_warnings("rack")
+    with pytest.raises(LookupError):
+        integ.apply_warnings("nope")
+
+
+async def test_no_rating_means_no_load_notice_and_no_public_rating(hub):
+    integ, _ = await make(hub)
+    feed(integ, pm(100.0, 230.0, 50.0, 1000.0), T0)
+    assert "rating_a" not in hub.devices["rack"].to_dict()
+
+
+async def test_uk_voltage_range_is_216_2_to_253_volts_and_other_supplies_are_not_judged(hub):
+    """230 V +10 % = 253.0; 230 V -6 % = 216.2. 216.2 and 253.0 are inside; 216.1 and 253.1 outside.
+    Once outside, it clears only 0.5 V back inside (216.5 and 252.5 stay on)."""
+    integ, _ = await make(hub)
+    out = lambda: "power:rack.volts" in hub.alarms.active  # noqa: E731
+    for volts, expect in [(230.0, False), (216.2, False), (253.0, False), (216.1, True), (216.5, True), (216.7, False),
+                          (253.1, True), (252.6, True), (252.4, False), (110.0, False)]:
+        feed(integ, pm(100.0, volts, 1.0, 1000.0), T0)
+        assert out() == expect, volts
+
+
+def pmf(freq):
+    st = pm(100.0, 230.0, 1.0, 1000.0)
+    st["pm1:0"]["freq"] = freq
+    return st
+
+
+async def test_frequency_warns_when_close_to_and_outside_the_uk_50_hz_limits(hub):
+    """Red outside 49.5 to 50.5 Hz (level 2), amber outside 49.8 to 50.2 Hz (level 1), clear again with
+    0.02 Hz of margin: 50.00 and 49.85 fine; 49.79 and 50.21 close to a limit; 49.49 and 50.51 outside;
+    49.6 back to close; 49.81 still close (needs 49.82); 49.9 fine; 60 Hz is not judged."""
+    integ, _ = await make(hub)
+    got = lambda: (hub.alarms.active.get("power:rack.freq").level if "power:rack.freq" in hub.alarms.active else None)  # noqa: E731
+    for hz, expect in [(50.0, None), (49.85, None), (49.79, 1), (50.21, 1), (49.49, 2), (50.51, 2), (49.6, 1),
+                       (49.81, 1), (49.9, None), (60.0, None)]:
+        feed(integ, pmf(hz), T0)
+        assert got() == expect, hz
+    feed(integ, pmf(49.49), T0 + 1)
+    assert "49.49 Hz is outside the UK range (49.5 to 50.5 Hz)" in hub.alarms.active["power:rack.freq"].message
+    assert hub.alarms.active["power:rack.freq"].silent
+
+
+async def test_frequency_range_for_the_day_is_kept_with_times(hub):
+    integ, _ = await make(hub)
+    for i, hz in enumerate([50.02, 49.91, 50.08]):
+        feed(integ, pmf(hz), T0 + 5 * i)
+    d = hub.entities["rack.pm1_0_freq"].day
+    assert (d["min"], d["min_at"], d["max"], d["max_at"]) == (49.91, T0 + 5, 50.08, T0 + 10)
+
+
+async def test_the_rating_can_be_set_and_cleared_and_is_public_and_saved(hub):
+    integ, cfg = await make(hub)
+    await integ.update("rack", None, None, None, None, 16.0)
+    assert cfg.rating_a == 16.0 and hub.devices["rack"].to_dict()["rating_a"] == 16.0
+    assert integ.admin_status()["meters"][0]["rating_a"] == 16.0
+    await integ.update("rack", None, None, None, None, 0.0)
+    assert cfg.rating_a is None and "rating_a" not in hub.devices["rack"].to_dict()
+    with pytest.raises(ValueError):
+        ShellyDeviceConfig(id="x", host=HOST, mac=MAC, rating_a=-1)

@@ -579,6 +579,16 @@ class Recorder:
         except sqlite3.Error as e:
             log.warning("Could not sync the history to disk (%s)", type(e).__name__)
 
+    def raw_states(self, entity_id: str, since: float, until: float) -> list[tuple[float, float]]:
+        """Every recorded reading of one entity between two times, oldest first, across all shows:
+        [(ts, value), ...], exactly as recorded (no averaging). "Not available" records are left out.
+        Read only: it never changes the history."""
+        self.flush()
+        rows = self._db.execute(
+            "SELECT ts, value FROM states WHERE entity_id = ? AND ts >= ? AND ts <= ? "
+            "AND value IS NOT NULL ORDER BY ts, rowid", (entity_id, since, until)).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
     def history(self, entity_ids: list[str], since: float, until: float | None = None,
                 max_points: int = 600, show_id: int | None = None) -> dict[str, list[list[float]]]:
         """Per-entity [[ts, value], ...], averaged into at most max_points

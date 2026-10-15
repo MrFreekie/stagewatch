@@ -1055,7 +1055,7 @@ body.layout-wall .eq-tile .foot { font-size: 16px; }
 .pw-b-waiting { color: var(--muted); }
 .pw-b-frozen { color: var(--stop); }
 .pw-note { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
-.pw-s-frozen .pw-grid, .pw-s-frozen .pw-table, .pw-s-frozen .pw-energy { opacity: .6; }
+.pw-s-frozen .pw-grid, .pw-s-frozen .pw-table, .pw-s-frozen .pw-energy, .pw-s-frozen .pw-day { opacity: .6; }
 .pw-s-frozen .pw-value .pw-num { text-decoration: line-through; text-decoration-thickness: 1px; }
 .pw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 14px; }
 .pw-cell { min-width: 0; }
@@ -1069,6 +1069,38 @@ body.layout-wall .eq-tile .foot { font-size: 16px; }
 .pw-energy { margin-top: 10px; font-size: 16px; font-variant-numeric: tabular-nums; }
 .pw-energy .pw-num { font-weight: 700; font-size: 20px; }
 .pw-energy .unit { color: var(--muted); }
+.pw-day { margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--grid); font-variant-numeric: tabular-nums; }
+.pw-dayhead { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
+.pw-dayrow { font-size: 16px; margin-top: 3px; }
+.pw-dayrow .pw-num { font-weight: 700; }
+.pw-dayrow .unit { color: var(--muted); }
+.pw-gaps { margin: 6px 0 0; }
+.pw-gauges { margin-top: 12px; display: grid; gap: 12px; }
+.pw-glabel { font-size: 15px; font-variant-numeric: tabular-nums; margin-bottom: 3px; }
+.pw-gword { font-weight: 700; margin-left: 4px; }
+.pw-track { position: relative; height: 16px; border-radius: 8px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--grid); }
+.pw-fill { height: 100%; background: var(--ok); transition: width .3s; }
+.pw-l-high .pw-fill, .pw-v-near .pw-live { background: var(--warn, #e0a100); }
+.pw-l-over .pw-fill { background: var(--stop); }
+.pw-l-high .pw-gword, .pw-v-near .pw-gword { color: var(--warn, #e0a100); }
+.pw-l-over .pw-gword, .pw-v-low .pw-gword, .pw-v-high .pw-gword { color: var(--stop); }
+.pw-tick { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text); opacity: .5; }
+.pw-peakmark { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--text); }
+.pw-warnzone { position: absolute; top: 0; bottom: 0; background: var(--warn, #e0a100); opacity: .35; }
+.pw-okzone { position: absolute; top: 0; bottom: 0; background: var(--ok); opacity: .45; }
+.pw-range { position: absolute; top: 4px; bottom: 4px; background: var(--text); opacity: .35; border-radius: 4px; }
+.pw-live { position: absolute; top: -1px; bottom: -1px; width: 4px; margin-left: -2px; background: var(--text); border-radius: 2px; }
+.pw-v-low .pw-live, .pw-v-high .pw-live { background: var(--stop); }
+.pw-gscale { position: relative; height: 16px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.pw-gscale span { position: absolute; transform: translateX(-50%); }
+.pw-gscale span:first-child { left: 0; transform: none; }
+.pw-gscale span.r { right: 0; left: auto; transform: none; }
+.pw-gsub { font-size: 12px; }
+.pw-s-frozen .pw-gauges { opacity: .6; }
+body.layout-wall .pw-glabel { font-size: 28px; }
+body.layout-wall .pw-track { height: 28px; border-radius: 14px; }
+body.layout-wall .pw-gscale { font-size: 18px; height: 24px; }
+body.layout-wall .pw-gsub { display: none; }
 .pw-sub { font-size: 12px; }
 .pw-foot { font-size: 12px; margin: 12px 0 0; }
 body.layout-phone .pw-big .pw-value { font-size: 36px; }
@@ -1081,6 +1113,8 @@ body.layout-wall .pw-value { font-size: 40px; }
 body.layout-wall .pw-value .unit { font-size: 22px; }
 body.layout-wall .pw-big .pw-value { font-size: 88px; }
 body.layout-wall .pw-energy { font-size: 26px; }
+body.layout-wall .pw-dayrow { font-size: 26px; }
+body.layout-wall .pw-dayhead, body.layout-wall .pw-gaps { font-size: 20px; }
 body.layout-wall .pw-energy .pw-num { font-size: 34px; }
 body.layout-wall .pw-sub, body.layout-wall .pw-foot { display: none; }
 body.layout-wall .pw-table { font-size: 28px; }
@@ -1111,10 +1145,10 @@ body:not(.layout-wall):not(.layout-phone) main > [data-size="half"] .gc-strips[d
 /* DirectOut GLOBCON: a box around each channel; the title and subtitle match the other cards (small card heading, muted
    subtitle line); no ▲ marks under the value; a muted channel (read from GLOBCON, never set by Stagewatch) shows MUTED. */
 .gc-strips .gc-col { border: 1px solid var(--grid); border-radius: 8px; padding: 4px 3px; background: rgba(255, 255, 255, .03); background: color-mix(in srgb, var(--panel-2) 40%, transparent); }
-.gc-strips .gc-col.gc-muted { border-color: var(--alert); }
-.gc-strips .gc-col.gc-muted .gc-fill { opacity: .35; }
+.gc-strips .gc-col.gc-muted { border-color: var(--stop); }
+.gc-strips .gc-col.gc-muted .gc-fill { background: var(--stop); opacity: .35; }
 .gc-strips .gc-mark { display: none !important; }
-.gc-mutetag { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); writing-mode: vertical-rl; font-size: 12px; font-weight: 800; letter-spacing: .08em; color: #fff; background: var(--alert); padding: 4px 1px; border-radius: 3px; line-height: 1.1; }
+.gc-mutetag { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); writing-mode: vertical-rl; font-size: 12px; font-weight: 800; letter-spacing: .08em; color: var(--stop); padding: 4px 1px; line-height: 1.1; }
 .gc-mutetag[hidden] { display: none; }
 body.layout-wall .gc-strips .gc-col { padding: 8px 6px; border-radius: 12px; }
 body.layout-wall .gc-mutetag { font-size: 20px; padding: 6px 2px; }
