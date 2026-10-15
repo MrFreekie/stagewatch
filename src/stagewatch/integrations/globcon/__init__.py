@@ -50,7 +50,7 @@ MANIFEST = Manifest(
                 "SUBSCRIBE and UNSUBSCRIBE (and a log-in if you set a password and GLOBCON asks for "
                 "one), never SET, UPDATE or ACTION, so it cannot move a fader, mute, solo, change a "
                 "layer or run a function. Levels are shown as GLOBCON reports them, with no peak or RMS "
-                "claim; nothing is recorded. NOT TESTED against a live GLOBCON: written from GLOBCON's "
+                "claim; nothing is recorded. Names, layers and labels are checked on one real controller; live level meters, the metering scale for different channel types and password login are not yet tested. Written from GLOBCON's "
                 "own web app and one real capture of it; the simulated source (--emulate) works. "
                 "Equipment: never part of the site averages.",
     tier="experimental",
@@ -244,7 +244,7 @@ class GlobconIntegration(Integration):
         if not self._registered or not self._link_up or status == self._last_status:
             return
         self._last_status = status
-        note = "" if self.emulate else " (not yet tested against a live GLOBCON)"
+        note = "" if self.emulate else " (live level meters not yet tested)"
         if status == "ok":
             self.hub.set_device_status(DEVICE_ID, Status.OK, mapping.STATUS_TEXT["ok"] + note)
         elif status == "stale":

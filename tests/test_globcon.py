@@ -6,7 +6,7 @@ What is REAL and what is SYNTHETIC. The field numbers, paths and message flow co
 app and one real capture of it (09/10/2026: Ping every 2 s, SUBSCRIBE Value /general/ and
 /controller/0/, SUBSCRIBE RTValue /controller/0/meters, a 64-byte block of 16 little-endian float32 dB
 about every 0.1 s, -250 meaning no signal, strip labels "Input Manager #1", "Flex Channel 3", "USB 1").
-Stagewatch has never run against a live GLOBCON. Every frame in this file is built here to match that
+Stagewatch has checked names, layers and labels on one real GLOBCON, but never live level meters. Every frame in this file is built here to match that
 description, so it is SYNTHETIC: the names are made up and nothing is from a show.
 """
 
@@ -813,7 +813,7 @@ async def test_real_client_through_the_integration_and_the_hub(hub):
             assert c["strips"][2]["db"] is None and c["strips"][0]["db"] is not None      # strip 3 sent -250
             await until(lambda: hub.devices["globcon"].status == Status.OK)
             dev = hub.devices["globcon"]
-            assert dev.status == Status.OK and "not yet tested against a live GLOBCON" in dev.status_detail
+            assert dev.status == Status.OK and "live level meters not yet tested" in dev.status_detail
             assert srv.ids(protocol.SUBSCRIBE, "RTValue") == ["/controller/2/meters"]
             assert integ.admin_status()["verified"] is False
             await srv.drop()
@@ -1130,7 +1130,7 @@ def test_node_view_logic():
 def test_the_hint_is_in_the_admin_card_only_never_the_public_snapshot_or_dashboards(client):
     class Down:
         verified, label, problem = False, "GLOBCON", ""
-        def hint(self): return "Nothing answered at 192.168.1.197:9091. Check it."
+        def hint(self): return "Nothing answered at 192.168.1.50:9091. Check it."
         def set_wanted(self, c): pass
         async def start(self): pass
         async def stop(self): pass
@@ -1144,10 +1144,10 @@ def test_the_hint_is_in_the_admin_card_only_never_the_public_snapshot_or_dashboa
         time.sleep(0.05)
     integ._source, integ._link_up = Down(), False
     admin = client.get("/api/admin/state").json()
-    assert admin["globcon"]["hint"].startswith("Nothing answered at 192.168.1.197:9091")
-    assert "192.168.1.197" not in json.dumps(admin["integrations"])
+    assert admin["globcon"]["hint"].startswith("Nothing answered at 192.168.1.50:9091")
+    assert "192.168.1.50" not in json.dumps(admin["integrations"])
     for url in ("/api/snapshot", "/api/info", "/api/dashboard/foh"):
-        assert "192.168.1.197" not in client.get(url).text
+        assert "192.168.1.50" not in client.get(url).text
     integ._link_up = True
     assert client.get("/api/admin/state").json()["globcon"]["hint"] == ""
     integ._source = None
