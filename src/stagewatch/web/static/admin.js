@@ -280,7 +280,7 @@
       if (slot.metric_listed === false) notes.push(`Smaart does not list "${slot.metric}"${defaults.laeq_15m === slot.metric ? ": pick one of the LAeq figures it does list (Stagewatch cannot tell which period it is)" : ""}, so that value shows as not available.`);
       if (slot.source_listed === false) notes.push(`Smaart is not listing the input "${slot.source || "first input"}" now, so that value shows as not available.`);
     }
-    return card("Sound level (Smaart)",
+    return SW.brandCard("Sound level (Smaart)", "smaart-badge.png", "Smaart",
       h("p", { class: "muted" }, "Records up to three sound level values from Smaart, exactly as Smaart reports them, and shows them on dashboards that have the Sound level card (User dashboards → Edit cards). Stagewatch only listens: it never changes anything in Smaart, and a value Smaart does not give shows as a dash, never zero."),
       h("details", {}, h("summary", { class: "muted" }, "What Stagewatch sends to Smaart"),
         h("p", { class: "muted" }, "Four short fixed messages and nothing else: \"is a password needed?\", \"which inputs are active?\", the password (only to log in), and \"one update a second, please\". It never starts or stops measuring, never reads Smaart's history, and never changes calibration, gain, logging, alarms or the mix. It does no sound-level maths: nothing is averaged, smoothed or rounded."),
