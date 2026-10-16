@@ -361,8 +361,16 @@
       const host = h("input", { class: "touch", value: m.host, maxlength: "64", autocomplete: "off", spellcheck: "false", "aria-label": `${m.name} address` });
       const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: m.interval_s, "aria-label": `${m.name} reads every (seconds)` });
       const rating = h("input", { class: "num", type: "number", min: "0", max: "200", step: "0.5", value: m.rating_a || "", placeholder: "none", "aria-label": `${m.name} rating (amps)` });
+      const chRows = (m.channels || []).map((c) => {
+        const label = h("input", { value: c.label, maxlength: "40", placeholder: "Label (e.g. Amp rack 3)", "aria-label": `${m.name} ${c.name} label` });
+        const phase = h("select", { "aria-label": `${m.name} ${c.name} line` }, [["", "No line set"], ["L1", "Line 1 (Brown)"], ["L2", "Line 2 (Black)"], ["L3", "Line 3 (Grey)"]].map(([v, t]) => h("option", { value: v, selected: v === c.phase }, t)));
+        const rating = h("input", { class: "num", type: "number", min: "0", max: "200", step: "0.5", value: c.rating_a || "", placeholder: "meter's", "aria-label": `${m.name} ${c.name} rating (amps)` });
+        return { c, label, phase, rating, el: h("div", { class: "row", style: "margin:4px 0" }, h("span", { class: "muted", style: "min-width:90px" }, c.name), label,
+          c.three_phase ? h("span", { class: "muted" }, "Lines 1 to 3 (Brown, Black, Grey)") : phase, rating, h("span", { class: "muted" }, "A")) };
+      });
+      const channelsPayload = () => chRows.map((r) => ({ key: r.c.key, label: val(r.label), phase: r.c.three_phase ? "" : r.phase.value, rating_a: Number(r.rating.value) || 0 }));
       const facts = [m.model, m.firmware ? `firmware ${m.firmware}` : "", `MAC ${m.mac}`].filter(Boolean).join(" · ");
-      return h("tr", {},
+      const first = h("tr", {},
         h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, m.id)),
         h("td", {}, area),
         h("td", {}, statusPill(m), m.detail ? h("div", { class: "muted", style: "font-size:12px" }, m.detail) : null,
@@ -374,14 +382,15 @@
         h("td", {}, h("div", { class: "muted", style: "font-size:12px" }, `${m.ok_polls} ok, ${m.failed_polls} missed`)),
         h("td", {}, h("div", { class: "row" },
           h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/shelly/${encodeURIComponent(m.id)}`, {
-            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value), rating_a: Number(rating.value) || 0 }), "Saved").then(refresh, () => {}) }, "Save"),
+            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value), rating_a: Number(rating.value) || 0, channels: channelsPayload() }), "Saved").then(refresh, () => {}) }, "Save"),
           h("button", { class: "small", title: "Makes two warnings from the rating: a notice at 80% and an alarm at 100%. Your own limits: Stagewatch does not protect or switch anything.",
             onclick: () => run(() => api("POST", `/api/admin/shelly/${encodeURIComponent(m.id)}/warnings`), "Warnings added at 80% and 100% (see Thresholds)").then(refresh, () => {}) }, "Add warnings"),
           h("button", { class: "small danger", onclick: () => confirm(`Remove ${m.name}? Its history is kept.`) && run(() => api("DELETE", `/api/admin/shelly/${encodeURIComponent(m.id)}`), "Removed").then(refresh, () => {}) }, "Remove"))));
+      return chRows.length ? [first, h("tr", {}, h("td", { colspan: "8" }, h("div", { class: "muted", style: "font-size:12px" }, "Circuits on this meter: label, which mains line it is on (single-phase meters), and its own rating (blank uses the meter's rating)"), ...chRows.map((r) => r.el)))] : [first];
     });
     const table = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Rating (amps)"), h("th", {}, "Polls"), h("th", {}, ""))),
-      h("tbody", {}, rows));
+      h("tbody", {}, [].concat(...rows)));
 
     // Add a meter: type the address, press Test to see what is there, then Save.
     const host = h("input", { class: "touch", maxlength: "64", autocomplete: "off", spellcheck: "false", placeholder: "e.g. 192.168.1.50", value: shellyTest ? shellyTest.host : "", "aria-label": "Meter address" });
@@ -702,6 +711,115 @@
       status, diffBox);
     c.id = "calibration-card";
     return c;
+  }
+
+  // ------------------------------------------------- import a log file (LA Network Manager)
+  const LOG_MAX_CHARS = 5000000;   // the server's limit on the file's text
+  const LEVEL_CLASS = { Stop: "error", Alert: "", Advisory: "muted" };
+
+  function logImportCard() {
+    let text = "", fileName = "", ticket = 0;
+    const shows = (admin.events || []).flatMap((e) => e.shows.map((sh) => ({ id: sh.id, label: `${sh.name} · ${SW.fmtDay(sh.day)} (${e.name})` })));
+    const currentId = snap.show && snap.show.id;
+    const showSel = h("select", { class: "touch", "aria-label": "Show to import into", onchange: () => { loadImports(); preview(); } },
+      shows.map((o) => h("option", { value: String(o.id), selected: o.id === currentId }, o.label + (o.id === currentId ? " – current" : ""))));
+    const zones = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+    const tz = h("input", { class: "touch", list: zones.length ? "tz-list" : null, placeholder: `Blank = this site's zone${admin.config.site.timezone ? " (" + admin.config.site.timezone + ")" : ""}`,
+      maxlength: 64, autocomplete: "off", autocapitalize: "off", spellcheck: false, "aria-label": "Time zone of the computer that wrote the file", onchange: () => preview() });
+    const offset = h("input", { class: "num touch", type: "number", step: "1", value: "0", "aria-label": "Clock offset in seconds", onchange: () => preview() });
+    const sessionMarkers = h("input", { type: "checkbox", onchange: () => preview() });
+    const status = h("p", { class: "muted", role: "status" });
+    const previewBox = h("div", { role: "status" });
+    const listBox = h("div");
+
+    const fileInput = h("input", { class: "touch", type: "file", accept: ".xml,text/xml,application/xml", "aria-label": "LA Network Manager log file to read", onchange: () => {
+      const f = fileInput.files[0]; fileInput.value = "";
+      if (!f) return;
+      if (f.size > LOG_MAX_CHARS) { toast("That file is too big to be an LA Network Manager log. Nothing has been changed.", true); return; }
+      const rd = new FileReader();
+      rd.onload = () => { text = String(rd.result); fileName = f.name; preview(); };
+      rd.onerror = () => toast("Could not read that file. Nothing has been changed.", true);
+      rd.readAsText(f);
+    } });
+
+    const body = (dry) => ({ text, file_name: fileName, show_id: Number(showSel.value), tz: tz.value.trim(), offset_s: Number(offset.value) || 0,
+      session_markers: sessionMarkers.checked, dry_run: dry });
+    const span = (a, b) => `${SW.fmtTime(a, { date: true })} to ${SW.fmtTime(b, { date: true })}`;
+    const clear = () => { text = ""; ticket++; previewBox.replaceChildren(); };
+
+    async function preview() {
+      if (!text) return;
+      const mine = ++ticket;
+      status.textContent = "Reading…";
+      try {
+        const r = await api("POST", "/api/admin/logs/import", body(true));
+        if (mine !== ticket) return;
+        status.textContent = ""; showPlan(r);
+      } catch (err) {
+        if (mine !== ticket) return;
+        previewBox.replaceChildren(); status.textContent = err.message;
+      }
+    }
+
+    function showPlan(r) {
+      const none = r.new === 0;
+      const lines = [
+        h("p", {}, h("strong", {}, fileName), ` covers ${span(r.file.first, r.file.last)}. This show day is ${span(r.show_day.from, r.show_day.to)}.`),
+        r.file.closed ? null : h("p", { class: "muted hint" }, "LA Network Manager had not closed this log (it was still open, or stopped suddenly). Everything up to the last whole line is read."),
+        h("p", {}, `${r.new} new ${r.new === 1 ? "entry" : "entries"} to add, ${r.markers} ${r.markers === 1 ? "marker" : "markers"}. `
+          + `${r.already_present} already imported, ${r.outside_day} outside this show day, ${r.session_left_out} session ${r.session_left_out === 1 ? "line" : "lines"} left out (they hold the laptop's addresses).`),
+        none && r.outside_day > 0 && r.already_present === 0 ? h("p", { class: "error" }, "Nothing falls on this show day. Check the show, the time zone and the clock offset above.") : null,
+        none && r.already_present > 0 ? h("p", { class: "muted" }, "Everything in this file is already imported.") : null,
+      ];
+      const eps = r.episodes.length ? h("details", { open: r.episodes.length <= 12 }, h("summary", {}, `Faults in the file (${r.episodes_total})`),
+        h("div", { class: "table-scroll", style: "max-height:260px;overflow-y:auto" }, h("table", {}, h("tbody", {}, r.episodes.map((e) => h("tr", {},
+          h("td", { class: "muted" }, SW.fmtTime(e.start, { seconds: true })),
+          h("td", { class: LEVEL_CLASS[e.level] || "" }, e.level),
+          h("td", {}, `${e.unit}: ${e.what}`),
+          h("td", { class: "muted" }, e.seconds === null ? "never cleared" : e.seconds < 1 ? "cleared in under a second" : `cleared after ${SW.fmtDuration(e.seconds, false)}`))))))) : null;
+      previewBox.replaceChildren(h("div", {}, ...lines, eps,
+        h("div", { class: "row" },
+          h("button", { class: "primary touch", type: "button", disabled: none, onclick: doImport }, "Import into this show"),
+          h("button", { class: "touch", type: "button", onclick: () => { clear(); status.textContent = ""; } }, "Cancel"))));
+    }
+
+    async function doImport() {
+      try {
+        const r = await run(() => api("POST", "/api/admin/logs/import", body(false)), "Log imported");
+        clear();
+        status.textContent = `Imported ${r.rows} entries and ${r.markers} markers. Use Undo below to take it back out.`;
+        await loadImports();
+      } catch (_) { /* the toast says why */ }
+    }
+
+    async function loadImports() {
+      try {
+        const r = await api("GET", `/api/admin/logs/imports?show_id=${encodeURIComponent(showSel.value)}`);
+        const name = (i) => i.source.replace(/^lanwm:/, "");
+        listBox.replaceChildren(r.imports.length ? h("div", { class: "table-scroll" }, h("table", {}, h("tbody", {}, r.imports.map((i) => h("tr", {},
+          h("td", {}, name(i)), h("td", { class: "muted" }, span(i.first, i.last)),
+          h("td", {}, `${i.rows} entries, ${i.markers} markers`),
+          h("td", {}, h("button", { class: "small danger touch", type: "button", "aria-label": `Undo import of ${name(i)}`,
+            onclick: () => confirm(`Take this import back out? Its ${i.rows} entries and ${i.markers} markers are removed from the show.`)
+              && run(() => api("DELETE", `/api/admin/logs/imports/${encodeURIComponent(i.import_id)}?show_id=${encodeURIComponent(showSel.value)}`), "Import removed").then(loadImports, () => {}) }, "Undo")))))))
+          : h("p", { class: "muted" }, "Nothing imported into this show yet."));
+      } catch (err) { listBox.replaceChildren(h("p", { class: "error" }, err.message)); }
+    }
+    loadImports();
+
+    return card("Import a log file",
+      h("p", { class: "muted" }, "Read an L-Acoustics Network Manager log after a show, so amplifier faults and power events appear as markers in that show's timeline and report. Stagewatch only reads a copy of the file; it never talks to Network Manager or the amplifiers. Nothing is added until you press Import, and every import can be undone."),
+      h("p", { class: "muted hint" }, "The file is in the L-Acoustics folder inside AppData on the computer that runs Network Manager: LA Network Manager → Log, named Log_ with the date and time."),
+      h("div", { class: "row" }, h("label", { class: "field inline" }, "Log file: ", fileInput)),
+      h("div", { class: "row" },
+        field("Show", showSel),
+        field("Time zone of that computer", tz),
+        field("Clock offset (seconds)", offset)),
+      h("p", { class: "muted hint" }, "The log has no time zone, so it is read as the time zone above. If the laptop's clock was wrong, put the number of seconds to add (a laptop 5 minutes slow: 300)."),
+      h("label", { class: "field inline" }, sessionMarkers, " Also add markers for going online or offline and for Acknowledge all"),
+      status, previewBox,
+      h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "IMPORTED INTO THE SELECTED SHOW"),
+      listBox);
   }
 
   // Which sensor groups are open, remembered per node in this browser. Kept in memory too, so a
@@ -1818,6 +1936,7 @@
       foldCard(globconCard(), "globcon", false),
       foldCard(shellyCard(), "shelly", false),
       foldCard(alarmLogCard(), "alarmlog", true),
+      foldCard(logImportCard(), "logimport", false),
       foldCard(supportCard(), "help", false),
       foldCard(catalogCard(), "integrations", false));
   }

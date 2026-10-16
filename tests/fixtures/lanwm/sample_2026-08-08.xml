@@ -1,0 +1,79 @@
+<DATA>
+<ITEM Time="8 Aug 2026 09:14:13.830" Level="Info" Unit="---" Category="Session" Description="Welcome to LA Network Manager V2026.2" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:15.263" Level="Info" Unit="---" Category="Session" Description="Operating system : Windows 10 (64 bits)" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:15.263" Level="Info" Unit="---" Category="Session" Description="Available RAM : 32202MB" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:15.263" Level="Info" Unit="---" Category="Session" Description="Number of CPUs : 22 ( GenuineIntel )" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:15.265" Level="Info" Unit="---" Category="Session" Description="Card 1 : Intel(R) Ethernet Connection (18) I219-LM (IP : <redacted>, Mask : <redacted>)" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:15.265" Level="Info" Unit="---" Category="Session" Description="Card 2 : Bluetooth Device (Personal Area Network) (IP : <redacted>, Mask : <redacted>)" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:15.265" Level="Info" Unit="---" Category="Session" Description="Card 3 : Intel(R) Wi-Fi 6E AX211 160MHz (IP : <redacted>, Mask : <redacted>)" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:15.265" Level="Info" Unit="---" Category="Session" Description="Card 4 : <adapter> (IP : <redacted>, Mask : <redacted>)" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:15.521" Level="Info" Unit="---" Category="Session" Description="Using Ethernet (IP : <redacted>, Mask : <redacted>) for AVDECC (AVB Control) and P1 RTA" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:15.591" Level="Info" Unit="---" Category="Session" Description="Operating Mode at Startup : Offline" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:47.867" Level="Info" Unit="---" Category="Session" Description="Ip Range from <redacted> to <redacted>" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:47.876" Level="Info" Unit="---" Category="Session" Description="Going to Online Mode" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:47.876" Level="Info" Unit="---" Category="Session" Description="Connection Speed : Normal" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 09:14:57.014" Level="Info" Unit="---" Category="Session" Description="Restoring Session" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:50.346" Level="Info" Unit="---" Category="Power" Description="Waking Up All Units" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:51.903" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:54.425" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:55.804" Level="Minor" Unit="030" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:55.952" Level="Info" Unit="030" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:55.957" Level="Minor" Unit="101" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.012" Level="Minor" Unit="204" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.030" Level="Minor" Unit="201" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.062" Level="Minor" Unit="026" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.074" Level="Minor" Unit="012" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.075" Level="Info" Unit="101" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.144" Level="Minor" Unit="005" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.159" Level="Minor" Unit="034" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.184" Level="Info" Unit="012" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.239" Level="Info" Unit="005" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.272" Level="Info" Unit="034" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.419" Level="Minor" Unit="104" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.501" Level="Minor" Unit="009" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.551" Level="Info" Unit="104" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.620" Level="Info" Unit="009" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.632" Level="Info" Unit="204" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.659" Level="Info" Unit="201" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:40:56.681" Level="Info" Unit="026" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:41:00.018" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:44:44.896" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:44:54.023" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 10:57:23.549" Level="Info" Unit="---" Category="Session" Description="Saving Session : <session>.nwm" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 11:33:04.326" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 11:44:17.790" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 11:53:39.996" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 11:56:36.021" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 11:56:39.700" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 11:56:40.120" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 11:56:45.129" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 12:11:59.921" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 12:15:10.092" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 12:15:26.914" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 12:15:32.417" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 12:57:46.025" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 15:02:59.995" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 15:03:55.978" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 17:29:22.895" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 17:29:39.584" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 19:02:07.734" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 19:02:25.334" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 19:46:31.555" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 19:46:52.549" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 21:30:29.853" Level="Major" Unit="033" Category="Power" Description="Waiting for SMPS" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 21:30:35.497" Level="Critical" Unit="033" Category="Power" Description="SMPS controller internal error - unit service required" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 21:30:35.671" Level="Info" Unit="033" Category="Power" Description="Waiting for SMPS CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 21:30:36.128" Level="Info" Unit="033" Category="Power" Description="SMPS controller internal error - unit service required CLEARED" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 21:31:32.347" Level="Info" Unit="---" Category="Session" Description="All Messages Acknowledged" Acknowledged="YES"/>
+<ITEM Time="8 Aug 2026 22:32:58.778" Level="Major" Unit="029" Category="Power" Description="Waiting for SMPS" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:32:58.841" Level="Minor" Unit="029" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:33:08.809" Level="Major" Unit="021" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:33:08.829" Level="Major" Unit="022" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:33:08.846" Level="Major" Unit="030" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:33:08.847" Level="Major" Unit="030" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:33:08.856" Level="Major" Unit="027" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:33:08.858" Level="Major" Unit="028" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:33:08.860" Level="Major" Unit="023" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:33:08.861" Level="Major" Unit="029" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:38:28.423" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="8 Aug 2026 22:38:30.472" Level="Info" Unit="---" Category="Power" Description="Standby All Units" Acknowledged="NO"/>

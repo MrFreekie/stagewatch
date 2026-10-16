@@ -52,6 +52,8 @@ class Kind(str, Enum):
     ENERGY = "energy"                  # Wh, cumulative counter
     POWER_FACTOR = "power_factor"      # no unit
     FREQUENCY = "frequency"            # Hz
+    REACTIVE_POWER = "reactive_power"  # var (meters that report it)
+    THD = "thd"                        # total harmonic distortion, % (advisory; not a power-quality certificate)
     GENERIC = "generic"
 
 
@@ -72,6 +74,8 @@ UNITS = {
     Kind.ENERGY: "Wh",
     Kind.POWER_FACTOR: "",
     Kind.FREQUENCY: "Hz",
+    Kind.REACTIVE_POWER: "var",
+    Kind.THD: "%",
 }
 
 ENV_KINDS = (Kind.TEMPERATURE, Kind.HUMIDITY, Kind.PRESSURE)
@@ -97,7 +101,7 @@ def normalise_mac(value: object) -> str | None:
 
 
 # The only extra public fields a device may carry (the sound level graph range).
-PUBLIC_EXTRA = frozenset({"chart_range", "chart_min_db", "chart_max_db", "rating_a"})
+PUBLIC_EXTRA = frozenset({"chart_range", "chart_min_db", "chart_max_db", "rating_a", "channels"})
 
 
 @dataclass

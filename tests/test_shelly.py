@@ -26,12 +26,12 @@ from pydantic import create_model
 from stagewatch import acoustics
 from stagewatch.core import cards
 from stagewatch.core.calibration import set_calibration
-from stagewatch.core.config import (SHELLY_POLL_DEFAULT_S, Config, ConfigStore, ShellyDeviceConfig, Threshold, _Model)
+from stagewatch.core.config import (SHELLY_POLL_DEFAULT_S, Config, ConfigStore, ShellyDeviceConfig, Threshold, ShellyChannelConfig, _Model)
 from stagewatch.core.hub import Hub
 from stagewatch.core.model import ENV_KINDS, UNITS, Device, Entity, Kind, Status
 from stagewatch.integrations.shelly import (InUse, ShellyIntegration, seed_emulate_shelly, validate_host)
 from stagewatch.integrations.shelly import readings as rd
-from stagewatch.integrations.shelly.emulate import DEMO_HOST, EmulatedFleet, EmulatedMeter, emulated_mac
+from stagewatch.integrations.shelly.emulate import DEMO3_HOST, DEMO_HOST, EmulatedFleet, EmulatedMeter, emulated_mac
 from stagewatch.integrations.shelly.http import (ALLOWED_METHODS, ForbiddenMethod, ShellyError, get_json, rpc_path)
 from stagewatch.integrations.shelly.transport import (HttpPollTransport, Target, Transport, parse_device_info)
 from stagewatch.web.server import create_app
@@ -138,7 +138,7 @@ def test_names_are_plain_and_channels_are_numbered_from_one():
     two = rd.readings_from_status(fx("docs-em1-getstatus.json"))
     assert rd.display_name(by_id(two)["em1_1_power"], rd.channel_counts(two)) == "Channel 2 power"
     em = rd.readings_from_status(fx("docs-em-getstatus.json"))
-    assert rd.display_name(by_id(em)["em0_a_current"], rd.channel_counts(em)) == "Phase A current"
+    assert rd.display_name(by_id(em)["em0_a_current"], rd.channel_counts(em)) == "Line 1 (Brown) current"
     assert rd.display_name(by_id(em)["em0_total_power"], rd.channel_counts(em)) == "Total power"
     assert rd.component_words(fx("docs-pm1-getstatus.json")) == ["Power meter"]
 
@@ -780,7 +780,7 @@ def test_config_round_trip_and_mac_is_normalised(tmp_path):
     again = ConfigStore(tmp_path / "config.yaml").load()
     assert again.shelly_devices == [ShellyDeviceConfig(id="mic_rack", host="192.0.2.50", mac=MAC, name="Mic rack", area="FOH", poll_interval_s=2.5)]
     raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
-    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a"}   # no password field exists
+    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "channels"}   # no password field exists
 
 
 def test_interval_outside_two_to_five_seconds_is_brought_into_range():
@@ -1301,3 +1301,104 @@ async def test_the_rating_can_be_set_and_cleared_and_is_public_and_saved(hub):
     assert cfg.rating_a is None and "rating_a" not in hub.devices["rack"].to_dict()
     with pytest.raises(ValueError):
         ShellyDeviceConfig(id="x", host=HOST, mac=MAC, rating_a=-1)
+
+
+def em_status():
+    st = fx("docs-em-getstatus.json")
+    return st
+
+
+async def test_each_circuit_can_have_a_label_a_line_and_its_own_rating_and_they_are_public(hub):
+    integ, cfg = await make(hub)
+    feed(integ, pm(100.0, 230.0, 1.0, 1000.0), T0)
+    await integ.update("rack", None, None, None, None, 16.0, [{"key": "pm1_0", "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0}])
+    pub = hub.devices["rack"].to_dict()
+    assert pub["channels"] == {"pm1_0": {"label": "Amp rack 3", "phase": "L2", "rating_a": 10.0}} and pub["rating_a"] == 16.0
+    assert integ.admin_status()["meters"][0]["channels"] == [
+        {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0}]
+    await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "label": "", "phase": "", "rating_a": 0}])
+    assert cfg.channels == [] and "channels" not in hub.devices["rack"].to_dict()      # nothing typed: nothing kept
+    with pytest.raises(ValueError):
+        ShellyChannelConfig(key="pm1_0", phase="L4")
+    with pytest.raises(ValueError):
+        ShellyChannelConfig(key="Bad Key")
+
+
+async def test_warnings_use_the_circuits_own_rating_before_the_meters(hub):
+    """Meter 16 A, circuit 10 A: 80 % of 10 = 8 A and 100 % = 10 A. Hysteresis 2 % of 10 = 0.2 A."""
+    integ, _ = await make(hub)
+    feed(integ, pm(100.0, 230.0, 1.0, 1000.0), T0)
+    await integ.update("rack", None, None, None, None, 16.0, [{"key": "pm1_0", "label": "Amp rack 3", "phase": "", "rating_a": 10.0}])
+    integ.apply_warnings("rack")
+    got = {t.id: t for t in hub.config.thresholds}
+    assert got["shelly_rack_pm1_0_current_80"].above == 8.0 and got["shelly_rack_pm1_0_current_100"].above == 10.0
+    assert got["shelly_rack_pm1_0_current_80"].hysteresis == 0.2
+    assert "Mic rack Amp rack 3: load 80% of 10 A" == got["shelly_rack_pm1_0_current_80"].label
+
+
+async def test_a_three_phase_meter_is_listed_as_one_circuit_for_all_three_lines(hub):
+    integ, _ = await make(hub)
+    feed(integ, em_status(), T0)
+    ch = integ.admin_status()["meters"][0]["channels"]
+    assert len(ch) == 1 and ch[0]["three_phase"] is True and ch[0]["key"] == "em0"
+
+
+# ===================================================================== more meter types (P1: vocabulary, sim)
+def test_new_power_kinds_are_not_air_kinds_and_have_units():
+    for kind, unit in ((Kind.REACTIVE_POWER, "var"), (Kind.THD, "%")):
+        assert kind not in ENV_KINDS and UNITS[kind] == unit
+
+
+def test_a_meter_peak_register_only_notes_when_it_goes_back_and_never_sums_or_diffs():
+    """Meter maximum 10, 12, 9 A: nothing is added up; the drop at the third reading is noted."""
+    f = df.DayFigures("meter_max_current", False, "d")
+    for i, v in enumerate([10.0, 12.0, 9.0]):
+        f.feed(v, T0 + 5 * i)
+    assert f.to_dict() == {"day": "d", "went_back_at": T0 + 10}
+    g = df.DayFigures("meter_max_current", False, "d")
+    g.feed(10.0, T0); g.feed(12.0, T0 + 5)
+    assert g.to_dict() == {"day": "d"}
+
+
+async def test_line_to_line_voltage_and_thd_get_day_figures_but_a_meter_max_does_not(hub):
+    hub.config.site.timezone = "Europe/London"
+    integ, _ = await make(hub)
+    feed(integ, pm(100.0, 230.0, 1.0, 1000.0), T0)
+    m = integ._meters[MAC]
+    def put(oid, group, field, kind, value, ts):
+        r = rd.Reading(oid, "em0", group, field, kind, 1, value)
+        eid = f"rack.{oid}"
+        if oid not in m.entities:
+            integ._register(m, r, eid, 1)
+        integ._record(m, r, eid, ts)
+    for i, v in enumerate([398.0, 405.0, 392.0]):
+        put("em0_l12_voltage_ll", "l12", "voltage_ll", Kind.VOLTAGE, v, T0 + 5 * i)
+    for i, v in enumerate([2.5, 3.9, 3.1]):
+        put("em0_a_thd_v", "a", "thd_v", Kind.THD, v, T0 + 5 * i)
+    put("em0_a_meter_max_current", "a", "meter_max_current", Kind.CURRENT, 12.0, T0)
+    d = hub.entities["rack.em0_l12_voltage_ll"].day
+    assert (d["min"], d["min_at"], d["max"], d["max_at"]) == (392.0, T0 + 10, 405.0, T0 + 5)
+    assert hub.entities["rack.em0_a_thd_v"].day["max"] == 3.9 and hub.entities["rack.em0_a_thd_v"].unit == "%"
+    assert hub.entities["rack.em0_a_meter_max_current"].day == {"day": "2026-10-14"}
+    snap = {e["id"]: e for e in hub.snapshot()["entities"]}
+    assert snap["rack.em0_l12_voltage_ll"]["role"] == "equipment"
+
+
+def test_the_three_phase_sim_has_uneven_lines_and_a_neutral_that_follows():
+    """Lines 14, 11, 9 A: neutral = sqrt(196 + 121 + 81 - 154 - 99 - 126) = sqrt(19) = 4.36 A."""
+    from stagewatch.integrations.shelly.emulate import neutral_a
+    assert round(neutral_a(14.0, 11.0, 9.0), 2) == 4.36
+    assert neutral_a(10.0, 10.0, 10.0) == 0.0
+    meter = EmulatedMeter(DEMO3_HOST, lambda: 1000.0, outages=False)
+    comps = meter.components(1000.0)
+    got = rd.readings_from_status(comps)
+    ids = {r.object_id: r for r in got}
+    assert {"em0_a_current", "em0_b_current", "em0_c_current", "em0_n_current", "em0_total_power", "emdata0_total_energy"} <= set(ids)
+    assert all(ids[f"em0_{p}_current"].value > 0 for p in "abc")
+    assert ids["em0_n_current"].value > 0
+
+
+def test_a_fresh_emulate_config_gets_a_single_phase_and_a_three_phase_meter():
+    cfg = Config()
+    assert seed_emulate_shelly(cfg) is True
+    assert [d.id for d in cfg.shelly_devices] == ["mic_rack_sim", "distro_sim"]

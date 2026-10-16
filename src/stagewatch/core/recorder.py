@@ -829,6 +829,70 @@ class Recorder:
         return [{"ts": r[0], "alarm_id": r[1], "event": r[2], "level": r[3], "message": r[4]}
                 for r in rows]
 
+    # ------------------------------------------------- imported vendor logs
+    # Rows land in device_log with proto 'vendor_log' and an import_id; their markers carry the source
+    # 'import:<import_id>'. Both are removed together by undo_vendor_import.
+    def vendor_log_keys(self, show_id: int, source_prefix: str) -> set[tuple[str, int]]:
+        """(message, original time in ms) of the imported rows already in the show from this kind of
+        file, so importing the same entries again can skip them."""
+        rows = self._db.execute(
+            "SELECT msg, device_ts FROM device_log WHERE show_id = ? AND proto = 'vendor_log' "
+            "AND source LIKE ? ESCAPE '\\'", (show_id, source_prefix.replace("\\", "\\\\")
+                                              .replace("%", "\\%").replace("_", "\\_") + "%")).fetchall()
+        return {(r[0], round(r[1] * 1000)) for r in rows if r[1] is not None}
+
+    def add_vendor_import(self, show_id: int, import_id: str, source: str, rows: list[tuple],
+                          markers: list[tuple[float, str, str]]) -> None:
+        """Write one import in a single transaction: all of it or none of it. ``rows`` are
+        (ts, device_ts, severity, app, msg, doc_json); ``markers`` are (ts, label, note)."""
+        try:
+            self._db.executemany(
+                "INSERT INTO device_log (show_id, ts, proto, source, src_ip, severity, device_ts, app, msg, "
+                "doc, import_id) VALUES (?, ?, 'vendor_log', ?, '', ?, ?, ?, ?, ?, ?)",
+                [(show_id, ts, source, sev, dts, app, msg, doc, import_id)
+                 for ts, dts, sev, app, msg, doc in rows])
+            self._db.executemany(
+                "INSERT INTO markers (show_id, ts, label, source, note) VALUES (?, ?, ?, ?, ?)",
+                [(show_id, ts, label, f"import:{import_id}", note) for ts, label, note in markers])
+            self._db.commit()
+        except sqlite3.Error:
+            self._db.rollback()
+            raise
+
+    def vendor_imports(self, show_id: int) -> list[dict]:
+        """The imports in a show, newest first: id, source, how many rows and markers, and the span."""
+        rows = self._db.execute(
+            "SELECT import_id, MIN(source), COUNT(*), MIN(ts), MAX(ts) FROM device_log "
+            "WHERE show_id = ? AND import_id IS NOT NULL GROUP BY import_id ORDER BY MAX(id) DESC",
+            (show_id,)).fetchall()
+        out = []
+        for r in rows:
+            n = self._db.execute("SELECT COUNT(*) FROM markers WHERE show_id = ? AND source = ?",
+                                 (show_id, f"import:{r[0]}")).fetchone()[0]
+            out.append({"import_id": r[0], "source": r[1], "rows": r[2], "markers": n,
+                        "first": r[3], "last": r[4]})
+        return out
+
+    def undo_vendor_import(self, show_id: int, import_id: str) -> dict | None:
+        """Remove one import's rows and markers. None if the show has no such import."""
+        try:
+            rows = self._db.execute("DELETE FROM device_log WHERE show_id = ? AND import_id = ?",
+                                    (show_id, import_id)).rowcount
+            if not rows:
+                self._db.rollback()
+                return None
+            ids = [r[0] for r in self._db.execute(
+                "SELECT id FROM markers WHERE show_id = ? AND source = ?", (show_id, f"import:{import_id}"))]
+            for marker_id in ids:
+                self._db.execute("UPDATE schedule_marks SET marker_id = NULL WHERE marker_id = ?", (marker_id,))
+            self._db.execute("DELETE FROM markers WHERE show_id = ? AND source = ?",
+                             (show_id, f"import:{import_id}"))
+            self._db.commit()
+            return {"rows": rows, "markers": len(ids)}
+        except sqlite3.Error:
+            self._db.rollback()
+            raise
+
     # -------------------------------------------------------------- hub runs
     def begin_run(self, version: str, doc: dict | None = None) -> dict | None:
         """Record that the hub started.  Returns the previous run if it never stopped cleanly

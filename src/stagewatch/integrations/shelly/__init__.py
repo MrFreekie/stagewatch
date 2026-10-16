@@ -22,18 +22,19 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Callable
 
 from ...core import sitetime
-from ...core.config import SHELLY_MAX_METERS, ShellyDeviceConfig, Threshold
+from ...core.config import SHELLY_MAX_METERS, ShellyChannelConfig, ShellyDeviceConfig, Threshold
 from ...core.model import UNITS, Device, Entity, Status, slugify
 from ...core.plugin import Integration, Manifest
 from ..smaart.client import is_local_address
 from . import dayfigures as df
 from . import readings as rd
-from .emulate import DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac
+from .emulate import DEMO3_HOST, DEMO3_NAME, DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac
 from .http import GET_DEVICE_INFO, GET_STATUS, Fetch, ShellyError, get_json
 from .transport import DeviceInfo, HttpPollTransport, Target, Transport, parse_device_info
 
@@ -101,6 +102,27 @@ DETAIL = {
 IMMEDIATE = frozenset(DETAIL) - {"no_power"}   # problems that are not a passing blip: show at once
 
 
+def channel_rating(cfg: ShellyDeviceConfig, key: str) -> float | None:
+    """A circuit's own rating, else the meter's."""
+    ch = next((c for c in cfg.channels if c.key == key), None)
+    return (ch.rating_a if ch and ch.rating_a else None) or cfg.rating_a
+
+
+def public_extra(cfg: ShellyDeviceConfig) -> dict:
+    """The public bits of a meter's settings the Power card needs: ratings, labels, phases. No address."""
+    out: dict = {}
+    if cfg.rating_a:
+        out["rating_a"] = cfg.rating_a
+    chans = {}
+    for c in cfg.channels:
+        d = {k: v for k, v in (("label", c.label), ("phase", c.phase), ("rating_a", c.rating_a)) if v}
+        if d:
+            chans[c.key] = d
+    if chans:
+        out["channels"] = chans
+    return out
+
+
 def validate_host(host: object) -> str:
     """A private-network IP address, as text. Raises ShellyError("not_local") for a host name, a
     public address or anything else (the project's local-address check, shared with Smaart)."""
@@ -145,8 +167,12 @@ def seed_emulate_shelly(config) -> bool:
     if "shelly_devices" in config.model_fields_set or config.shelly_devices \
             or any(CARD_ID in d.cards for d in config.dashboards):
         return False
-    config.shelly_devices = [ShellyDeviceConfig(id="mic_rack_sim", host=DEMO_HOST, mac=emulated_mac(DEMO_HOST),
-                                                name=DEMO_NAME, area="Stage L", rating_a=16)]
+    config.shelly_devices = [
+        ShellyDeviceConfig(id="mic_rack_sim", host=DEMO_HOST, mac=emulated_mac(DEMO_HOST),
+                           name=DEMO_NAME, area="Stage L", rating_a=16),
+        ShellyDeviceConfig(id="distro_sim", host=DEMO3_HOST, mac=emulated_mac(DEMO3_HOST),
+                           name=DEMO3_NAME, area="Dock", rating_a=32),
+    ]
     for d in config.dashboards:
         if d.slug == "wall":
             d.cards = [*d.cards[:1], CARD_ID, *d.cards[1:]]
@@ -188,8 +214,7 @@ class ShellyIntegration(Integration):
         model = (info.app or info.model) if info else ""
         dev = Device(cfg.id, cfg.name or "Power meter", MANIFEST.domain, "Shelly", model, cfg.area,
                      status, hw_id=f"mac:{cfg.mac}", category="meter", role="equipment")
-        if cfg.rating_a:
-            dev.public = {"rating_a": cfg.rating_a}      # public: the Power card draws its load bar from it
+        dev.public = public_extra(cfg)      # public: the Power card draws its load bars and labels from it
         return dev
 
     def _meter_of(self, mac: str) -> _Meter | None:
@@ -272,7 +297,7 @@ class ShellyIntegration(Integration):
         """Add one reading to this show day's figures and hand them to the entity (see dayfigures.py).
         After a restart the day so far is rebuilt from the readings already recorded, never invented."""
         entity = self.hub.entities.get(eid)
-        if entity is None or r.value is None or not (r.cumulative or r.field in df.MAX_FIELDS):
+        if entity is None or r.value is None or not (r.cumulative or r.field in df.MAX_FIELDS or r.field.startswith("meter_max_")):
             return
         site = self.hub.config.site
         day = sitetime.show_day(ts, site).isoformat()
@@ -397,7 +422,8 @@ class ShellyIntegration(Integration):
             return cfg
 
     async def update(self, device_id: str, name: str | None, area: str | None, interval_s: float | None,
-                     host: str | None, rating_a: float | None = None) -> None:
+                     host: str | None, rating_a: float | None = None,
+                     channels: list[dict] | None = None) -> None:
         async with self._lock:
             cfg = next((c for c in self.hub.config.shelly_devices if c.id == device_id), None)
             if cfg is None:
@@ -417,13 +443,21 @@ class ShellyIntegration(Integration):
                 cfg.poll_interval_s = interval_s
             if rating_a is not None:
                 cfg.rating_a = rating_a or None      # 0 clears it
+            if channels is not None:
+                seen, kept = set(), []
+                for c in channels:
+                    ch = ShellyChannelConfig(**{**c, "rating_a": c.get("rating_a") or None})
+                    if ch.key not in seen and (ch.label or ch.phase or ch.rating_a):
+                        seen.add(ch.key)
+                        kept.append(ch)
+                cfg.channels = kept
             cfg.host = new_host
             self.hub.save_config()
             m = self._meters.get(cfg.mac)
             dev = self.hub.devices.get(cfg.id)
             if dev is not None:
                 self.hub.register_device(self._device(cfg, m.info if m else None, dev.status))
-            self.hub.set_device_public(cfg.id, {"rating_a": cfg.rating_a} if cfg.rating_a else {})
+            self.hub.set_device_public(cfg.id, public_extra(cfg))
             self._transport.add(Target(cfg.mac, cfg.host, cfg.poll_interval_s))
 
     def apply_warnings(self, device_id: str) -> int:
@@ -434,21 +468,24 @@ class ShellyIntegration(Integration):
         cfg = next((c for c in self.hub.config.shelly_devices if c.id == device_id), None)
         if cfg is None:
             raise LookupError
-        if not cfg.rating_a:
-            raise ValueError("Enter the meter's rating in amps and save first")
         currents = [e for e in self.hub.entities.values() if e.device_id == cfg.id
                     and e.labels.get("field") == "current" and e.labels.get("group", "") in ("", "a", "b", "c")]
-        if not currents:
-            raise ValueError("Wait for the first reading, then try again")
+        rated = [(e, channel_rating(cfg, e.labels.get("channel", ""))) for e in sorted(currents, key=lambda x: x.id)]
+        rated = [(e, r) for e, r in rated if r]
+        if not rated:
+            raise ValueError("Enter a rating in amps and save first" if not currents else
+                             "Enter the meter's rating in amps and save first")
         prefix = f"shelly_{cfg.id}_"
         keep = [t for t in self.hub.config.thresholds if not t.id.startswith(prefix)]
         made = []
-        for e in sorted(currents, key=lambda x: x.id):
+        for e, rating in rated:
             tag = e.id.split(".", 1)[1]
+            chan = next((c for c in cfg.channels if c.key == e.labels.get("channel")), None)
+            who = f"{cfg.name} {chan.label}" if chan and chan.label else cfg.name
             for pct, level in ((80, 1), (100, 2)):
-                made.append(Threshold(id=f"{prefix}{tag}_{pct}", entity=e.id, label=f"{cfg.name}: load {pct}% of {cfg.rating_a:g} A",
-                                      above=round(cfg.rating_a * pct / 100, 3), level=level,
-                                      hysteresis=round(cfg.rating_a * 0.02, 3), hold_s=5.0))
+                made.append(Threshold(id=f"{prefix}{tag}_{pct}", entity=e.id, label=f"{who}: load {pct}% of {rating:g} A",
+                                      above=round(rating * pct / 100, 3), level=level,
+                                      hysteresis=round(rating * 0.02, 3), hold_s=5.0))
         self.hub.config.thresholds = keep + made
         self.hub.save_config()
         return len(made)
@@ -467,6 +504,22 @@ class ShellyIntegration(Integration):
             self.hub.save_config()
             self.hub.remove_device(cfg.id)      # its history stays
 
+    def _admin_channels(self, cfg: ShellyDeviceConfig) -> list[dict]:
+        """The circuits Stagewatch has seen on a meter, with what the admin typed about each."""
+        seen: dict[str, bool] = {}
+        for e in self.hub.entities.values():
+            key = e.labels.get("channel") if e.device_id == cfg.id else None
+            if key:
+                seen[key] = seen.get(key, False) or e.labels.get("group", "") in ("a", "b", "c")
+        out = []
+        for i, (key, three) in enumerate(sorted(seen.items())):
+            m = re.search(r"_(\d+)$", key)
+            name = f"Channel {int(m.group(1)) + 1}" if (m and len(seen) > 1) else ("Three-phase" if three else "Circuit")
+            c = next((x for x in cfg.channels if x.key == key), None)
+            out.append({"key": key, "name": name, "three_phase": three, "label": c.label if c else "",
+                        "phase": c.phase if c else "", "rating_a": c.rating_a if c else None})
+        return out
+
     def admin_status(self) -> dict:
         """Admin page only: addresses, MACs and firmware are here and nowhere public."""
         site = self.hub.config.site
@@ -477,6 +530,7 @@ class ShellyIntegration(Integration):
             meters.append({
                 "id": cfg.id, "name": cfg.name, "area": cfg.area, "host": cfg.host, "mac": cfg.mac,
                 "interval_s": cfg.poll_interval_s, "rating_a": cfg.rating_a,
+                "channels": self._admin_channels(cfg),
                 "model": (m.info.app or m.info.model) if m and m.info else "",
                 "firmware": m.info.firmware if m and m.info else "",
                 "status": dev.status.value if dev else "off", "detail": dev.status_detail if dev else "",

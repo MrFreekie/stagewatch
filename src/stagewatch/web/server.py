@@ -46,6 +46,7 @@ from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
 from ..core import schedule as sched
 from ..core import spl as spl_mod
+from ..integrations.lanwm import importer as logimport
 from ..integrations.ontime.client import check_connection
 from ..integrations.shelly import TEXT as SHELLY_TEXT, InUse
 from ..integrations.shelly.http import ShellyError
@@ -72,6 +73,8 @@ DEFAULT_BODY_OVERRIDES: dict[str, int] = {
     # Calibration import (plan §1.9): read by the browser's FileReader and sent as JSON without
     # the file's history (the page strips it), so 500 records fit well inside this.
     "/api/admin/calibrations/import": 1024 * 1024,
+    # Vendor log import: the file's text as JSON. A real LA Network Manager session is well under 1 MB.
+    "/api/admin/logs/import": 6 * 1024 * 1024,
 }
 
 
@@ -383,6 +386,24 @@ class ShellyAddBody(ShellyTestBody):
         return v
 
 
+class ShellyChannelBody(BaseModel):
+    """One circuit's label, line and rating inside PATCH /api/admin/shelly/{id}. Rating 0 means none."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    key: str = Field(max_length=24, pattern=r"^[a-z0-9_]+$")
+    label: str = Field("", max_length=40)
+    phase: Literal["", "L1", "L2", "L3"] = ""
+    rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)
+
+    @field_validator("label")
+    @classmethod
+    def _plain(cls, v: str) -> str:
+        v = v.strip()
+        if _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+
 class ShellyPatchBody(BaseModel):
     """PATCH /api/admin/shelly/{id}. A new address must be the same meter (checked against its MAC)."""
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
@@ -391,6 +412,7 @@ class ShellyPatchBody(BaseModel):
     area: str | None = Field(None, max_length=40)
     interval_s: float | None = Field(None, ge=2.0, le=5.0, allow_inf_nan=False)
     rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)   # 0 clears the rating
+    channels: list[ShellyChannelBody] | None = Field(None, max_length=16)
     host: str | None = Field(None, min_length=1, max_length=64)
 
     @field_validator("name", "area")
@@ -705,6 +727,21 @@ class ScheduleImportBody(BaseModel):
         if not self.dry_run and (self.show_id is None or self.revision is None):
             raise ValueError("To add the rows to the schedule, send the show_id and revision you are editing")
         return self
+
+
+class LogImportBody(BaseModel):
+    """POST /api/admin/logs/import: a vendor log file's text. ``dry_run`` (the default) only reads it and
+    returns what an import would do; ``dry_run: false`` writes it."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    format: Literal["lanwm"] = "lanwm"
+    text: str = Field(max_length=5_000_000)
+    file_name: str = Field("", max_length=200)
+    show_id: int | None = Field(None, ge=1)
+    tz: str = Field("", max_length=64)
+    offset_s: float = Field(0.0, ge=-86400, le=86400)
+    session_markers: bool = False
+    dry_run: bool = True
 
 
 class ScheduleDemoBody(BaseModel):
@@ -1577,7 +1614,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     @app.patch("/api/admin/shelly/{device_id}", dependencies=admin_deps)
     async def shelly_patch(device_id: str, body: ShellyPatchBody):
         try:
-            await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host, body.rating_a)
+            await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host, body.rating_a,
+                                       None if body.channels is None else [c.model_dump() for c in body.channels])
         except LookupError:
             raise HTTPException(404, "No such power meter") from None
         except ShellyError as exc:
@@ -1773,6 +1811,34 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         except sched.StaleRevision:
             raise HTTPException(409, sched.MSG_CHANGED) from None
         return {**out, "schedule": schedule}
+
+    @app.post("/api/admin/logs/import", dependencies=admin_deps)
+    async def import_log(body: LogImportBody):
+        show_id = body.show_id if body.show_id is not None else hub.recorder.show_id
+        try:
+            parsed = await asyncio.to_thread(logimport.parse.parse_text, body.text)   # slow part, off the loop
+            plan = logimport.plan_import(
+                hub.recorder, hub.config.site, fmt=body.format, text="", parsed=parsed,
+                file_name=body.file_name, show_id=show_id, tz=body.tz, offset_s=body.offset_s,
+                session_markers=body.session_markers)
+            result = {"dry_run": body.dry_run, **plan.summary()}
+            if body.dry_run:
+                return result
+            return {**result, **logimport.apply_import(hub.recorder, plan)}
+        except logimport.ImportRefused as e:
+            raise HTTPException(422, str(e)) from None
+
+    @app.get("/api/admin/logs/imports", dependencies=[Depends(require_admin)])
+    async def list_log_imports(show_id: int | None = Query(None, ge=1)):
+        return {"show_id": show_id or hub.recorder.show_id,
+                "imports": hub.recorder.vendor_imports(show_id or hub.recorder.show_id)}
+
+    @app.delete("/api/admin/logs/imports/{import_id}", dependencies=admin_deps)
+    async def undo_log_import(import_id: str, show_id: int | None = Query(None, ge=1)):
+        removed = hub.recorder.undo_vendor_import(show_id or hub.recorder.show_id, import_id[:64])
+        if removed is None:
+            raise HTTPException(404, "There is no such import in this show. Nothing has been changed.")
+        return {"ok": True, **removed}
 
     @app.post("/api/admin/schedule/demo", dependencies=admin_deps)
     async def schedule_demo(body: ScheduleDemoBody | None = None):
