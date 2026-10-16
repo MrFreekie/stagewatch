@@ -170,6 +170,16 @@ SW.pw = (function () {
     return out.sort((a, b) => a.order - b.order);
   };
   // A silence longer than this between two points breaks the line (the meter was not read): never joined up.
+  // The history chart's vertical scale for a measurement: voltage fixed to the UK range, frequency
+  // to 50 Hz ± 1 Hz (a reading outside is drawn at the edge with a mark), power and current from 0
+  // with the top following the readings. Anything else scales to the readings.
+  pw.chartScale = function (field) {
+    if (field === "voltage") return { fixed: [pw.SWING.voltage.low, pw.SWING.voltage.high], def: null };
+    if (field === "voltage_ll") return { fixed: [pw.SWING.voltage_ll.low, pw.SWING.voltage_ll.high], def: null };
+    if (field === "freq") return { fixed: [49, 51], def: null };
+    if (field === "power" || field === "current" || field === "apparent") return { fixed: null, def: [0, 1e-6] };
+    return { fixed: null, def: null };
+  };
   pw.gapSeconds = (bucketS) => Math.max(60, 3 * bucketS);
   // Display-only smoothing: each point becomes the mean of the recorded points within windowS
   // around it. It never reaches across a gap (no reading for more than gapS), so a gap stays a

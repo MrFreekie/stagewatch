@@ -244,7 +244,7 @@ class EmulatedReader(Reader):
 
     async def read(self) -> Stats:
         t = time.time() - self._t0
-        under = (t % 600) < 20   # 20 s of under-voltage every 10 minutes
+        under = (t % 3600) < 20   # 20 s of under-voltage every hour
         flags = {name: False for name in THROTTLE_BITS.values()}
         flags.update(under_voltage=under, under_voltage_seen=True)   # it starts with one, so "since boot" is always true
         return Stats(model="Raspberry Pi 4 Model B Rev 1.5 (simulated)",

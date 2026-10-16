@@ -1109,6 +1109,8 @@
     pwChart.format = (v) => SW.num(v, Math.min(2, dec));
     pwChart.series = lines.map((l, i) => ({ label: l.label, color: css(`--spl-${(i % 3) + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3], points: SW.pw.smooth(state.pwHistory[l.id], SW.pw.smoothWindow(span), gap) }));
     pwChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "shelly" || m.source === "schedule").map((m) => ({ ...m, selected: false }));
+    const sc = SW.pw.chartScale(state.pwMetric);
+    pwChart.fixedRange = sc.fixed; pwChart.defaultRange = sc.def;
     pwChart.range = [now - span, now];
     pwChart.draw();
     $("power-legend").replaceChildren(...lines.map((l, i) => h("span", {}, h("i", { class: `spl-key spl-line-${i % 3}`, style: `border-top-color:${css(`--spl-${(i % 3) + 1}`)}` }), `${l.label}${l.unit ? " (" + l.unit + ")" : ""}`)));
