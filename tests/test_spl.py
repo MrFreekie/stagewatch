@@ -1201,6 +1201,7 @@ def test_chart_line_colours_are_darker_in_light_theme_and_wall_note_is_quiet():
 
     for h in ("#0b7a4b", "#7a3fc4", "#a84a06"):
         assert 1.05 / (lum(h) + 0.05) >= 4.5
-    assert js.count("--spl-${(i % 3) + 1}") == 3 and "COLORS[i % COLORS.length]" not in js.split("function renderSpl")[1].split("function ")[0]
+    # 3 uses in the Sound level chart, 2 in the power history chart (same palette).
+    assert js.count("--spl-${(i % 3) + 1}") == 5 and "COLORS[i % COLORS.length]" not in js.split("function renderSpl")[1].split("function ")[0]
     assert "dash: SW.spl.LINE_STYLES[i % 3]" in js
     assert "body.layout-wall .spl-note { font-size: 16px; line-height: 1.3;" in css
