@@ -316,6 +316,26 @@ async def test_a_bad_clock_does_not_hide_a_good_timer_and_the_device_stays_ok(tm
         await hub.stop()
 
 
+def test_a_timer_that_is_not_running_stays_current_while_the_connection_is_alive():
+    inner = fast_source("http://127.0.0.1:1")
+    inner._ingest(synthetic({"playback": "stop"}, event=synthetic_event()), "websocket")
+    first = inner.latest_timer()
+    assert first.status == "ok" and first.state.playback == "stop"
+    inner._time = lambda: first.received_at + 30
+    inner._ingest({"clock": 5}, "websocket")           # alive, nothing new about the timer
+    again = inner.latest_timer()
+    assert again.status == "ok" and again.state == first.state and again.received_at == first.received_at + 30
+
+
+def test_a_running_timer_is_not_kept_fresh_by_the_clock_alone():
+    inner = fast_source("http://127.0.0.1:1")
+    inner._ingest(synthetic(event=synthetic_event()), "websocket")   # playback "play"
+    first = inner.latest_timer()
+    inner._time = lambda: first.received_at + 30
+    inner._ingest({"clock": 5}, "websocket")
+    assert inner.latest_timer().received_at == first.received_at     # still old, so the card goes stale
+
+
 # ------------------------------------------------------------------ one shared connection (refcount)
 class Probe(EmulatedClock):
     def __init__(self, *a, **kw):

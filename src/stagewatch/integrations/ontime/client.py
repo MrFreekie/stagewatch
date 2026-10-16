@@ -29,7 +29,7 @@ from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidURI
 
 from ...core.ontimerundown import EventsReading, RundownReading, RundownState
-from ...core.ontimetimer import TimerReading, TimerState
+from ...core.ontimetimer import RUNNING, TimerReading, TimerState
 from ...core.wallclock import ClockReading, valid_clock_ms
 from .parse import (EVENTS_PATH, HTTP_OK, HTTP_PATHS, MAX_BYTES, parse_events, parse_rundown, parse_timer, parse_version, parse_ws_runtime, poll_payload,
                     split_url, ws_url)
@@ -268,6 +268,13 @@ class OntimeSource:
                 self._merged, timer_ok = state, True
                 self._timer = TimerReading(state, self._time(), "ok", "WebSocket" if transport == "websocket" else "Polling")
         ms = valid_clock_ms(payload.get("clock"))
+        if (not timer_ok and "timer" not in payload and "eventNow" not in payload and ms is not None
+                and self._timer.status == "ok" and self._timer.state is not None
+                and self._timer.state.playback not in RUNNING):
+            # Connected, and Ontime has said nothing new about a timer that is not running (it only
+            # sends the timer when it changes): the last state still stands. A running timer is
+            # never kept alive this way, so a frozen one still goes stale.
+            self._timer = TimerReading(self._timer.state, self._time(), "ok", self._timer.detail)
         self._ingest_rundown(payload, transport, alive=ms is not None or timer_ok, clock_ms=ms)
         if ms is not None:
             self._good(ms, transport)
