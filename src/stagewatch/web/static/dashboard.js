@@ -75,6 +75,7 @@
     const tiles = $("tiles");
     tiles.replaceChildren();
     for (const [id, label] of SITE_TILES) {
+      if (id === "site.dew_point" && state.dash && state.dash.show_dew_point === false) continue;   // unticked for this dashboard in Admin
       const e = state.entities[id];
       if (!e) continue;
       const [num, ...unit] = fmt(e.kind, e.value).split(" ");

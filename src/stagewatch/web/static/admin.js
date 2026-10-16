@@ -1257,7 +1257,8 @@
       ul.replaceChildren(...items.map((it, i) => {
         const info = CARD_INFO[it.id] || [it.id, ""];
         const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; if (lookField) lookField.style.display = box.checked ? "" : "none"; onChange(); } });
-        const lookField = it.id === "wall_clock" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Wall Clock look"), clockStyle) : null;
+        const lookField = it.id === "wall_clock" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Wall Clock look"), clockStyle)
+          : it.id === "env_tiles" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Show dew point"), dewBox) : null;
         const sizeSel = halfOk.indexOf(it.id) < 0 ? null : h("select", { class: "touch", "aria-label": `${info[0]} size`, onchange: () => { sizes[it.id] = sizeSel.value; onChange(); } }, h("option", { value: "full" }, "Full"), h("option", { value: "half" }, "Half"));
         if (sizeSel) sizeSel.value = sizes[it.id] === "half" ? "half" : "full";
         const gcField = it.id !== "globcon_meters" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
@@ -1295,6 +1296,7 @@
     const stage = h("input", { class: "touch", value: d.stage || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off" });
     const clockStyle = h("select", { class: "touch" }, h("option", { value: "digits" }, "Plain digits"), h("option", { value: "ring" }, "LED ring"), h("option", { value: "segments" }, "7-segment digits"));
     clockStyle.value = ["ring", "segments"].indexOf(d.clock_style) >= 0 ? d.clock_style : "digits";
+    const dewBox = h("input", { type: "checkbox", checked: d.show_dew_point !== false, onchange: () => onChange() });
     // Ids from a newer Stagewatch (kept in the settings after a downgrade) can't be saved by this one.
     const newer = (d.cards || []).filter((id) => known.indexOf(id) < 0);
     fill(d.cards || (admin.cards && admin.cards.defaults.tablet) || []);
@@ -1307,7 +1309,7 @@
       h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black. Half-size cards sit side by side with another half-size card on tablets and wall screens. On a phone every card is full width."));
     return {
       el,
-      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
+      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewBox.checked, card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
       setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
       count: () => items.filter((it) => it.on).length,
     };

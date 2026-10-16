@@ -20,7 +20,7 @@ from stagewatch.web.server import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "stagewatch" / "web" / "static"
-DASHBOARD_FIELDS = {"slug", "title", "layout", "allow_marker", "allow_ack", "cards", "stage", "clock_style", "card_sizes", "globcon"}
+DASHBOARD_FIELDS = {"slug", "title", "layout", "allow_marker", "allow_ack", "cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point"}
 
 
 def test_default_is_full_everywhere_and_the_allow_list_is_small():
@@ -151,3 +151,16 @@ def test_globcon_levels_card_can_be_half_and_the_css_covers_all_groups():
     assert Dashboard.model_validate({"slug": "x", "card_sizes": {"globcon_meters": "half"}}).card_sizes == {"globcon_meters": "half"}
     css = (STATIC / "style.css").read_text(encoding="utf-8")
     assert ".gc-strips[data-n=\"16\"]" in css and "[data-size=\"half\"] .gc-strips[data-n=\"16\"] .gc-bar" in css
+
+
+def test_dew_point_tile_is_optional_per_dashboard(client):
+    assert Dashboard(slug="x").show_dew_point is True   # on unless unticked: existing screens are unchanged
+    rows = client.get("/api/info").json()["dashboards"]
+    rows[0]["show_dew_point"] = False
+    assert client.put("/api/admin/dashboards", json=rows).status_code == 200
+    assert client.get(f"/api/dashboard/{rows[0]['slug']}").json()["show_dew_point"] is False
+    del rows[0]["show_dew_point"]   # a save that doesn't send it keeps it
+    assert client.put("/api/admin/dashboards", json=rows).status_code == 200
+    assert client.hub.config.dashboards[0].show_dew_point is False
+    js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
+    assert 'id === "site.dew_point" && state.dash && state.dash.show_dew_point === false' in js

@@ -1428,7 +1428,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             data = d.model_dump()
             # A save that doesn't send cards/stage/clock_style/card_sizes (today's admin page) keeps what the
             # dashboard has; only a new dashboard gets its layout's default cards.
-            for key in ("cards", "stage", "clock_style", "card_sizes", "globcon"):
+            for key in ("cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point"):
                 if key not in d.model_fields_set and existing is not None:
                     data[key] = getattr(existing, key)
             if "cards" not in d.model_fields_set and existing is None:

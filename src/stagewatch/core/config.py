@@ -498,6 +498,8 @@ class Dashboard(_Model):
     clock_style: str = "digits"
     # Optional card id -> "full" | "half" (core/cards.py HALF_CAPABLE).  Empty = every card full width.
     card_sizes: dict[str, str] = Field(default_factory=dict)
+    # Whether the site tiles include Dew point on this screen (on unless the admin unticks it).
+    show_dew_point: bool = True
     # The GLOBCON levels card's controller and channel group on this screen.
     globcon: GlobconCardOptions = Field(default_factory=GlobconCardOptions)
 
