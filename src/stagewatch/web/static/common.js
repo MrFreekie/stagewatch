@@ -187,6 +187,8 @@ SW.SOURCES = {
     error: "Check the input and the chosen values in Smaart, then tell the system admin." },
   globcon: { name: "GLOBCON", offline: "Check GLOBCON is running and the Windows firewall allows it.",
     error: "Tell the system admin." },
+  shelly: { name: "Shelly", offline: "Check the meters are powered and on the same network, and their addresses in Admin → Shelly power meters.",
+    error: "Check the meter settings in Admin → Shelly power meters, then tell the system admin." },
 };
 SW.sourceStatus = function (o) {
   const src = SW.SOURCES[o.source] || { name: "The source", offline: "Check it is running.", error: "Tell the system admin." };
@@ -263,6 +265,17 @@ SW.sourceInput = {
     else if (!dev || s === "initializing") reported = "waiting";
     else reported = fresh ? "ok" : at === null ? "waiting" : "stale";
     return { source: "smaart", reported: reported, dataAt: at };
+  },
+  // Shelly power meters: one card status for all its meters. [{ dev, ents }] per meter; the worst
+  // meter decides (Error, then Offline, then Quiet, then Waiting), so Online means every meter is live.
+  shelly: function (meters) {
+    const rank = { error: 4, offline: 3, stale: 2, waiting: 1, ok: 0 };
+    let worst = { source: "shelly", reported: "waiting", dataAt: null }, best = -1;
+    (meters || []).forEach((x) => {
+      const one = SW.sourceInput.smaart(x.dev, x.ents);
+      if (rank[one.reported] > best) { best = rank[one.reported]; worst = { source: "shelly", reported: one.reported, dataAt: one.dataAt }; }
+    });
+    return worst;
   },
 };
 // The small indicator in a card's header: a button (symbol + word) and a pop-out. Build once, then call

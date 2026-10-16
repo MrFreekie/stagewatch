@@ -171,7 +171,26 @@ SW.pw = (function () {
   };
   // A silence longer than this between two points breaks the line (the meter was not read): never joined up.
   pw.gapSeconds = (bucketS) => Math.max(60, 3 * bucketS);
-  pw.chartNote = (spanS, points) => `One point per ${SW.num(Math.max(1, spanS / points), 0)} s at most, as recorded; gaps are left as gaps. Not a measurement of surges between readings.`;
+  // Display-only smoothing: each point becomes the mean of the recorded points within windowS
+  // around it. It never reaches across a gap (no reading for more than gapS), so a gap stays a
+  // gap and nothing is invented; the stored history is unchanged.
+  pw.smoothWindow = (spanS) => Math.max(30, spanS / 60);   // 1 h -> 1 min, 6 h -> 6 min
+  pw.smooth = function (points, windowS, gapS) {
+    const pts = (points || []).filter((p) => p && Number.isFinite(p[1]));
+    const out = [];
+    let start = 0;   // first point of the current unbroken run
+    for (let i = 0; i < pts.length; i++) {
+      if (i > 0 && pts[i][0] - pts[i - 1][0] > gapS) start = i;
+      let end = i;
+      while (end + 1 < pts.length && pts[end + 1][0] - pts[end][0] <= gapS && pts[end + 1][0] - pts[i][0] <= windowS / 2) end++;
+      let sum = 0, n = 0;
+      for (let j = i; j >= start && pts[i][0] - pts[j][0] <= windowS / 2; j--) { sum += pts[j][1]; n++; }
+      for (let j = i + 1; j <= end; j++) { sum += pts[j][1]; n++; }
+      out.push([pts[i][0], sum / n]);
+    }
+    return out;
+  };
+  pw.chartNote = (spanS, points) => `One point per ${SW.num(Math.max(1, spanS / points), 0)} s at most, as recorded, smoothed over ${pw.smoothWindow(spanS) < 60 ? SW.num(pw.smoothWindow(spanS), 0) + " s" : SW.num(pw.smoothWindow(spanS) / 60, 0) + " min"}; gaps are left as gaps. Short surges are flattened: check the meter's maximum above.`;
 
   const ageText = (updated, now) => (updated ? SW.age(updated, now) : "never");
 

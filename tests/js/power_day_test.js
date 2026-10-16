@@ -100,5 +100,16 @@ eq(SW.pw.meterMaxRows(mm, "m"), [{ entity: "x", label: "Line 1 (Brown) Current" 
 eq(SW.pw.chartSeries({ p: E("p", "l12", "voltage_ll", { kind: "voltage" }), q: E("q", "l23", "voltage_ll", { kind: "voltage" }) }, "m", "voltage_ll").map((l) => l.label),
   ["Line 1 to Line 2 (Brown-Black)", "Line 2 to Line 3 (Black-Grey)"], "line-to-line chart lines");
 
+// Chart smoothing (display only): a mean within the window, never across a gap, nothing invented.
+eq(SW.pw.smooth([[0, 10], [10, 20], [20, 30]], 30, 60), [[0, 15], [10, 20], [20, 25]], "smooths within the window");
+eq(SW.pw.smooth([[0, 10], [10, 20], [500, 100], [510, 200]], 30, 60), [[0, 15], [10, 15], [500, 150], [510, 150]], "never across a gap");
+eq(SW.pw.smooth([[0, 10], [10, null], [20, 30]], 30, 60).length, 2, "missing values are dropped, not filled");
+eq(SW.pw.smooth(undefined, 30, 60), [], "no history: no points");
+// One status for every Shelly meter: the worst meter decides.
+const live = { dev: { status: "ok" }, ents: [{ updated: 100, value: 1 }] };
+eq(SW.sourceInput.shelly([live, { dev: { status: "missing" }, ents: [] }]).reported, "offline", "one meter offline: Offline");
+eq(SW.sourceInput.shelly([live]).reported, "ok", "all live: ok");
+eq(SW.sourceInput.shelly([]).reported, "waiting", "no meters: waiting");
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power_day_test: all passed");

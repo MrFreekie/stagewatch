@@ -1062,23 +1062,27 @@ body.layout-wall .eq-tile .foot { font-size: 16px; }
 .pw-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .pw-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
 .pw-value .unit { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 4px; }
-.pw-big { grid-column: 1 / -1; }
-.pw-big .pw-value { font-size: 44px; }
+/* The headline power sits in the same row as volts, amps etc., two columns wide. */
+.pw-big { grid-column: span 2; align-self: end; }
+.pw-big .pw-value { font-size: 40px; }
 .pw-table { width: 100%; font-variant-numeric: tabular-nums; }
 .pw-table th[scope="row"] { text-align: left; font-weight: 600; white-space: nowrap; }
 .pw-energy { margin-top: 10px; font-size: 16px; font-variant-numeric: tabular-nums; }
 .pw-energy .pw-num { font-weight: 700; font-size: 20px; }
 .pw-energy .unit { color: var(--muted); }
-.pw-day { margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--grid); font-variant-numeric: tabular-nums; }
+.pw-day { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--grid); font-variant-numeric: tabular-nums; }
 .pw-dayhead { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
-.pw-dayrow { font-size: 16px; margin-top: 3px; }
-.pw-dayrow .pw-num { font-weight: 700; }
+/* Show-day figures (highest current etc.) are small print under the live values. */
+.pw-dayrow { font-size: 13px; margin-top: 2px; color: var(--muted); }
+.pw-dayrow .pw-num { font-weight: 500; color: var(--text); }
+.pw-dayrow .pw-label { font-size: 11px; }
 .pw-dayrow .unit { color: var(--muted); }
 .pw-gaps { margin: 6px 0 0; }
-.pw-gauges { margin-top: 12px; display: grid; gap: 12px; }
+/* Bars side by side where there is room, each no wider than it needs to be. */
+.pw-gauges { margin-top: 12px; display: grid; gap: 10px 24px; grid-template-columns: repeat(auto-fill, minmax(220px, 340px)); }
 .pw-glabel { font-size: 15px; font-variant-numeric: tabular-nums; margin-bottom: 3px; }
 .pw-gword { font-weight: 700; margin-left: 4px; }
-.pw-track { position: relative; height: 16px; border-radius: 8px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--grid); }
+.pw-track { position: relative; height: 12px; border-radius: 8px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--grid); }
 .pw-fill { height: 100%; background: var(--ok); transition: width .3s; }
 .pw-l-high .pw-fill, .pw-v-near .pw-live { background: var(--warn, #e0a100); }
 .pw-l-over .pw-fill { background: var(--stop); }
@@ -1121,16 +1125,18 @@ body.layout-wall .pw-note { font-size: 24px; }
 body.layout-wall .pw-label { font-size: 18px; }
 body.layout-wall .pw-value { font-size: 40px; }
 body.layout-wall .pw-value .unit { font-size: 22px; }
-body.layout-wall .pw-big .pw-value { font-size: 88px; }
+body.layout-wall .pw-big .pw-value { font-size: 64px; }
 body.layout-wall .pw-energy { font-size: 26px; }
-body.layout-wall .pw-dayrow { font-size: 26px; }
+body.layout-wall .pw-dayrow { font-size: 20px; }
+body.layout-wall .pw-dayrow .pw-label { font-size: 16px; }
+body.layout-wall .pw-gauges { grid-template-columns: repeat(auto-fill, minmax(360px, 560px)); }
 body.layout-wall .pw-dayhead, body.layout-wall .pw-gaps { font-size: 20px; }
 body.layout-wall .pw-energy .pw-num { font-size: 34px; }
 body.layout-wall .pw-sub, body.layout-wall .pw-foot { display: none; }
 body.layout-wall .pw-table { font-size: 28px; }
 main > [data-size="half"] .pw-big .pw-value { font-size: 36px; }
 main > [data-size="half"] .pw-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
-body.layout-wall main > [data-size="half"] .pw-big .pw-value { font-size: 64px; }
+body.layout-wall main > [data-size="half"] .pw-big .pw-value { font-size: 52px; }
 body.layout-wall main > [data-size="half"] .pw-value { font-size: 32px; }
 
 /* DirectOut GLOBCON: the channel name sits to the LEFT of each meter, larger, reading upwards; the channel number stays above

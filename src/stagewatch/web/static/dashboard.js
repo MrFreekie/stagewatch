@@ -1035,6 +1035,9 @@
     card.hidden = view.meters.length === 0;
     if (!pwUi.ui) pwUi.ui = SW.pw.build($("power-body"));
     pwUi.ui.update(view, state.entities);
+    if (!pwUi.status) pwUi.status = addCardStatus(card, "shelly");
+    pwUi.status.update(SW.sourceInput.shelly(view.meters.map((m) => ({ dev: (state.devices || {})[m.id],
+      ents: Object.values(m.entities) }))), state.now);
     renderPowerHist(view);
   }
 
@@ -1088,7 +1091,7 @@
     const gap = SW.pw.gapSeconds(span / SW.pw.POINTS);
     const dec = lines.length ? lines[0].decimals : 1;
     pwChart.format = (v) => SW.num(v, Math.min(2, dec));
-    pwChart.series = lines.map((l, i) => ({ label: l.label, color: css(`--spl-${(i % 3) + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3], points: state.pwHistory[l.id] || [] }));
+    pwChart.series = lines.map((l, i) => ({ label: l.label, color: css(`--spl-${(i % 3) + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3], points: SW.pw.smooth(state.pwHistory[l.id], SW.pw.smoothWindow(span), gap) }));
     pwChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "shelly" || m.source === "schedule").map((m) => ({ ...m, selected: false }));
     pwChart.range = [now - span, now];
     pwChart.draw();
