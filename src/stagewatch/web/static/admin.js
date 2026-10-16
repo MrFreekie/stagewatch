@@ -915,6 +915,7 @@
   // Which sensor groups are open, remembered per node in this browser. Kept in memory too, so a
   // re-render after Save keeps the state even when the browser has no storage.
   // The same store and buttons serve the Sensors, Connect a tablet and Software cards.
+  const softClosed = new Set();   // soft-held cards the person closed during this notice
   function foldStore(storageKey) {
     let state = null;
     const load = () => {
@@ -933,11 +934,16 @@
       isOpen: (id, dflt) => (Object.prototype.hasOwnProperty.call(load(), id) ? !!state[id] : dflt),
       // Set up a <details>: open by the remembered choice (else dflt); `force` keeps it open and
       // remembers nothing. Only a person's own toggle is remembered, never a default.
+      // `force` "soft" opens it for a notice but lets the person close it: closed stays closed
+      // (this page visit) until the notice clears and comes back.
       bind(d, id, dflt, force) {
         let skip = 0;
-        if (force || store.isOpen(id, dflt)) { d.open = true; skip = 1; }   // this change fires one toggle event: ignore it
+        if (force !== "soft") softClosed.delete(id);
+        const open = force === "soft" ? !softClosed.has(id) : force || store.isOpen(id, dflt);
+        if (open) { d.open = true; skip = 1; }   // this change fires one toggle event: ignore it
         d.addEventListener("toggle", () => {
           if (skip) { skip = 0; return; }
+          if (force === "soft") { if (d.open) softClosed.delete(id); else softClosed.add(id); return; }
           if (force) { d.open = true; return; }
           load()[id] = d.open; save();
         });
@@ -975,6 +981,7 @@
     pageFolds = pageFolds.filter((f) => f.d.isConnected);
     const stores = new Set();
     pageFolds.forEach((f) => {
+      if (f.force === "soft") { f.d.open = open; return; }   // its toggle handler notes the choice
       if (f.force) return;
       f.d.open = open; f.store.state()[f.key] = open; stores.add(f.store);
     });
@@ -1568,18 +1575,23 @@
     const saveDay = (body) => showRun(() => api("PATCH", "/api/admin/shows/current", Object.assign({ show_id: show.id }, body)), "Day saved").then(refresh, () => {});
 
     // Previous shows, grouped by event (newest first).
+    // "09:00" when the day started on its own date, else the full date too ("Thu 15 Oct 2026, 23:40").
+    const startedText = (s) => {
+      const full = SW.fmtTime(s.started, { date: true });
+      return full.startsWith(`${SW.fmtDay(s.day)}, `) ? SW.fmtTime(s.started) : full;
+    };
     const prevCount = admin.events.reduce((n, e) => n + e.shows.filter((s) => s.id !== show.id).length, 0);
     const previous = h("details", {}, h("summary", { class: "muted" }, `Previous shows (${prevCount})`),
       admin.events.filter((e) => e.shows.some((s) => s.id !== show.id)).map((e) => h("div", { class: "event-group" },
         h("strong", {}, e.name), e.id === ev.id ? h("span", { class: "muted" }, " (this event)") : null,
         h("ul", {}, e.shows.filter((s) => s.id !== show.id).map((s) => h("li", {},
           `${s.name} · ${SW.fmtDay(s.day)}`,
-          h("span", { class: "muted" }, ` (started ${SW.fmtTime(s.started, { date: true })})`)))))));
+          h("span", { class: "muted" }, ` (started ${startedText(s)})`)))))));
 
     return card("Event & show",
       h("p", { class: "event-now" }, "Event: ", h("strong", {}, ev.name)),
       h("p", { class: "event-now" }, "Day: ", h("strong", {}, show.name), ` · ${SW.fmtDay(show.day)}`,
-        h("span", { class: "muted" }, ` (started ${SW.fmtTime(show.started, { date: true })})`)),
+        h("span", { class: "muted" }, ` (started ${startedText(show)})`)),
       h("p", { class: "muted hint" }, "Markers, alarms and history belong to the current day. Dashboards show the event and day under their title."),
       h("div", { class: "row" },
         h("button", { class: "primary touch", type: "button", "data-show-start": "", disabled: showBusy, onclick: () => { showPanel = showPanel === "next" ? "" : "next"; render(); } }, "Next day (same event)"),
@@ -2020,7 +2032,7 @@
       foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false)),
       foldCard(wallClockCard(), "wallclock", false),
-      foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin)),
+      foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"),
       foldCard(barometerCard(), "barometer", false),
       foldCard(splCard(), "smaart", false),
       foldCard(globconCard(), "globcon", false),

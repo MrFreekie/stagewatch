@@ -237,4 +237,4 @@ def test_all_ontime_controls_live_in_the_one_ontime_card():
         assert gone not in wall, gone
     assert "Ontime settings are in the Ontime card." in wall and "Time source" in wall
     assert "function ontimeTimerCard" not in admin
-    assert 'foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin))' in admin
+    assert 'foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft")' in admin
