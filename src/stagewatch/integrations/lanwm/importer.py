@@ -109,7 +109,7 @@ def _show(recorder: Recorder, show_id: int) -> dict:
 
 def plan_import(recorder: Recorder, site, *, fmt: str, text: str, file_name: str, show_id: int,
                 tz: str = "", offset_s: float = 0.0, session_markers: bool = False,
-                parsed: parse.ParseResult | None = None) -> Plan:
+                load_checker_markers: bool = False, parsed: parse.ParseResult | None = None) -> Plan:
     """Read the file and work out what an import would do. Writes nothing. ``parsed`` lets a caller do
     the (slow, pure) reading off the event loop and pass it in; ``text`` is then ignored."""
     if fmt not in FORMATS:
@@ -140,7 +140,7 @@ def plan_import(recorder: Recorder, site, *, fmt: str, text: str, file_name: str
     fresh: list[parse.LaEvent] = []
     in_day: list[parse.LaEvent] = []
     for e in parsed.events:
-        if not mapping.keep(e, session_markers):
+        if not mapping.keep(e, session_markers, load_checker_markers):
             plan.session_left_out += 1
             continue
         dts, ts = aligned(e)

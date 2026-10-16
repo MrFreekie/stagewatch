@@ -307,3 +307,52 @@ def test_admin_card_is_wired_to_the_endpoints():
     for path in ("/api/admin/logs/import", "/api/admin/logs/imports"):
         assert path in js
     assert "dry_run: dry" in js and "confirm(" in js        # preview first, and Undo asks first
+
+
+def test_load_checker_markers_are_a_separate_choice_off_by_default(tmp_path):
+    rec = Recorder(tmp_path / "t.sqlite3")
+    rec.set_show_day("2026-10-15")
+    text2 = SAMPLE2.read_text(encoding="utf-8")
+
+    def go(**kw):
+        return importer.plan_import(rec, SITE, fmt="lanwm", text=text2, file_name="x.xml", show_id=rec.show_id, **kw)
+    off = go()
+    assert not any("Load Checker" in m[1] for m in off.markers) and off.summary()["markers"] == 11
+    lc = go(load_checker_markers=True)
+    names = [m[1] for m in lc.markers if "Load Checker" in m[1]]
+    assert names == ["Entering Load Checker Mode", "Leaving Load Checker Mode"] * 5      # 5 pairs in the file
+    inside = [m[0] for m in lc.markers if "AES" in m[1]][1]                              # 11:22:09
+    assert [m[0] for m in lc.markers if "Load Checker" in m[1]][0] < inside < [m[0] for m in lc.markers if "Load Checker" in m[1]][1]
+    assert lc.summary()["markers"] == 21 and lc.summary()["new"] == 83
+    assert not any("Going to" in m[1] or "Acknowledged" in m[1] for m in lc.markers)      # the other option stays off
+    assert go(session_markers=True, load_checker_markers=True).summary()["markers"] == 31
+    rec.close()
+
+
+# ------------------------------------- the second real file: a quieter day with Input faults
+SAMPLE2 = Path(__file__).parent / "fixtures" / "lanwm" / "sample_2026-10-15.xml"
+
+
+def test_second_file_reads_cleanly_and_is_closed():
+    r = parse.parse_text(SAMPLE2.read_text(encoding="utf-8"))
+    assert len(r.events) == 149 and r.skipped == 0 and r.duplicates == 0 and r.closed is True
+    assert r.first == datetime(2026, 10, 15, 11, 9, 11, 800000) and r.last == datetime(2026, 10, 15, 21, 48, 48, 544000)
+    assert {e.category for e in r.events} == {"Session", "Input", "Power", "Network"}
+
+
+def test_second_file_import_matches_the_timeline(tmp_path):
+    rec = Recorder(tmp_path / "t.sqlite3")
+    rec.set_show_day("2026-10-15")
+    p = importer.plan_import(rec, SITE, fmt="lanwm", text=SAMPLE2.read_text(encoding="utf-8"),
+                             file_name="x.xml", show_id=rec.show_id)
+    s = p.summary()
+    # 73 Power/Network/Input entries; 34 faults (8 AES unlocks, 8 AVB unlocks, 8 disconnects, 10 mains), all cleared
+    assert (s["new"], s["session_left_out"], s["episodes_total"], s["open_episodes"]) == (73, 76, 34, 0)
+    assert [m[1] for m in p.markers] == [
+        "AES/EBU Unlock on Input AB on LA units 201, 202, 203", "Waking Up All Units",
+        "AES/EBU Unlock on Input AB on 5 units", "LA unit 105: AVB Audio Input Stream 1 Unlocked",
+        "Unit Disconnected on LA units 103, 104, 105", "AVB Audio Input Stream 1 Unlocked on 5 units",
+        "Unit Disconnected on 5 units", "Standby All Units", "Waking Up All Units",
+        "LA unit 104: AVB Audio Input Stream 1 Unlocked", "Standby All Units"]     # 104 flapping twice in 0.3 s is one marker
+    assert p.markers[0][0] == datetime(2026, 10, 15, 10, 12, 4, 233000, tzinfo=timezone.utc).timestamp()   # 11:12:04 BST
+    rec.close()

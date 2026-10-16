@@ -569,7 +569,7 @@
           h("td", {}, role),
           h("td", {}, h("div", { class: "row" }, sleep, h("span", { class: "muted" }, "min")),
             h("div", { class: "muted", style: "font-size:12px" }, "Counted as stale after 2.5 times this")),
-          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null, hwd && hwd.conflict ? h("div", { style: "font-size:12px" }, h("a", { href: "#calibration-card" }, "Held by the hardware check: choose what to do under Calibration & hardware")) : null),
+          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null, deviceErrorCounts["device:" + d.id] ? h("div", { style: "font-size:12px" }, h("a", { href: "#device-errors-card" }, `${problemsWord(deviceErrorCounts["device:" + d.id])} this show`)) : null, hwd && hwd.conflict ? h("div", { style: "font-size:12px" }, h("a", { href: "#calibration-card" }, "Held by the hardware check: choose what to do under Calibration & hardware")) : null),
           h("td", {}, nodeAddress(admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id])),
           h("td", {}, d.model),
           h("td", {}, h("div", { class: "row" },
@@ -610,7 +610,7 @@
   // ------------------------------------------------- calibration & hardware (plan 1.9)
   const macText = (key) => { const m = /^mac:([0-9a-f]{12})$/.exec(key || ""); return m ? m[1].match(/../g).join(":") : (key || ""); };
   const methodWord = { manual: "set by hand", reference: "checked against a reference", import: "imported from a file", migrated: "kept from before the upgrade", moved: "copied from another board" };
-  const isoDate = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }); };
+  const isoDate = (iso) => { const t = Date.parse(iso); return Number.isNaN(t) ? "" : SW.fmtTime(t / 1000, { date: true }); };   // site time, like every other time on the page
   const ageText = (iso) => { const d = new Date(iso); if (isNaN(d)) return ""; const s = Math.max(0, (Date.now() - d.getTime()) / 1000); return s < 60 ? "just now" : `${SW.fmtDuration(s, false)} ago`; };
   const fieldWord = { offset: "offset", include_in_average: "in site average", accuracy: "accuracy", accuracy_basis: "accuracy basis", role: "role" };
   const showVal = (v) => (v === null || v === "" ? "none" : v === true ? "yes" : v === false ? "no" : String(v));
@@ -713,6 +713,94 @@
     return c;
   }
 
+  // ------------------------------------------------- device errors (plans/device-error-list.md)
+  // Problems per device for a show. The count on each Devices row comes from the same reply.
+  let deviceErrorCounts = {};   // device key -> problems in the current show
+  async function loadDeviceErrorCounts() {
+    try {
+      const r = await api("GET", "/api/admin/devices/errors");
+      deviceErrorCounts = Object.fromEntries(r.rows.filter((x) => x.problems > 0).map((x) => [x.key, x.problems]));
+    } catch (_) { deviceErrorCounts = {}; }
+  }
+  const problemsWord = (n) => `${n} ${n === 1 ? "problem" : "problems"}`;
+
+  function deviceErrorsCard() {
+    const shows = (admin.events || []).flatMap((e) => e.shows.map((sh) => ({ id: sh.id, label: `${sh.name} · ${SW.fmtDay(sh.day)} (${e.name})` })));
+    const currentId = snap.show && snap.show.id;
+    let data = null, showQuiet = false;
+    const openRows = new Set();
+    const showSel = h("select", { class: "touch", "aria-label": "Show to look at", onchange: () => load() },
+      shows.map((o) => h("option", { value: String(o.id), selected: o.id === currentId }, o.label + (o.id === currentId ? " – current" : ""))));
+    const scopeSel = h("select", { class: "touch", "aria-label": "How much of the event", onchange: () => load() },
+      h("option", { value: "show" }, "Just this day"), h("option", { value: "event" }, "All days of this event"));
+    const box = h("div", { role: "status" }, h("p", { class: "muted" }, "Reading…"));
+    const span = (a, b) => `${SW.fmtTime(a, { date: true })} to ${SW.fmtTime(b, { date: true })}`;
+    const num = (n, cls) => h("td", { class: n ? (cls || "") : "muted", style: "text-align:center" }, n ? String(n) : "-");
+
+    async function load() {
+      try {
+        data = await api("GET", `/api/admin/devices/errors?show_id=${encodeURIComponent(showSel.value)}&scope=${scopeSel.value}`);
+        draw();
+      } catch (err) { data = null; box.replaceChildren(h("p", { class: "error" }, err.message)); }
+    }
+
+    const ENDED = { clear: "", restart: " (ended when Stagewatch restarted)", open: " (still going)", show_end: " (still going when the day ended)", file: " (never cleared in the log)" };
+    function timeline(r) {
+      const items = r.episodes.slice().reverse().map((e) => h("li", {},
+        `${SW.fmtTime(e.start, { seconds: true })} · ${e.level}: ${e.text} · ${e.seconds === null ? "no end known" : SW.faultTime(e.seconds)}${ENDED[e.ended_by] || ""}`));
+      return h("tr", {}, h("td", { colspan: 8 }, h("ul", { class: "muted", style: "margin:4px 0 8px 18px" }, items),
+        r.episodes_total > r.episodes.length ? h("p", { class: "muted hint" }, `Showing the latest ${r.episodes.length} of ${r.episodes_total}.`) : null,
+        r.imported_from.length ? h("p", { class: "muted hint" }, `Imported from ${r.imported_from.join(", ")}.`) : null));
+    }
+
+    function rowEls(r) {
+      const isOpen = openRows.has(r.key);
+      const toggle = r.problems ? h("button", { class: "small", style: "min-height:44px", type: "button", "aria-expanded": String(isOpen),
+        "aria-label": `${isOpen ? "Hide" : "Show"} the problems of ${r.name}`,
+        onclick: () => { if (isOpen) openRows.delete(r.key); else openRows.add(r.key); draw(); } }, isOpen ? "Hide" : "Show") : null;
+      const main = h("tr", {},
+        h("td", {}, r.name, r.flapping ? h("span", { class: "pill", style: "margin-left:6px", title: "3 or more problems within 10 minutes" }, "flapping") : null,
+          h("div", { class: "muted", style: "font-size:12px" }, r.kind)),
+        h("td", { class: "muted" }, r.now || "-"),
+        num(r.stops, "error"), num(r.alerts), num(r.advisories), num(r.dropouts),
+        h("td", { class: r.seconds_in_fault ? "" : "muted" }, SW.faultTime(r.seconds_in_fault),
+          r.never_cleared ? h("div", { class: "muted", style: "font-size:12px" }, `${r.never_cleared} never cleared`) : null),
+        h("td", {}, r.last ? h("div", {}, h("span", { class: "muted" }, SW.fmtTime(r.last.ts, { seconds: true }) + " "), `${r.last.level}: ${r.last.text}`) : h("span", { class: "muted" }, "None"),
+          toggle));
+      return isOpen ? [main, timeline(r)] : [main];
+    }
+
+    function draw() {
+      const t = data.totals, busy = data.rows.filter((r) => r.problems > 0), quiet = data.rows.filter((r) => r.problems === 0);
+      const lines = [
+        h("p", {}, t.problems ? `${problemsWord(t.problems)} in ${data.scope === "event" ? `${data.days} ${data.days === 1 ? "day" : "days"}` : "this day"}: ` +
+          `${t.stops} Stop, ${t.alerts} Alert, ${t.advisories} Advisory, ${t.dropouts} ${t.dropouts === 1 ? "drop-out" : "drop-outs"}.` : "No problems recorded."),
+        ...data.gaps.slice(0, 5).map((g) => h("p", { class: "muted hint" }, `Stagewatch was not running ${span(g.from, g.to)}, so problems in that time can't be counted.`)),
+        data.gaps.length > 5 ? h("p", { class: "muted hint" }, `and ${data.gaps.length - 5} more breaks.`) : null,
+      ];
+      const head = h("thead", {}, h("tr", {}, ["Device", "Now", "Stop", "Alert", "Advisory", "Drop-outs", "Time in fault", "Last problem"].map((x) => h("th", {}, x))));
+      const shown = showQuiet ? busy.concat(quiet) : busy;
+      const table = shown.length ? h("div", { class: "table-scroll" }, h("table", {}, head, h("tbody", {}, shown.flatMap(rowEls)))) : null;
+      const quietBtn = quiet.length ? h("button", { class: "small", style: "min-height:44px", type: "button", onclick: () => { showQuiet = !showQuiet; draw(); } },
+        showQuiet ? "Hide quiet devices" : `Show ${quiet.length} quiet ${quiet.length === 1 ? "device" : "devices"}`) : null;
+      const csvBtn = h("button", { class: "small", style: "min-height:44px", type: "button", disabled: !data.rows.length, onclick: () => {
+        const text = SW.deviceErrorsCsv(data.rows, (ts) => SW.fmtTime(ts, { date: true, seconds: true }));
+        const a = h("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })), download: SW.deviceErrorsFilename(data.show.name, data.show.day) });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      } }, "Save as CSV");
+      box.replaceChildren(...[...lines, table].filter(Boolean), h("div", { class: "row" }, quietBtn, csvBtn, h("button", { class: "small", style: "min-height:44px", type: "button", onclick: () => load() }, "Refresh")));
+    }
+    load();
+
+    const c = card("Device errors",
+      h("p", { class: "muted" }, "How many problems each device had, and when, so you can see which box keeps dropping out. A problem is counted once however long it lasts or however many units report it at the same moment. Imported LA Network Manager logs add their units here. Limit alarms (a stage that is too hot) are not device problems and stay in the alarm log."),
+      h("div", { class: "row" }, field("Show", showSel), field("How much", scopeSel)),
+      box);
+    c.id = "device-errors-card";
+    return c;
+  }
+
   // ------------------------------------------------- import a log file (LA Network Manager)
   const LOG_MAX_CHARS = 5000000;   // the server's limit on the file's text
   const LEVEL_CLASS = { Stop: "error", Alert: "", Advisory: "muted" };
@@ -728,6 +816,7 @@
       maxlength: 64, autocomplete: "off", autocapitalize: "off", spellcheck: false, "aria-label": "Time zone of the computer that wrote the file", onchange: () => preview() });
     const offset = h("input", { class: "num touch", type: "number", step: "1", value: "0", "aria-label": "Clock offset in seconds", onchange: () => preview() });
     const sessionMarkers = h("input", { type: "checkbox", onchange: () => preview() });
+    const loadCheckerMarkers = h("input", { type: "checkbox", onchange: () => preview() });
     const status = h("p", { class: "muted", role: "status" });
     const previewBox = h("div", { role: "status" });
     const listBox = h("div");
@@ -743,7 +832,7 @@
     } });
 
     const body = (dry) => ({ text, file_name: fileName, show_id: Number(showSel.value), tz: tz.value.trim(), offset_s: Number(offset.value) || 0,
-      session_markers: sessionMarkers.checked, dry_run: dry });
+      session_markers: sessionMarkers.checked, load_checker_markers: loadCheckerMarkers.checked, dry_run: dry });
     const span = (a, b) => `${SW.fmtTime(a, { date: true })} to ${SW.fmtTime(b, { date: true })}`;
     const clear = () => { text = ""; ticket++; previewBox.replaceChildren(); };
 
@@ -799,7 +888,7 @@
         listBox.replaceChildren(r.imports.length ? h("div", { class: "table-scroll" }, h("table", {}, h("tbody", {}, r.imports.map((i) => h("tr", {},
           h("td", {}, name(i)), h("td", { class: "muted" }, span(i.first, i.last)),
           h("td", {}, `${i.rows} entries, ${i.markers} markers`),
-          h("td", {}, h("button", { class: "small danger touch", type: "button", "aria-label": `Undo import of ${name(i)}`,
+          h("td", {}, h("button", { class: "small danger", style: "min-height:44px", type: "button", "aria-label": `Undo import of ${name(i)}`,
             onclick: () => confirm(`Take this import back out? Its ${i.rows} entries and ${i.markers} markers are removed from the show.`)
               && run(() => api("DELETE", `/api/admin/logs/imports/${encodeURIComponent(i.import_id)}?show_id=${encodeURIComponent(showSel.value)}`), "Import removed").then(loadImports, () => {}) }, "Undo")))))))
           : h("p", { class: "muted" }, "Nothing imported into this show yet."));
@@ -817,6 +906,7 @@
         field("Clock offset (seconds)", offset)),
       h("p", { class: "muted hint" }, "The log has no time zone, so it is read as the time zone above. If the laptop's clock was wrong, put the number of seconds to add (a laptop 5 minutes slow: 300)."),
       h("label", { class: "field inline" }, sessionMarkers, " Also add markers for going online or offline and for Acknowledge all"),
+      h("label", { class: "field inline" }, loadCheckerMarkers, " Also add markers for entering and leaving Load Checker (it can make inputs unlock)"),
       status, previewBox,
       h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "IMPORTED INTO THE SELECTED SHOW"),
       listBox);
@@ -1925,7 +2015,7 @@
       scheduleCard(),     // summary and a link to /schedule
       connectCard(),
       softwareCard(),
-      foldCard(devicesCard(), "nodes", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
+      foldCard(devicesCard(), "nodes", true), foldCard(deviceErrorsCard(), "deviceerrors", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
       foldCard(thresholdsCard(), "thresholds", true), foldCard(alarmNoticesCard(), "notices", true),
       foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false)),
@@ -1943,6 +2033,7 @@
 
   async function refresh() {
     [admin, snap] = await Promise.all([api("GET", "/api/admin/state"), api("GET", "/api/snapshot"), loadSoftware(),
+      loadDeviceErrorCounts(),
       loadSchedule().catch(() => { schedData = null; })]);   // the Schedule card says so if it couldn't load
     SW.setSiteTime(snap.site && snap.site.time);
     render();

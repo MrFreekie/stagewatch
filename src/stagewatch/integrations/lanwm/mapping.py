@@ -5,8 +5,9 @@ Severity follows LA NWM's own Level: Critical = Stop (3), Major = Alert (2), Min
 (a record, not a fault). A Level LA NWM adds later is shown as an Advisory, never dropped.
 
 Session entries (page changes, adapters, IP ranges, the session file name) are not stored: they hold the
-laptop's addresses and say nothing about the rig. Only "Going to Online/Offline Mode" and "All Messages
-Acknowledged" can be kept, as markers, and only when asked for.
+laptop's addresses and say nothing about the rig. Only "Going to Online/Offline Mode", "All Messages
+Acknowledged" and "Entering/Leaving Load Checker Mode" can be kept, as markers, and only when asked for
+(the first two together, Load Checker on its own).
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ SYSLOG_SEVERITY = {"Info": 6, "Minor": 4, "Major": 3, "Critical": 2}
 BURST_S = 2.0                   # raises of the same fault on several units this close are one burst
 MAX_NAMED_UNITS = 3             # a burst names its units up to this many, then just counts them
 SESSION_MARKERS = re.compile(r"^(Going to (Online|Offline) Mode|All Messages Acknowledged)\b")
+LOAD_CHECKER_MARKERS = re.compile(r"^(Entering|Leaving) Load Checker Mode\b")
 
 
 def severity(event: LaEvent) -> int:
@@ -33,11 +35,13 @@ def unit_name(unit: str) -> str:
     return "LA unit " + unit if unit != UNIT_SESSION else "LA Network Manager"
 
 
-def keep(event: LaEvent, session_markers: bool = False) -> bool:
-    """Stored at all? Session entries are not, apart from the optional online/offline/acknowledge ones."""
+def keep(event: LaEvent, session_markers: bool = False, load_checker: bool = False) -> bool:
+    """Stored at all? Session entries are not, apart from the optional online/offline/acknowledge ones
+    and the optional Load Checker on/off ones (two separate choices)."""
     if event.category.lower() != "session":
         return True
-    return session_markers and bool(SESSION_MARKERS.match(event.description))
+    return ((session_markers and bool(SESSION_MARKERS.match(event.description)))
+            or (load_checker and bool(LOAD_CHECKER_MARKERS.match(event.description))))
 
 
 def line(event: LaEvent) -> str:
@@ -103,7 +107,7 @@ class Burst:
         if n == 1:
             return f"{unit_name(self.units[0])}: {self.description}"
         if n <= MAX_NAMED_UNITS:
-            return f"{self.description} on LA units {', '.join(self.units)}"
+            return f"{self.description} on LA units {', '.join(sorted(self.units))}"
         return f"{self.description} on {n} units"
 
 

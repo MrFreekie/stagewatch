@@ -44,6 +44,7 @@ from ..core.recorder import clean_note, valid_day
 from .. import diagnostics, netinfo
 from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
+from ..core import device_errors as errors_mod
 from ..core import schedule as sched
 from ..core import spl as spl_mod
 from ..integrations.lanwm import importer as logimport
@@ -741,6 +742,7 @@ class LogImportBody(BaseModel):
     tz: str = Field("", max_length=64)
     offset_s: float = Field(0.0, ge=-86400, le=86400)
     session_markers: bool = False
+    load_checker_markers: bool = False
     dry_run: bool = True
 
 
@@ -1812,6 +1814,22 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(409, sched.MSG_CHANGED) from None
         return {**out, "schedule": schedule}
 
+    @app.get("/api/admin/devices/errors", dependencies=[Depends(require_admin)])
+    async def device_errors(show_id: int | None = Query(None, ge=1), scope: Literal["show", "event"] = "show"):
+        """Problems per device for a show (or all of its event's days). Read-only; admin only, because
+        it names equipment and imported units."""
+        rec = hub.recorder
+        show = rec.show_row(show_id if show_id is not None else rec.show_id)
+        if show is None:
+            raise HTTPException(404, "There is no such show.")
+        ids = rec.event_show_ids(show["event_id"]) if scope == "event" and show["event_id"] else [show["id"]]
+        words = {"sensor": "Sensor", "service": "Service", "meter": "Power meter"}
+        devices = {d.id: {"name": d.name, "kind": words.get(d.category, d.category.title() or "Device"),
+                          "status": d.status.value} for d in hub.devices.values() if d.id != "site"}
+        out = errors_mod.summarise(rec, ids, devices, time.time(), rec.run_id)
+        return {"show": {k: show[k] for k in ("id", "name", "day", "started", "ended")}, "scope": scope,
+                "days": len(ids), **out, "gaps": [{"from": a, "to": b} for a, b in out["gaps"]]}
+
     @app.post("/api/admin/logs/import", dependencies=admin_deps)
     async def import_log(body: LogImportBody):
         show_id = body.show_id if body.show_id is not None else hub.recorder.show_id
@@ -1820,7 +1838,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             plan = logimport.plan_import(
                 hub.recorder, hub.config.site, fmt=body.format, text="", parsed=parsed,
                 file_name=body.file_name, show_id=show_id, tz=body.tz, offset_s=body.offset_s,
-                session_markers=body.session_markers)
+                session_markers=body.session_markers, load_checker_markers=body.load_checker_markers)
             result = {"dry_run": body.dry_run, **plan.summary()}
             if body.dry_run:
                 return result

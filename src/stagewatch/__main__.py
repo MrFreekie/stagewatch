@@ -204,6 +204,8 @@ def import_log_cli(argv: list[str]) -> None:
     parser.add_argument("--offset", type=float, default=0.0, help="seconds to add if that computer's clock was wrong")
     parser.add_argument("--session-markers", action="store_true",
                         help="also add markers for online/offline and acknowledge-all")
+    parser.add_argument("--load-checker-markers", action="store_true",
+                        help="also add markers for entering and leaving Load Checker mode")
     parser.add_argument("--write", action="store_true", help="import it (otherwise only a preview)")
     parser.add_argument("--data-dir", type=Path, default=None)
     parser.add_argument("--emulate", action="store_true", help="use the emulate data folder")
@@ -224,7 +226,8 @@ def import_log_cli(argv: list[str]) -> None:
         try:
             plan = importer.plan_import(recorder, site, fmt=args.format, text=text, file_name=args.file.name,
                                         show_id=args.show if args.show is not None else recorder.show_id,
-                                        tz=args.tz, offset_s=args.offset, session_markers=args.session_markers)
+                                        tz=args.tz, offset_s=args.offset, session_markers=args.session_markers,
+                                        load_checker_markers=args.load_checker_markers)
             s = plan.summary()
             def when(ts):
                 return sitetime.local(ts, site).strftime("%d %b %Y %H:%M:%S") if ts else "-"

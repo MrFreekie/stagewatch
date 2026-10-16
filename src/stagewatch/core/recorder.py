@@ -893,6 +893,31 @@ class Recorder:
             self._db.rollback()
             raise
 
+    # ------------------------------------------------- device error readers
+    def device_alarm_events(self, show_id: int) -> list[tuple]:
+        """The show's device alarm lines (raise, change, clear, ack) in the order they happened:
+        (ts, alarm_id, event, level, message). Only ``device:<id>`` alarms: a device going offline or
+        faulting. Threshold and software lines are not device errors and are left out."""
+        return self._db.execute(
+            "SELECT ts, alarm_id, event, level, message FROM alarm_log WHERE show_id = ? "
+            "AND alarm_id LIKE 'device:%' ORDER BY id", (show_id,)).fetchall()
+
+    def vendor_log_rows(self, show_id: int, source_prefix: str) -> list[tuple]:
+        """The show's imported log rows from one kind of file, oldest first: (ts, source, msg, doc)."""
+        like = source_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        return self._db.execute(
+            "SELECT ts, source, msg, doc FROM device_log WHERE show_id = ? AND proto = 'vendor_log' "
+            "AND source LIKE ? ESCAPE '\\' ORDER BY ts, id", (show_id, like)).fetchall()
+
+    def show_row(self, show_id: int) -> dict | None:
+        row = self._db.execute("SELECT id, name, started, ended, event_id, day FROM shows WHERE id = ?",
+                               (show_id,)).fetchone()
+        return None if row is None else {"id": row[0], "name": row[1], "started": row[2], "ended": row[3],
+                                         "event_id": row[4], "day": row[5]}
+
+    def event_show_ids(self, event_id: int) -> list[int]:
+        return [r[0] for r in self._db.execute("SELECT id FROM shows WHERE event_id = ? ORDER BY id", (event_id,))]
+
     # -------------------------------------------------------------- hub runs
     def begin_run(self, version: str, doc: dict | None = None) -> dict | None:
         """Record that the hub started.  Returns the previous run if it never stopped cleanly
