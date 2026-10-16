@@ -468,6 +468,25 @@
   // Edit cards. Advisory only.
   const DEMOS = [["steady", "Settled high"], ["slow_fall", "Slow fall"], ["front", "Front arriving"], ["storm", "Storm"],
     ["rising", "Clearing"], ["dropout", "Sensor dropout 20 min"], ["none", "No pressure sensor"]];
+  // This Raspberry Pi: shown only when Stagewatch runs on a Pi (or the simulated one in emulate mode).
+  // Addresses come from the admin-only integration info; dashboards never get them.
+  function piHostInfo() { return admin.integrations.find((i) => i.manifest.domain === "pihost" && i.active) || null; }
+  function piHostCard() {
+    const info = piHostInfo();
+    if (!info) return null;
+    const dev = snap.devices.find((d) => d.id === "pi_host") || {};
+    const ents = SW.pi.entitiesOf(snap.entities, "pi_host");
+    const rows = SW.pi.rows(ents, dev.pi);
+    const p = info.pi || {};
+    const addr = Object.keys(p.addresses || {}).map((k) => `${k}: ${p.addresses[k].join(", ")}`).join(" · ");
+    return card("This Raspberry Pi",
+      h("p", { class: "muted" }, `${dev.model || p.model || "Raspberry Pi"}. Read only: Stagewatch never changes the Pi's settings. Add the Raspberry Pi card to a dashboard to see this there (User dashboards → Edit cards).`),
+      h("div", { class: "table-scroll" }, h("table", {}, h("tbody", {}, rows.map((r) => h("tr", { class: `pi-${r.level}` },
+        h("th", { scope: "row" }, r.label), h("td", {}, r.value, r.unit ? " " + r.unit : "")))))),
+      h("p", { class: "muted" }, addr ? `Network addresses (admin only): ${addr}` : "Network addresses: not known"),
+      (dev.pi && dev.pi.warnings && dev.pi.warnings.length) ? h("p", { class: "pi-warnline" }, dev.pi.warnings.join(" ")) : null,
+      h("p", { class: "muted hint" }, "Warnings show quietly in the dashboard header's messages (they never sound): short of power, slowed down, 80 °C or more, or under 1 GB / 5% disk free. Under-voltage and throttling also add a marker when they start and stop. Not yet tested on a real Pi."));
+  }
   function barometerCard() {
     const b = admin.config.barometer || {};
     const hemi = h("select", { class: "touch" }, h("option", { value: "north" }, "Northern (UK, Europe, North America)"), h("option", { value: "south" }, "Southern"));
@@ -550,7 +569,7 @@
       return h("div", {}, h("div", { style: "font-variant-numeric:tabular-nums" }, w.address || "Not connected"),
         w.host && w.host !== w.address ? h("div", { class: "muted", style: "font-size:12px" }, w.host) : null);
     };
-    const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter");   // services (Ontime) are listed under Integrations; power meters under Shelly power meters
+    const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter" && d.category !== "host");   // services (Ontime) are listed under Integrations; power meters under Shelly power meters
     const devTable = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Role"), h("th", {}, "Sleeps between readings"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
       h("tbody", {}, devices.map((d) => {
@@ -674,7 +693,7 @@
       return h("div", {}, h("strong", {}, d.name), resolveBlock(d, hw.devices[id].conflict));
     });
 
-    const meterIds = new Set(snap.devices.filter((d) => d.category === "meter").map((d) => d.id));
+    const meterIds = new Set(snap.devices.filter((d) => d.category === "meter" || d.category === "host").map((d) => d.id));
     const ids = Object.keys(hw.entities).sort((a, b) => hw.entities[a].localeCompare(hw.entities[b]) || a.localeCompare(b));
     const rows = ids.map((id) => {
       const e = snap.entities.find((x) => x.id === id);
@@ -998,7 +1017,7 @@
   }
 
   function entitiesCard() {
-    const meterIds = new Set(snap.devices.filter((d) => d.category === "meter").map((d) => d.id));
+    const meterIds = new Set(snap.devices.filter((d) => d.category === "meter" || d.category === "host").map((d) => d.id));
     const ents = snap.entities.filter((e) => !e.derived && !meterIds.has(e.device_id));   // power meter readings are never adjusted
     const settingsOf = (e) => (admin.hardware && admin.hardware.settings[e.id]) || admin.config.entities[e.id]
       || { offset: 0, include_in_average: true, accuracy: null, accuracy_basis: "typical", role: "" };
@@ -1009,7 +1028,7 @@
     const averages = (admin.hardware && admin.hardware.averages) || {};
     const shareOf = (e) => ((averages[e.kind] || {}).sensors || {})[e.id];
     // Same order as the adopted-nodes list; anything else (site rows) goes last, in a "Site" group.
-    const devs = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter");   // meter readings are never adjusted
+    const devs = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter" && d.category !== "host");   // meter readings are never adjusted
     const groups = devs.map((d) => ({ id: d.id, name: d.name, status: d.status, sleeping: !!d.sleeping, role: nodeRoleOf(d.id), ents: ents.filter((e) => e.device_id === d.id) }));
     const known = new Set(devs.map((d) => d.id));
     const rest = ents.filter((e) => !known.has(e.device_id));
@@ -1207,6 +1226,7 @@
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
     globcon_meters: ["DirectOut GLOBCON", "Live level meters for a group of channels (for example 1 to 8 or 9 to 16) of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Pick the controller and channels here; set the GLOBCON address in the GLOBCON settings."],
     power: ["Power", "Watts, volts, amps, frequency and energy from Shelly power meters, as the meters report them. Read only. Never part of a site average. Add meters in the Shelly power meters settings. Stays hidden until a meter has been added."],
+    pi_host: ["Raspberry Pi", "The health of the Raspberry Pi Stagewatch runs on: temperature, power supply (under-voltage), speed, load, memory, disk and Wi-Fi signal. Hidden unless Stagewatch runs on a Pi."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
   const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
@@ -2037,6 +2057,7 @@
       foldCard(splCard(), "smaart", false),
       foldCard(globconCard(), "globcon", false),
       foldCard(shellyCard(), "shelly", false),
+      piHostInfo() ? foldCard(piHostCard(), "pihost", false) : null,
       foldCard(alarmLogCard(), "alarmlog", true),
       foldCard(logImportCard(), "logimport", false),
       foldCard(supportCard(), "help", false),

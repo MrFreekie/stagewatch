@@ -187,6 +187,8 @@ SW.SOURCES = {
     error: "Check the input and the chosen values in Smaart, then tell the system admin." },
   globcon: { name: "GLOBCON", offline: "Check GLOBCON is running and the Windows firewall allows it.",
     error: "Tell the system admin." },
+  pihost: { name: "The Raspberry Pi", offline: "Stagewatch cannot read the Pi's own figures. Tell the system admin.",
+    error: "Tell the system admin." },
   shelly: { name: "Shelly", offline: "Check the meters are powered and on the same network, and their addresses in Admin → Shelly power meters.",
     error: "Check the meter settings in Admin → Shelly power meters, then tell the system admin." },
 };
@@ -1109,7 +1111,7 @@ SW.qrSvg = function (text, size = 176) {
 // Card size (Dashboard.card_sizes, core/cards.py HALF_CAPABLE). A card is half width only when
 // the dashboard says "half" for it, the card is allowed to be half, and the layout is not the
 // phone (a phone always shows full width). Anything else is full.
-SW.HALF_CAPABLE = ["wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power"];
+SW.HALF_CAPABLE = ["wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power", "pi_host"];
 SW.cardIsHalf = function (dash, id, layout) {
   if (layout === "phone" || SW.HALF_CAPABLE.indexOf(id) < 0) return false;
   const sizes = dash && dash.card_sizes;

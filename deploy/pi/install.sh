@@ -68,6 +68,11 @@ install_managed() {
   if ! id "$SVC_USER" >/dev/null 2>&1; then
     sudo useradd --system --home-dir "$DATA_DIR" --shell /usr/sbin/nologin "$SVC_USER"
   fi
+  # On a Raspberry Pi, the "video" group lets the service read (only) the Pi's own under-voltage and
+  # throttling flags with vcgencmd, for the Raspberry Pi card. Elsewhere the group may not exist: skip.
+  if getent group video >/dev/null 2>&1 && grep -qs "Raspberry Pi" /proc/device-tree/model; then
+    sudo usermod -aG video "$SVC_USER"
+  fi
   # refuse a pre-existing code dir that someone else owns
   if [[ -e "$CODE" ]]; then
     local owner

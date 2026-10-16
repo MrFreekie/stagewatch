@@ -23,6 +23,7 @@ from .integrations.globcon import GlobconIntegration, seed_emulate_globcon
 from .integrations.ontime import OntimeIntegration
 from .integrations.osc_out import OscOutIntegration
 from .integrations.shelly import ShellyIntegration, seed_emulate_shelly
+from .integrations.pihost import PiHostIntegration
 from .integrations.smaart import SmaartIntegration, seed_emulate_spl
 from .netinfo import local_ipv4  # noqa: F401  (also used by tests)
 from .version import build_info, version_string
@@ -92,6 +93,7 @@ async def run(args: argparse.Namespace) -> int:
     hub.add_integration(SmaartIntegration(hub, emulate=args.emulate))  # runs only when switched on in the admin page
     hub.add_integration(GlobconIntegration(hub, emulate=args.emulate))  # runs only while a dashboard has the GLOBCON levels card
     hub.add_integration(ShellyIntegration(hub, emulate=args.emulate))  # reads the power meters the admin added
+    hub.add_integration(PiHostIntegration(hub, emulate=args.emulate))  # runs only on a Raspberry Pi (a simulated one in emulate)
     if args.emulate and seed_emulate_shelly(hub.config):   # a fresh emulate folder gets one simulated PM Mini and the Power card
         hub.save_config()
     if args.emulate and seed_emulate_demo(hub.config):  # a fresh emulate folder shows every clock style

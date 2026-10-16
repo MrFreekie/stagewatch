@@ -274,7 +274,7 @@
   }
 
   function sensorDevices() {
-    return Object.values(state.devices).filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter")   // power meters have their own Power card
+    return Object.values(state.devices).filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter" && d.category !== "host")   // power meters have their own Power card
       .sort((a, b) => (a.area || a.name).localeCompare(b.area || b.name));
   }
 
@@ -996,7 +996,7 @@
     const byDev = {};
     for (const e of Object.values(state.entities)) {
       if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery") continue;
-      if (state.devices[e.device_id] && state.devices[e.device_id].category === "meter") continue;   // shown on the Power card
+      if (state.devices[e.device_id] && ["meter", "host"].includes(state.devices[e.device_id].category)) continue;   // shown on the Power card
       (byDev[e.device_id] = byDev[e.device_id] || []).push(e);
     }
     return Object.keys(byDev).map((id) => ({ dev: state.devices[id] || { id, name: id, status: "" }, ents: byDev[id] }))
@@ -1039,6 +1039,22 @@
     pwUi.status.update(SW.sourceInput.shelly(view.meters.map((m) => ({ dev: (state.devices || {})[m.id],
       ents: Object.values(m.entities) }))), state.now);
     renderPowerHist(view);
+  }
+
+  // This Raspberry Pi: the health of the computer Stagewatch runs on (SW.pi, pihost.js). Read only;
+  // no addresses here (those are admin only). Warnings also go to the header's messages.
+  const piUi = { status: null };
+  function renderPiHost() {
+    const card = $("pi_host-card");
+    const dev = state.devices.pi_host;
+    if (!has("pi_host") || !dev) { card.hidden = true; return; }
+    card.hidden = false;
+    const ents = SW.pi.entitiesOf(state.entities, "pi_host");
+    $("pi-body").replaceChildren(h("p", { class: "muted pi-model" }, dev.model || "Raspberry Pi"),
+      h("div", { class: "pi-grid" }, SW.pi.rows(ents, dev.pi).map((r) => h("div", { class: `pi-cell pi-${r.level}` + (r.unit === "" && r.value.length > 12 ? " pi-wide" : "") },
+        h("div", { class: "pw-label" }, r.label), h("div", { class: "pi-value" }, r.value, r.unit ? h("span", { class: "unit" }, " " + r.unit) : null)))));
+    if (!piUi.status) piUi.status = addCardStatus(card, "pihost");
+    piUi.status.update(SW.sourceInput.smaart(dev, Object.values(ents)), state.now);
   }
 
   // History chart under the meters: pick a meter, a measurement and a span. Lines are what was recorded
@@ -1313,6 +1329,8 @@
     globcon_meters: { el: cardEl("globcon_meters"), wide: true, render: renderGlobcon, empty: () => !state.globcon },
     // Power meters (Shelly). Hidden while no meter has been added (renderPower keeps it in step).
     power: { el: cardEl("power"), wide: true, render: renderPower, empty: () => !Object.keys(state.devices).some((k) => state.devices[k].category === "meter") },
+    // This Raspberry Pi. Hidden unless the server runs on a Pi (renderPiHost keeps it in step).
+    pi_host: { el: cardEl("pi_host"), render: renderPiHost, empty: () => !state.devices.pi_host },
     // Hidden while no sound level values are set up (renderSpl keeps it in step).
     spl_live: { el: cardEl("spl_live"), render: renderSpl, empty: () => SW.spl.entities(state.entities).length === 0 },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
@@ -1452,6 +1470,7 @@
         if (has("sensors")) renderSensors();
         if (has("equipment")) renderEquipment();
         if (has("power")) renderPower();
+        if (has("pi_host")) renderPiHost();
         if (has("spl_live")) renderSpl();
         break;
       case "marker":
@@ -1511,5 +1530,5 @@
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
   setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("pi_host")) renderPiHost(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); }, 5000);
 })();

@@ -1269,7 +1269,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def patch_device(device_id: str, body: DevicePatch):
         if device_id not in hub.devices or device_id == "site":
             raise HTTPException(404, "No such device")
-        if hub.devices[device_id].category in ("service", "meter"):
+        if hub.devices[device_id].category in ("service", "meter", "host"):
             raise HTTPException(409, SERVICE_DEVICE)
         esp = esphome()
         if (body.host is not None or body.port is not None) and esp.config_of(device_id) is None:
@@ -1281,7 +1281,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def delete_device(device_id: str):
         if device_id not in hub.devices or device_id == "site":
             raise HTTPException(404, "No such device")
-        if hub.devices[device_id].category in ("service", "meter"):
+        if hub.devices[device_id].category in ("service", "meter", "host"):
             raise HTTPException(409, SERVICE_DEVICE)
         await esphome().remove(device_id)
         return {"ok": True}
@@ -1823,7 +1823,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if show is None:
             raise HTTPException(404, "There is no such show.")
         ids = rec.event_show_ids(show["event_id"]) if scope == "event" and show["event_id"] else [show["id"]]
-        words = {"sensor": "Sensor", "service": "Service", "meter": "Power meter"}
+        words = {"sensor": "Sensor", "service": "Service", "meter": "Power meter", "host": "This Raspberry Pi"}
         devices = {d.id: {"name": d.name, "kind": words.get(d.category, d.category.title() or "Device"),
                           "status": d.status.value} for d in hub.devices.values() if d.id != "site"}
         out = errors_mod.summarise(rec, ids, devices, time.time(), rec.run_id)

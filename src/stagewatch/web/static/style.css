@@ -1169,3 +1169,16 @@ body:not(.layout-wall):not(.layout-phone) main > [data-size="half"] .gc-strips[d
 body.layout-wall .gc-strips .gc-col { padding: 8px 6px; border-radius: 12px; }
 body.layout-wall .gc-mutetag { font-size: 20px; padding: 6px 2px; }
 body:not(.layout-wall):not(.layout-phone) main > [data-size="half"] .gc-strips[data-n="16"] .gc-col { padding: 2px 1px; }
+/* ---- Raspberry Pi card (pihost.js): the computer Stagewatch runs on. Words go with every colour. ---- */
+.pi-model { margin: 0 0 8px; font-size: 13px; }
+.pi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 14px; }
+.pi-wide { grid-column: span 2; }
+.pi-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.pi-value .unit { font-size: 13px; font-weight: 500; color: var(--muted); }
+.pi-wide .pi-value, .pi-unknown .pi-value, .pi-note .pi-value { font-size: 15px; font-weight: 600; }
+.pi-warn .pi-value, tr.pi-warn td { color: var(--warn, #e0a100); }
+.pi-unknown .pi-value { color: var(--muted); }
+.pi-warnline { color: var(--warn, #e0a100); }
+body.layout-wall .pi-value { font-size: 34px; }
+body.layout-wall .pi-wide .pi-value { font-size: 24px; }
+body.layout-wall .pi-model { display: none; }
