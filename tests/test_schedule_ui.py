@@ -229,8 +229,10 @@ def test_admin_has_a_schedule_summary_and_no_editor():
     assert "SW.scheduleNowNext(" in body
     assert "No schedule for this day yet." in body
     assert 'SW.linkButton("Open schedule editor", "/schedule", true)' in body
-    for editor_only in ("saveSchedule", "scheduleRowEl", "dry_run", "/api/admin/schedule", "Save schedule", "sdRow"):
+    for editor_only in ("saveSchedule", "scheduleRowEl", "/api/admin/schedule", "Save schedule", "sdRow"):
         assert editor_only not in admin, editor_only
+    # other Admin cards (calibration, log import) legitimately preview with dry_run: only the schedule card may not
+    assert "dry_run" not in body
     # the link is a real same-tab link at least 44 px tall
     common = _js("common.js")
     link = common[common.index("SW.linkButton = function"):common.index("// Where Admin sends you")]

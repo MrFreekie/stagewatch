@@ -1,0 +1,151 @@
+<DATA>
+<ITEM Time="15 Oct 2026 11:09:11.800" Level="Info" Unit="---" Category="Session" Description="Welcome to LA Network Manager V2026.2.1" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.533" Level="Info" Unit="---" Category="Session" Description="<redacted 1>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.533" Level="Info" Unit="---" Category="Session" Description="<redacted 2>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.533" Level="Info" Unit="---" Category="Session" Description="<redacted 3>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.537" Level="Info" Unit="---" Category="Session" Description="<redacted 4>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.537" Level="Info" Unit="---" Category="Session" Description="<redacted 5>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.537" Level="Info" Unit="---" Category="Session" Description="<redacted 6>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.537" Level="Info" Unit="---" Category="Session" Description="<redacted 7>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.537" Level="Info" Unit="---" Category="Session" Description="<redacted 8>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.537" Level="Info" Unit="---" Category="Session" Description="<redacted 9>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.537" Level="Info" Unit="---" Category="Session" Description="<redacted 10>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.537" Level="Info" Unit="---" Category="Session" Description="<redacted 11>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:14.867" Level="Info" Unit="---" Category="Session" Description="<redacted 12>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:15.027" Level="Info" Unit="---" Category="Session" Description="<redacted 13>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:15.035" Level="Info" Unit="---" Category="Session" Description="Operating Mode at Startup : Online" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:15.035" Level="Info" Unit="---" Category="Session" Description="Connection Speed : Normal" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:15.035" Level="Info" Unit="---" Category="Session" Description="<redacted 14>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:37.238" Level="Info" Unit="---" Category="Session" Description="<redacted 15>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:37.249" Level="Info" Unit="---" Category="Session" Description="Going to Offline Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:38.070" Level="Info" Unit="---" Category="Session" Description="<redacted 16>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:38.079" Level="Info" Unit="---" Category="Session" Description="Going to Online Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:38.079" Level="Info" Unit="---" Category="Session" Description="Connection Speed : Normal" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:47.773" Level="Info" Unit="---" Category="Session" Description="<redacted 17>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:47.784" Level="Info" Unit="---" Category="Session" Description="Going to Offline Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:48.604" Level="Info" Unit="---" Category="Session" Description="<redacted 18>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:48.613" Level="Info" Unit="---" Category="Session" Description="Going to Online Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:09:48.613" Level="Info" Unit="---" Category="Session" Description="Connection Speed : Normal" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:12:04.233" Level="Major" Unit="201" Category="Input" Description="AES/EBU Unlock on Input AB" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:12:04.235" Level="Major" Unit="202" Category="Input" Description="AES/EBU Unlock on Input AB" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:12:04.236" Level="Major" Unit="203" Category="Input" Description="AES/EBU Unlock on Input AB" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:12:05.561" Level="Info" Unit="202" Category="Input" Description="AES/EBU Unlock on Input AB CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:12:05.566" Level="Info" Unit="203" Category="Input" Description="AES/EBU Unlock on Input AB CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:12:05.579" Level="Info" Unit="201" Category="Input" Description="AES/EBU Unlock on Input AB CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:12:07.861" Level="Info" Unit="---" Category="Session" Description="<redacted 19>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:12:08.969" Level="Info" Unit="---" Category="Session" Description="<redacted 20>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:12:14.908" Level="Info" Unit="---" Category="Session" Description="<redacted 21>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:13:15.184" Level="Info" Unit="---" Category="Session" Description="<redacted 22>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:13:16.189" Level="Info" Unit="---" Category="Session" Description="<redacted 23>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:13:22.198" Level="Info" Unit="---" Category="Session" Description="<redacted 24>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:13:52.400" Level="Info" Unit="---" Category="Session" Description="<redacted 25>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:13:53.560" Level="Info" Unit="---" Category="Session" Description="<redacted 26>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:14:00.386" Level="Info" Unit="---" Category="Session" Description="<redacted 27>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:14:17.372" Level="Info" Unit="---" Category="Session" Description="All Messages Acknowledged" Acknowledged="YES"/>
+<ITEM Time="15 Oct 2026 11:15:06.688" Level="Info" Unit="---" Category="Power" Description="Waking Up All Units" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:16:18.618" Level="Info" Unit="---" Category="Session" Description="Entering Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:09.968" Level="Major" Unit="101" Category="Input" Description="AES/EBU Unlock on Input AB" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:09.972" Level="Major" Unit="102" Category="Input" Description="AES/EBU Unlock on Input AB" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:09.977" Level="Major" Unit="103" Category="Input" Description="AES/EBU Unlock on Input AB" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:09.984" Level="Major" Unit="104" Category="Input" Description="AES/EBU Unlock on Input AB" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:09.994" Level="Major" Unit="105" Category="Input" Description="AES/EBU Unlock on Input AB" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:15.426" Level="Info" Unit="105" Category="Input" Description="AES/EBU Unlock on Input AB CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:17.175" Level="Info" Unit="103" Category="Input" Description="AES/EBU Unlock on Input AB CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:17.197" Level="Info" Unit="102" Category="Input" Description="AES/EBU Unlock on Input AB CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:17.201" Level="Info" Unit="101" Category="Input" Description="AES/EBU Unlock on Input AB CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:25.168" Level="Info" Unit="104" Category="Input" Description="AES/EBU Unlock on Input AB CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:22:54.859" Level="Info" Unit="---" Category="Session" Description="Leaving Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:23:10.612" Level="Info" Unit="---" Category="Session" Description="Entering Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:23:59.470" Level="Info" Unit="---" Category="Session" Description="Leaving Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:24:05.722" Level="Info" Unit="---" Category="Session" Description="All Messages Acknowledged" Acknowledged="YES"/>
+<ITEM Time="15 Oct 2026 11:24:13.298" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:25:47.534" Level="Info" Unit="---" Category="Session" Description="<redacted 28>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:27:35.079" Level="Info" Unit="---" Category="Session" Description="<redacted 29>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:27:42.603" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:27:43.176" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:27:46.356" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:28:03.292" Level="Info" Unit="---" Category="Session" Description="<redacted 30>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:32:36.048" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:32:41.953" Level="Info" Unit="---" Category="Session" Description="Entering Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:48:44.432" Level="Info" Unit="---" Category="Session" Description="Leaving Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 11:53:03.845" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:02:40.785" Level="Major" Unit="105" Category="Input" Description="AVB Audio Input Stream 1 Unlocked" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:02:40.908" Level="Info" Unit="105" Category="Input" Description="AVB Audio Input Stream 1 Unlocked CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:03:06.473" Level="Major" Unit="103" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:03:06.541" Level="Major" Unit="105" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:03:06.617" Level="Major" Unit="104" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:03:14.332" Level="Info" Unit="103" Category="Network" Description="Unit Disconnected CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:03:14.332" Level="Info" Unit="104" Category="Network" Description="Unit Disconnected CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:03:14.332" Level="Info" Unit="105" Category="Network" Description="Unit Disconnected CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:03:14.557" Level="Info" Unit="105" Category="Input" Description="AVB Audio Input Stream 1 Unlocked CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:20:26.977" Level="Info" Unit="---" Category="Session" Description="All Messages Acknowledged" Acknowledged="YES"/>
+<ITEM Time="15 Oct 2026 12:31:15.834" Level="Major" Unit="102" Category="Input" Description="AVB Audio Input Stream 1 Unlocked" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:15.844" Level="Major" Unit="101" Category="Input" Description="AVB Audio Input Stream 1 Unlocked" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:15.903" Level="Major" Unit="105" Category="Input" Description="AVB Audio Input Stream 1 Unlocked" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:16.003" Level="Major" Unit="104" Category="Input" Description="AVB Audio Input Stream 1 Unlocked" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:16.226" Level="Major" Unit="103" Category="Input" Description="AVB Audio Input Stream 1 Unlocked" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:18.758" Level="Info" Unit="103" Category="Input" Description="AVB Audio Input Stream 1 Unlocked CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:18.780" Level="Info" Unit="105" Category="Input" Description="AVB Audio Input Stream 1 Unlocked CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:18.812" Level="Info" Unit="104" Category="Input" Description="AVB Audio Input Stream 1 Unlocked CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:18.951" Level="Info" Unit="102" Category="Input" Description="AVB Audio Input Stream 1 Unlocked CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:19.126" Level="Info" Unit="101" Category="Input" Description="AVB Audio Input Stream 1 Unlocked CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:31:28.363" Level="Info" Unit="---" Category="Session" Description="All Messages Acknowledged" Acknowledged="YES"/>
+<ITEM Time="15 Oct 2026 12:34:48.449" Level="Major" Unit="103" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:34:48.500" Level="Major" Unit="102" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:34:48.525" Level="Major" Unit="105" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:34:48.603" Level="Major" Unit="104" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:34:48.619" Level="Major" Unit="101" Category="Network" Description="Unit Disconnected" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:35:03.643" Level="Info" Unit="101" Category="Network" Description="Unit Disconnected CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:35:03.643" Level="Info" Unit="102" Category="Network" Description="Unit Disconnected CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:35:03.643" Level="Info" Unit="103" Category="Network" Description="Unit Disconnected CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:35:03.644" Level="Info" Unit="104" Category="Network" Description="Unit Disconnected CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:35:03.644" Level="Info" Unit="105" Category="Network" Description="Unit Disconnected CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:47:21.969" Level="Info" Unit="---" Category="Session" Description="All Messages Acknowledged" Acknowledged="YES"/>
+<ITEM Time="15 Oct 2026 12:47:39.002" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:47:42.290" Level="Info" Unit="---" Category="Session" Description="Entering Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:48:16.102" Level="Info" Unit="---" Category="Session" Description="Leaving Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:48:17.530" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:48:18.385" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:48:28.569" Level="Info" Unit="---" Category="Session" Description="Entering Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:49:44.881" Level="Info" Unit="---" Category="Session" Description="Leaving Load Checker Mode" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 12:49:46.503" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:44:19.370" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:44:22.044" Level="Info" Unit="---" Category="Power" Description="Standby All Units" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:47.469" Level="Info" Unit="---" Category="Power" Description="Waking Up All Units" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.049" Level="Minor" Unit="204" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.165" Level="Info" Unit="204" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.168" Level="Minor" Unit="103" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.190" Level="Minor" Unit="202" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.278" Level="Info" Unit="103" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.440" Level="Minor" Unit="203" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.451" Level="Minor" Unit="104" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.478" Level="Minor" Unit="205" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.479" Level="Minor" Unit="105" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.486" Level="Minor" Unit="201" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.492" Level="Minor" Unit="102" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.566" Level="Info" Unit="104" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.583" Level="Info" Unit="202" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.604" Level="Info" Unit="205" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.608" Level="Info" Unit="201" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.648" Level="Minor" Unit="101" Category="Power" Description="Mains under frequency warning" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:53.792" Level="Info" Unit="101" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:54.078" Level="Info" Unit="203" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:54.129" Level="Info" Unit="105" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:45:54.225" Level="Info" Unit="102" Category="Power" Description="Mains under frequency warning CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 13:52:30.099" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 15:34:34.310" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 15:34:43.192" Level="Info" Unit="---" Category="Session" Description="<redacted 31>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 16:28:37.413" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 16:28:54.530" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 18:35:10.164" Level="Major" Unit="104" Category="Input" Description="AVB Audio Input Stream 1 Unlocked" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 18:35:10.277" Level="Info" Unit="104" Category="Input" Description="AVB Audio Input Stream 1 Unlocked CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 18:35:10.385" Level="Major" Unit="104" Category="Input" Description="AVB Audio Input Stream 1 Unlocked" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 18:35:10.490" Level="Info" Unit="104" Category="Input" Description="AVB Audio Input Stream 1 Unlocked CLEARED" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 18:40:51.473" Level="Info" Unit="---" Category="Session" Description="All Messages Acknowledged" Acknowledged="YES"/>
+<ITEM Time="15 Oct 2026 19:04:58.494" Level="Info" Unit="---" Category="Session" Description="Entering Tuning Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 19:05:07.335" Level="Info" Unit="---" Category="Session" Description="Entering Live Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 21:44:58.771" Level="Info" Unit="---" Category="Session" Description="<redacted 32>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 21:48:44.525" Level="Info" Unit="---" Category="Session" Description="<redacted 33>" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 21:48:45.559" Level="Info" Unit="---" Category="Session" Description="Entering Setup Page" Acknowledged="NO"/>
+<ITEM Time="15 Oct 2026 21:48:48.544" Level="Info" Unit="---" Category="Power" Description="Standby All Units" Acknowledged="NO"/>
+</DATA>

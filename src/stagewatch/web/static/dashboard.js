@@ -33,6 +33,7 @@
     selectedMarker: null, history: {}, showHidden: false,
     showEquipment: localGet("sw.chartEquipment", "off") === "on",
     splSpan: Number(localGet("sw.splspan", 3600)), splHistory: {},
+    pwMetric: localGet("sw.pwmetric", "power"), pwSpan: Number(localGet("sw.pwspan", 3600)), pwMeter: "", pwHistory: {},
   };
   // The marker whose note is being edited ({id, text}), or null.
   let noteEdit = null;
@@ -56,6 +57,7 @@
   });
 
   const splChart = new TimeChart($("spl-chart"), { format: (v) => SW.num(v, 0) });
+  const pwChart = new TimeChart($("power-chart"), { format: (v) => SW.num(v, 1) });
 
   // ------------------------------------------------------------ rendering
   // The speed-of-sound formula (Cramer 1993) is tested for 0–30 °C and 75–102 kPa. Outside that
@@ -1033,6 +1035,65 @@
     card.hidden = view.meters.length === 0;
     if (!pwUi.ui) pwUi.ui = SW.pw.build($("power-body"));
     pwUi.ui.update(view, state.entities);
+    renderPowerHist(view);
+  }
+
+  // History chart under the meters: pick a meter, a measurement and a span. Lines are what was recorded
+  // (as received, averaged only into time buckets); a silence breaks the line; nothing is filled in.
+  const pwSpanS = () => {
+    if (state.pwSpan > 0) return state.pwSpan;
+    const since = (state.show && state.show.started) || serverNow() - 3600;
+    return Math.max(60, serverNow() - since);
+  };
+  function renderPowerHist(view) {
+    const box = $("power-hist");
+    const meters = view.meters;
+    box.hidden = !meters.length;
+    if (!meters.length) return;
+    if (!meters.some((m) => m.id === state.pwMeter)) { state.pwMeter = meters[0].id; state.pwHistory = {}; }
+    const sel = $("power-meter");
+    const key = meters.map((m) => m.id + m.name).join("|");
+    if (sel.dataset.key !== key) {
+      sel.dataset.key = key;
+      sel.replaceChildren(...meters.map((m) => h("option", { value: m.id }, m.name)));
+      sel.onchange = () => { state.pwMeter = sel.value; state.pwHistory = {}; loadPowerHistory(); };
+    }
+    sel.value = state.pwMeter;
+    sel.hidden = meters.length < 2;
+    const metrics = SW.pw.METRICS.filter(([f]) => SW.pw.chartSeries(state.entities, state.pwMeter, f).length);
+    if (metrics.length && !metrics.some(([f]) => f === state.pwMetric)) state.pwMetric = metrics[0][0];
+    $("power-metric-seg").replaceChildren(...metrics.map(([f, label]) =>
+      h("button", { class: f === state.pwMetric ? "on" : "", onclick: () => { state.pwMetric = f; localSet("sw.pwmetric", f); loadPowerHistory(); renderPowerHist(view); } }, label)));
+    $("power-span-seg").replaceChildren(...SW.pw.SPANS.map(([s, label]) =>
+      h("button", { class: s === state.pwSpan ? "on" : "", onclick: () => { state.pwSpan = s; localSet("sw.pwspan", String(s)); state.pwHistory = {}; loadPowerHistory(); renderPowerHist(view); } }, label)));
+    if (!pwHist.loaded) { pwHist.loaded = true; loadPowerHistory(); }
+    updatePowerChart();
+  }
+  const pwHist = { loaded: false, at: 0 };
+  async function loadPowerHistory() {
+    if (!has("power") || !state.pwMeter) return;
+    const lines = SW.pw.chartSeries(state.entities, state.pwMeter, state.pwMetric);
+    if (!lines.length) return;
+    const span = pwSpanS(), since = serverNow() - span;
+    pwHist.at = Date.now();
+    try {
+      state.pwHistory = await SW.api("GET", `/api/history?entities=${encodeURIComponent(lines.map((l) => l.id).join(","))}&since=${since}&points=${SW.pw.POINTS}`);
+    } catch (_) { state.pwHistory = {}; }
+    updatePowerChart();
+  }
+  function updatePowerChart() {
+    if (!has("power") || $("power-hist").hidden) return;
+    const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+    const lines = SW.pw.chartSeries(state.entities, state.pwMeter, state.pwMetric), span = pwSpanS(), now = serverNow();
+    const gap = SW.pw.gapSeconds(span / SW.pw.POINTS);
+    const dec = lines.length ? lines[0].decimals : 1;
+    pwChart.format = (v) => SW.num(v, Math.min(2, dec));
+    pwChart.series = lines.map((l, i) => ({ label: l.label, color: css(`--spl-${(i % 3) + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3], points: state.pwHistory[l.id] || [] }));
+    pwChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "shelly" || m.source === "schedule").map((m) => ({ ...m, selected: false }));
+    pwChart.range = [now - span, now];
+    pwChart.draw();
+    $("power-legend").replaceChildren(...lines.map((l, i) => h("span", {}, h("i", { class: `spl-key spl-line-${i % 3}`, style: `border-top-color:${css(`--spl-${(i % 3) + 1}`)}` }), `${l.label}${l.unit ? " (" + l.unit + ")" : ""}`)));
+    setText($("power-chart-note"), SW.pw.chartNote(span, SW.pw.POINTS));
   }
 
   // ------------------------------------------------------- sound level
@@ -1447,5 +1508,5 @@
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
   setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("spl_live")) renderSpl(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); }, 5000);
 })();

@@ -33,18 +33,21 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
     SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_host_error, spl_password_error,
 )
-from ..core.calibration import change_text, set_calibration
+from ..core.calibration import change_text, set_calibration, utc_now_iso
+from ..core import calibration_io
 from ..core.hub import Hub
 from ..core.model import Device, Entity, Kind, Marker, slugify
 from ..core.recorder import clean_note, valid_day
 from .. import diagnostics, netinfo
 from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
+from ..core import device_errors as errors_mod
 from ..core import schedule as sched
 from ..core import spl as spl_mod
+from ..integrations.lanwm import importer as logimport
 from ..integrations.ontime.client import check_connection
 from ..integrations.shelly import TEXT as SHELLY_TEXT, InUse
 from ..integrations.shelly.http import ShellyError
@@ -68,7 +71,16 @@ DEFAULT_BODY_OVERRIDES: dict[str, int] = {
     # case must reach validation (422), not be cut off as too large (413).
     "/api/admin/schedule": 640 * 1024,
     "/api/admin/schedule/import": 256 * 1024,  # 64 KB of text, JSON-escaped
+    # Calibration import (plan §1.9): read by the browser's FileReader and sent as JSON without
+    # the file's history (the page strips it), so 500 records fit well inside this.
+    "/api/admin/calibrations/import": 1024 * 1024,
+    # Vendor log import: the file's text as JSON. A real LA Network Manager session is well under 1 MB.
+    "/api/admin/logs/import": 6 * 1024 * 1024,
 }
+
+
+# Largest offset an import accepts, in canonical units (degC, %RH, Pa); "" = sensor not live now.
+OFFSET_MAX = {"temperature": 50.0, "humidity": 50.0, "pressure": 20000.0, "": 20000.0}
 
 
 # ---------------------------------------------------------------- payloads
@@ -215,6 +227,22 @@ class ResolveBody(BaseModel):
     action: Literal["new_hardware", "move_calibration", "forget_mac"]
 
 
+class CalibrationImportBody(BaseModel):
+    """POST /api/admin/calibrations/import: the parsed export file, and whether to only look."""
+    model_config = ConfigDict(extra="forbid")
+
+    data: dict
+    dry_run: bool = True   # the safe way round: a caller that forgets it changes nothing
+
+
+class CalibrationNoteBody(BaseModel):
+    """POST /api/admin/calibrations/{entity_id}/note: a line in the sensor's calibration history."""
+    model_config = ConfigDict(extra="forbid")
+
+    reference: str = Field("", max_length=120)   # e.g. the instrument it was checked against
+    note: str = Field("", max_length=200)
+
+
 SERVICE_DEVICE = "This device is managed by its integration. Nothing has been changed."
 RESOLVE_REFUSED = "There is nothing to resolve this way for this node. Nothing has been changed."
 
@@ -359,6 +387,24 @@ class ShellyAddBody(ShellyTestBody):
         return v
 
 
+class ShellyChannelBody(BaseModel):
+    """One circuit's label, line and rating inside PATCH /api/admin/shelly/{id}. Rating 0 means none."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    key: str = Field(max_length=24, pattern=r"^[a-z0-9_]+$")
+    label: str = Field("", max_length=40)
+    phase: Literal["", "L1", "L2", "L3"] = ""
+    rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)
+
+    @field_validator("label")
+    @classmethod
+    def _plain(cls, v: str) -> str:
+        v = v.strip()
+        if _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+
 class ShellyPatchBody(BaseModel):
     """PATCH /api/admin/shelly/{id}. A new address must be the same meter (checked against its MAC)."""
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
@@ -367,6 +413,7 @@ class ShellyPatchBody(BaseModel):
     area: str | None = Field(None, max_length=40)
     interval_s: float | None = Field(None, ge=2.0, le=5.0, allow_inf_nan=False)
     rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)   # 0 clears the rating
+    channels: list[ShellyChannelBody] | None = Field(None, max_length=16)
     host: str | None = Field(None, min_length=1, max_length=64)
 
     @field_validator("name", "area")
@@ -681,6 +728,22 @@ class ScheduleImportBody(BaseModel):
         if not self.dry_run and (self.show_id is None or self.revision is None):
             raise ValueError("To add the rows to the schedule, send the show_id and revision you are editing")
         return self
+
+
+class LogImportBody(BaseModel):
+    """POST /api/admin/logs/import: a vendor log file's text. ``dry_run`` (the default) only reads it and
+    returns what an import would do; ``dry_run: false`` writes it."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    format: Literal["lanwm"] = "lanwm"
+    text: str = Field(max_length=5_000_000)
+    file_name: str = Field("", max_length=200)
+    show_id: int | None = Field(None, ge=1)
+    tz: str = Field("", max_length=64)
+    offset_s: float = Field(0.0, ge=-86400, le=86400)
+    session_markers: bool = False
+    load_checker_markers: bool = False
+    dry_run: bool = True
 
 
 class ScheduleDemoBody(BaseModel):
@@ -1123,6 +1186,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                                 "accuracy": c.accuracy, "accuracy_basis": c.accuracy_basis,
                                 "role": c.role,          # the sensor's own override ("" = follows the node)
                                 "role_now": hub.role_of(e)} for e in sensors},
+            # Calibration log per sensor (newest first): date, method, offset, reference, note.
+            "calibrations": {e.id: [h.model_dump(mode="json") for h in cal.history]
+                             for e in sensors if e.hw_key and (cal := hub.config.calibrations.get(e.hw_key))},
             # Each sensor's live share of its kind's site average, and why weighting is not in use.
             "averages": hub.average_info,
             "devices": {d.id: {"hw_id": d.hw_id, "conflict": conflicts.get(d.id), "role": d.role,
@@ -1268,6 +1334,74 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         else:
             hub.bus.publish("entity", entity)   # screens still learn the new offset
         return body
+
+    @app.post("/api/admin/calibrations/{entity_id}/note", dependencies=admin_deps)
+    async def add_calibration_note(entity_id: str, body: CalibrationNoteBody):
+        """Log a check against a reference, or a note, on a sensor's calibration (offset unchanged)."""
+        entity = hub.entities.get(entity_id)
+        cal = hub.config.calibrations.get(entity.hw_key) if entity is not None and entity.hw_key else None
+        if cal is None:
+            raise HTTPException(404, "This sensor has no saved calibration to add a note to. Save an offset first.")
+        reference, note = body.reference.strip(), body.note.strip()
+        if not reference and not note:
+            raise HTTPException(422, "Type a reference or a note")
+        if _has_hidden_chars(reference) or _has_hidden_chars(note):
+            raise HTTPException(422, "Notes cannot contain control characters")
+        entry = CalibrationEntry(offset=cal.offset, date=utc_now_iso(), method="reference" if reference else "manual",
+                                 reference=reference, note=note)
+        hub.config.calibrations[entity.hw_key] = cal.model_copy(
+            update={"history": [entry, *cal.history][:CALIBRATION_HISTORY_MAX]})
+        hub.save_config()
+        return {"ok": True}
+
+    @app.get("/api/admin/calibrations/export", dependencies=[Depends(require_admin)])
+    async def export_calibrations():
+        data = json.dumps(calibration_io.build_export(hub.config, hub.config.site.name), indent=2).encode()
+        return Response(data, media_type="application/json", headers={
+            "Content-Disposition": 'attachment; filename="stagewatch-calibration.json"',
+            "Content-Length": str(len(data)), "Cache-Control": "no-store"})
+
+    @app.post("/api/admin/calibrations/import", dependencies=admin_deps)
+    async def import_calibrations(body: CalibrationImportBody):
+        nodes = {k.rsplit("/", 1)[0] for k in (e.hw_key for e in hub.entities.values()) if k}
+        nodes |= {f"mac:{d.mac}" for d in hub.config.esphome_devices if d.mac}
+        by_key = {e.hw_key: e for e in hub.entities.values() if e.hw_key}
+        def refuse(key: str) -> bool:
+            e = by_key.get(key)
+            return e is not None and (e.kind == Kind.SOUND_LEVEL or e.locked_equipment)
+        def acceptable(key: str, cal) -> bool:
+            # The limits the normal save enforces: a sane offset, accuracy only where it is allowed.
+            e = by_key.get(key)
+            kind = e.kind.value if e is not None else ""
+            if abs(cal.offset) > OFFSET_MAX.get(kind, OFFSET_MAX[""]):
+                return False
+            if cal.accuracy is not None and e is not None:
+                lo, hi = ACCURACY_MIN.get(kind), ACCURACY_MAX.get(kind)
+                if lo is None or hi is None or not lo <= cal.accuracy <= hi:
+                    return False
+            return True
+        try:
+            plan = calibration_io.plan_import(hub.config, body.data, nodes, refuse, acceptable)
+        except calibration_io.ImportError_ as exc:
+            raise HTTPException(422, str(exc)) from None
+        result = {"dry_run": body.dry_run, **plan.summary()}
+        if body.dry_run or not plan.records:
+            return result
+        written = calibration_io.apply_import(hub.config, plan)
+        for key in written:   # keep the rollback mirror in step and refresh live values
+            e = by_key.get(key)
+            if e is None:
+                continue
+            if e.id in hub.config.entities:
+                cal = hub.config.calibrations[key]
+                hub.config.entities[e.id] = EntitySettings(offset=cal.offset, include_in_average=cal.include_in_average)
+        hub.save_config()
+        hub.add_marker(f"Calibration imported from a file: {len(plan.added)} added, {len(plan.changed)} changed", "hub")
+        for key in written:
+            e = by_key.get(key)
+            if e is not None and e.raw_value is not None and not e.derived:
+                hub.update_state(e.id, e.raw_value, e.updated)
+        return result
 
     @app.get("/api/admin/averages", dependencies=[Depends(require_admin)])
     async def admin_averages():
@@ -1482,7 +1616,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     @app.patch("/api/admin/shelly/{device_id}", dependencies=admin_deps)
     async def shelly_patch(device_id: str, body: ShellyPatchBody):
         try:
-            await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host, body.rating_a)
+            await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host, body.rating_a,
+                                       None if body.channels is None else [c.model_dump() for c in body.channels])
         except LookupError:
             raise HTTPException(404, "No such power meter") from None
         except ShellyError as exc:
@@ -1678,6 +1813,50 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         except sched.StaleRevision:
             raise HTTPException(409, sched.MSG_CHANGED) from None
         return {**out, "schedule": schedule}
+
+    @app.get("/api/admin/devices/errors", dependencies=[Depends(require_admin)])
+    async def device_errors(show_id: int | None = Query(None, ge=1), scope: Literal["show", "event"] = "show"):
+        """Problems per device for a show (or all of its event's days). Read-only; admin only, because
+        it names equipment and imported units."""
+        rec = hub.recorder
+        show = rec.show_row(show_id if show_id is not None else rec.show_id)
+        if show is None:
+            raise HTTPException(404, "There is no such show.")
+        ids = rec.event_show_ids(show["event_id"]) if scope == "event" and show["event_id"] else [show["id"]]
+        words = {"sensor": "Sensor", "service": "Service", "meter": "Power meter"}
+        devices = {d.id: {"name": d.name, "kind": words.get(d.category, d.category.title() or "Device"),
+                          "status": d.status.value} for d in hub.devices.values() if d.id != "site"}
+        out = errors_mod.summarise(rec, ids, devices, time.time(), rec.run_id)
+        return {"show": {k: show[k] for k in ("id", "name", "day", "started", "ended")}, "scope": scope,
+                "days": len(ids), **out, "gaps": [{"from": a, "to": b} for a, b in out["gaps"]]}
+
+    @app.post("/api/admin/logs/import", dependencies=admin_deps)
+    async def import_log(body: LogImportBody):
+        show_id = body.show_id if body.show_id is not None else hub.recorder.show_id
+        try:
+            parsed = await asyncio.to_thread(logimport.parse.parse_text, body.text)   # slow part, off the loop
+            plan = logimport.plan_import(
+                hub.recorder, hub.config.site, fmt=body.format, text="", parsed=parsed,
+                file_name=body.file_name, show_id=show_id, tz=body.tz, offset_s=body.offset_s,
+                session_markers=body.session_markers, load_checker_markers=body.load_checker_markers)
+            result = {"dry_run": body.dry_run, **plan.summary()}
+            if body.dry_run:
+                return result
+            return {**result, **logimport.apply_import(hub.recorder, plan)}
+        except logimport.ImportRefused as e:
+            raise HTTPException(422, str(e)) from None
+
+    @app.get("/api/admin/logs/imports", dependencies=[Depends(require_admin)])
+    async def list_log_imports(show_id: int | None = Query(None, ge=1)):
+        return {"show_id": show_id or hub.recorder.show_id,
+                "imports": hub.recorder.vendor_imports(show_id or hub.recorder.show_id)}
+
+    @app.delete("/api/admin/logs/imports/{import_id}", dependencies=admin_deps)
+    async def undo_log_import(import_id: str, show_id: int | None = Query(None, ge=1)):
+        removed = hub.recorder.undo_vendor_import(show_id or hub.recorder.show_id, import_id[:64])
+        if removed is None:
+            raise HTTPException(404, "There is no such import in this show. Nothing has been changed.")
+        return {"ok": True, **removed}
 
     @app.post("/api/admin/schedule/demo", dependencies=admin_deps)
     async def schedule_demo(body: ScheduleDemoBody | None = None):

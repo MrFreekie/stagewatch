@@ -186,7 +186,79 @@ def reset_admin_pin_cli(argv: list[str]) -> None:
         sys.exit(1)
 
 
+def import_log_cli(argv: list[str]) -> None:
+    """`stagewatch import-log FILE`: put a vendor log (LA Network Manager) into a show. Shows what it
+    would do; adds `--write` to do it. Local only: it needs the data folder."""
+    from .core import sitetime
+    from .core.config import ConfigStore
+    from .core.recorder import Recorder
+    from .integrations.lanwm import importer, parse
+    parser = argparse.ArgumentParser(prog="stagewatch import-log",
+                                     description="Import an L-Acoustics Network Manager log file into a show. "
+                                                 "Without --write it only shows what would be imported.")
+    parser.add_argument("file", type=Path)
+    parser.add_argument("--format", choices=importer.FORMATS, default="lanwm")
+    parser.add_argument("--show", type=int, default=None, help="show id (default: the current show)")
+    parser.add_argument("--tz", default="", help="time zone of the computer that wrote the file "
+                                                  "(default: the site's zone), e.g. Europe/London")
+    parser.add_argument("--offset", type=float, default=0.0, help="seconds to add if that computer's clock was wrong")
+    parser.add_argument("--session-markers", action="store_true",
+                        help="also add markers for online/offline and acknowledge-all")
+    parser.add_argument("--load-checker-markers", action="store_true",
+                        help="also add markers for entering and leaving Load Checker mode")
+    parser.add_argument("--write", action="store_true", help="import it (otherwise only a preview)")
+    parser.add_argument("--data-dir", type=Path, default=None)
+    parser.add_argument("--emulate", action="store_true", help="use the emulate data folder")
+    parser.add_argument("--force", action="store_true",
+                        help="run even if a Stagewatch server seems to be running on this data folder")
+    args = parser.parse_args(argv)
+    data_dir = resolve_data_dir(args.data_dir, args.emulate)
+    if args.write and not args.force and updater_common.server_running(data_dir):
+        print("error: Stagewatch appears to be running on this data folder. Import from the Admin page "
+              "instead, or stop it first, or use --force.", file=sys.stderr)
+        sys.exit(1)
+    try:
+        if args.file.stat().st_size > 20 * 1024 * 1024:
+            raise importer.ImportRefused("That file is bigger than 20 MB.")
+        text = parse.decode(args.file.read_bytes())
+        site = ConfigStore(data_dir / "config.yaml").load().site
+        recorder = Recorder(data_dir / "stagewatch.sqlite3")
+        try:
+            plan = importer.plan_import(recorder, site, fmt=args.format, text=text, file_name=args.file.name,
+                                        show_id=args.show if args.show is not None else recorder.show_id,
+                                        tz=args.tz, offset_s=args.offset, session_markers=args.session_markers,
+                                        load_checker_markers=args.load_checker_markers)
+            s = plan.summary()
+            def when(ts):
+                return sitetime.local(ts, site).strftime("%d %b %Y %H:%M:%S") if ts else "-"
+            print(f"File: {when(s['file']['first'])} to {when(s['file']['last'])} "
+                  f"({s['file']['entries']} entries{'' if s['file']['closed'] else ', session not closed'})")
+            print(f"Show day: {when(s['show_day']['from'])} to {when(s['show_day']['to'])}")
+            print(f"New: {s['new']}   already there: {s['already_present']}   outside the show day: "
+                  f"{s['outside_day']}   session lines left out: {s['session_left_out']}   markers: {s['markers']}")
+            for ep in s["episodes"]:
+                length = "never cleared" if ep["seconds"] is None else f"cleared after {ep['seconds']:g} s"
+                print(f"  {when(ep['start'])}  {ep['level']:8} {ep['unit']}: {ep['what']} ({length})")
+            if s["outside_day"] and not s["new"]:
+                print("None of it falls in this show's day. Shows in this data folder (use --show ID):")
+                for sh in recorder.shows()[:10]:
+                    print(f"  {sh['id']}: {sh['name']}  {sh['day'] or sitetime.show_day(sh['started'], site)}")
+            if not args.write:
+                print("Nothing has been imported. Add --write to import it.")
+                return
+            done = importer.apply_import(recorder, plan)
+            print(f"Imported {done['rows']} entries and {done['markers']} markers (import {done['import_id']}).")
+        finally:
+            recorder.close()
+    except (OSError, importer.ImportRefused) as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "import-log":
+        import_log_cli(sys.argv[2:])
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "reset-admin-pin":
         reset_admin_pin_cli(sys.argv[2:])
         return

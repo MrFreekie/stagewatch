@@ -18,7 +18,7 @@ from __future__ import annotations
 
 GAP_S = 30.0         # silence longer than this between two readings is a gap
 MAX_GAPS = 5         # the most recent few are kept
-MAX_FIELDS = ("power", "current", "voltage", "freq")
+MAX_FIELDS = ("power", "current", "voltage", "freq", "voltage_ll", "thd_v", "thd_i")
 
 
 class DayFigures:
@@ -36,6 +36,8 @@ class DayFigures:
         self.base = self.last = 0.0
         self.carried = 0.0
         self.went_back_at: float | None = None
+        # A peak register the meter keeps itself ("meter_max_*"): we only note when it goes back (reset).
+        self.register = field.startswith("meter_max_")
 
     def feed(self, value: float, ts: float) -> None:
         if self.last_ts is not None:
@@ -45,6 +47,13 @@ class DayFigures:
                 self.gaps = (self.gaps + [[self.last_ts, ts]])[-MAX_GAPS:]
         self.last_ts = ts
         self.count += 1
+        if self.register:
+            if self.first_ts is None:
+                self.first_ts = ts
+            elif value < self.last - 1e-6:
+                self.went_back_at = ts
+            self.last = value
+            return
         if self.cumulative:
             if self.first_ts is None:
                 self.first_ts, self.base = ts, value
@@ -56,7 +65,7 @@ class DayFigures:
             return
         if self.field in MAX_FIELDS and (self.high is None or value > self.high[0]):
             self.high = (value, ts)
-        if self.field in ("voltage", "freq") and (self.low is None or value < self.low[0]):
+        if self.field in ("voltage", "freq", "voltage_ll") and (self.low is None or value < self.low[0]):
             self.low = (value, ts)
 
     def to_dict(self) -> dict | None:
@@ -64,7 +73,10 @@ class DayFigures:
         if not self.count:
             return None
         out: dict = {"day": self.day}
-        if self.cumulative:
+        if self.register:
+            if self.went_back_at is not None:
+                out["went_back_at"] = self.went_back_at
+        elif self.cumulative:
             out.update(wh=self.carried + (self.last - self.base), since=self.first_ts)
             if self.went_back_at is not None:
                 out["went_back_at"] = self.went_back_at

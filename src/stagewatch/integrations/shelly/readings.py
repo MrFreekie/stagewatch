@@ -183,7 +183,7 @@ _FIELD_WORDS = {
     "pf": "power factor", "freq": "frequency", "energy": "energy", "energy_ret": "energy returned",
     "device_temp": "meter temperature",
 }
-_GROUP_WORDS = {"a": "Phase A", "b": "Phase B", "c": "Phase C", "n": "Neutral", "total": "Total"}
+_GROUP_WORDS = {"a": "Line 1 (Brown)", "b": "Line 2 (Black)", "c": "Line 3 (Grey)", "n": "Neutral (Blue)", "total": "Total"}
 
 
 def display_name(reading: Reading, channels_of_kind: int) -> str:

@@ -224,6 +224,16 @@ SHELLY_POLL_DEFAULT_S = 3.0
 SHELLY_MAX_METERS = 16
 
 
+class ShellyChannelConfig(_Model):
+    """What the admin typed about one circuit of a meter: a label ("Amp rack 3"), the mains line it is on
+    (single-phase meters) and its own rating in amps. Advisory only. ``key`` is the channel the card
+    groups readings by (for example "pm1_0" or "em0")."""
+    key: str = Field(max_length=24, pattern=r"^[a-z0-9_]+$")
+    label: str = Field("", max_length=40)
+    phase: Literal["", "L1", "L2", "L3"] = ""
+    rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)
+
+
 class ShellyDeviceConfig(_Model):
     """A Shelly power meter the admin added (read-only: Stagewatch only asks it for its readings).
     Identity is the meter's MAC, read from the meter itself when it was added; ``host`` is only where
@@ -238,6 +248,7 @@ class ShellyDeviceConfig(_Model):
     # The rating (amps) of the meter or of the breaker/circuit it watches, typed in by the admin. Shown
     # on the Power card as a load bar with warnings at 80 % and 100 %. None = no bar. Advisory only.
     rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)
+    channels: list[ShellyChannelConfig] = Field(default_factory=list, max_length=16)
 
     @field_validator("id")
     @classmethod

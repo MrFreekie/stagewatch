@@ -35,6 +35,28 @@ If the meter's energy total goes back (someone reset the meter), the energy used
 
 A new show day starts all of this afresh. If Stagewatch is restarted during a show day, it rebuilds the figures from the readings it had already recorded.
 
+## Lines, labels and ratings for each circuit
+
+In Admin, each meter lists its circuits. For each one you can type a **label** (for example "Amp rack 3"), set a **rating** that overrides the meter's own, and, on a single-phase meter, say which **line** it is on.
+
+- A three-phase meter shows its lines as **Line 1 (Brown)**, **Line 2 (Black)** and **Line 3 (Grey)**, and the neutral as **Neutral (Blue)**. The meter's A, B and C are shown as Line 1, 2 and 3.
+- A single-phase meter you have assigned to a line shows that line beside its label, for example "Amp rack 3 · Line 2 (Black)".
+- The load bar and the **Add warnings** button use the circuit's own rating, or the meter's rating when the circuit has none.
+
+These are only labels you typed. Stagewatch cannot check which line a circuit is really on. Always check at the distro.
+
+## More meter types
+
+Some meters report more than the Shelly does. When a meter sends them, the card also shows:
+
+- **Line-to-line voltage** (Line 1 to Line 2 and so on) as a swing meter with a typical 400 V band of 376 to 440 V. Stagewatch never works this out itself from the line-to-neutral readings, because that needs the phase angles.
+- **Neutral current** as a percentage of the biggest line current, with the word HIGH from 50%. It is a hint that the lines may be uneven, not a fault finding.
+- **Voltage and current THD** (distortion): today's highest, advisory only and not a power-quality certificate.
+- **Reactive power**.
+- **Meter's own maximum**: a peak the meter keeps itself, shown separately and labelled "kept by the meter since its last reset". Stagewatch never resets it. If it goes back, someone reset the meter.
+
+Rows that a meter does not send are left out. No supported meter sends these yet: they are ready for Modbus meters planned later (see the Shelly page for what is supported today).
+
 ## Load bar and UK limits
 
 - **Load bar.** In Admin, give the meter a **rating in amps** (a Shelly PM Mini Gen3 is 16 A; use the breaker's rating if that is lower). The card then shows how loaded the circuit is, for example "1.80 A of 16 A (11%)". The bar is green below 80%, amber from 80% (HIGH LOAD) and red from 100% (OVER RATING). A mark on the bar shows today's highest current. Without a rating there is no bar.
@@ -46,6 +68,10 @@ A new show day starts all of this afresh. If Stagewatch is restarted during a sh
 **Phase imbalance.** A three-phase meter shows an estimate: the biggest difference of any phase current from the average, as a percentage of the average. It is a display only and is not recorded.
 
 The voltage and frequency warnings put a quiet notice in the alarm bar. It never makes a sound, and it clears itself when the reading is back inside with a little margin. All of this is advisory. Stagewatch only reads, and the rating is simply the number you typed in. Colour is never the only signal: the words are always shown.
+
+## History chart
+
+Under the meters is a chart of one measurement over time: **Power**, **Current**, **Voltage** or **Frequency**, for the last **15m**, **1h** or the whole **Show**. A three-phase meter gets one line per phase, and lines also differ by dash style, not just colour. With more than one meter, pick the meter above the chart. The chart draws what was recorded. When Stagewatch was not reading the meter, the line breaks. Nothing is joined up or filled in. Short surges between two readings can be missed. On a wall screen the controls are hidden and the chart shows the saved choice.
 
 ## Equipment, not air
 

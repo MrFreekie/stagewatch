@@ -66,5 +66,39 @@ eq(Math.round(SW.pw.imbalance(10, 12, 14) * 10) / 10, 16.7, "imbalance");
 eq(SW.pw.imbalance(5, 5, 5), 0, "balanced is 0");
 eq([SW.pw.imbalance(null, 5, 5), SW.pw.imbalance(0, 0, 0)], [null, null], "no reading or no load: no figure");
 
+// history chart lines: phases in order, one line for a single circuit, energy never charted
+const E = (id, g, f, over) => Object.assign({ id, device_id: "m", kind: "current", unit: "A", decimals: 3, labels: { channel: "x", field: f, group: g } }, over || {});
+const ents = { b: E("b", "b", "current"), a: E("a", "a", "current"), c: E("c", "c", "current"), v: E("v", "a", "voltage", { kind: "voltage" }),
+  en: E("en", "", "energy", { kind: "energy" }), o: E("o", "", "current", { device_id: "other" }) };
+eq(SW.pw.chartSeries(ents, "m", "current").map((l) => l.label), ["Line 1 (Brown)", "Line 2 (Black)", "Line 3 (Grey)"], "phase order");
+eq(SW.pw.chartSeries(ents, "m", "voltage").map((l) => l.id), ["v"], "other fields stay out");
+eq(SW.pw.chartSeries({ x: E("x", "", "power", { kind: "power" }) }, "m", "power")[0].label, "Power", "single circuit uses the field word");
+eq(SW.pw.chartSeries(ents, "m", "energy"), [], "energy is not charted");
+eq([SW.pw.gapSeconds(2), SW.pw.gapSeconds(120)], [60, 360], "gap: at least 60 s, or 3 buckets");
+
+// lines are named by colour; a single-phase meter shows the line it was assigned; ratings per circuit
+eq([SW.pw.GROUP_WORD.a, SW.pw.GROUP_WORD.b, SW.pw.GROUP_WORD.c, SW.pw.GROUP_WORD.n], ["Line 1 (Brown)", "Line 2 (Black)", "Line 3 (Grey)", "Neutral (Blue)"], "line colours");
+eq(SW.pw.channelTitle({ id: "pm1_0", cfg: { label: "Amp rack 3", phase: "L2" } }, false), "Amp rack 3 · Line 2 (Black)", "label and line");
+eq(SW.pw.channelTitle({ id: "pm1_0", cfg: null }, false), "", "one plain circuit: no heading");
+eq(SW.pw.channelTitle({ id: "pm1_1", cfg: null }, true), "Channel 2", "several circuits: numbered from 1");
+const dev = { id: "m", name: "M", category: "meter", status: "ok", rating_a: 16, channels: { pm1_1: { rating_a: 10, phase: "L3" } } };
+const cEnts = [E("p0", "", "current", { labels: { channel: "pm1_0", field: "current" } }), E("p1", "", "current", { labels: { channel: "pm1_1", field: "current" } })];
+const mv = SW.pw.meterView(dev, cEnts, 1000);
+eq(mv.channels.map((c) => c.rating), [16, 10], "a circuit's own rating wins, else the meter's");
+
+// line-to-line voltage (400 V, band 376 to 440), neutral share, the meter's own maximum rows, new words
+const LL = (v) => SW.pw.swingView(v, SW.pw.SWING.voltage_ll).state;
+eq([LL(400), LL(376), LL(440), LL(375.9), LL(440.1), LL(230), LL(null)], ["ok", "ok", "ok", "low", "high", "na", "none"], "line-to-line states");
+eq(SW.pw.swingView(400, SW.pw.SWING.voltage_ll).word, "Within typical range", "line-to-line is not called the UK range");
+eq(SW.pw.GROUP_WORD.l12, "Line 1 to Line 2 (Brown-Black)", "line-to-line words");
+eq(SW.pw.neutralShare(4.36, 14, 11, 9).high, false, "neutral 4.36 of 14 A is 31 %: not high");
+eq(Math.round(SW.pw.neutralShare(4.36, 14, 11, 9).pct), 31, "neutral share");
+eq(SW.pw.neutralShare(8, 14, 11, 9).high, true, "8 of 14 A is 57 %: high");
+eq([SW.pw.neutralShare(null, 1, 1, 1), SW.pw.neutralShare(1, 0, 0, 0)], [null, null], "no reading or no load: no figure");
+const mm = [E("x", "a", "meter_max_current", { labels: { channel: "em0", field: "meter_max_current", group: "a" } }), E("y", "", "current")];
+eq(SW.pw.meterMaxRows(mm, "m"), [{ entity: "x", label: "Line 1 (Brown) Current" }], "meter max rows");
+eq(SW.pw.chartSeries({ p: E("p", "l12", "voltage_ll", { kind: "voltage" }), q: E("q", "l23", "voltage_ll", { kind: "voltage" }) }, "m", "voltage_ll").map((l) => l.label),
+  ["Line 1 to Line 2 (Brown-Black)", "Line 2 to Line 3 (Black-Grey)"], "line-to-line chart lines");
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power_day_test: all passed");

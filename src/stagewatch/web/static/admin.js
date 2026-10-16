@@ -361,8 +361,16 @@
       const host = h("input", { class: "touch", value: m.host, maxlength: "64", autocomplete: "off", spellcheck: "false", "aria-label": `${m.name} address` });
       const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: m.interval_s, "aria-label": `${m.name} reads every (seconds)` });
       const rating = h("input", { class: "num", type: "number", min: "0", max: "200", step: "0.5", value: m.rating_a || "", placeholder: "none", "aria-label": `${m.name} rating (amps)` });
+      const chRows = (m.channels || []).map((c) => {
+        const label = h("input", { value: c.label, maxlength: "40", placeholder: "Label (e.g. Amp rack 3)", "aria-label": `${m.name} ${c.name} label` });
+        const phase = h("select", { "aria-label": `${m.name} ${c.name} line` }, [["", "No line set"], ["L1", "Line 1 (Brown)"], ["L2", "Line 2 (Black)"], ["L3", "Line 3 (Grey)"]].map(([v, t]) => h("option", { value: v, selected: v === c.phase }, t)));
+        const rating = h("input", { class: "num", type: "number", min: "0", max: "200", step: "0.5", value: c.rating_a || "", placeholder: "meter's", "aria-label": `${m.name} ${c.name} rating (amps)` });
+        return { c, label, phase, rating, el: h("div", { class: "row", style: "margin:4px 0" }, h("span", { class: "muted", style: "min-width:90px" }, c.name), label,
+          c.three_phase ? h("span", { class: "muted" }, "Lines 1 to 3 (Brown, Black, Grey)") : phase, rating, h("span", { class: "muted" }, "A")) };
+      });
+      const channelsPayload = () => chRows.map((r) => ({ key: r.c.key, label: val(r.label), phase: r.c.three_phase ? "" : r.phase.value, rating_a: Number(r.rating.value) || 0 }));
       const facts = [m.model, m.firmware ? `firmware ${m.firmware}` : "", `MAC ${m.mac}`].filter(Boolean).join(" · ");
-      return h("tr", {},
+      const first = h("tr", {},
         h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, m.id)),
         h("td", {}, area),
         h("td", {}, statusPill(m), m.detail ? h("div", { class: "muted", style: "font-size:12px" }, m.detail) : null,
@@ -374,14 +382,15 @@
         h("td", {}, h("div", { class: "muted", style: "font-size:12px" }, `${m.ok_polls} ok, ${m.failed_polls} missed`)),
         h("td", {}, h("div", { class: "row" },
           h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/shelly/${encodeURIComponent(m.id)}`, {
-            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value), rating_a: Number(rating.value) || 0 }), "Saved").then(refresh, () => {}) }, "Save"),
+            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value), rating_a: Number(rating.value) || 0, channels: channelsPayload() }), "Saved").then(refresh, () => {}) }, "Save"),
           h("button", { class: "small", title: "Makes two warnings from the rating: a notice at 80% and an alarm at 100%. Your own limits: Stagewatch does not protect or switch anything.",
             onclick: () => run(() => api("POST", `/api/admin/shelly/${encodeURIComponent(m.id)}/warnings`), "Warnings added at 80% and 100% (see Thresholds)").then(refresh, () => {}) }, "Add warnings"),
           h("button", { class: "small danger", onclick: () => confirm(`Remove ${m.name}? Its history is kept.`) && run(() => api("DELETE", `/api/admin/shelly/${encodeURIComponent(m.id)}`), "Removed").then(refresh, () => {}) }, "Remove"))));
+      return chRows.length ? [first, h("tr", {}, h("td", { colspan: "8" }, h("div", { class: "muted", style: "font-size:12px" }, "Circuits on this meter: label, which mains line it is on (single-phase meters), and its own rating (blank uses the meter's rating)"), ...chRows.map((r) => r.el)))] : [first];
     });
     const table = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Rating (amps)"), h("th", {}, "Polls"), h("th", {}, ""))),
-      h("tbody", {}, rows));
+      h("tbody", {}, [].concat(...rows)));
 
     // Add a meter: type the address, press Test to see what is there, then Save.
     const host = h("input", { class: "touch", maxlength: "64", autocomplete: "off", spellcheck: "false", placeholder: "e.g. 192.168.1.50", value: shellyTest ? shellyTest.host : "", "aria-label": "Meter address" });
@@ -541,26 +550,6 @@
       return h("div", {}, h("div", { style: "font-variant-numeric:tabular-nums" }, w.address || "Not connected"),
         w.host && w.host !== w.address ? h("div", { class: "muted", style: "font-size:12px" }, w.host) : null);
     };
-    // A node held by the hardware check says why, in plain words, and offers the ways out. Admin only.
-    const resolveBlock = (d, conflict) => {
-      if (!conflict) return null;
-      const send = (action, ask) => (!ask || confirm(ask)) && run(() => api("POST", `/api/admin/esphome/${encodeURIComponent(d.id)}/resolve`, { action }), "Node settled").then(refresh, () => {});
-      const btn = (text, action, ask) => h("button", { class: "small", onclick: () => send(action, ask) }, text);
-      const why = {
-        different: "A different board is answering at this address. Its readings are ignored until you choose.",
-        known_board: "This board already has calibration saved from before. Its readings are ignored until you choose.",
-        unreadable: "The board did not give its hardware address, so it cannot be checked. Its readings are ignored until you choose.",
-        duplicate: `This is the same board as ${conflict.other || "another node"}. Remove one of the two nodes.`,
-      }[conflict.reason] || "Held by the hardware check. Its readings are ignored.";
-      const buttons = conflict.reason === "different" ? [
-        btn("New board, start fresh", "new_hardware", `Treat this as a new board with no calibration? ${d.name} keeps no offsets.`),
-        btn("New board, keep calibration", "move_calibration")]
-        : conflict.reason === "known_board" ? [
-          btn("Use the saved calibration", "move_calibration"),
-          btn("Start fresh", "new_hardware", "Start fresh? The calibration saved for this board is deleted.")]
-        : conflict.reason === "unreadable" ? [btn("Accept this board", "forget_mac")] : [];
-      return h("div", { class: "notice", style: "margin-top:6px" }, h("div", {}, why), buttons.length ? h("div", { class: "row", style: "margin-top:6px" }, ...buttons) : null);
-    };
     const devices = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter");   // services (Ontime) are listed under Integrations; power meters under Shelly power meters
     const devTable = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Role"), h("th", {}, "Sleeps between readings"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Model"), h("th", {}, ""))),
@@ -580,7 +569,7 @@
           h("td", {}, role),
           h("td", {}, h("div", { class: "row" }, sleep, h("span", { class: "muted" }, "min")),
             h("div", { class: "muted", style: "font-size:12px" }, "Counted as stale after 2.5 times this")),
-          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null, resolveBlock(d, hwd && hwd.conflict)),
+          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null, deviceErrorCounts["device:" + d.id] ? h("div", { style: "font-size:12px" }, h("a", { href: "#device-errors-card" }, `${problemsWord(deviceErrorCounts["device:" + d.id])} this show`)) : null, hwd && hwd.conflict ? h("div", { style: "font-size:12px" }, h("a", { href: "#calibration-card" }, "Held by the hardware check: choose what to do under Calibration & hardware")) : null),
           h("td", {}, nodeAddress(admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id])),
           h("td", {}, d.model),
           h("td", {}, h("div", { class: "row" },
@@ -595,6 +584,332 @@
       adoptForm(),
       h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADOPTED"),
       h("div", { class: "table-scroll" }, devices.length ? devTable : h("p", { class: "muted" }, "None yet.")));
+  }
+
+  // A node held by the hardware check says why, in plain words, and offers the ways out. Admin only.
+  const resolveBlock = (d, conflict) => {
+    if (!conflict) return null;
+    const send = (action, ask) => (!ask || confirm(ask)) && run(() => api("POST", `/api/admin/esphome/${encodeURIComponent(d.id)}/resolve`, { action }), "Node settled").then(refresh, () => {});
+    const btn = (text, action, ask) => h("button", { class: "small", style: "min-height:44px", onclick: () => send(action, ask) }, text);
+    const why = {
+      different: "A different board is answering at this address. Its readings are ignored until you choose.",
+      known_board: "This board already has calibration saved from before. Its readings are ignored until you choose.",
+      unreadable: "The board did not give its hardware address, so it cannot be checked. Its readings are ignored until you choose.",
+      duplicate: `This is the same board as ${conflict.other || "another node"}. Remove one of the two nodes.`,
+    }[conflict.reason] || "Held by the hardware check. Its readings are ignored.";
+    const buttons = conflict.reason === "different" ? [
+      btn("New board, start fresh", "new_hardware", `Treat this as a new board with no calibration? ${d.name} keeps no offsets.`),
+      btn("New board, keep calibration", "move_calibration")]
+      : conflict.reason === "known_board" ? [
+        btn("Use the saved calibration", "move_calibration"),
+        btn("Start fresh", "new_hardware", "Start fresh? The calibration saved for this board is deleted.")]
+      : conflict.reason === "unreadable" ? [btn("Accept this board", "forget_mac")] : [];
+    return h("div", { class: "notice", style: "margin-top:6px" }, h("div", {}, why), buttons.length ? h("div", { class: "row", style: "margin-top:6px" }, ...buttons) : null);
+  };
+
+  // ------------------------------------------------- calibration & hardware (plan 1.9)
+  const macText = (key) => { const m = /^mac:([0-9a-f]{12})$/.exec(key || ""); return m ? m[1].match(/../g).join(":") : (key || ""); };
+  const methodWord = { manual: "set by hand", reference: "checked against a reference", import: "imported from a file", migrated: "kept from before the upgrade", moved: "copied from another board" };
+  const isoDate = (iso) => { const t = Date.parse(iso); return Number.isNaN(t) ? "" : SW.fmtTime(t / 1000, { date: true }); };   // site time, like every other time on the page
+  const ageText = (iso) => { const d = new Date(iso); if (isNaN(d)) return ""; const s = Math.max(0, (Date.now() - d.getTime()) / 1000); return s < 60 ? "just now" : `${SW.fmtDuration(s, false)} ago`; };
+  const fieldWord = { offset: "offset", include_in_average: "in site average", accuracy: "accuracy", accuracy_basis: "accuracy basis", role: "role" };
+  const showVal = (v) => (v === null || v === "" ? "none" : v === true ? "yes" : v === false ? "no" : String(v));
+  const hasHeldNode = () => !!(admin.hardware && Object.values(admin.hardware.devices || {}).some((d) => d.conflict));
+
+  function calibrationCard() {
+    const hw = admin.hardware || { entities: {}, settings: {}, devices: {}, calibrations: {} };
+    const status = h("p", { class: "muted", role: "status" });
+    const diffBox = h("div", { role: "status" });
+    const offsetOf = (e, o) => (SW.OFFSET_KINDS.indexOf(e.kind) >= 0 ? SW.fmtCalOffset(e.kind, o) : `${SW.signed(o, 1)} ${e.unit}`.trim());
+
+    const exportBtn = h("button", { class: "small", style: "min-height:44px", onclick: async () => {
+      try {
+        const res = await fetch("/api/admin/calibrations/export", { credentials: "same-origin", cache: "no-store" });
+        if (!res.ok) throw new Error("Could not make the file");
+        const a = h("a", { href: URL.createObjectURL(await res.blob()), download: "stagewatch-calibration.json" });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        status.textContent = "Saved. Keep this file with your show files: it says which board each offset belongs to.";
+      } catch (err) { toast(err.message, true); }
+    } }, "Save calibration to a file");
+
+    const list = (title, items) => (items.length ? h("div", {}, h("strong", {}, title), h("ul", {}, items)) : null);
+    const sensorWord = (key) => {
+      const id = Object.keys(hw.entities).find((i) => hw.entities[i] === key);
+      const ent = id && snap.entities.find((x) => x.id === id);
+      const dev = ent && snap.devices.find((x) => x.id === ent.device_id);
+      return ent ? (dev ? `${dev.name}: ${ent.name}` : ent.name) :`${macText(key.split("/")[0])} ${key.split("/")[1]}`;
+    };
+    const showDiff = (data, r) => {
+      const n = r.added.length + r.changed.length;
+      const changed = r.changed.map((c) => h("li", {}, `${sensorWord(c.key)}: ` + Object.entries(c.fields).map(([f, v]) => `${fieldWord[f] || f} ${showVal(v.from)} → ${showVal(v.to)}`).join(", ")));
+      diffBox.replaceChildren(h("div", { class: "notice" },
+        h("p", {}, n ? `Nothing has been changed yet. Applying this file would add ${r.added.length} and change ${r.changed.length}; ${r.unchanged.length} already match.` : "Nothing to apply: every sensor in this file already matches."),
+        list("New", r.added.map((k) => { const o = data.calibrations && data.calibrations[k] && data.calibrations[k].offset; return h("li", {}, sensorWord(k) + (typeof o === "number" ? `: offset ${showVal(o)}` : "")); })),
+        list("Changed", changed),
+        list("For a board this hub does not know (it applies if that board is added later)", r.unknown_hardware.map((k) => h("li", {}, sensorWord(k)))),
+        list("Skipped (recorded exactly as received, never adjusted)", r.refused.map((k) => h("li", {}, sensorWord(k)))),
+        h("div", { class: "row" },
+          n ? h("button", { class: "primary small", style: "min-height:44px", onclick: () => run(() => api("POST", "/api/admin/calibrations/import", { data, dry_run: false }), "Calibration imported")
+            .then(() => { diffBox.replaceChildren(); return refresh(); }, () => {}) }, "Apply to this hub") : null,
+          h("button", { class: "small", style: "min-height:44px", onclick: () => diffBox.replaceChildren() }, n ? "Cancel" : "Close"))));
+    };
+    const fileInput = h("input", { type: "file", accept: "application/json,.json", "aria-label": "Calibration file to read", onchange: () => {
+      const f = fileInput.files[0]; fileInput.value = "";
+      if (!f) return;
+      if (f.size > 1024 * 1024) { toast("That file is too big to be a calibration file. Nothing has been changed.", true); return; }
+      const rd = new FileReader();
+      rd.onload = () => {
+        let data;
+        try { data = JSON.parse(String(rd.result)); if (data && typeof data.calibrations === "object" && data.calibrations) Object.values(data.calibrations).forEach((c) => { if (c && typeof c === "object") delete c.history; }); } catch (_) { toast("That is not a Stagewatch calibration file. Nothing has been changed.", true); return; }
+        run(() => api("POST", "/api/admin/calibrations/import", { data, dry_run: true })).then((r) => showDiff(data, r), () => {});
+      };
+      rd.onerror = () => toast("Could not read that file. Nothing has been changed.", true);
+      rd.readAsText(f);
+    } });
+
+    // Boards the hardware check is holding: say why, offer the ways out.
+    const held = Object.keys(hw.devices).filter((id) => hw.devices[id].conflict).map((id) => {
+      const d = snap.devices.find((x) => x.id === id) || { id, name: id };
+      return h("div", {}, h("strong", {}, d.name), resolveBlock(d, hw.devices[id].conflict));
+    });
+
+    const meterIds = new Set(snap.devices.filter((d) => d.category === "meter").map((d) => d.id));
+    const ids = Object.keys(hw.entities).sort((a, b) => hw.entities[a].localeCompare(hw.entities[b]) || a.localeCompare(b));
+    const rows = ids.map((id) => {
+      const e = snap.entities.find((x) => x.id === id);
+      if (!e || meterIds.has(e.device_id)) return null;   // power meter readings are never adjusted
+      const dev = snap.devices.find((x) => x.id === e.device_id);
+      const hist = (hw.calibrations && hw.calibrations[id]) || [];
+      const last = hist[0];
+      const s = hw.settings[id] || { offset: 0 };
+      const ref = h("input", { maxlength: "120", style: "min-height:44px", placeholder: "Checked against (optional)", "aria-label": `${e.name} checked against` });
+      const note = h("input", { maxlength: "200", style: "min-height:44px", placeholder: "Note", "aria-label": `${e.name} note` });
+      const add = h("button", { class: "small", style: "min-height:44px", "aria-label": `Add note to ${e.name}`, disabled: !last, title: last ? "" : "Save an offset first",
+        onclick: () => run(() => api("POST", `/api/admin/calibrations/${encodeURIComponent(id)}/note`, { reference: ref.value.trim(), note: note.value.trim() }), "Note saved").then(refresh, () => {}) }, "Add note");
+      const histEl = hist.length ? h("details", {}, h("summary", {}, `History (${hist.length})`),
+        h("ul", {}, hist.map((x) => h("li", {}, `${isoDate(x.date)}: offset ${offsetOf(e, x.offset)}, ${methodWord[x.method] || x.method}`
+          + (x.reference ? ` (${x.reference})` : "") + (x.note ? ` – ${x.note}` : ""))))) : null;
+      return h("tr", {},
+        h("td", {}, e.name, h("div", { class: "muted", style: "font-size:12px" }, (dev ? `${dev.name} · ` : "") + macText(hw.entities[id].split("/")[0]))),
+        h("td", {}, offsetOf(e, Number(s.offset) || 0)),
+        h("td", {}, last ? h("span", { title: isoDate(last.date) }, ageText(last.date)) : h("span", { class: "muted" }, "Never saved"),
+          last ? h("div", { class: "muted", style: "font-size:12px" }, methodWord[last.method] || last.method) : null),
+        h("td", {}, h("div", { class: "row" }, ref, note, add), histEl));
+    }).filter(Boolean);
+
+    const c = card("Calibration & hardware",
+      h("p", { class: "muted" }, "Each offset belongs to the board it was set on, so it follows that board if you re-adopt it or change its address. Offsets are set under Sensors: calibration & averaging. Hardware addresses are only shown here, never on dashboards."),
+      held.length ? h("div", {}, h("h3", { class: "muted", style: "font-size:13px;margin:10px 0 6px" }, "NEEDS A DECISION"), held) : null,
+      h("h3", { class: "muted", style: "font-size:13px;margin:10px 0 6px" }, "SENSORS"),
+      rows.length ? h("div", { class: "table-scroll" }, h("table", {},
+        h("thead", {}, h("tr", {}, h("th", {}, "Sensor and board"), h("th", {}, "Offset"), h("th", {}, "Last saved"), h("th", {}, "Note"))),
+        h("tbody", {}, rows))) : h("p", { class: "muted" }, "No sensors with a known board yet. A node shows up here once it has connected."),
+      h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "BACK UP OR MOVE TO ANOTHER HUB"),
+      h("p", { class: "muted hint" }, "Reading a file shows what would change first. Nothing is applied until you press Apply."),
+      h("div", { class: "row" }, exportBtn, h("label", { class: "field inline" }, "Read a file: ", fileInput)),
+      status, diffBox);
+    c.id = "calibration-card";
+    return c;
+  }
+
+  // ------------------------------------------------- device errors (plans/device-error-list.md)
+  // Problems per device for a show. The count on each Devices row comes from the same reply.
+  let deviceErrorCounts = {};   // device key -> problems in the current show
+  async function loadDeviceErrorCounts() {
+    try {
+      const r = await api("GET", "/api/admin/devices/errors");
+      deviceErrorCounts = Object.fromEntries(r.rows.filter((x) => x.problems > 0).map((x) => [x.key, x.problems]));
+    } catch (_) { deviceErrorCounts = {}; }
+  }
+  const problemsWord = (n) => `${n} ${n === 1 ? "problem" : "problems"}`;
+
+  function deviceErrorsCard() {
+    const shows = (admin.events || []).flatMap((e) => e.shows.map((sh) => ({ id: sh.id, label: `${sh.name} · ${SW.fmtDay(sh.day)} (${e.name})` })));
+    const currentId = snap.show && snap.show.id;
+    let data = null, showQuiet = false;
+    const openRows = new Set();
+    const showSel = h("select", { class: "touch", "aria-label": "Show to look at", onchange: () => load() },
+      shows.map((o) => h("option", { value: String(o.id), selected: o.id === currentId }, o.label + (o.id === currentId ? " – current" : ""))));
+    const scopeSel = h("select", { class: "touch", "aria-label": "How much of the event", onchange: () => load() },
+      h("option", { value: "show" }, "Just this day"), h("option", { value: "event" }, "All days of this event"));
+    const box = h("div", { role: "status" }, h("p", { class: "muted" }, "Reading…"));
+    const span = (a, b) => `${SW.fmtTime(a, { date: true })} to ${SW.fmtTime(b, { date: true })}`;
+    const num = (n, cls) => h("td", { class: n ? (cls || "") : "muted", style: "text-align:center" }, n ? String(n) : "-");
+
+    async function load() {
+      try {
+        data = await api("GET", `/api/admin/devices/errors?show_id=${encodeURIComponent(showSel.value)}&scope=${scopeSel.value}`);
+        draw();
+      } catch (err) { data = null; box.replaceChildren(h("p", { class: "error" }, err.message)); }
+    }
+
+    const ENDED = { clear: "", restart: " (ended when Stagewatch restarted)", open: " (still going)", show_end: " (still going when the day ended)", file: " (never cleared in the log)" };
+    function timeline(r) {
+      const items = r.episodes.slice().reverse().map((e) => h("li", {},
+        `${SW.fmtTime(e.start, { seconds: true })} · ${e.level}: ${e.text} · ${e.seconds === null ? "no end known" : SW.faultTime(e.seconds)}${ENDED[e.ended_by] || ""}`));
+      return h("tr", {}, h("td", { colspan: 8 }, h("ul", { class: "muted", style: "margin:4px 0 8px 18px" }, items),
+        r.episodes_total > r.episodes.length ? h("p", { class: "muted hint" }, `Showing the latest ${r.episodes.length} of ${r.episodes_total}.`) : null,
+        r.imported_from.length ? h("p", { class: "muted hint" }, `Imported from ${r.imported_from.join(", ")}.`) : null));
+    }
+
+    function rowEls(r) {
+      const isOpen = openRows.has(r.key);
+      const toggle = r.problems ? h("button", { class: "small", style: "min-height:44px", type: "button", "aria-expanded": String(isOpen),
+        "aria-label": `${isOpen ? "Hide" : "Show"} the problems of ${r.name}`,
+        onclick: () => { if (isOpen) openRows.delete(r.key); else openRows.add(r.key); draw(); } }, isOpen ? "Hide" : "Show") : null;
+      const main = h("tr", {},
+        h("td", {}, r.name, r.flapping ? h("span", { class: "pill", style: "margin-left:6px", title: "3 or more problems within 10 minutes" }, "flapping") : null,
+          h("div", { class: "muted", style: "font-size:12px" }, r.kind)),
+        h("td", { class: "muted" }, r.now || "-"),
+        num(r.stops, "error"), num(r.alerts), num(r.advisories), num(r.dropouts),
+        h("td", { class: r.seconds_in_fault ? "" : "muted" }, SW.faultTime(r.seconds_in_fault),
+          r.never_cleared ? h("div", { class: "muted", style: "font-size:12px" }, `${r.never_cleared} never cleared`) : null),
+        h("td", {}, r.last ? h("div", {}, h("span", { class: "muted" }, SW.fmtTime(r.last.ts, { seconds: true }) + " "), `${r.last.level}: ${r.last.text}`) : h("span", { class: "muted" }, "None"),
+          toggle));
+      return isOpen ? [main, timeline(r)] : [main];
+    }
+
+    function draw() {
+      const t = data.totals, busy = data.rows.filter((r) => r.problems > 0), quiet = data.rows.filter((r) => r.problems === 0);
+      const lines = [
+        h("p", {}, t.problems ? `${problemsWord(t.problems)} in ${data.scope === "event" ? `${data.days} ${data.days === 1 ? "day" : "days"}` : "this day"}: ` +
+          `${t.stops} Stop, ${t.alerts} Alert, ${t.advisories} Advisory, ${t.dropouts} ${t.dropouts === 1 ? "drop-out" : "drop-outs"}.` : "No problems recorded."),
+        ...data.gaps.slice(0, 5).map((g) => h("p", { class: "muted hint" }, `Stagewatch was not running ${span(g.from, g.to)}, so problems in that time can't be counted.`)),
+        data.gaps.length > 5 ? h("p", { class: "muted hint" }, `and ${data.gaps.length - 5} more breaks.`) : null,
+      ];
+      const head = h("thead", {}, h("tr", {}, ["Device", "Now", "Stop", "Alert", "Advisory", "Drop-outs", "Time in fault", "Last problem"].map((x) => h("th", {}, x))));
+      const shown = showQuiet ? busy.concat(quiet) : busy;
+      const table = shown.length ? h("div", { class: "table-scroll" }, h("table", {}, head, h("tbody", {}, shown.flatMap(rowEls)))) : null;
+      const quietBtn = quiet.length ? h("button", { class: "small", style: "min-height:44px", type: "button", onclick: () => { showQuiet = !showQuiet; draw(); } },
+        showQuiet ? "Hide quiet devices" : `Show ${quiet.length} quiet ${quiet.length === 1 ? "device" : "devices"}`) : null;
+      const csvBtn = h("button", { class: "small", style: "min-height:44px", type: "button", disabled: !data.rows.length, onclick: () => {
+        const text = SW.deviceErrorsCsv(data.rows, (ts) => SW.fmtTime(ts, { date: true, seconds: true }));
+        const a = h("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })), download: SW.deviceErrorsFilename(data.show.name, data.show.day) });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      } }, "Save as CSV");
+      box.replaceChildren(...[...lines, table].filter(Boolean), h("div", { class: "row" }, quietBtn, csvBtn, h("button", { class: "small", style: "min-height:44px", type: "button", onclick: () => load() }, "Refresh")));
+    }
+    load();
+
+    const c = card("Device errors",
+      h("p", { class: "muted" }, "How many problems each device had, and when, so you can see which box keeps dropping out. A problem is counted once however long it lasts or however many units report it at the same moment. Imported LA Network Manager logs add their units here. Limit alarms (a stage that is too hot) are not device problems and stay in the alarm log."),
+      h("div", { class: "row" }, field("Show", showSel), field("How much", scopeSel)),
+      box);
+    c.id = "device-errors-card";
+    return c;
+  }
+
+  // ------------------------------------------------- import a log file (LA Network Manager)
+  const LOG_MAX_CHARS = 5000000;   // the server's limit on the file's text
+  const LEVEL_CLASS = { Stop: "error", Alert: "", Advisory: "muted" };
+
+  function logImportCard() {
+    let text = "", fileName = "", ticket = 0;
+    const shows = (admin.events || []).flatMap((e) => e.shows.map((sh) => ({ id: sh.id, label: `${sh.name} · ${SW.fmtDay(sh.day)} (${e.name})` })));
+    const currentId = snap.show && snap.show.id;
+    const showSel = h("select", { class: "touch", "aria-label": "Show to import into", onchange: () => { loadImports(); preview(); } },
+      shows.map((o) => h("option", { value: String(o.id), selected: o.id === currentId }, o.label + (o.id === currentId ? " – current" : ""))));
+    const zones = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+    const tz = h("input", { class: "touch", list: zones.length ? "tz-list" : null, placeholder: `Blank = this site's zone${admin.config.site.timezone ? " (" + admin.config.site.timezone + ")" : ""}`,
+      maxlength: 64, autocomplete: "off", autocapitalize: "off", spellcheck: false, "aria-label": "Time zone of the computer that wrote the file", onchange: () => preview() });
+    const offset = h("input", { class: "num touch", type: "number", step: "1", value: "0", "aria-label": "Clock offset in seconds", onchange: () => preview() });
+    const sessionMarkers = h("input", { type: "checkbox", onchange: () => preview() });
+    const loadCheckerMarkers = h("input", { type: "checkbox", onchange: () => preview() });
+    const status = h("p", { class: "muted", role: "status" });
+    const previewBox = h("div", { role: "status" });
+    const listBox = h("div");
+
+    const fileInput = h("input", { class: "touch", type: "file", accept: ".xml,text/xml,application/xml", "aria-label": "LA Network Manager log file to read", onchange: () => {
+      const f = fileInput.files[0]; fileInput.value = "";
+      if (!f) return;
+      if (f.size > LOG_MAX_CHARS) { toast("That file is too big to be an LA Network Manager log. Nothing has been changed.", true); return; }
+      const rd = new FileReader();
+      rd.onload = () => { text = String(rd.result); fileName = f.name; preview(); };
+      rd.onerror = () => toast("Could not read that file. Nothing has been changed.", true);
+      rd.readAsText(f);
+    } });
+
+    const body = (dry) => ({ text, file_name: fileName, show_id: Number(showSel.value), tz: tz.value.trim(), offset_s: Number(offset.value) || 0,
+      session_markers: sessionMarkers.checked, load_checker_markers: loadCheckerMarkers.checked, dry_run: dry });
+    const span = (a, b) => `${SW.fmtTime(a, { date: true })} to ${SW.fmtTime(b, { date: true })}`;
+    const clear = () => { text = ""; ticket++; previewBox.replaceChildren(); };
+
+    async function preview() {
+      if (!text) return;
+      const mine = ++ticket;
+      status.textContent = "Reading…";
+      try {
+        const r = await api("POST", "/api/admin/logs/import", body(true));
+        if (mine !== ticket) return;
+        status.textContent = ""; showPlan(r);
+      } catch (err) {
+        if (mine !== ticket) return;
+        previewBox.replaceChildren(); status.textContent = err.message;
+      }
+    }
+
+    function showPlan(r) {
+      const none = r.new === 0;
+      const lines = [
+        h("p", {}, h("strong", {}, fileName), ` covers ${span(r.file.first, r.file.last)}. This show day is ${span(r.show_day.from, r.show_day.to)}.`),
+        r.file.closed ? null : h("p", { class: "muted hint" }, "LA Network Manager had not closed this log (it was still open, or stopped suddenly). Everything up to the last whole line is read."),
+        h("p", {}, `${r.new} new ${r.new === 1 ? "entry" : "entries"} to add, ${r.markers} ${r.markers === 1 ? "marker" : "markers"}. `
+          + `${r.already_present} already imported, ${r.outside_day} outside this show day, ${r.session_left_out} session ${r.session_left_out === 1 ? "line" : "lines"} left out (they hold the laptop's addresses).`),
+        none && r.outside_day > 0 && r.already_present === 0 ? h("p", { class: "error" }, "Nothing falls on this show day. Check the show, the time zone and the clock offset above.") : null,
+        none && r.already_present > 0 ? h("p", { class: "muted" }, "Everything in this file is already imported.") : null,
+      ];
+      const eps = r.episodes.length ? h("details", { open: r.episodes.length <= 12 }, h("summary", {}, `Faults in the file (${r.episodes_total})`),
+        h("div", { class: "table-scroll", style: "max-height:260px;overflow-y:auto" }, h("table", {}, h("tbody", {}, r.episodes.map((e) => h("tr", {},
+          h("td", { class: "muted" }, SW.fmtTime(e.start, { seconds: true })),
+          h("td", { class: LEVEL_CLASS[e.level] || "" }, e.level),
+          h("td", {}, `${e.unit}: ${e.what}`),
+          h("td", { class: "muted" }, e.seconds === null ? "never cleared" : e.seconds < 1 ? "cleared in under a second" : `cleared after ${SW.fmtDuration(e.seconds, false)}`))))))) : null;
+      previewBox.replaceChildren(h("div", {}, ...lines, eps,
+        h("div", { class: "row" },
+          h("button", { class: "primary touch", type: "button", disabled: none, onclick: doImport }, "Import into this show"),
+          h("button", { class: "touch", type: "button", onclick: () => { clear(); status.textContent = ""; } }, "Cancel"))));
+    }
+
+    async function doImport() {
+      try {
+        const r = await run(() => api("POST", "/api/admin/logs/import", body(false)), "Log imported");
+        clear();
+        status.textContent = `Imported ${r.rows} entries and ${r.markers} markers. Use Undo below to take it back out.`;
+        await loadImports();
+      } catch (_) { /* the toast says why */ }
+    }
+
+    async function loadImports() {
+      try {
+        const r = await api("GET", `/api/admin/logs/imports?show_id=${encodeURIComponent(showSel.value)}`);
+        const name = (i) => i.source.replace(/^lanwm:/, "");
+        listBox.replaceChildren(r.imports.length ? h("div", { class: "table-scroll" }, h("table", {}, h("tbody", {}, r.imports.map((i) => h("tr", {},
+          h("td", {}, name(i)), h("td", { class: "muted" }, span(i.first, i.last)),
+          h("td", {}, `${i.rows} entries, ${i.markers} markers`),
+          h("td", {}, h("button", { class: "small danger", style: "min-height:44px", type: "button", "aria-label": `Undo import of ${name(i)}`,
+            onclick: () => confirm(`Take this import back out? Its ${i.rows} entries and ${i.markers} markers are removed from the show.`)
+              && run(() => api("DELETE", `/api/admin/logs/imports/${encodeURIComponent(i.import_id)}?show_id=${encodeURIComponent(showSel.value)}`), "Import removed").then(loadImports, () => {}) }, "Undo")))))))
+          : h("p", { class: "muted" }, "Nothing imported into this show yet."));
+      } catch (err) { listBox.replaceChildren(h("p", { class: "error" }, err.message)); }
+    }
+    loadImports();
+
+    return card("Import a log file",
+      h("p", { class: "muted" }, "Read an L-Acoustics Network Manager log after a show, so amplifier faults and power events appear as markers in that show's timeline and report. Stagewatch only reads a copy of the file; it never talks to Network Manager or the amplifiers. Nothing is added until you press Import, and every import can be undone."),
+      h("p", { class: "muted hint" }, "The file is in the L-Acoustics folder inside AppData on the computer that runs Network Manager: LA Network Manager → Log, named Log_ with the date and time."),
+      h("div", { class: "row" }, h("label", { class: "field inline" }, "Log file: ", fileInput)),
+      h("div", { class: "row" },
+        field("Show", showSel),
+        field("Time zone of that computer", tz),
+        field("Clock offset (seconds)", offset)),
+      h("p", { class: "muted hint" }, "The log has no time zone, so it is read as the time zone above. If the laptop's clock was wrong, put the number of seconds to add (a laptop 5 minutes slow: 300)."),
+      h("label", { class: "field inline" }, sessionMarkers, " Also add markers for going online or offline and for Acknowledge all"),
+      h("label", { class: "field inline" }, loadCheckerMarkers, " Also add markers for entering and leaving Load Checker (it can make inputs unlock)"),
+      status, previewBox,
+      h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "IMPORTED INTO THE SELECTED SHOW"),
+      listBox);
   }
 
   // Which sensor groups are open, remembered per node in this browser. Kept in memory too, so a
@@ -1700,7 +2015,7 @@
       scheduleCard(),     // summary and a link to /schedule
       connectCard(),
       softwareCard(),
-      foldCard(devicesCard(), "nodes", true), foldCard(entitiesCard(), "sensors", true),
+      foldCard(devicesCard(), "nodes", true), foldCard(deviceErrorsCard(), "deviceerrors", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
       foldCard(thresholdsCard(), "thresholds", true), foldCard(alarmNoticesCard(), "notices", true),
       foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false)),
@@ -1711,12 +2026,14 @@
       foldCard(globconCard(), "globcon", false),
       foldCard(shellyCard(), "shelly", false),
       foldCard(alarmLogCard(), "alarmlog", true),
+      foldCard(logImportCard(), "logimport", false),
       foldCard(supportCard(), "help", false),
       foldCard(catalogCard(), "integrations", false));
   }
 
   async function refresh() {
     [admin, snap] = await Promise.all([api("GET", "/api/admin/state"), api("GET", "/api/snapshot"), loadSoftware(),
+      loadDeviceErrorCounts(),
       loadSchedule().catch(() => { schedData = null; })]);   // the Schedule card says so if it couldn't load
     SW.setSiteTime(snap.site && snap.site.time);
     render();

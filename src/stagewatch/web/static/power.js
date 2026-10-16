@@ -17,10 +17,22 @@ SW.pw = (function () {
   const pw = {};
   const isNum = (x) => typeof x === "number" && isFinite(x);
 
-  pw.GROUP_ORDER = ["", "a", "b", "c", "n", "total"];
-  pw.GROUP_WORD = { "": "", a: "Phase A", b: "Phase B", c: "Phase C", n: "Neutral", total: "Total" };
-  pw.FIELD_WORD = { voltage: "Voltage", current: "Current", power: "Power", apparent: "Apparent power", pf: "Power factor", freq: "Frequency", device_temp: "Meter temperature" };
-  pw.UNIT = { voltage: "V", current: "A", power: "W", apparent: "VA", pf: "", freq: "Hz", device_temp: "°C" };
+  pw.GROUP_ORDER = ["", "a", "b", "c", "n", "total", "l12", "l23", "l31", "avg"];
+  // Line-to-line voltage groups (from meters that report them): shown as swing meters and rows, never in the phase table.
+  pw.LL = ["l12", "l23", "l31", "avg"];
+  pw.GROUP_WORD = { "": "", a: "Line 1 (Brown)", b: "Line 2 (Black)", c: "Line 3 (Grey)", n: "Neutral (Blue)", total: "Total",
+    l12: "Line 1 to Line 2 (Brown-Black)", l23: "Line 2 to Line 3 (Black-Grey)", l31: "Line 3 to Line 1 (Grey-Brown)", avg: "Average" };
+  // The line a single-phase meter was assigned in Admin.
+  pw.PHASE_WORD = { L1: "Line 1 (Brown)", L2: "Line 2 (Black)", L3: "Line 3 (Grey)" };
+  // What to call a circuit: its label, its line, or "Channel N" when the meter has several.
+  pw.channelTitle = function (ch, many) {
+    const cfg = ch.cfg || {};
+    const m = /_(\d+)$/.exec(ch.id);
+    const parts = [cfg.label || (many && m ? `Channel ${+m[1] + 1}` : ""), pw.PHASE_WORD[cfg.phase] || ""].filter(Boolean);
+    return parts.join(" · ");
+  };
+  pw.FIELD_WORD = { voltage_ll: "Line-to-line voltage", reactive: "Reactive power", thd_v: "Voltage THD", thd_i: "Current THD", voltage: "Voltage", current: "Current", power: "Power", apparent: "Apparent power", pf: "Power factor", freq: "Frequency", device_temp: "Meter temperature" };
+  pw.UNIT = { voltage_ll: "V", reactive: "var", thd_v: "%", thd_i: "%", voltage: "V", current: "A", power: "W", apparent: "VA", pf: "", freq: "Hz", device_temp: "°C" };
 
   // Power and energy are shown with a comma for thousands and a full stop for decimals.
   pw.fmt = function (e) {
@@ -39,13 +51,13 @@ SW.pw = (function () {
   // integrations/shelly/dayfigures.py). A missing figure is a dash, never 0.
   const hhmm = (ts) => SW.fmtTime(ts);
   const withUnit = (v, e) => `${SW.num(v, Math.max(0, Math.min(3, e.decimals || 0)))} ${e.unit || ""}`.trim();
-  pw.DAY_WORD = { power: "Highest power", current: "Highest current" };
+  pw.DAY_WORD = { power: "Highest power", current: "Highest current", thd_v: "Highest voltage THD", thd_i: "Highest current THD" };
 
   // The text of one figure row for entity e ("Highest power"/"Highest current"/"Voltage"), or a dash.
   pw.dayText = function (e, field) {
     const d = e && e.day;
     if (!d) return "—";
-    if (field === "voltage" || field === "freq") {
+    if (field === "voltage" || field === "freq" || field === "voltage_ll") {
       if (!isNum(d.min) || !isNum(d.max)) return "—";
       return `low ${withUnit(d.min, e)} at ${hhmm(d.min_at)}, high ${withUnit(d.max, e)} at ${hhmm(d.max_at)}`;
     }
@@ -84,6 +96,9 @@ SW.pw = (function () {
   pw.SWING = {
     voltage: { word: "Voltage", unit: "V", dec: 1, scale: [195, 265], low: 216.2, high: 253.0, nearLow: 216.2, nearHigh: 253.0, judged: [180, 1e9],
       note: "UK range 230 V +10% / -6% (advisory)", na: "Not a 230 V supply: not judged" },
+    // Line-to-line, 400 V supply: 230 V -6%/+10% on 400 V = 376 to 440 V (our own arithmetic, a typical band).
+    voltage_ll: { word: "voltage", unit: "V", dec: 1, scale: [340, 460], low: 376, high: 440, nearLow: 376, nearHigh: 440, judged: [300, 1e9],
+      okWord: "Within typical range", note: "Typical 400 V band 376 to 440 V (advisory)", na: "Not a 400 V line-to-line supply: not judged" },
     freq: { word: "Frequency", unit: "Hz", dec: 2, scale: [49.0, 51.0], low: 49.5, high: 50.5, nearLow: 49.8, nearHigh: 50.2, judged: [40, 55],
       note: "UK 50 Hz: red outside 49.5 to 50.5, amber outside 49.8 to 50.2 (advisory)", na: "Not a 50 Hz supply: not judged" },
   };
@@ -106,6 +121,27 @@ SW.pw = (function () {
     return 100 * Math.max(Math.abs(a - avg), Math.abs(b - avg), Math.abs(c - avg)) / avg;
   };
 
+  // Neutral current as a share of the biggest line current. Advisory: a high share hints the lines
+  // are unbalanced (or very uneven loads); it is not a fault finding.
+  pw.NEUTRAL_HIGH = 50;
+  pw.neutralShare = function (n, a, b, c) {
+    if (![n, a, b, c].every(isNum)) return null;
+    const mx = Math.max(a, b, c);
+    if (!(mx > 0)) return null;
+    const pct = 100 * n / mx;
+    return { pct, high: pct >= pw.NEUTRAL_HIGH };
+  };
+
+  // The meter's own peak registers ("meter_max_<field>"): rows of { label, entity }. Not Stagewatch's figures.
+  pw.meterMaxRows = function (ents, deviceId) {
+    return ents.filter((e) => e.device_id === deviceId && e.labels && /^meter_max_/.test(e.labels.field || ""))
+      .map((e) => {
+        const base = e.labels.field.replace(/^meter_max_/, "");
+        const g = e.labels.group || "";
+        return { entity: e.id, label: ((pw.GROUP_WORD[g] ? pw.GROUP_WORD[g] + " " : "") + (pw.FIELD_WORD[base] || base)).replace(/^./, (c) => c.toUpperCase()) };
+      }).sort((x, y) => x.label.localeCompare(y.label));
+  };
+
   pw.swingPos = (v, cfg) => Math.max(0, Math.min(100, 100 * (v - cfg.scale[0]) / (cfg.scale[1] - cfg.scale[0])));
   // state: "ok" | "near" | "low" | "high" | "na" | "none"
   pw.swingView = function (v, cfg) {
@@ -116,8 +152,26 @@ SW.pw = (function () {
     if (v > cfg.high) return { state: "high", word: "HIGH", pos };
     if (v < cfg.nearLow) return { state: "near", word: "CLOSE TO LOW LIMIT", pos };
     if (v > cfg.nearHigh) return { state: "near", word: "CLOSE TO HIGH LIMIT", pos };
-    return { state: "ok", word: "Within UK range", pos };
+    return { state: "ok", word: cfg.okWord || "Within UK range", pos };
   };
+
+  // ---- history chart: one measurement of one meter over time (one line per phase on a 3-phase meter).
+  pw.METRICS = [["power", "Power"], ["current", "Current"], ["voltage", "Voltage"], ["voltage_ll", "Line-to-line"], ["freq", "Frequency"], ["thd_v", "Voltage THD"], ["thd_i", "Current THD"]];
+  pw.SPANS = [[900, "15m"], [3600, "1h"], [0, "Show"]];   // 0 = since the show started
+  pw.POINTS = 500;
+  // The lines to draw: [{ id, label, unit, decimals }] for one meter's field, in phase order.
+  pw.chartSeries = function (entities, deviceId, field) {
+    const out = [];
+    for (const e of Object.keys(entities || {}).map((k) => entities[k])) {
+      if (e.device_id !== deviceId || !e.labels || e.labels.field !== field || e.kind === "energy") continue;
+      const g = e.labels.group || "";
+      out.push({ id: e.id, label: pw.GROUP_WORD[g] || pw.FIELD_WORD[field], unit: e.unit || "", decimals: e.decimals || 0, order: pw.GROUP_ORDER.indexOf(g) });
+    }
+    return out.sort((a, b) => a.order - b.order);
+  };
+  // A silence longer than this between two points breaks the line (the meter was not read): never joined up.
+  pw.gapSeconds = (bucketS) => Math.max(60, 3 * bucketS);
+  pw.chartNote = (spanS, points) => `One point per ${SW.num(Math.max(1, spanS / points), 0)} s at most, as recorded; gaps are left as gaps. Not a measurement of surges between readings.`;
 
   const ageText = (updated, now) => (updated ? SW.age(updated, now) : "never");
 
@@ -141,8 +195,14 @@ SW.pw = (function () {
       if (e.kind === "energy") { ch.energy.push({ group: g, field: e.labels.field, entity: e }); continue; }
       (ch.groups[g] || (ch.groups[g] = {}))[e.labels.field] = e;
     }
-    const list = Object.keys(channels).sort().map((k) => channels[k]);
-    return { id: device.id, rating: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "" };
+    const cfgs = device.channels || {};
+    const list = Object.keys(channels).sort().map((k) => {
+      const ch = channels[k];
+      ch.cfg = cfgs[k] || null;
+      ch.rating = isNum(ch.cfg && ch.cfg.rating_a) ? ch.cfg.rating_a : (isNum(device.rating_a) ? device.rating_a : null);
+      return ch;
+    });
+    return { id: device.id, entities: Object.fromEntries(mine.map((e) => [e.id, e])), rating: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "" };
   };
 
   pw.view = function (entities, devices, now) {
@@ -152,7 +212,7 @@ SW.pw = (function () {
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
       .map((d) => pw.meterView(d, ents, now));
     // The key changes only when the set of meters or readings changes, so the DOM is rebuilt rarely.
-    const key = meters.map((m) => m.id + "@" + (m.rating || 0) + ":" + m.channels.map((c) => c.id + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
+    const key = meters.map((m) => m.id + "@" + (m.rating || 0) + ":" + m.channels.map((c) => c.id + "~" + (c.rating || 0) + (c.cfg ? (c.cfg.label || "") + (c.cfg.phase || "") : "") + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
     return { meters, key };
   };
 
@@ -177,12 +237,14 @@ SW.pw = (function () {
       const head = h("div", { class: "pw-head" }, r.name, r.area, h("span", { class: "grow" }), r.badge);
       const body = h("div", { class: "pw-body" });
       for (const ch of m.channels) {
-        const groupKeys = pw.GROUP_ORDER.filter((g) => ch.groups[g]);
+        const title = pw.channelTitle(ch, m.channels.length > 1);
+        if (title) body.append(h("div", { class: "pw-chhead" }, title));
+        const groupKeys = pw.GROUP_ORDER.filter((g) => ch.groups[g] && !pw.LL.includes(g));
         if (groupKeys.length === 1 && groupKeys[0] === "") {
           // One circuit: a big power reading and the rest beside it.
           const g = ch.groups[""];
           const grid = h("div", { class: "pw-grid" });
-          for (const f of ["power", "voltage", "current", "freq", "apparent", "pf", "device_temp"]) {
+          for (const f of ["power", "voltage", "current", "freq", "reactive", "apparent", "pf", "device_temp"]) {
             if (!g[f]) continue;
             const c = cell(pw.FIELD_WORD[f], pw.UNIT[f], f === "power");
             r.fields.push({ entity: g[f].id, val: c.val, el: c.el });
@@ -193,7 +255,7 @@ SW.pw = (function () {
           // Several phases (or a total): a small table, one row per phase.
           const rows = [];
           const cols = ["current", "voltage", "power"].filter((f) => groupKeys.some((k) => ch.groups[k][f]));
-          const extra = ["apparent", "pf"].filter((f) => groupKeys.some((k) => ch.groups[k][f]));
+          const extra = ["reactive", "apparent", "pf"].filter((f) => groupKeys.some((k) => ch.groups[k][f]));
           const colsAll = cols.concat(extra);
           for (const k of groupKeys) {
             const tds = colsAll.map((f) => {
@@ -220,19 +282,19 @@ SW.pw = (function () {
       r.gauges = [];
       const gaugeBox = h("div", { class: "pw-gauges" });
       for (const ch of m.channels) {
-        for (const g of pw.GROUP_ORDER.filter((k) => ch.groups[k] && k !== "n" && k !== "total")) {
+        for (const g of pw.GROUP_ORDER.filter((k) => ch.groups[k] && k !== "n" && k !== "total" && k !== "avg")) {
           const pre = pw.GROUP_WORD[g] ? pw.GROUP_WORD[g] + " " : "";
           const cur = ch.groups[g].current;
-          if (cur && m.rating) {
+          if (cur && ch.rating) {
             const fill = h("div", { class: "pw-fill" });
             const mark = h("div", { class: "pw-peakmark" });
             const text = h("span", { class: "pw-gtext" }), word = h("span", { class: "pw-gword" });
             const track = h("div", { class: "pw-track" }, fill, mark, h("i", { class: "pw-tick", style: `left:${pw.LOAD_HIGH}%` }));
             gaugeBox.append(h("div", { class: "pw-gauge" }, h("div", { class: "pw-glabel" }, h("span", { class: "pw-label" }, pre + "Load"), " ", text, " ", word), track,
               h("div", { class: "pw-gscale muted" }, h("span", {}, "0"), h("span", { style: `left:${pw.LOAD_HIGH}%` }, "80%"), h("span", { class: "r" }, "100%"))));
-            r.gauges.push({ kind: "load", entity: cur.id, fill, mark, text, word, el: track });
+            r.gauges.push({ kind: "load", rating: ch.rating, entity: cur.id, fill, mark, text, word, el: track });
           }
-          for (const f of ["voltage", "freq"]) {
+          for (const f of ["voltage", "voltage_ll", "freq"]) {
             const e = ch.groups[g][f];
             if (!e) continue;
             const cfg = pw.SWING[f];
@@ -255,11 +317,11 @@ SW.pw = (function () {
       r.dayHead = h("div", { class: "pw-dayhead" });
       const dayBody = h("div", { class: "pw-day" }, r.dayHead);
       for (const ch of m.channels) {
-        for (const g of pw.GROUP_ORDER.filter((k) => ch.groups[k])) {
-          for (const f of ["power", "current", "voltage", "freq"]) {
+        for (const g of pw.GROUP_ORDER.filter((k) => ch.groups[k] && k !== "avg")) {
+          for (const f of ["power", "current", "voltage", "voltage_ll", "freq", "thd_v", "thd_i"]) {
             const e = ch.groups[g][f];
             if (!e) continue;
-            const word = f === "voltage" ? "Voltage range" : f === "freq" ? "Frequency range" : pw.DAY_WORD[f];
+            const word = f === "voltage" || f === "voltage_ll" ? "Voltage range" : f === "freq" ? "Frequency range" : pw.DAY_WORD[f];
             const val = h("span", { class: "pw-num" });
             dayBody.append(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, (pw.GROUP_WORD[g] ? pw.GROUP_WORD[g] + " " : "") + word.toLowerCase().replace(/^./, (c) => c.toUpperCase())), " ", val));
             r.day.push({ entity: e.id, field: f, val });
@@ -279,6 +341,18 @@ SW.pw = (function () {
         dayBody.append(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, "Phase imbalance"), " ", val, h("span", { class: "pw-sub muted" }, " (estimated from the three phase currents)")));
         r.imb = { ids: [ph.groups.a.current.id, ph.groups.b.current.id, ph.groups.c.current.id], val };
       }
+      r.neu = null;
+      const nph = m.channels.find((c) => c.groups.n && c.groups.n.current && c.groups.a && c.groups.b && c.groups.c && c.groups.a.current && c.groups.b.current && c.groups.c.current);
+      if (nph) {
+        const val = h("span", { class: "pw-num" }), word = h("span", { class: "pw-gword" });
+        dayBody.append(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, "Neutral current"), " ", val, word, h("span", { class: "pw-sub muted" }, " of the biggest line current (advisory)")));
+        r.neu = { ids: [nph.groups.n.current.id, nph.groups.a.current.id, nph.groups.b.current.id, nph.groups.c.current.id], val, word };
+      }
+      r.maxes = pw.meterMaxRows(Object.values(m.entities || {}), m.id).map((x) => {
+        const val = h("span", { class: "pw-num" });
+        dayBody.append(h("div", { class: "pw-dayrow pw-metermax" }, h("span", { class: "pw-label" }, "Meter's own maximum: " + x.label), " ", val, h("span", { class: "pw-sub muted" }, " (kept by the meter since its last reset)")));
+        return { entity: x.entity, val };
+      });
       r.gaps = h("p", { class: "pw-note pw-gaps", role: "status" });
       dayBody.append(r.gaps);
       r.root = h("div", { class: "pw-meter" }, head, r.note, body, r.gauges.length ? gaugeBox : null, dayBody);
@@ -309,12 +383,12 @@ SW.pw = (function () {
           for (const gg of r.gauges) {
             const e = entities[gg.entity];
             if (gg.kind === "load") {
-              const lv = pw.loadView(e ? e.value : null, m.rating);
+              const lv = pw.loadView(e ? e.value : null, gg.rating);
               gg.fill.style.width = lv.bar + "%";
               gg.text.textContent = lv.text;
               gg.word.textContent = lv.word;
               gg.el.className = `pw-track pw-l-${lv.level}`;
-              const dm = e && e.day && isNum(e.day.max) ? 100 * e.day.max / m.rating : null;
+              const dm = e && e.day && isNum(e.day.max) ? 100 * e.day.max / gg.rating : null;
               gg.mark.style.display = dm === null ? "none" : "";
               if (dm !== null) { gg.mark.style.left = Math.min(100, dm) + "%"; gg.mark.title = `Highest today ${SW.num(e.day.max, 2)} A`; }
             } else {
@@ -345,6 +419,15 @@ SW.pw = (function () {
             x.val.textContent = t.text;
             x.unit.textContent = t.unit ? ` ${t.unit}` : "";
             x.sub.textContent = t.sub;
+          }
+          if (r.neu) {
+            const v = pw.neutralShare(...r.neu.ids.map((k) => (entities[k] ? entities[k].value : null)));
+            r.neu.val.textContent = v === null ? "—" : `${SW.num(v.pct, 0)}%`;
+            r.neu.word.textContent = v && v.high ? " HIGH" : "";
+          }
+          for (const x of r.maxes) {
+            const e = entities[x.entity];
+            x.val.textContent = e && isNum(e.value) ? `${SW.num(e.value, Math.max(0, Math.min(3, e.decimals || 0)))} ${e.unit || ""}`.trim() : "—";
           }
           if (r.imb) {
             const v = pw.imbalance(...r.imb.ids.map((k) => (entities[k] ? entities[k].value : null)));
