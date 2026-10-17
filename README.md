@@ -136,6 +136,13 @@ file). It draws the "Connect a tablet" QR codes locally, so nothing is loaded fr
 
 Sensor nodes are built with [ESPHome](https://esphome.io), a separate open-source project.
 
+### Trademarks
+
+Product names, brand names and logos shown in Stagewatch or its documentation (for example
+WitMotion) are trademarks or registered trademarks of their respective owners. They are used only
+to identify the equipment Stagewatch works with. Stagewatch is not affiliated with, endorsed by or
+sponsored by any of these companies.
+
 ## Support
 
 Stagewatch is free. If it saves you time on a show day, you can support it at
