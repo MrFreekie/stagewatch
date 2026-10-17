@@ -997,7 +997,9 @@
     const byDev = {};
     for (const e of Object.values(state.entities)) {
       if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery") continue;
-      if (state.devices[e.device_id] && ["meter", "host"].includes(state.devices[e.device_id].category)) continue;   // shown on the Power card
+      const cat = state.devices[e.device_id] && state.devices[e.device_id].category;
+      if (cat === "meter") continue;   // shown on the Power card
+      if (cat === "host" && e.kind !== "temperature") continue;   // the Raspberry Pi: only its temperature here; the rest is on its own card
       (byDev[e.device_id] = byDev[e.device_id] || []).push(e);
     }
     return Object.keys(byDev).map((id) => ({ dev: state.devices[id] || { id, name: id, status: "" }, ents: byDev[id] }))

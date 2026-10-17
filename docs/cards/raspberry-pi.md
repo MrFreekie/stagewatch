@@ -36,8 +36,9 @@ These show quietly in the dashboard header's messages and never sound:
 Under-voltage and throttling also add a **marker** when they start and when they stop, so you can
 see them on the timeline later.
 
-The readings are recorded as **Equipment**: you can chart them, and they never change a site
-average.
+The readings are recorded as **Equipment**, so they never change a site average. The CPU
+temperature also shows on the [Equipment](equipment.md) card and, with **Show equipment sensors**
+ticked, on the history chart.
 
 ## Admin
 
