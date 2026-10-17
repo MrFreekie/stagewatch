@@ -60,3 +60,6 @@ Thumbs.db
 
 # Event documents copied out of a data folder
 /documents/
+
+# Onsite contacts copied out of a data folder (personal data)
+/contacts/

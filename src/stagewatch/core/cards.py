@@ -27,6 +27,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "spl_limits",      # Sound level limits: limit now, next change, live Smaart value beside it; never added by default
     "pi_host",         # This Raspberry Pi: temperature, power supply, load, memory, disk; hidden unless Stagewatch runs on a Pi; never added by default
     "documents",       # event policy and risk documents shared with this dashboard; hidden while none are; never added by default
+    "contacts",        # onsite contacts for the current event (job title, name, radio; phone only when allowed); never added by default
 )
 KNOWN_CARDS = KNOWN_CARDS_0_3
 

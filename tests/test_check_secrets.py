@@ -23,7 +23,7 @@ def test_release_fixtures_are_the_only_allowed_config_and_db_files():
 
 @pytest.mark.parametrize("path", ["stagewatch.sqlite3.pre-v2.bak", "tests/fixtures/v1/config.yaml.bak",
                                   "notes.bak", "x/stagewatch.sqlite3.pre-v2.bak.tmp",
-                                  "config.invalid.yaml", "data2/config.invalid-20260101-1.yml"])
+                                  "config.invalid.yaml", "data2/config.invalid-20260101-1.yml", "contacts/12.yaml", "x/contacts/3.invalid.yaml"])
 def test_backup_and_quarantine_files_are_blocked(path):
     assert check_secrets.check([path], staged=False)
 

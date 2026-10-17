@@ -1412,6 +1412,7 @@
     globcon_meters: ["DirectOut GLOBCON", "Live level meters for a group of channels (for example 1 to 8 or 9 to 16) of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Pick the controller and channels here; set the GLOBCON address in the GLOBCON settings."],
     power: ["Power", "Watts, volts, amps, frequency and energy from Shelly power meters, as the meters report them. Read only. Never part of a site average. Add meters in the Shelly power meters settings. Stays hidden until a meter has been added."],
     documents: ["Plans on file", "The event's safety and risk documents you have shared with this dashboard (Admin → Documents). The wall shows titles only."],
+    contacts: ["Onsite contacts", "Key people for this event: job title, name, radio channel and area (Admin → Onsite contacts). Phone numbers only when you allow them in three places: Onsite contacts, this dashboard, and the contact."],
     pi_host: ["Raspberry Pi", "The health of the Raspberry Pi Stagewatch runs on: temperature, power supply (under-voltage), speed, load, memory, disk and Wi-Fi signal. Hidden unless Stagewatch runs on a Pi."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
@@ -1451,12 +1452,17 @@
           h("label", { class: "field" }, h("span", {}, "GLOBCON controller"), gcCtrl),
           h("label", { class: "field" }, h("span", {}, "Channels shown"), gcStrips));
         if (gcField) box.addEventListener("change", () => { gcField.style.display = box.checked ? "" : "none"; });
+        const ctField = it.id !== "contacts" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
+          h("label", { class: "field" }, h("span", {}, "Only this area (empty = all)"), ctArea),
+          h("label", { class: "check" }, ctPhones, " Show phone numbers"), ctWarn);
+        if (ctField) box.addEventListener("change", () => { ctField.style.display = box.checked ? "" : "none"; });
         const sizeField = sizeSel ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", { title: "Phones always use the full width" }, "Card width"), sizeSel) : null;
         if (sizeField) box.addEventListener("change", () => { sizeField.style.display = box.checked ? "" : "none"; });
         return h("li", {},
           h("label", { class: "card-pick" }, box, h("span", {}, h("strong", {}, info[0]), info[1] ? h("span", { class: "muted" }, info[1]) : null)),
           lookField,
           gcField,
+          ctField,
           sizeField,
           h("button", { type: "button", class: "card-up", "aria-label": `Move ${info[0]} up`, title: "Move up", disabled: i === 0, onclick: () => move(i, -1) }, "▲"),
           h("button", { type: "button", class: "card-down", "aria-label": `Move ${info[0]} down`, title: "Move down", disabled: i === items.length - 1, onclick: () => move(i, 1) }, "▼"));
@@ -1479,6 +1485,12 @@
     const gcRead = () => (gcStrips.value.indexOf("old-") === 0 ? { controller: Number(gcCtrl.value), strips: Number(gcStrips.value.slice(4)), range: null } : { controller: Number(gcCtrl.value), strips: 8, range: gcStrips.value });
     gcCtrl.addEventListener("change", onChange);
     gcStrips.addEventListener("change", onChange);
+    // Onsite contacts card: phone numbers on this screen (also needs the switch in Onsite contacts and the contact's own tick).
+    const ctArea = h("input", { class: "touch", value: d.contacts_area || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off", oninput: () => onChange() });
+    const ctWarn = h("p", { class: "warn-text hint" });
+    const ctWarnFill = () => ctWarn.replaceChildren(ctPhones.checked ? `▲ Dashboards have no login: anyone on the show network who opens /d/${d.slug || "…"} can see these numbers${admin.config.contacts && admin.config.contacts.reveal_pin_set ? " after typing the contacts PIN" : ""}.` : "");
+    const ctPhones = h("input", { type: "checkbox", checked: !!d.show_contact_phones, onchange: () => { ctWarnFill(); onChange(); } });
+    ctWarnFill();
     const stage = h("input", { class: "touch", value: d.stage || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off" });
     const clockStyle = h("select", { class: "touch" }, h("option", { value: "digits" }, "Plain digits"), h("option", { value: "ring" }, "LED ring"), h("option", { value: "segments" }, "7-segment digits"));
     clockStyle.value = ["ring", "segments"].indexOf(d.clock_style) >= 0 ? d.clock_style : "digits";
@@ -1495,7 +1507,7 @@
       h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black. Half-size cards sit side by side with another half-size card on tablets and wall screens. On a phone every card is full width."));
     return {
       el,
-      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewBox.checked, card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
+      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewBox.checked, show_contact_phones: ctPhones.checked, contacts_area: val(ctArea), card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
       setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
       count: () => items.filter((it) => it.on).length,
     };
@@ -1944,6 +1956,90 @@
     return card("Documents", box);
   }
 
+  // Onsite contacts (plans/onsite-contacts.md): key people per event. Personal data: admin-only
+  // except job title, name, radio and area on dashboards with the Contacts card, and phone numbers
+  // only where all three switches allow them. Nothing is kept in localStorage.
+  let contactEvent = null;
+  function contactsCard() {
+    const events = admin.events || [];
+    if (contactEvent === null || !events.some((e) => e.id === contactEvent)) contactEvent = admin.show ? admin.show.event_id : (events[0] && events[0].id);
+    const box = h("div", {}, h("p", { class: "muted" }, "Loading…"));
+    const base = (id) => `/api/admin/events/${id || contactEvent}/contacts`;
+    const fill = (r) => {
+      contactEvent = r.event_id;   // the list shown is always the one Save writes to
+      const reload = (p) => p.then(fill, () => {});
+      let rows = r.contacts.map((c) => Object.assign({}, c));
+      const list = h("datalist", { id: "contact-roles" }, r.roles.map((t) => h("option", { value: t })));
+      const tbody = h("tbody");
+      const draw = () => {
+        tbody.replaceChildren(...rows.map((c, i) => {
+          const inp = (key, attrs) => h("input", Object.assign({ class: "touch", value: c[key] || "", oninput: (e) => { c[key] = e.target.value; dirty = true; } }, attrs));
+          const tick = (key, label) => h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!c[key], onchange: (e) => { c[key] = e.target.checked; dirty = true; } }), ` ${label}`);
+          const move = (dir) => { const j = i + dir; if (j < 0 || j >= rows.length) return; const t = rows[i]; rows[i] = rows[j]; rows[j] = t; dirty = true; draw(); };
+          return h("tr", {},
+            h("td", {}, inp("role", { list: "contact-roles", maxlength: 60, placeholder: "Job title", "aria-label": "Job title" })),
+            h("td", {}, inp("name", { maxlength: 80, placeholder: "Name (or TBC)", "aria-label": "Name" })),
+            h("td", {}, inp("phone", { maxlength: 24, type: "tel", placeholder: "Work phone", "aria-label": "Phone", autocomplete: "off" }), tick("show_phone", "Show")),
+            h("td", {}, inp("radio", { maxlength: 32, placeholder: "e.g. Ch 2", "aria-label": "Radio" })),
+            h("td", {}, inp("area", { maxlength: 40, list: "stage-list", placeholder: "All areas", "aria-label": "Area" })),
+            h("td", {}, tick("on_duty", "On duty")),
+            h("td", {}, h("div", { class: "row" },
+              h("button", { type: "button", class: "touch", "aria-label": "Move up", disabled: i === 0, onclick: () => move(-1) }, "▲"),
+              h("button", { type: "button", class: "touch", "aria-label": "Move down", disabled: i === rows.length - 1, onclick: () => move(1) }, "▼"),
+              h("button", { type: "button", class: "touch danger", onclick: () => { rows.splice(i, 1); dirty = true; draw(); } }, "Remove"))));
+        }));
+      };
+      draw();
+      const save = () => reload(run(() => api("PUT", base(), { contacts: rows.map((c) => ({ id: c.id || "", role: c.role || "", name: c.name || "", phone: c.phone || "", show_phone: !!c.show_phone, radio: c.radio || "", area: c.area || "", on_duty: c.on_duty !== false })) }), "Contacts saved").then((x) => { dirty = false; return x; }));
+      const clearAll = (id, name) => {
+        if (confirm(`Delete all contacts for ${name}? This cannot be undone.`)) reload(run(() => api("DELETE", base(id)), "Contacts cleared"));
+      };
+      // Old events still holding personal data (storage limitation): ask until cleared or kept.
+      const reminders = r.reminders.map((x) => h("div", { class: "card-inset warn-text" },
+        h("p", {}, `▲ Contacts from ${x.name} (${x.count}) are still stored. That event has ended. Clear them?`),
+        h("div", { class: "row" },
+          h("button", { type: "button", class: "touch danger", onclick: () => clearAll(x.event_id, x.name) }, "Clear them"),
+          h("button", { type: "button", class: "touch", onclick: () => reload(run(() => api("POST", `${base(x.event_id)}/dismiss-reminder`), "Kept. You will not be asked again for this event.")) }, "Keep them"))));
+      const days = r.edited ? Math.floor((Date.now() / 1000 - r.edited) / 86400) : 0;
+      // Settings: the installation-wide switch and the optional PIN that dashboards ask for.
+      const phonesOn = h("input", { type: "checkbox", checked: r.phones_enabled });
+      const pin = h("input", { class: "touch", type: "password", inputmode: "numeric", maxlength: 12, placeholder: r.reveal_pin_set ? "PIN set (type to change)" : "6 to 12 digits", autocomplete: "new-password" });
+      const saveSettings = (clear) => {
+        const body = { phones_enabled: phonesOn.checked };
+        if (clear) body.clear_reveal_pin = true; else if (val(pin)) body.reveal_pin = val(pin);
+        reload(run(() => api("PUT", "/api/admin/contacts/settings", body), "Saved").then(() => api("GET", base())));
+      };
+      const others = events.filter((e) => e.id !== contactEvent);
+      const copyFrom = h("select", { class: "touch" }, others.map((e) => h("option", { value: e.id }, e.name)));
+      const ename = (events.find((e) => e.id === contactEvent) || {}).name || "this event";
+      box.replaceChildren(...[list, ...reminders,
+        h("p", { class: "muted hint" }, "Key people for this event: job title, name, radio and area show on dashboards with the Onsite contacts card. Phone numbers show only when allowed here, on the dashboard (Edit cards) and for the contact. Dashboards have no login. Tell crew their details are on the screens, prefer work or show phones, and clear the list when the event is over."),
+        events.length > 1 ? h("div", { class: "row" }, field("Event", h("select", { onchange: (e) => { contactEvent = Number(e.target.value); load(); } },
+          events.map((e) => h("option", { value: e.id, selected: e.id === contactEvent }, e.name))))) : null,
+        r.stale ? h("p", { class: "warn-text" }, `▲ These contacts were last edited ${days} days ago. Clear them if the event is over.`) : null,
+        h("div", { class: "table-scroll" }, h("table", {},
+          h("thead", {}, h("tr", {}, ["Job title", "Name", "Phone", "Radio", "Area", "", ""].map((x) => h("th", {}, x)))), tbody)),
+        rows.length ? null : h("p", { class: "muted" }, "No contacts for this event yet."),
+        h("div", { class: "row" },
+          h("button", { type: "button", class: "touch", disabled: rows.length >= r.max_contacts, onclick: () => { if (rows.length < r.max_contacts) { rows.push({ role: "", name: "", phone: "", show_phone: false, radio: "", area: "", on_duty: true }); dirty = true; draw(); } } }, "Add contact"),
+          h("button", { type: "button", class: "primary touch", onclick: save }, "Save contacts"),
+          r.contacts.length || r.has_files ? h("button", { type: "button", class: "touch danger", onclick: () => clearAll(contactEvent, ename) }, "Clear all…") : null),
+        !r.contacts.length && others.length ? h("div", { class: "row" }, field("Copy contacts from", copyFrom),
+          h("button", { type: "button", class: "touch", onclick: () => reload(run(() => api("POST", `${base()}/copy`, { from_event_id: Number(copyFrom.value) }), "Contacts copied")) }, "Copy")) : null,
+        h("details", {}, h("summary", { class: "muted" }, "Phone numbers on dashboards"),
+          h("label", { class: "check" }, phonesOn, " Allow phone numbers on dashboards"),
+          h("div", { class: "row" }, field("Dashboard PIN for phone numbers (optional)", pin)),
+          h("p", { class: "muted hint" }, "With a PIN, dashboards show a Show numbers button and ask for it; the numbers hide again after 2 minutes. Not the admin PIN. Without a PIN, allowed numbers show straight away."),
+          h("div", { class: "row" }, h("button", { type: "button", class: "primary touch", onclick: () => saveSettings(false) }, "Save"),
+            r.reveal_pin_set ? h("button", { type: "button", class: "touch", onclick: () => saveSettings(true) }, "Remove PIN") : null)),
+        admin.emulate || (snap && snap.emulate) ? h("div", { class: "row" }, h("button", { class: "touch", type: "button", onclick: () =>
+          reload(run(() => api("POST", "/api/admin/contacts/demo"), "Demo contacts loaded")) }, "Load demo contacts")) : null].filter(Boolean));
+    };
+    const load = () => api("GET", base()).then(fill, (err) => box.replaceChildren(h("p", { class: "muted" }, err.message)));
+    if (contactEvent) load(); else box.replaceChildren(h("p", { class: "muted" }, "No event yet."));
+    return card("Onsite contacts", box);
+  }
+
   function scheduleCard() {
     const c = card("Schedule", scheduleBody());
     c.id = "schedule-admin";
@@ -2337,6 +2433,7 @@
       h("div", { class: "grid-2" }, foldCard(siteCard(), "site", false, !admin.config.site.timezone), foldCard(eventShowCard(), "event", true)),
       scheduleCard(),     // summary and a link to /schedule
       foldCard(documentsCard(), "documents", false),
+      foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0),
       connectCard(),
       softwareCard(),
       foldCard(devicesCard(), "nodes", true), foldCard(deviceErrorsCard(), "deviceerrors", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
