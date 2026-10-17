@@ -11,6 +11,22 @@ SW.wm = (function () {
     { key: "tilt_roll", name: "X (roll)", hint: "side to side", axis: "x" },
     { key: "tilt_pitch", name: "Y (pitch)", hint: "front to back", axis: "y" },
   ];
+  // Target angle: the signed difference (angle minus target, across the +-180 wrap), both rounded to the 0.1 deg
+  // the sensor reads to, and which band it is in. Display only; no alarm comes from it.
+  const r1 = (x) => Math.round(x * 10) / 10;
+  wm.wrap = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
+  wm.BANDS = { on: "✓ On target", close: "◆ Close", off: "✕ Off target" };
+  wm.targetView = function (value, t) {
+    if (!t || !isNum(t.target)) return null;
+    const out = { targetText: `Target ${SW.num(t.target, 1)}°`, band: "", bandText: "", diffText: "" };
+    if (!isNum(value)) return out;   // no data: no colour, no difference
+    const d = r1(wm.wrap(r1(value) - r1(t.target)));
+    const a = Math.abs(d), on = isNum(t.on) ? t.on : 0.2, close = Math.max(on, isNum(t.close) ? t.close : 1.0);
+    out.band = a <= on + 1e-9 ? "on" : a <= close + 1e-9 ? "close" : "off";
+    out.bandText = wm.BANDS[out.band];
+    out.diffText = `${d > 0 ? "+" : ""}${SW.num(d, 1)}° from target`;
+    return out;
+  };
   // The sensors Stagewatch has set up, in order (the first is plain "witmotion", then witmotion_2 ...).
   wm.sensorsOf = function (devices) {
     return Object.values(devices || {}).filter((d) => d && d.integration === "witmotion").sort((a, b) => (a.id < b.id ? -1 : 1));
@@ -31,6 +47,7 @@ SW.wm = (function () {
       const lv = v === null ? null : limits[a.key];
       axes.push({
         key: a.key, label: a.name, hint: a.hint, text: v === null ? "No data" : SW.num(v, 1), unit: v === null ? "" : "°",
+        target: wm.targetView(v, (pub.targets || {})[a.key]),
         level: isNum(lv) ? lv : null, levelText: isNum(lv) ? wm.LEVELS[Math.min(3, Math.max(0, lv))] : "",
       });
     }

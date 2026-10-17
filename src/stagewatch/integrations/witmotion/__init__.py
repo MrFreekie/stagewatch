@@ -110,19 +110,29 @@ STATUS_TEXT = {
 }
 
 
+def target_bands(cfg) -> dict:
+    """The target angles that are set, with the bands. Display only: nothing here raises an alarm."""
+    out = {}
+    for key, t in (("tilt_roll", cfg.target_x), ("tilt_pitch", cfg.target_y)):
+        if t is not None:
+            out[key] = {"target": t, "on": cfg.on_target_deg, "close": cfg.close_deg}
+    return out
+
+
 class Sensor:
     """One sensor: its device, entities, state and gap handling. Found by its configured Bluetooth
     address (its own name can be changed by crew, so the name is never what finds it); the label is a
     Stagewatch setting and is never written to the sensor."""
 
     def __init__(self, hub, device_id: str, address: str, label: str, axis: str = "both",
-                 smoothing_s: float = 0.0) -> None:
+                 smoothing_s: float = 0.0, targets: dict | None = None) -> None:
         self.hub = hub
         self.device_id = device_id
         self.address = address
         self.label = label
         self.title = label or "Tilt sensor"
         self.axis, self.smoothing_s = axis, smoothing_s
+        self.targets = targets or {}   # {"tilt_roll": {"target", "on", "close"}} for watched axes that have a target
         self.specs = entity_specs(axis, smoothing_s)
         self._roll_f = Smoother(smoothing_s, circular=True)
         self._pitch_f = Smoother(smoothing_s)
@@ -159,7 +169,8 @@ class Sensor:
         """What reaches the public snapshot: fixed words and numbers only (no addresses, no sensor name)."""
         self.hub.set_device_public(self.device_id, {"witmotion": {
             "axis": self.axis, "axis_text": AXIS_TEXT[self.axis], "axis_help": AXIS_HELP,
-            "smoothing_s": self.smoothing_s, "battery_note": self._battery_note, **self.readout()}})
+            "smoothing_s": self.smoothing_s, "battery_note": self._battery_note,
+            "targets": {k: v for k, v in self.targets.items() if k in self.specs}, **self.readout()}})
 
     def limits(self) -> dict:
         """For each tilt reading that has an enabled threshold: the level of its alarm now (0 = within limit,
@@ -340,22 +351,23 @@ class WitmotionIntegration(Integration):
         cfg = getattr(self.hub.config, "witmotion", None)
         return self.emulate or bool(cfg and cfg.enabled)
 
-    def configured(self) -> list[tuple[str, str, str, float]]:
-        """[(address, label, axis, smoothing_s)] for each sensor. No address at all means one sensor found by its factory
+    def configured(self) -> list[tuple[str, str, str, float, dict]]:
+        """[(address, label, axis, smoothing_s, targets)] for each sensor. No address at all means one sensor found by its factory
         name (WT901BLE...), a convenience for the first try; with two sensors each needs its address."""
         cfg = self.hub.config.witmotion
         if cfg.sensors:
-            return [(s.address, s.label, s.axis, s.smoothing_s) for s in cfg.sensors]
-        return [(cfg.address, "", cfg.axis, cfg.smoothing_s)]
+            return [(s.address, s.label, s.axis, s.smoothing_s, target_bands(s)) for s in cfg.sensors]
+        return [(cfg.address, "", cfg.axis, cfg.smoothing_s, target_bands(cfg))]
 
     async def start(self) -> None:
         if not self.wanted():
             return
         self._active = True
         self._scan_lock = asyncio.Lock()   # one scan or connect at a time across all sensors (BlueZ needs it)
-        entries = [("", "", "both", 2.0)] if self.emulate else self.configured()
-        for i, (address, label, axis, smoothing) in enumerate(entries):
-            s = Sensor(self.hub, DEVICE_ID if i == 0 else f"{DEVICE_ID}_{i + 1}", address, label, axis, smoothing)
+        entries = [("", "", "both", 2.0, {"tilt_roll": {"target": 2.0, "on": 0.2, "close": 1.0},
+                                         "tilt_pitch": {"target": -2.0, "on": 0.2, "close": 1.0}})] if self.emulate else self.configured()
+        for i, (address, label, axis, smoothing, targets) in enumerate(entries):
+            s = Sensor(self.hub, DEVICE_ID if i == 0 else f"{DEVICE_ID}_{i + 1}", address, label, axis, smoothing, targets)
             s.register()
             if self._factory is not None:
                 s.reader = self._factory(address=address, **s.callbacks())

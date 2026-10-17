@@ -1213,6 +1213,11 @@ body.layout-wall .pi-model { display: none; }
 .wm-smooth, .wm-small { font-size: 12px; margin: 4px 0 0; color: var(--muted); opacity: .85; }
 .wm-warn { margin: 6px 0 0; color: var(--warn); font-weight: 600; }
 .wm-note { font-size: 12px; margin: 12px 0 0; }
+.wm-target { font-size: 15px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.wm-band { display: inline-block; margin-top: 4px; padding: 2px 10px; border-radius: 6px; border: 2px solid currentColor; font-weight: 700; font-size: 16px; }
+.wm-t-on { color: var(--ok); } .wm-t-close { color: var(--warn); } .wm-t-off { color: var(--stop); }
+body.layout-wall .wm-target { font-size: 28px; }
+body.layout-wall .wm-band { font-size: 32px; padding: 4px 16px; }
 body.layout-phone .wm-value { font-size: 34px; }
 body.layout-wall .wm-name { font-size: 34px; }
 body.layout-wall .wm-value { font-size: 88px; }

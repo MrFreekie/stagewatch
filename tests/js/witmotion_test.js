@@ -53,5 +53,33 @@ eq(v.axes[0].levelText, "", "no threshold, no limit text");
 eq(SW.wm.sensorsOf({ a: { id: "witmotion_2", integration: "witmotion" }, b: { id: "x", integration: "esphome" }, c: { id: "witmotion", integration: "witmotion" } }).map((d) => d.id), ["witmotion", "witmotion_2"], "sensorsOf");
 eq(SW.wm.NOTE, "Tilt is a guide, not a rigging safety system.", "advisory note");
 
+// target angle (hand-calculated): difference = angle - target, both read to 0.1 deg
+const T = (value, target, on = 0.2, close = 1.0) => SW.wm.targetView(value, { target, on, close });
+let t = T(2.6, 2.0);
+eq([t.diffText, t.band, t.bandText, t.targetText], ["+0.6° from target", "close", "◆ Close", "Target 2.0°"], "+0.6 is close");
+eq(T(2.2, 2.0).band, "on", "edge: exactly +0.2 is on target");
+eq(T(1.8, 2.0).band, "on", "edge: exactly -0.2 is on target");
+eq(T(2.3, 2.0).band, "close", "+0.3 is close");
+eq(T(3.0, 2.0).band, "close", "edge: exactly +1.0 is close");
+eq(T(3.1, 2.0).band, "off", "+1.1 is off target");
+eq(T(0.9, 2.0).diffText, "-1.1° from target", "negative sign");
+eq(T(0.9, 2.0).band, "off", "-1.1 is off target");
+eq(T(2.0, 2.0).diffText, "0.0° from target", "zero has no sign");
+eq(T(2.0, 2.0).band, "on", "zero is on target");
+eq(T(-179.9, 179.9).diffText, "+0.2° from target", "wrap: -179.9 vs 179.9 is +0.2");
+eq(T(-179.9, 179.9).band, "on", "wrap: on target");
+eq(T(179.5, -179.5).diffText, "-1.0° from target", "wrap: 179.5 vs -179.5 is -1.0");
+eq(T(179.5, -179.5).band, "close", "wrap: close");
+eq(T(2.4, 2.0, 0.5, 2.0).band, "on", "own on band 0.5");
+eq(T(4.0, 2.0, 0.5, 2.0).band, "close", "own close band 2.0");
+eq(T(2.54, 2.0).diffText, "+0.5° from target", "compared as read to 0.1: 2.54 shows 2.5");
+eq(T(null, 2.0), { targetText: "Target 2.0°", band: "", bandText: "", diffText: "" }, "no data: target only, no colour");
+eq(T(2.0, null), null, "no target: nothing");
+eq(SW.wm.targetView(2.0, undefined), null, "no target config: nothing");
+v = SW.wm.view(dev({ targets: { tilt_roll: { target: 2.0, on: 0.2, close: 1.0 } } }), { "witmotion.tilt_roll": ent("witmotion.tilt_roll", 2.6), "witmotion.tilt_pitch": ent("witmotion.tilt_pitch", 5) });
+eq([v.axes[0].target.band, v.axes[1].target], ["close", null], "target only on the axis that has one");
+v = SW.wm.view(dev({ targets: { tilt_roll: { target: 2.0, on: 0.2, close: 1.0 } } }), { "witmotion.tilt_roll": ent("witmotion.tilt_roll", 2.6, true) });
+eq(v.axes[0].target.band, "", "stale reading: no band");
+
 console.log(fails ? `${fails} of ${count} FAILED` : `all ${count} passed`);
 process.exit(fails ? 1 : 0);

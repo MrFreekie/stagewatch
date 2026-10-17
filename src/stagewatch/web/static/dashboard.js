@@ -1080,8 +1080,12 @@
         h("div", { class: "wm-axes" }, v.axes.map((a) => h("div", { class: "wm-axis" + (a.level ? ` wm-l${a.level}` : "") },
           h("div", { class: "pw-label" }, `${a.label} · ${a.hint}`),
           h("div", { class: "wm-value" + (a.unit ? "" : " wm-nodata") }, a.text, a.unit ? h("span", { class: "unit" }, a.unit) : null),
-          a.levelText ? h("div", { class: "wm-limit" }, a.levelText) : null))),
+          a.levelText ? h("div", { class: "wm-limit" }, a.levelText) : null,
+          a.target ? h("div", { class: "wm-target" }, h("span", { class: "muted" }, a.target.targetText),
+            a.target.band ? h("span", { class: `wm-diff` }, " · " + a.target.diffText) : null) : null,
+          a.target && a.target.band ? h("div", { class: `wm-band wm-t-${a.target.band}` }, a.target.bandText) : null))),
         v.live ? h("div", { class: "muted wm-smooth" }, v.smoothing) : null,
+        v.axes.some((a) => a.target) ? h("p", { class: "muted wm-small" }, "Target: a guide for setting the hang, not a safety check.") : null,
         v.warning ? h("p", { class: "wm-warn" }, "▲ " + v.warning) : null,
         v.setup ? h("p", { class: "wm-small" }, v.setup) : null,
         v.info ? h("p", { class: "wm-small" }, v.info) : null);

@@ -748,3 +748,37 @@ async def test_limit_levels_reach_the_public_block_without_private_details(hub):
         assert readout(hub)["limits"] == {"tilt_roll": 0}
     finally:
         await integ.stop()
+
+
+# ----------------------------------------------------------------------------- target angle (config and public block)
+def test_target_config_defaults_and_old_configs():
+    from stagewatch.core.config import WitmotionConfig
+    c = WitmotionConfig.model_validate({"enabled": True, "sensors": [{"address": "AA:BB:CC:DD:EE:01"}]})
+    s = c.sensors[0]
+    assert (s.target_x, s.target_y, s.on_target_deg, s.close_deg) == (None, None, 0.2, 1.0)
+    s = WitmotionConfig.model_validate({"sensors": [{"address": "x", "target_x": 2.5, "on_target_deg": 0.5, "close_deg": 0.1}]}).sensors[0]
+    assert s.close_deg == 0.5                                   # "close" is never tighter than "on target"
+
+
+async def test_targets_reach_the_public_block_only_for_watched_axes_that_have_one(hub):
+    hub.config.witmotion.sensors = []
+    hub.config.witmotion.axis, hub.config.witmotion.enabled = "x", True
+    hub.config.witmotion.target_x, hub.config.witmotion.target_y = 2.0, 5.0     # Y has a target but is not watched
+    integ = WitmotionIntegration(hub, reader_factory=lambda **kw: FakeReader(**kw))
+    await integ.start()
+    try:
+        assert readout(hub)["targets"] == {"tilt_roll": {"target": 2.0, "on": 0.2, "close": 1.0}}
+    finally:
+        await integ.stop()
+
+
+async def test_no_target_means_an_empty_targets_block_and_no_alarm_is_made(hub):
+    integ, holder = await make(hub)
+    try:
+        cb = holder["r"].cb
+        cb["on_connected"](100.0)
+        put3(cb, one(F1), 100.0)
+        integ.tick(100.5)
+        assert readout(hub)["targets"] == {} and not [k for k in hub.alarms.active if "witmotion" in k]
+    finally:
+        await integ.stop()
