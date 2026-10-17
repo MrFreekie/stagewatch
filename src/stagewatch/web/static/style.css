@@ -858,6 +858,7 @@ body.layout-wall .spl-badge, body.layout-wall .card-logo { width: 44px; height: 
 .spl-chip.spl-line-1, .spl-key.spl-line-1 { border-top-style: dashed; }
 .spl-chip.spl-line-2, .spl-key.spl-line-2 { border-top-style: dotted; }
 .spl-tile .spl-num { font-variant-numeric: tabular-nums; }
+.spl-tile .value, .spl-limits-head .value { font-size: 44px; }   /* bigger than the other tiles: read from across FOH */
 .spl-tile.spl-stale .value { color: var(--muted); }   /* greyed, not faded: the grey keeps 4.5:1 and the age line says "Old reading" */
 .spl-tile .foot { font-size: 13px; }
 #spl-span-seg button { min-height: 44px; min-width: 44px; }
@@ -882,9 +883,9 @@ body.layout-wall .spl-input { font-size: 16px; }
 .spl-chart-wrap { height: 220px; }
 body.layout-phone .spl-chart-wrap { height: 170px; }
 body.layout-phone .spl-rows { grid-template-columns: 1fr 1fr; gap: 8px; }
-body.layout-phone .spl-tile .value { font-size: 28px; }
+body.layout-phone .spl-tile .value { font-size: 34px; }
 body.layout-wall .spl-rows { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-body.layout-wall .spl-tile .value { font-size: 72px; }
+body.layout-wall .spl-tile .value { font-size: 88px; }
 body.layout-wall .spl-tile .label, body.layout-wall .spl-tile .foot { font-size: 18px; }
 body.layout-wall .spl-chart-wrap { height: 260px; }
 body.layout-wall #spl-legend { font-size: 18px; }
@@ -1074,15 +1075,15 @@ body.layout-wall .eq-tile .foot { font-size: 16px; }
 .pw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 14px; }
 .pw-cell { min-width: 0; }
 .pw-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-.pw-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.pw-value { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
 .pw-value .unit { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 4px; }
 /* The headline power sits in the same row as volts, amps etc., two columns wide. */
 .pw-big { grid-column: span 2; align-self: end; }
-.pw-big .pw-value { font-size: 40px; }
+.pw-big .pw-value { font-size: 48px; }
 .pw-table { width: 100%; font-variant-numeric: tabular-nums; }
 .pw-table th[scope="row"] { text-align: left; font-weight: 600; white-space: nowrap; }
 .pw-energy { margin-top: 10px; font-size: 16px; font-variant-numeric: tabular-nums; }
-.pw-energy .pw-num { font-weight: 700; font-size: 20px; }
+.pw-energy .pw-num { font-weight: 700; font-size: 26px; }
 .pw-energy .unit { color: var(--muted); }
 .pw-day { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--grid); font-variant-numeric: tabular-nums; }
 .pw-dayhead { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
@@ -1094,7 +1095,7 @@ body.layout-wall .eq-tile .foot { font-size: 16px; }
 .pw-gaps { margin: 6px 0 0; }
 /* Bars side by side where there is room, each no wider than it needs to be. */
 .pw-gauges { margin-top: 12px; display: grid; gap: 10px 24px; grid-template-columns: repeat(auto-fill, minmax(220px, 340px)); }
-.pw-glabel { font-size: 15px; font-variant-numeric: tabular-nums; margin-bottom: 3px; }
+.pw-glabel { font-size: 18px; font-variant-numeric: tabular-nums; margin-bottom: 3px; }
 .pw-gword { font-weight: 700; margin-left: 4px; }
 .pw-track { position: relative; height: 12px; border-radius: 8px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--grid); }
 .pw-fill { height: 100%; background: var(--ok); transition: width .3s; }
@@ -1115,7 +1116,7 @@ body.layout-wall .eq-tile .foot { font-size: 16px; }
 .pw-gscale span.r { right: 0; left: auto; transform: none; }
 .pw-gsub { font-size: 12px; }
 .pw-s-frozen .pw-gauges { opacity: .6; }
-body.layout-wall .pw-glabel { font-size: 28px; }
+body.layout-wall .pw-glabel { font-size: 34px; }
 body.layout-wall .pw-track { height: 28px; border-radius: 14px; }
 body.layout-wall .pw-gscale { font-size: 18px; height: 24px; }
 body.layout-wall .pw-gsub { display: none; }
@@ -1132,21 +1133,21 @@ body.layout-wall .pw-histbar, body.layout-wall .pw-note2 { display: none; }
 body.layout-wall .pw-chhead { font-size: 26px; }
 .pw-sub { font-size: 12px; }
 .pw-foot { font-size: 12px; margin: 12px 0 0; }
-body.layout-phone .pw-big .pw-value { font-size: 36px; }
+body.layout-phone .pw-big .pw-value { font-size: 42px; }
 body.layout-phone .pw-grid { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
 body.layout-wall .pw-name { font-size: 30px; }
 body.layout-wall .pw-badge { font-size: 22px; }
 body.layout-wall .pw-note { font-size: 24px; }
 body.layout-wall .pw-label { font-size: 18px; }
-body.layout-wall .pw-value { font-size: 40px; }
+body.layout-wall .pw-value { font-size: 50px; }
 body.layout-wall .pw-value .unit { font-size: 22px; }
-body.layout-wall .pw-big .pw-value { font-size: 64px; }
+body.layout-wall .pw-big .pw-value { font-size: 78px; }
 body.layout-wall .pw-energy { font-size: 26px; }
 body.layout-wall .pw-dayrow { font-size: 20px; }
 body.layout-wall .pw-dayrow .pw-label { font-size: 16px; }
 body.layout-wall .pw-gauges { grid-template-columns: repeat(auto-fill, minmax(360px, 560px)); }
 body.layout-wall .pw-dayhead, body.layout-wall .pw-gaps { font-size: 20px; }
-body.layout-wall .pw-energy .pw-num { font-size: 34px; }
+body.layout-wall .pw-energy .pw-num { font-size: 42px; }
 body.layout-wall .pw-sub, body.layout-wall .pw-foot { display: none; }
 body.layout-wall .pw-table { font-size: 28px; }
 main > [data-size="half"] .pw-big .pw-value { font-size: 36px; }
@@ -1240,5 +1241,5 @@ label.button { display: inline-flex; align-items: center; min-height: 44px; bord
 body.layout-wall .spl-limits-head .value { font-size: 96px; }
 body.layout-wall .spl-limits-next { font-size: 32px; }
 body.layout-wall .spl-limits-list, body.layout-wall .spl-limits-notes, body.layout-wall .spl-limits-foot { display: none; }
-body.layout-phone .spl-limits-head .value { font-size: 28px; }
+body.layout-phone .spl-limits-head .value { font-size: 34px; }
 body.layout-phone .spl-limits-list, body.layout-phone .spl-limits-notes { display: none; }
