@@ -1196,7 +1196,7 @@
       splLim.data = await SW.api("GET", `/api/spl-limits${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`);
     } catch (_) { /* keep what is on screen; the next message or minute tries again */ } finally { splLim.loading = false; }
     if (has("spl_limits")) renderSplLimits();
-    if (has("spl_live")) renderSpl();
+    if (has("spl_live")) { renderSpl(); updateSplChart(); }
   }
   function splLimitLine(el, e) {
     const L = SW.splLimits, rows = L.forEntity(splLim.data, e.id);
@@ -1258,11 +1258,24 @@
       label: SW.spl.label(e), color: css(`--spl-${(i % 3) + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3],
       points: state.splHistory[e.id] || [],
     }));
+    // Limits in force now, as flat lines from when each began (or the window start) to now, in the
+    // colour of the value they apply to: licence limits in warning colour, guidance dotted.
+    const lims = ((splLim.data && splLim.data.current) || []).filter((c) => c.value_db !== null && c.reading);
+    for (const c of lims) {
+      const i = ents.findIndex((e) => e.id === c.reading.entity_id);
+      if (i < 0) continue;
+      const from = Math.max(now - span, c.since || now - span);
+      splChart.series.push({
+        label: `${c.kind === "guidance" ? "Guidance" : "Limit"} ${c.label || c.metric}`,
+        color: c.kind === "guidance" ? css(`--spl-${(i % 3) + 1}`) : css("--warn"), width: c.kind === "guidance" ? 1 : 2,
+        dash: c.kind === "guidance" ? [2, 4] : [10, 5], points: [[from, c.value_db], [now, c.value_db]],
+      });
+    }
     splChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "spl" || m.source === "schedule").map((m) => ({ ...m, selected: false }));
     splChart.range = [now - span, now];
     // The vertical range comes from the Smaart device's public settings: automatic (fits the readings,
     // tidy values, steady) or custom (exactly min..max; readings outside are drawn at the edge, marked).
-    const cr = SW.spl.chartRange(state.devices[ents[0].device_id]), pts = ents.map((e) => state.splHistory[e.id] || []);
+    const cr = SW.spl.chartRange(state.devices[ents[0].device_id]), pts = splChart.series.map((x) => x.points);
     let fr = null;
     if (cr.mode === "custom") fr = [cr.min, cr.max];
     else { fr = SW.spl.autoRange(pts, now - span, now, state.splAxis); state.splAxis = fr; }
@@ -1272,6 +1285,8 @@
     splChart.draw();
     $("spl-legend").replaceChildren(...ents.map((e, i) => h("span", {}, h("i", { class: `spl-key spl-line-${i % 3}`, style: `border-top-color:${css(`--spl-${(i % 3) + 1}`)}` }),
       `${SW.spl.label(e)} (${SW.spl.LINE_NAMES[i % 3]})`)));
+    if (lims.some((c) => c.kind !== "guidance" && ents.some((e) => e.id === c.reading.entity_id)))
+      $("spl-legend").append(h("span", {}, h("i", { class: "spl-key", style: `border-top:2px dashed ${css("--warn")}` }), "Limit now"));
     setText($("spl-note"), `${SW.spl.chartNote(span, SPL_POINTS)} Values are as Smaart reports them; this is not a compliance record.${rangeNote ? ` ${rangeNote}` : ""}`);
   }
   async function loadSplHistory() {
