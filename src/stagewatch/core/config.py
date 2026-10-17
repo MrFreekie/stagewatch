@@ -535,7 +535,7 @@ class Dashboard(_Model):
     @field_validator("contacts_area", mode="before")
     @classmethod
     def _contacts_area(cls, v):
-        return v.strip()[:40] if isinstance(v, str) else ""
+        return " ".join(v.split())[:40] if isinstance(v, str) else ""
 
     @field_validator("clock_style", mode="before")
     @classmethod

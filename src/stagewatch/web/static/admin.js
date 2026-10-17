@@ -1966,6 +1966,7 @@
     const box = h("div", {}, h("p", { class: "muted" }, "Loading…"));
     const base = (id) => `/api/admin/events/${id || contactEvent}/contacts`;
     const fill = (r) => {
+      contactEvent = r.event_id;   // the list shown is always the one Save writes to
       const reload = (p) => p.then(fill, () => {});
       let rows = r.contacts.map((c) => Object.assign({}, c));
       const list = h("datalist", { id: "contact-roles" }, r.roles.map((t) => h("option", { value: t })));
@@ -2002,7 +2003,7 @@
       const days = r.edited ? Math.floor((Date.now() / 1000 - r.edited) / 86400) : 0;
       // Settings: the installation-wide switch and the optional PIN that dashboards ask for.
       const phonesOn = h("input", { type: "checkbox", checked: r.phones_enabled });
-      const pin = h("input", { class: "touch", type: "password", inputmode: "numeric", maxlength: 12, placeholder: r.reveal_pin_set ? "PIN set (type to change)" : "4 to 12 digits", autocomplete: "new-password" });
+      const pin = h("input", { class: "touch", type: "password", inputmode: "numeric", maxlength: 12, placeholder: r.reveal_pin_set ? "PIN set (type to change)" : "6 to 12 digits", autocomplete: "new-password" });
       const saveSettings = (clear) => {
         const body = { phones_enabled: phonesOn.checked };
         if (clear) body.clear_reveal_pin = true; else if (val(pin)) body.reveal_pin = val(pin);
@@ -2022,7 +2023,7 @@
         h("div", { class: "row" },
           h("button", { type: "button", class: "touch", disabled: rows.length >= r.max_contacts, onclick: () => { if (rows.length < r.max_contacts) { rows.push({ role: "", name: "", phone: "", show_phone: false, radio: "", area: "", on_duty: true }); dirty = true; draw(); } } }, "Add contact"),
           h("button", { type: "button", class: "primary touch", onclick: save }, "Save contacts"),
-          r.contacts.length ? h("button", { type: "button", class: "touch danger", onclick: () => clearAll(contactEvent, ename) }, "Clear all…") : null),
+          r.contacts.length || r.has_files ? h("button", { type: "button", class: "touch danger", onclick: () => clearAll(contactEvent, ename) }, "Clear all…") : null),
         !r.contacts.length && others.length ? h("div", { class: "row" }, field("Copy contacts from", copyFrom),
           h("button", { type: "button", class: "touch", onclick: () => reload(run(() => api("POST", `${base()}/copy`, { from_event_id: Number(copyFrom.value) }), "Contacts copied")) }, "Copy")) : null,
         h("details", {}, h("summary", { class: "muted" }, "Phone numbers on dashboards"),
@@ -2432,7 +2433,7 @@
       h("div", { class: "grid-2" }, foldCard(siteCard(), "site", false, !admin.config.site.timezone), foldCard(eventShowCard(), "event", true)),
       scheduleCard(),     // summary and a link to /schedule
       foldCard(documentsCard(), "documents", false),
-      foldCard(contactsCard(), "contacts", false),
+      foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0),
       connectCard(),
       softwareCard(),
       foldCard(devicesCard(), "nodes", true), foldCard(deviceErrorsCard(), "deviceerrors", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),

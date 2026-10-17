@@ -678,7 +678,7 @@ class ContactsSettingsBody(BaseModel):
     ``clear_reveal_pin`` removes it."""
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     phones_enabled: StrictBool
-    reveal_pin: str | None = Field(None, min_length=4, max_length=12, pattern=r"^[0-9]+$")
+    reveal_pin: str | None = Field(None, min_length=6, max_length=12, pattern=r"^[0-9]+$")
     clear_reveal_pin: StrictBool = False
 
 
@@ -1271,6 +1271,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "event": hub.recorder.current_event(),
             "show": hub.show_info(),
             "events": events_with_shows(),
+            "contact_reminders": len(contact_reminders()),   # a count only: opens the Onsite contacts card
             "show_days": hub.show_days(),
             "alarm_log": hub.recorder.alarm_log(),
             # Wall Clock card: is the source running, and what is it saying (no addresses).
@@ -2306,6 +2307,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         edited = st["edited"]
         return {"event_id": eid, "current": eid == hub.recorder.event_id,
                 "max_contacts": contacts_mod.MAX_CONTACTS, "contacts": st["contacts"], "edited": edited,
+                "has_files": contacts.has_files(eid),
                 "stale": bool(st["contacts"] and edited and time.time() - edited > contacts_mod.STALE_DAYS * 86400),
                 "roles": contacts.roles(), "reminders": contact_reminders(),
                 "phones_enabled": hub.config.contacts.phones_enabled,
@@ -2369,7 +2371,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def dismiss_contacts_reminder(event_id: str):
         eid = contact_event(event_id)
         await asyncio.to_thread(contact_call, contacts.dismiss_reminder, eid)
-        return JSONResponse(admin_contacts(hub.recorder.event_id), headers=NO_STORE)
+        return JSONResponse(admin_contacts(eid), headers=NO_STORE)
 
     @app.put("/api/admin/contacts/settings", dependencies=admin_deps)
     async def put_contacts_settings(body: ContactsSettingsBody):
@@ -2379,6 +2381,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         if body.clear_reveal_pin:
             pin_hash = ""
         elif body.reveal_pin:
+            if hub.config.admin.pin_hash and verify_pin(body.reveal_pin, hub.config.admin.pin_hash):
+                raise HTTPException(422, "Use a different PIN from the admin PIN: crew will know this one")
             pin_hash = hash_pin(body.reveal_pin)
         hub.config.contacts = ContactsSettings(phones_enabled=body.phones_enabled, reveal_pin_hash=pin_hash)
         hub.save_config()

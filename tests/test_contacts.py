@@ -151,19 +151,19 @@ def test_public_list_and_phones(client):
 
 
 def test_reveal_pin(client):
-    slug = setup_phones(client, pin="2468")
+    slug = setup_phones(client, pin="246813")
     r = client.get(f"/api/contacts?dashboard={slug}").json()
     assert r["pin_needed"] and "phone" not in r["contacts"][0] and PHONE not in json.dumps(r)
-    assert client.post("/api/contacts/reveal", json={"dashboard": slug, "pin": "2468"}, headers=EVIL).status_code == 403
+    assert client.post("/api/contacts/reveal", json={"dashboard": slug, "pin": "246813"}, headers=EVIL).status_code == 403
     assert client.post("/api/contacts/reveal", json={"dashboard": slug, "pin": "0000"}).status_code == 401
-    ok = client.post("/api/contacts/reveal", json={"dashboard": slug, "pin": "2468"})
+    ok = client.post("/api/contacts/reveal", json={"dashboard": slug, "pin": "246813"})
     assert ok.json()["contacts"][0]["phone"] == PHONE
     state = client.get("/api/admin/state").json()["config"]["contacts"]
     assert state == {"phones_enabled": True, "reveal_pin_set": True}
 
 
 def test_reveal_rate_limited(client):
-    slug = setup_phones(client, pin="2468")
+    slug = setup_phones(client, pin="246813")
     codes = [client.post("/api/contacts/reveal", json={"dashboard": slug, "pin": "1"}).status_code for _ in range(6)]
     assert codes[-1] == 429
 
@@ -236,6 +236,23 @@ def test_demo(client):
 
 def test_diagnostics_redacts_reveal_pin(client):
     from stagewatch import diagnostics
-    setup_phones(client, pin="2468")
+    setup_phones(client, pin="246813")
     cfg = client.hub.config.model_dump(mode="json")
     assert diagnostics.redact_config(cfg)["contacts"]["reveal_pin_hash"] == diagnostics.REDACTED
+
+
+def test_reveal_pin_rules(client):
+    for bad in ("1234", PIN + "00"[:0]):
+        assert client.put("/api/admin/contacts/settings", json={"phones_enabled": True, "reveal_pin": bad}).status_code == 422
+    client.put("/api/admin/pin", json={"current": PIN, "new": "135792"})
+    r = client.put("/api/admin/contacts/settings", json={"phones_enabled": True, "reveal_pin": "135792"})
+    assert r.status_code == 422 and "135792" not in r.text
+
+
+def test_locked_file_not_set_aside(tmp_path, monkeypatch):
+    s = cm.ContactStore(tmp_path)
+    s.replace(1, [cm.Contact(role="SM")])
+    monkeypatch.setattr(cm.Path, "read_text", lambda *a, **k: (_ for _ in ()).throw(PermissionError()))
+    assert s.contacts(1) == []
+    monkeypatch.undo()
+    assert s.contacts(1) and s.has_files(1)

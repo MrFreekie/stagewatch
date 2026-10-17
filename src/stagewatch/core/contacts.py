@@ -155,7 +155,7 @@ class ContactStore:
     def __init__(self, data_dir: Path, owner_of=None):
         self.root = Path(data_dir) / "contacts"
         self.owner_of = owner_of or (lambda _id: "")
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def _path(self, event_id) -> Path:
         return self.root / f"{valid_event(event_id)}.yaml"
@@ -166,8 +166,11 @@ class ContactStore:
             raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return {"contacts": [], "edited": None, "reminder_dismissed": False}
-        except (OSError, ValueError, yaml.YAMLError):
-            self._set_aside(path)
+        except (UnicodeDecodeError, yaml.YAMLError):
+            with self._lock:
+                self._set_aside(path)
+            return {"contacts": [], "edited": None, "reminder_dismissed": False}
+        except OSError:   # locked by another program for a moment: never set a good file aside
             return {"contacts": [], "edited": None, "reminder_dismissed": False}
         if not isinstance(raw, dict) or raw.get("format") != FORMAT or str(raw.get("owner", "")) != self.owner_of(event_id):
             return {"contacts": [], "edited": None, "reminder_dismissed": False}
@@ -188,6 +191,8 @@ class ContactStore:
 
     @staticmethod
     def _set_aside(path: Path) -> None:
+        if not path.exists():
+            return
         try:
             path.replace(path.with_name(f"{path.stem}.invalid.yaml"))
             log.warning("contacts file for event %s could not be read; set aside", path.stem)
@@ -206,6 +211,12 @@ class ContactStore:
 
     def contacts(self, event_id) -> list[dict]:
         return self.state(event_id)["contacts"]
+
+    def has_files(self, event_id) -> bool:
+        """Any file for this event, readable or not (so Clear can always reach it)."""
+        stem = str(valid_event(event_id))
+        return self.root.is_dir() and any(f.name == f"{stem}.yaml" or f.name.startswith(f"{stem}.invalid")
+                                          for f in self.root.iterdir())
 
     def stored_events(self) -> list[int]:
         """Event ids with a contacts file holding at least one contact."""
@@ -237,7 +248,7 @@ class ContactStore:
                 return []
             state.update(contacts=rows, edited=time.time())
             self._write(event_id, state)
-        self.add_roles([r["role"] for r in rows])
+            self.add_roles([r["role"] for r in rows])
         log.info("contacts saved for event %s: %d", event_id, len(rows))
         return rows
 

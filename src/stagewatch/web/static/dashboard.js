@@ -1462,9 +1462,18 @@
     CARDS.contacts.el.hidden = CARDS.contacts.empty();
     renderContacts();
   }
-  async function revealContacts() {
-    const pin = prompt("Contacts PIN to show phone numbers");
-    if (!pin) return;
+  function askContactsPin() {
+    const box = $("contacts-body");
+    if (!box || box.querySelector(".contact-pin")) return;
+    const input = h("input", { type: "password", inputmode: "numeric", autocomplete: "off", maxlength: 12, class: "touch", "aria-label": "Contacts PIN" });
+    const form = h("form", { class: "contact-pin row", onsubmit: (e) => { e.preventDefault(); const pin = input.value; input.value = ""; form.remove(); if (pin) revealContacts(pin); } },
+      h("label", {}, "Contacts PIN ", input),
+      h("button", { class: "touch primary", type: "submit" }, "Show"),
+      h("button", { class: "touch", type: "button", onclick: () => form.remove() }, "Cancel"));
+    box.appendChild(form);
+    input.focus();
+  }
+  async function revealContacts(pin) {
     let r;
     try { r = await SW.api("POST", "/api/contacts/reveal", { dashboard: slug, pin }); } catch (err) { SW.toast(err.message || "Could not show the numbers", true); return; }
     ++contactTicket;
@@ -1493,7 +1502,7 @@
         h("div", { class: "contact-who" }, h("strong", {}, c.role), h("span", {}, ` ${c.name || "TBC"}`)),
         extra(c) ? h("div", { class: "muted" }, extra(c)) : null,
         phoneOf(c)))),
-      contactPinNeeded && !isWall() ? h("button", { class: "touch", type: "button", onclick: revealContacts }, "Show numbers") : null);
+      contactPinNeeded && !isWall() ? h("button", { class: "touch", type: "button", onclick: askContactsPin }, "Show numbers") : null);
   }
 
   // --------------------------------------------------------------- cards
