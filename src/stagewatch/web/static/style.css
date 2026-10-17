@@ -1305,3 +1305,12 @@ body.layout-wall .card-about { display: none; }
 /* Rundown: planned, expected and started times side by side on one line. */
 .rd-times { display: flex; flex-wrap: wrap; gap: 2px 18px; margin: 6px 0; }
 .rd-times .rd-line { margin: 0; }
+/* Wall alarm edge (package 3e): on the wall only, a card in ALERT or STOP gets a thick left edge
+   and a lightly tinted header so the state reads at 5 m. The card's own ALERT / STOP words stay.
+   Inset shadow, so no card changes size; no animation. Set by markLevels() in dashboard.js. */
+body.layout-wall [data-card][data-level="alert"] { box-shadow: inset 8px 0 0 var(--alert); }
+body.layout-wall [data-card][data-level="stop"] { box-shadow: inset 8px 0 0 var(--stop); }
+body.layout-wall [data-card][data-level="alert"] > h2 { background: rgba(255, 138, 61, .18); background: color-mix(in srgb, var(--alert) 18%, transparent); border-radius: 4px; }
+body.layout-wall [data-card][data-level="stop"] > h2 { background: rgba(255, 77, 94, .2); background: color-mix(in srgb, var(--stop) 20%, transparent); border-radius: 4px; }
+/* The timer and rundown cards' own 6 px border would double up with the edge on the wall. */
+body.layout-wall #ontime-timer-card[data-level], body.layout-wall #ontime-rundown-card[data-level] { border-left: 1px solid var(--grid); padding-left: 19px; }
