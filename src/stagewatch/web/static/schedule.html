@@ -22,6 +22,18 @@
     font-weight: 600; cursor: pointer; }
   #schedule-editor .sched-auto-label input { width: 24px; height: 24px; margin: 0; }
 
+  /* OSC actions: muted minor lines; the armed state in words as well as colour. */
+  #schedule-editor .sched-action-row { opacity: .85; font-size: 95%; border-left: 4px solid var(--muted, #888); }
+  #schedule-editor .act-chip { display: block; margin: 4px 0 0 32px; font-size: 14px; }
+  .act-armed { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 6px; margin: 4px 0 8px; }
+  .act-armed.on { border: 3px solid var(--warn, #f5a623); }
+  .act-armed.off { border: 1px solid var(--border, #555); }
+  .act-msg { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 6px 0; }
+  .act-addr input { min-width: 220px; }
+  .act-args { display: flex; flex-wrap: wrap; gap: 6px; }
+  .act-arg { display: inline-flex; gap: 4px; align-items: center; }
+  .act-arg input { width: 110px; }
+
   /* Printing (or "Save as PDF"): only the running order, black on white. */
   #print-view { display: none; }
   @media print {
@@ -41,6 +53,7 @@
     #print-view .pv-setlist { font-size: 11pt; }
     #print-view .pv-setlist ol, #print-view .pv-setlist ul { margin: 2pt 0; padding-left: 20pt; }
     #print-view .pv-setlist p { margin: 2pt 0; }
+    #print-view .pv-action td { font-size: 10pt; font-style: italic; }
     #print-view .pv-foot { margin-top: 14pt; font-size: 9pt; }
   }
 </style>
@@ -59,6 +72,7 @@
 <footer class="site-footer">Stagewatch is free, open-source and 100% vibe coded. If it helps your shows: <a href="https://buymeacoffee.com/fohengineer" target="_blank" rel="noopener noreferrer">buy me a coffee ☕</a></footer>
 <script src="/static/common.js"></script>
 <script src="/static/schedule-export.js"></script>
+<script src="/static/actions-ui.js"></script>
 <script src="/static/schedule-editor.js"></script>
 </body>
 </html>

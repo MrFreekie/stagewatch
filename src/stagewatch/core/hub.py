@@ -28,6 +28,7 @@ from .recorder import REASON_POWER_OR_RESTART, Recorder
 from .spl_limits import SplLimit, SplLimitService, SplLimitSet
 from .spl_limits import dump_set as dump_spl_set
 from .spl_limits import set_errors as spl_set_errors
+from .actions import ActionService
 from .schedule import DemoDoesNotFit, ScheduleMarkers, ScheduleService
 from .ontimerundown import OntimeRundownService
 from .ontimetimer import OntimeTimerService
@@ -85,6 +86,7 @@ class Hub:
         self.alarms = AlarmEngine()
         self.schedule = ScheduleService(self)
         self.schedule_markers = ScheduleMarkers(self)
+        self.actions = ActionService(self)  # OSC actions: off (not armed) after every start
         self.spl_limits = SplLimitService(self)  # sound level limits beside Smaart's values (0.4.0)
         self.baro = BarometerService(self)  # 3-hour tendency from one averaged sample a minute
         self.wall_clock = WallClockService(self)  # runs a clock source only while a dashboard has the card
@@ -158,6 +160,7 @@ class Hub:
             except Exception:  # noqa: BLE001 - no history just means the barometer collects afresh
                 log.exception("Could not read the pressure history for the barometer")
         self.check_schedule_markers()  # moments that passed while Stagewatch was off are recorded as missed (no marker)
+        self.check_actions()  # actions already due are logged as missed: never sent late
         for integration in self.integrations.values():
             try:
                 await integration.start()
@@ -617,7 +620,9 @@ class Hub:
         changes = self.alarms.evaluate(self.config.thresholds, self.lookup, now)
         if changes:
             self._alarm_changed(changes)
+        self._threshold_seen()
         self.check_schedule_markers(now)
+        self.check_actions(now)
         self.spl_limits.tick(now)
 
     def check_schedule_markers(self, now: float | None = None) -> list[Marker]:
@@ -627,6 +632,35 @@ class Hub:
         except Exception:  # noqa: BLE001 - never stop the tick over the schedule
             log.exception("Could not add markers from the schedule")
             return []
+
+    def check_actions(self, now: float | None = None) -> int:
+        """Send any schedule actions that are due (never raises: a failure is logged)."""
+        try:
+            return self.actions.check(now)
+        except Exception:  # noqa: BLE001 - never stop the tick over an action
+            log.exception("Could not run the schedule actions")
+            return 0
+
+    def _threshold_seen(self) -> None:
+        """Tell the actions which thresholds are live and clear (the start-up rule)."""
+        for t in self.config.thresholds:
+            if not t.enabled or f"threshold:{t.id}" in self.alarms.active:
+                continue
+            value, stale = self.lookup(t.entity)
+            if value is not None and not stale:
+                self.actions.threshold_seen(t.id, AlarmEngine._tripped(t, value))
+
+    def _threshold_action(self, alarm_id: str, event: str) -> None:
+        if not alarm_id.startswith("threshold:"):
+            return
+        tid = alarm_id.split(":", 1)[1]
+        t = next((x for x in self.config.thresholds if x.id == tid), None)
+        if t is None:
+            return
+        try:
+            self.actions.alarm_event(t, event, self.lookup(t.entity)[0])
+        except Exception:  # noqa: BLE001 - an alarm must never fail over an action
+            log.exception("Could not run a threshold action")
 
     # --------------------------------------------------------------- alarms
     def _alarm_changed(self, changes: list[AlarmChange]) -> None:
@@ -640,6 +674,8 @@ class Hub:
             elif change.event == "clear":
                 # Cleared without an acknowledge: its marker stays visible.
                 self._alarm_markers.pop(a.id, None)
+            if change.event in ("raise", "clear"):
+                self._threshold_action(a.id, "raised" if change.event == "raise" else "cleared")
         self.bus.publish("alarms", self.alarm_notices())
 
     def alarm_notices(self) -> list[dict]:
@@ -654,6 +690,7 @@ class Hub:
         acked = self.alarms.ack_all(time.time())
         for a in acked:
             self.recorder.log_alarm(a.id, f"ack ({source})", a.level, a.message)
+            self._threshold_action(a.id, "acked")
             marker_id = self._alarm_markers.pop(a.id, None)
             if marker_id is not None:
                 try:

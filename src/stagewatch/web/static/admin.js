@@ -1380,13 +1380,28 @@
       const hyst = h("input", { class: "num", type: "number", step: "any", value: t.hysteresis ?? 0 });
       const hold = h("input", { class: "num", type: "number", step: "1", value: t.hold_s ?? 0 });
       const en = h("input", { type: "checkbox", checked: t.enabled !== false });
+      // OSC actions on raised / cleared / acknowledged (sent only while actions are armed).
+      const ta = t.actions || {};
+      const targets = (admin.config.actions && admin.config.actions.targets) || [];
+      const eds = ["raised", "cleared", "acked"].map((k) => [k, SW.actionMessageEditor(ta[k], targets,
+        { label: { raised: "When raised, send", cleared: "When cleared, send", acked: "When acknowledged, send" }[k], placeholders: true, test: true })]);
+      const cool = h("input", { class: "num", type: "number", min: 0, max: 3600, step: 1, value: ta.cooldown_s ?? 60 });
+      const has = ["raised", "cleared", "acked"].some((k) => ta[k]);
+      const actRow = h("tr", { class: "thr-actions" }, h("td", { colspan: 9 }, h("details", { open: false },
+        h("summary", {}, has ? "OSC actions ✓" : "OSC actions"),
+        targets.length ? null : h("p", { class: "muted" }, "No action targets yet. Add one in Action targets below."),
+        eds.map(([, e]) => e.el),
+        field("Cool-down (seconds)", cool),
+        h("p", { class: "muted hint" }, "Values can be {value} (the reading), {level} (1 to 3) or {label}. Each trigger sends at most once per cool-down. An alarm already active when Stagewatch starts sends nothing."))));
       const tr = h("tr", {}, h("td", {}, sel), h("td", {}, label), h("td", {}, above), h("td", {}, below),
         h("td", {}, level), h("td", {}, hyst), h("td", {}, hold), h("td", {}, en),
-        h("td", {}, h("button", { class: "small danger", onclick: () => tr.remove() }, "✕")));
+        h("td", {}, h("button", { class: "small danger", onclick: () => { tr.remove(); actRow.remove(); } }, "✕")));
       tr._read = (i) => ({ id: t.id || `t${Date.now().toString(36)}${i}`, entity: sel.value, label: val(label),
         above: numOrNull(above), below: numOrNull(below), level: Number(level.value),
-        hysteresis: Number(hyst.value) || 0, hold_s: Number(hold.value) || 0, enabled: en.checked });
-      tbody.append(tr);
+        hysteresis: Number(hyst.value) || 0, hold_s: Number(hold.value) || 0, enabled: en.checked,
+        actions: Object.assign({ cooldown_s: Math.max(0, Math.min(3600, Math.round(Number(cool.value) || 0))) },
+          Object.fromEntries(eds.map(([k, e]) => [k, e.read()]))) });
+      tbody.append(tr, actRow);
     };
     admin.config.thresholds.forEach(addRow);
     return card("Threshold alarms",
@@ -1396,7 +1411,7 @@
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { onclick: () => addRow() }, "Add threshold"),
         h("button", { class: "primary", onclick: () => run(() => api("PUT", "/api/admin/thresholds",
-          [...tbody.children].map((tr, i) => tr._read(i))), "Thresholds saved").then(refresh) }, "Save thresholds")));
+          [...tbody.children].filter((tr) => tr._read).map((tr, i) => tr._read(i))), "Thresholds saved").then(refresh) }, "Save thresholds")));
   }
 
   // Card names and one-line hints for the "Edit cards" panel (ids: core/cards.py).
@@ -1563,6 +1578,36 @@
           [...tbody.children].filter((tr) => tr._read).map((tr) => tr._read())), "Dashboards saved").then(refresh) }, "Save dashboards")));
   }
 
+  function actionTargetsCard() {
+    const tbody = h("tbody");
+    const addRow = (t = {}) => {
+      const name = h("input", { value: t.name || "", maxlength: 40, placeholder: "e.g. QLab", "aria-label": "Target name" });
+      const host = h("input", { value: t.host || "", placeholder: "192.168.1.20 or qlab.local", "aria-label": "Address" });
+      const port = h("input", { class: "num", type: "number", min: 1, max: 65535, value: t.port || 53000, "aria-label": "Port" });
+      const en = h("input", { type: "checkbox", checked: t.enabled !== false, "aria-label": "On" });
+      const id = t.id || `t-${Date.now().toString(36)}-${tbody.children.length}`;
+      const tr = h("tr", {}, h("td", {}, name), h("td", {}, host), h("td", {}, port), h("td", {}, en),
+        h("td", {}, h("button", { class: "small", onclick: () => SW.actionTest({ target_id: id, address: "/stagewatch/test", args: [] },
+          [{ id, name: val(name), host: val(host), port: Number(port.value) }]) }, "Send test message")),
+        h("td", {}, h("button", { class: "small danger", onclick: () => tr.remove() }, "✕")));
+      tr._read = () => ({ id, name: val(name), host: val(host), port: Number(port.value), enabled: en.checked });
+      tbody.append(tr);
+    };
+    ((admin.config.actions && admin.config.actions.targets) || []).forEach(addRow);
+    const st = admin.actions || {};
+    return card("Action targets",
+      h("p", { class: "warn-text" }, h("strong", {}, SW.ACTION_WARNING)),
+      h("p", { class: "muted" }, "Where schedule and threshold actions send their OSC messages (UDP). Use a local network address or a name ending in .local. Save the list before sending a test to a new target."),
+      h("p", {}, st.armed ? "● Actions ARMED (switch them off on the Schedule page)" : "○ Actions off. Arm them on the Schedule page when you are ready."),
+      h("div", { class: "table-scroll" }, h("table", {},
+        h("thead", {}, h("tr", {}, ["Name", "Address", "Port", "On", "", ""].map((x) => h("th", {}, x)))), tbody)),
+      h("div", { class: "row", style: "margin-top:10px" },
+        h("button", { onclick: () => addRow() }, "Add target"),
+        h("button", { class: "primary", onclick: () => run(() => api("PUT", "/api/admin/actions/targets",
+          { targets: [...tbody.children].map((tr) => tr._read()).filter((t) => t.host || t.name) }), "Action targets saved").then(refresh) }, "Save targets")),
+      h("p", { class: "muted hint" }, SW.ACTION_EXAMPLES));
+  }
+
   function oscCard() {
     const o = admin.config.osc_out;
     const tbody = h("tbody");
@@ -1570,9 +1615,10 @@
       const host = h("input", { value: d.host || "", placeholder: "IP or hostname" });
       const port = h("input", { class: "num", type: "number", value: d.port || 9000 });
       const en = h("input", { type: "checkbox", checked: d.enabled !== false });
-      const tr = h("tr", {}, h("td", {}, host), h("td", {}, port), h("td", {}, en),
+      const am = h("input", { type: "checkbox", checked: !!d.alarm_messages, "aria-label": "Send alarm messages" });
+      const tr = h("tr", {}, h("td", {}, host), h("td", {}, port), h("td", {}, en), h("td", {}, am),
         h("td", {}, h("button", { class: "small danger", onclick: () => tr.remove() }, "✕")));
-      tr._read = () => ({ host: val(host), port: Number(port.value), enabled: en.checked });
+      tr._read = () => ({ host: val(host), port: Number(port.value), enabled: en.checked, alarm_messages: am.checked });
       tbody.append(tr);
     };
     o.destinations.forEach(addRow);
@@ -1581,7 +1627,8 @@
     const info = admin.integrations.find((i) => i.manifest.domain === "osc_out") || {};
     return card("OSC output",
       h("p", { class: "muted" }, "Sends /stagewatch/avg/env [temp °C, RH %, pressure Pa, c m/s, sensors] and /stagewatch/alarm [level, sounding]."),
-      h("table", {}, h("thead", {}, h("tr", {}, ["Host", "Port", "On", ""].map((x) => h("th", {}, x)))), tbody),
+      h("p", { class: "muted" }, "Alarm messages: each threshold alarm change also sends /stagewatch/alarm/event [id, level 0 to 3, raised / acked / cleared, message]."),
+      h("table", {}, h("thead", {}, h("tr", {}, ["Host", "Port", "On", "Alarm messages", ""].map((x) => h("th", {}, x)))), tbody),
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { onclick: () => addRow() }, "Add destination"),
         field("Per-node messages", perNode), field("Rate (Hz)", rate),
@@ -2069,6 +2116,7 @@
     if (!schedData || !items.length) {
       if (day) lines.unshift(h("p", { class: "muted" }, SW.fmtDay(day)));
     }
+    if (admin.actions) lines.push(h("p", {}, h("strong", {}, admin.actions.armed ? "● Actions ARMED" : "○ Actions off")));
     c.append(...lines, h("div", { class: "row", style: "margin-top:10px" }, SW.linkButton("Open schedule editor", "/schedule", true)));
     return c;
   }
@@ -2445,6 +2493,7 @@
       foldCard(thresholdsCard(), "thresholds", true), foldCard(alarmNoticesCard(), "notices", true),
       foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
       h("div", { class: "grid-2" }, foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false)),
+      foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
       foldCard(wallClockCard(), "wallclock", false),
       foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"),
       foldCard(barometerCard(), "barometer", false),

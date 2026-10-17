@@ -60,6 +60,11 @@ KINDS: tuple[str, ...] = ("venue_access", "load_in", "crew_call", "soundcheck", 
                           "changeover", "curfew", "load_out", "other")
 # Kinds that put a marker on the timeline unless the item says otherwise (schedule_items.marker).
 MARKER_KINDS: tuple[str, ...] = ("soundcheck", "doors", "act")
+# An OSC action row (core/actions.py): admin only, never on dashboards, never in NOW / NEXT, never a
+# marker, never made by an import. Not in KINDS, so infer_kind and the import can't produce it.
+ACTION_KIND = "action"
+MSG_ACTION_START = "An action line needs a message to send at its start time"
+MSG_ACTION_END = "To send a message at the end, fill in the end time"
 MARKER_SOURCE = "schedule"
 MARKER_LABEL_MAX = 120                # the hub's marker label limit
 MAX_ITEMS = 300
@@ -311,7 +316,17 @@ def build_rows(items: Iterable[dict], day: date | str, site) -> tuple[list[dict]
                 errors.append(FieldError(i, name, str(e)))
                 bad = True
         kind = it.get("kind") or "other"
-        if kind not in KINDS:
+        action = it.get("action") or None
+        if action is not None and not (action.get("start") or action.get("end")):
+            action = None
+        if kind == ACTION_KIND and not (action and action.get("start")):
+            errors.append(FieldError(i, "action", MSG_ACTION_START))
+            bad = True
+        if action and action.get("end") and not str(it.get("end") or "").strip():
+            errors.append(FieldError(i, "end", MSG_ACTION_END))
+            bad = True
+        row["action"] = action
+        if kind not in KINDS and kind != ACTION_KIND:
             errors.append(FieldError(i, "kind", MSG_KIND))
             bad = True
         row["kind"] = kind
@@ -401,7 +416,7 @@ def marker_moments(items: list[dict]) -> list[Moment]:
     The stage, if the item has one, follows in brackets: "Doors (Main stage)"."""
     out: list[Moment] = []
     for it in items:
-        if not isinstance(it.get("id"), int):
+        if not isinstance(it.get("id"), int) or it.get("kind") == ACTION_KIND:
             continue
         kind, title, stage = it["kind"], it["title"], it.get("stage", "")
         if kind == "soundcheck":
@@ -432,7 +447,8 @@ def now_next(items: list[dict], now: float, stage: str | None = None) -> dict:
       say "past curfew"). ``seconds_to_curfew`` is negative after it.
     * ``state``: empty | before | running | between | over.
     """
-    mine = sorted((i for i in items if stage_matches(i.get("stage", ""), stage)), key=sort_key)
+    mine = sorted((i for i in items if i.get("kind") != ACTION_KIND
+                   and stage_matches(i.get("stage", ""), stage)), key=sort_key)
     curfews = [i for i in mine if i["kind"] == "curfew"]
     acts = [i for i in mine if i["kind"] != "curfew"]
     upcoming_curfew = next((c for c in curfews if c["planned_start"] > now), None)
@@ -711,6 +727,16 @@ def demo_items(now: float, site) -> list[dict]:
             for k, t, s, e, sl in DEMO_PLAN]
 
 
+DEMO_TARGET_ID = "demo-qlab"
+
+
+def demo_action(now: float, site) -> dict:
+    t = sitetime.local_hhmm(now + 120, site)
+    return {"kind": ACTION_KIND, "title": "Walk-in music", "start": t, "end": "", "stage": "", "setlist": "",
+            "action": {"start": {"target_id": DEMO_TARGET_ID, "address": "/go", "args": []}, "end": None,
+                       "icon": "music", "enabled": True}}
+
+
 def demo_fits(rows: list[dict], now: float) -> bool:
     """True if every demo row resolved to exactly its intended instant: none crossed the day
     rollover (e.g. a curfew landing on the morning before) and the show day is today."""
@@ -784,8 +810,24 @@ class ScheduleService:
         self._cache = None
 
     def public_items(self, stage: str | None = None) -> list[dict]:
+        """Dashboards' list: action rows are left out entirely, and no item carries its actions."""
         site = self.hub.config.site
-        return [public_item(i, site) for i in self.items() if stage is None or stage_matches(i["stage"], stage)]
+        return [public_item(i, site) for i in self.items() if i["kind"] != ACTION_KIND
+                and (stage is None or stage_matches(i["stage"], stage))]
+
+    def admin(self) -> dict:
+        """The schedule page's list (admin only): every row, with its action and send status."""
+        site = self.hub.config.site
+        runs = self.hub.actions.item_status()
+        items = []
+        for i in self.items():
+            d = public_item(i, site)
+            d["action"] = i.get("action")
+            d["runs"] = {ph: {"status": runs[(str(i["id"]), ph)][1], "due": runs[(str(i["id"]), ph)][0]}
+                         for ph in ("start", "end") if (str(i["id"]), ph) in runs}
+            items.append(d)
+        return {"show_id": self.hub.recorder.show_id, "day": self.hub.show_info()["day"],
+                "revision": self.revision(), "items": items, "actions": self.hub.actions.status()}
 
     def public(self, stage: str | None = None) -> dict:
         """The full list (GET /api/schedule and admin write responses):
@@ -799,7 +841,7 @@ class ScheduleService:
                 "revision": self.revision()}
 
     def stages(self) -> list[str]:
-        return [i["stage"] for i in self.items() if i["stage"]]
+        return [i["stage"] for i in self.items() if i["stage"] and i["kind"] != ACTION_KIND]
 
     # ---- writing
     def _check_show(self, show_id: int | None) -> None:
@@ -846,6 +888,10 @@ class ScheduleService:
         # instant: none may cross the day rollover, and the show day must be today.
         if errors or not demo_fits(rows, now):
             raise DemoDoesNotFit()
+        if self.hub.emulate:  # emulate only: one OSC action two minutes ahead, to the demo target
+            extra, bad = build_rows([demo_action(now, site)], self.hub.show_info()["day"], site)
+            if not bad and self.hub.actions.ensure_demo_target():
+                rows += [{**r, "sort": len(rows)} for r in extra]
         return self._write(rows)
 
     def rebase(self, old_site, old_day: str, new_site, new_day: str) -> int:

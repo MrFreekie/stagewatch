@@ -485,7 +485,7 @@ def test_seed_emulate_spl_switches_it_on_once_for_a_fresh_config():
 
 # ------------------------------------------------------------------------------- config
 def test_older_config_without_the_section_loads_with_defaults_and_no_schema_bump():
-    assert CONFIG_SCHEMA_VERSION == 2 and DB_SCHEMA_VERSION == 3      # additive config, no table change: no bump
+    assert CONFIG_SCHEMA_VERSION == 2 and DB_SCHEMA_VERSION == 4      # additive config: no config bump (DB v4 is the OSC actions)
     old = yaml.safe_load((ROOT / "tests" / "fixtures" / "v1" / "config.yaml").read_text(encoding="utf-8"))
     cfg = Config.model_validate(migrate(old))
     assert cfg.spl == SplConfig() and cfg.spl.enabled is False and cfg.spl.host == "127.0.0.1" and cfg.spl.port == 26000

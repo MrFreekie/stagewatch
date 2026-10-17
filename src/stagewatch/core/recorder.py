@@ -168,6 +168,33 @@ _V3_TABLES = [
 )""",
 ]
 
+# ---- DB v4 (0.4.0): OSC actions. The action document of a schedule row (JSON, NULL = none) and
+# the action log: one row per send, miss or skip. A schedule run (source 'schedule') is unique per
+# (show, item, phase), which is the "never fire twice" lock; threshold and test runs repeat.
+_V4_COLUMNS = [
+    ("schedule_items", "action", "ALTER TABLE schedule_items ADD COLUMN action TEXT"),
+]
+_V4_TABLES = [
+    """CREATE TABLE IF NOT EXISTS action_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    show_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    due REAL NOT NULL,
+    fired REAL,
+    status TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    target TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    who TEXT NOT NULL DEFAULT ''
+)""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_action_runs_schedule ON action_runs (show_id, ref, phase) "
+    "WHERE source = 'schedule'",
+    "CREATE INDEX IF NOT EXISTS idx_action_runs_show ON action_runs (show_id, id)",
+]
+
 # The copy is named for the version this build upgrades to ("pre-v3": the database as it was before
 # it became v3). Older copies ("pre-v2...") count towards the same limit.
 SAFETY_COPY_SUFFIX = f".pre-v{DB_SCHEMA_VERSION}.bak"
@@ -184,6 +211,16 @@ STOP_REASONS = ("stop", "update", "rollback")
 REASON_POWER_OR_RESTART = "power_or_restart"
 NAME_MAX = 80
 _DAY_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+
+def _action_doc(text: str | None) -> dict | None:
+    if not text:
+        return None
+    try:
+        doc = json.loads(text)
+        return doc if isinstance(doc, dict) else None
+    except ValueError:
+        return None
 
 
 def clean_name(name: str, what: str = "name") -> str:
@@ -321,6 +358,9 @@ class Recorder:
         if version < 3:
             self._v2_to_v3()
             version = 3
+        if version < 4:
+            self._v3_to_v4()
+            version = 4
 
     def _holds_data(self) -> bool:
         return bool(self._db.execute("SELECT EXISTS (SELECT 1 FROM shows)").fetchone()[0])
@@ -433,6 +473,27 @@ class Recorder:
                       type(e).__name__)
             raise
         log.info("Database upgraded to v3 (%.2f s)", time.monotonic() - began)
+
+    def _v3_to_v4(self) -> None:
+        """DB v4, in one transaction: on any error the database stays exactly at v3. One nullable
+        column and a new table: no existing row is rewritten."""
+        db = self._db
+        began = time.monotonic()
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            for table, name, stmt in _V4_COLUMNS:
+                if name not in {r[1] for r in db.execute(f"PRAGMA table_info({table})")}:
+                    db.execute(stmt)
+            for stmt in _V4_TABLES:
+                db.execute(stmt)
+            db.execute("PRAGMA user_version = 4")
+            db.commit()
+        except BaseException as e:
+            db.rollback()
+            log.error("Database upgrade to v4 failed (%s); the database was left unchanged",
+                      type(e).__name__)
+            raise
+        log.info("Database upgraded to v4 (%.2f s)", time.monotonic() - began)
 
     # ----------------------------------------------------------------- events
     def _open_event(self) -> int:
@@ -791,7 +852,8 @@ class Recorder:
         return cur.rowcount > 0
 
     # --------------------------------------------------------------- schedule
-    _SCHEDULE_COLS = "id, sort, stage, kind, title, planned_start, planned_end, setlist, updated, marker"
+    _SCHEDULE_COLS = ("id, sort, stage, kind, title, planned_start, planned_end, setlist, updated, marker, "
+                      "action")
 
     def schedule_items(self, show_id: int | None = None) -> list[dict]:
         """A show's schedule rows (planned times only), ordered by start. ``marker`` is the stored
@@ -802,7 +864,8 @@ class Recorder:
             "ORDER BY planned_start, sort, id", (show_id,)).fetchall()
         return [{"id": r[0], "sort": r[1], "stage": r[2], "kind": r[3], "title": r[4],
                  "planned_start": r[5], "planned_end": r[6], "setlist": r[7], "updated": r[8],
-                 "marker": None if r[9] is None else int(bool(r[9]))} for r in rows]
+                 "marker": None if r[9] is None else int(bool(r[9])),
+                 "action": _action_doc(r[10])} for r in rows]
 
     def replace_schedule(self, show_id: int, rows: list[dict], now: float | None = None) -> None:
         """Replace a show's whole schedule in one transaction (all or nothing). A row keeps its
@@ -822,11 +885,12 @@ class Recorder:
                 marker = r.get("marker")
                 db.execute(
                     "INSERT INTO schedule_items (id, show_id, sort, stage, kind, title, planned_start, "
-                    "planned_end, setlist, updated, marker) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "planned_end, setlist, updated, marker, action) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (rid if keep else None, show_id, int(r.get("sort", i)), r["stage"], r["kind"], r["title"],
                      float(r["planned_start"]),
                      None if r.get("planned_end") is None else float(r["planned_end"]), r["setlist"], now,
-                     None if marker is None else int(bool(marker))))
+                     None if marker is None else int(bool(marker)),
+                     json.dumps(r["action"], separators=(",", ":")) if r.get("action") else None))
             db.commit()
         except BaseException:
             db.rollback()
@@ -883,6 +947,44 @@ class Recorder:
         except BaseException:
             db.rollback()
             raise
+
+    # ----------------------------------------------------------- action log
+    def action_run_keys(self, show_id: int) -> dict[tuple[str, str], tuple[float, str]]:
+        """(item ref, phase) -> (due, status) of every schedule run of the show."""
+        return {(r[0], r[1]): (r[2], r[3]) for r in self._db.execute(
+            "SELECT ref, phase, due, status FROM action_runs WHERE show_id = ? AND source = 'schedule'",
+            (show_id,))}
+
+    def add_action_run(self, source: str, ref: str, phase: str, due: float, status: str, *,
+                       fired: float | None = None, label: str = "", target: str = "", address: str = "",
+                       detail: str = "", who: str = "") -> bool:
+        """Log one run. A schedule run is written once ever per (show, item, phase): returns False
+        (and writes nothing) when that run already exists."""
+        try:
+            self._db.execute(
+                "INSERT INTO action_runs (show_id, source, ref, phase, due, fired, status, label, target, "
+                "address, detail, who) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (self.show_id, source, ref, phase, due, fired, status, label[:120], target[:40],
+                 address[:200], detail[:200], who[:20]))
+            self._db.commit()
+            return True
+        except sqlite3.IntegrityError:
+            self._db.rollback()
+            return False
+
+    def reset_action_run(self, ref: str, phase: str) -> None:
+        """Forget an unfired schedule run (its row was moved to a later time)."""
+        self._db.execute("DELETE FROM action_runs WHERE show_id = ? AND source = 'schedule' AND ref = ? "
+                         "AND phase = ? AND status != 'sent'", (self.show_id, ref, phase))
+        self._db.commit()
+
+    def action_log(self, limit: int = 200) -> list[dict]:
+        rows = self._db.execute(
+            "SELECT id, source, ref, phase, due, fired, status, label, target, address, detail, who "
+            "FROM action_runs WHERE show_id = ? ORDER BY id DESC LIMIT ?", (self.show_id, limit)).fetchall()
+        keys = ("id", "source", "ref", "phase", "due", "fired", "status", "label", "target", "address",
+                "detail", "who")
+        return [dict(zip(keys, r)) for r in rows]
 
     # ------------------------------------------------------------------ alarms
     def log_alarm(self, alarm_id: str, event: str, level: int, message: str) -> None:

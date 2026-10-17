@@ -45,6 +45,7 @@ from .. import diagnostics, netinfo
 from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
 from ..core import device_errors as errors_mod
+from ..core import actions as actions_mod
 from ..core import schedule as sched
 from ..core import spl as spl_mod
 from ..core import spl_limits as limits_mod
@@ -738,7 +739,7 @@ class ScheduleItemBody(BaseModel):
     date: str | None = Field(None, max_length=10)
     stage: str = Field("", max_length=400)
     kind: Literal["venue_access", "load_in", "crew_call", "soundcheck", "doors", "act", "changeover",
-                  "curfew", "load_out", "other"] = "other"
+                  "curfew", "load_out", "other", "action"] = "other"
     title: str = Field(max_length=1000)
     start: str = Field(max_length=5)
     end: str = Field("", max_length=5)
@@ -746,6 +747,9 @@ class ScheduleItemBody(BaseModel):
     # Timeline marker: true/false, or null for the kind's default (on for soundcheck, doors and
     # act). Not sent: an existing item keeps its setting, a new one gets the default.
     marker: StrictBool | None = None
+    # OSC action (admin only, never on dashboards): an "action" row's message(s), or messages at
+    # another item's start / end. Not sent: an existing item keeps its actions.
+    action: actions_mod.ScheduleActionBody | None = None
 
     @field_validator("title")
     @classmethod
@@ -796,6 +800,8 @@ class SchedulePut(BaseModel):
     show_id: int = Field(ge=1)
     revision: int = Field(ge=0, le=2**62)
     items: list[ScheduleItemBody]
+    # The page knows about actions (lists action rows). Without it, stored action rows are kept.
+    with_actions: bool = False
 
     @field_validator("items", mode="before")
     @classmethod
@@ -812,6 +818,11 @@ class SchedulePut(BaseModel):
         if len(ids) != len(set(ids)):
             raise ValueError("Each item id can only be used once")
         return self
+
+
+class ActionsArmedBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    armed: StrictBool
 
 
 class ScheduleImportBody(BaseModel):
@@ -1263,6 +1274,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "emulate": hub.emulate,
             "hardware": hardware_state(esp),
             "integrations": [i.info() for i in hub.integrations.values()],
+            "actions": hub.actions.status(),   # OSC actions: armed or off (admin only)
             "discovered": esp.discovered_list() if esp else [],
             "ignored": esp.ignored_list() if esp else [],
             "shows": hub.recorder.shows()[:SHOWS_MAX],
@@ -1298,6 +1310,11 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 "setlist_total_max_bytes": sched.SETLIST_TOTAL_MAX_BYTES,
                 "import_max_bytes": sched.IMPORT_MAX_BYTES, "import_max_rows": sched.IMPORT_MAX_ROWS,
                 "demo_allowed": demo_allowed(),
+                "actions": {"max_args": actions_mod.MAX_ARGS, "max_targets": actions_mod.MAX_TARGETS,
+                            "address_max": actions_mod.ADDRESS_MAX, "string_max": actions_mod.STRING_MAX,
+                            "arg_types": ["i", "f", "s"], "icons": list(actions_mod.ICONS),
+                            "placeholders": list(actions_mod.PLACEHOLDERS),
+                            "jitter_s": actions_mod.JITTER_S},
             },
         }
 
@@ -1545,6 +1562,20 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         ids = [t.id for t in body]
         if len(ids) != len(set(ids)):
             raise HTTPException(422, "Threshold ids must be unique")
+        old = {t.id: t for t in hub.config.thresholds}
+        targets = {t.id for t in hub.config.actions.targets}
+        for t in body:
+            if "actions" not in t.model_fields_set:  # an older page keeps the threshold's actions
+                if t.id in old:
+                    t.actions = old[t.id].actions
+                continue
+            try:
+                actions_mod.ThresholdActionsBody.model_validate(t.actions.model_dump())
+            except ValueError:
+                raise HTTPException(422, "Check the threshold's actions: " + actions_mod.MSG_ADDRESS) from None
+            if any(m is not None and m.target_id not in targets
+                   for m in (t.actions.raised, t.actions.cleared, t.actions.acked)):
+                raise HTTPException(422, "Check the threshold's actions: " + actions_mod.MSG_TARGET)
         hub.config.thresholds = body
         hub.save_config()
         return body
@@ -2428,17 +2459,63 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(409, STALE_SCHEDULE)
         if body.revision != hub.schedule.revision():
             raise HTTPException(409, sched.MSG_CHANGED)
-        rows, errors = sched.build_rows([i.model_dump() for i in body.items], hub.show_info()["day"],
-                                        hub.config.site)
+        items = [i.model_dump() for i in body.items]
+        current = {i["id"]: i for i in hub.schedule.items()}
+        for item, d in zip(body.items, items):  # an item sent without "action" keeps its actions
+            if "action" not in item.model_fields_set and item.id in current:
+                d["action"] = current[item.id].get("action")
+        targets = {t.id for t in hub.config.actions.targets}
+        for n, d in enumerate(items):
+            a = d.get("action") or {}
+            if any(m and m.get("target_id") not in targets for m in (a.get("start"), a.get("end")))                     and "action" in body.items[n].model_fields_set:
+                return schedule_422([sched.FieldError(n, "action", actions_mod.MSG_TARGET)])
+        rows, errors = sched.build_rows(items, hub.show_info()["day"], hub.config.site)
         if errors:
             return schedule_422(errors)
         # An item sent without "marker" (e.g. by a page loaded before this setting existed) keeps
         # the setting it has.
-        stored = {i["id"]: i.get("marker") for i in hub.schedule.items()}
         for item, row in zip(body.items, rows):
-            if "marker" not in item.model_fields_set and item.id in stored:
-                row["marker"] = stored[item.id]
-        return hub.schedule.replace(body.show_id, rows, body.revision)
+            if "marker" not in item.model_fields_set and item.id in current:
+                row["marker"] = current[item.id].get("marker")
+        if not body.with_actions:  # an older page never deletes action rows it doesn't show
+            sent = {i.id for i in body.items}
+            rows += [{**i, "sort": len(rows) + k} for k, i in enumerate(
+                x for x in current.values() if x["kind"] == sched.ACTION_KIND and x["id"] not in sent)]
+        hub.schedule.replace(body.show_id, rows, body.revision)
+        return hub.schedule.admin()
+
+    @app.get("/api/admin/schedule", dependencies=[Depends(require_admin)])
+    async def get_admin_schedule():
+        """The schedule page's list: every row with its actions and send status (admin only)."""
+        return JSONResponse(hub.schedule.admin(), headers=NO_STORE)
+
+    # ---- OSC actions (admin only; see core/actions.py for the safeguards)
+    def actions_admin() -> dict:
+        return {**hub.actions.status(), "targets": [t.model_dump() for t in hub.config.actions.targets],
+                "log": hub.recorder.action_log(100), "warning": actions_mod.SAFETY_WARNING}
+
+    @app.get("/api/admin/actions", dependencies=[Depends(require_admin)])
+    async def get_actions():
+        return JSONResponse(actions_admin(), headers=NO_STORE)
+
+    @app.put("/api/admin/actions/targets", dependencies=admin_deps)
+    async def put_action_targets(body: actions_mod.TargetsPut):
+        from ..core.config import ActionTarget
+        hub.config.actions = hub.config.actions.model_copy(
+            update={"targets": [ActionTarget(**t.model_dump()) for t in body.targets]})
+        hub.save_config()
+        return actions_admin()
+
+    @app.put("/api/admin/actions/armed", dependencies=admin_deps)
+    async def put_actions_armed(body: ActionsArmedBody):
+        hub.actions.set_armed(body.armed, "admin")
+        return hub.actions.status()
+
+    @app.post("/api/admin/actions/test", dependencies=admin_deps)
+    async def test_action(body: actions_mod.MessageBody):
+        if body.target_id not in {t.id for t in hub.config.actions.targets}:
+            raise HTTPException(422, actions_mod.MSG_TARGET)
+        return hub.actions.test(body.model_dump(), "admin")
 
     @app.put("/api/admin/schedule/settings", dependencies=admin_deps)
     async def put_schedule_settings(body: ScheduleSettingsBody):

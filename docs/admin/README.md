@@ -26,6 +26,7 @@ Forgotten the PIN? See [Updating and backups](../updating-and-backups.md).
 | **ESPHome nodes** | Adopt, rename and remove sensor nodes | [ESPHome](../integrations/esphome.md) |
 | **Sensors: calibration & averaging** | Offsets, what counts in the site average, accuracy, role | [Sensors and alarms](sensors-and-alarms.md) |
 | **Threshold alarms** | Add limits | [Sensors and alarms](sensors-and-alarms.md) |
+| **Action targets** | Where OSC actions send (QLab, Companion); actions on the schedule and on thresholds | [OSC actions](osc-actions.md) |
 | **Alarm notices** | How long notices stay on screen | [Sensors and alarms](sensors-and-alarms.md) |
 | **User dashboards** | Add dashboards, choose cards, order and size | [Dashboards](dashboards.md) |
 | **OSC output** | Send the site average and alarm state to other gear | [OSC output](../integrations/osc-output.md) |

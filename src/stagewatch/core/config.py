@@ -452,6 +452,9 @@ class Threshold(_Model):
     hysteresis: float = Field(0.0, ge=0)
     hold_s: float = Field(0.0, ge=0, le=3600)
     enabled: bool = True
+    # OSC actions on raised / cleared / acknowledged (core/actions.py validates the messages).
+    # Additive with defaults: no config schema bump; an older build ignores and drops it on save.
+    actions: "ThresholdActions" = Field(default_factory=lambda: ThresholdActions())
 
 
 # The channel groups a GLOBCON levels card can show: strip numbers as on the controller (1-based fader
@@ -561,6 +564,40 @@ class OscDestination(_Model):
     host: str
     port: int = Field(9000, ge=1, le=65535)
     enabled: bool = True
+    alarm_messages: bool = False  # also send /stagewatch/alarm/event on each threshold alarm change
+
+
+class ActionArg(_Model):
+    t: Literal["i", "f", "s"] = "s"
+    v: int | float | str = ""
+
+
+class ActionMessage(_Model):
+    """One OSC message to an action target (checked strictly by core/actions.py on the API)."""
+    target_id: str = ""
+    address: str = ""
+    args: list[ActionArg] = Field(default_factory=list)
+
+
+class ThresholdActions(_Model):
+    raised: ActionMessage | None = None
+    cleared: ActionMessage | None = None
+    acked: ActionMessage | None = None
+    cooldown_s: int = Field(60, ge=0, le=3600)
+
+
+class ActionTarget(_Model):
+    id: str
+    name: str = ""
+    host: str
+    port: int = Field(53000, ge=1, le=65535)
+    enabled: bool = True
+
+
+class ActionsConfig(_Model):
+    """Outbound OSC action targets (QLab, Companion ...). Additive: no config schema bump. The armed
+    switch is never saved: it is off after every start."""
+    targets: list[ActionTarget] = Field(default_factory=list)
 
 
 class OscOutConfig(_Model):
@@ -867,6 +904,7 @@ class Config(_Model):
         Dashboard(slug="wall", title="Wall", layout="wall", allow_marker=False),
     ])
     osc_out: OscOutConfig = Field(default_factory=OscOutConfig)
+    actions: ActionsConfig = Field(default_factory=ActionsConfig)
     updater: UpdaterConfig = Field(default_factory=UpdaterConfig)
     wall_clock: WallClockConfig = Field(default_factory=WallClockConfig)
     ontime_timer: OntimeTimerConfig = Field(default_factory=OntimeTimerConfig)

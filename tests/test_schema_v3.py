@@ -12,7 +12,7 @@ import pytest
 from stagewatch import backup, updater_common as uc
 from stagewatch.core import recorder as rec_mod
 from stagewatch.core.recorder import Recorder, updater_backup_covers
-from stagewatch.version import DB_SCHEMA_VERSION
+DB_SCHEMA_VERSION = 3  # these tests cover the v2 -> v3 step: the build is held at v3 (see _at_v3)
 
 ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests" / "fixtures" / "v1"
@@ -42,6 +42,14 @@ def _dump(path: Path) -> tuple[int, list[str]]:
 
 def _cols(path: Path, table: str) -> dict:
     return {r[1]: (r[2], r[3], r[4]) for r in _q(path, f"PRAGMA table_info({table})")}
+
+
+@pytest.fixture(autouse=True)
+def _at_v3(monkeypatch):
+    """Hold this build at v3, as 0.3.x was (v4 has its own tests in test_actions.py)."""
+    monkeypatch.setattr(rec_mod, "DB_SCHEMA_VERSION", 3)
+    monkeypatch.setattr(rec_mod, "SAFETY_COPY_SUFFIX", ".pre-v3.bak")
+    monkeypatch.setattr(Recorder, "_v3_to_v4", lambda self: None)
 
 
 @pytest.fixture(autouse=True)
@@ -134,8 +142,8 @@ def test_error_mid_v3_migration_leaves_v2_untouched(v2_db, monkeypatch, caplog, 
     assert _dump(v2_db) == before  # still v2, same schema, same rows
     assert "upgrade to v3 failed" in caplog.text and "left unchanged" in caplog.text
     monkeypatch.undo()
-    Recorder(v2_db).close()  # restart after the failure: migrates cleanly
-    assert _q(v2_db, "PRAGMA user_version") == [(3,)]
+    Recorder(v2_db).close()  # restart after the failure: migrates cleanly (on to today's version)
+    assert _q(v2_db, "PRAGMA user_version") == [(rec_mod.DB_SCHEMA_VERSION,)]
 
 
 def test_v3_migration_never_reads_or_writes_states(v2_db):
