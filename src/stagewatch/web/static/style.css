@@ -1106,7 +1106,8 @@ body.layout-wall .pw-track { height: 28px; border-radius: 14px; }
 body.layout-wall .pw-gscale { font-size: 18px; height: 24px; }
 body.layout-wall .pw-gsub { display: none; }
 .pw-hist { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--grid); }
-.pw-histbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+/* Chart controls sit on the right, as on every other card. */
+.pw-histbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; margin-bottom: 6px; }
 .pw-histbar select { min-height: 36px; }
 .pw-chart-wrap { height: 200px; }
 body.layout-phone .pw-chart-wrap { height: 160px; }
