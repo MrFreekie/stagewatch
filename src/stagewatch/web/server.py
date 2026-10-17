@@ -56,6 +56,7 @@ from ..updater_common import UpdaterError
 from ..version import build_info
 from .auth import COOKIE, SESSION_S, SessionSigner, hash_pin, verify_pin
 from . import branding as brand
+from ..core import documents as docs_mod
 from .limits import DEFAULT_BODY_LIMIT, WS_MAX_MESSAGE, BodySizeLimitMiddleware
 
 log = logging.getLogger(__name__)
@@ -609,8 +610,34 @@ LOGO_PATH = re.compile(r"/api/admin/events/[0-9]{1,12}/logo/(light|dark)")
 LOGO_BODY_LIMIT = brand.LOGO_MAX_BYTES + 4096
 
 
+# Document upload (plans/policy-documents.md): the same pattern, sized to the PDF cap.
+DOC_FILE_PATH = re.compile(r"/api/admin/events/[0-9]{1,12}/documents/[0-9a-f]{12}/file")
+DOC_BODY_LIMIT = docs_mod.PDF_MAX_BYTES + 4096
+
+
 def _logo_limit(scope) -> int | None:
-    return LOGO_BODY_LIMIT if LOGO_PATH.fullmatch(scope.get("path", "")) else None
+    path = scope.get("path", "")
+    if LOGO_PATH.fullmatch(path):
+        return LOGO_BODY_LIMIT
+    return DOC_BODY_LIMIT if DOC_FILE_PATH.fullmatch(path) else None
+
+
+DocCategory = Literal["lightning", "wind", "heat", "evacuation", "electrical", "site_rules", "medical",
+                      "noise", "other"]
+
+
+class DocumentNew(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=docs_mod.TITLE_MAX * 2)
+    category: DocCategory
+    dashboards: list[str] = Field(default_factory=list, max_length=64)
+
+
+class DocumentPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str | None = Field(None, min_length=1, max_length=docs_mod.TITLE_MAX * 2)
+    category: DocCategory | None = None
+    dashboards: list[str] | None = Field(None, max_length=64)
 
 
 class BrandingBody(BaseModel):
@@ -880,6 +907,8 @@ class LiveFeed:
             # Small on purpose: clients fetch GET /api/schedule?stage= for the list itself.
             self._send_all({"type": "schedule", "show_id": payload.get("show_id"),
                             "revision": payload.get("revision")})
+        elif topic == "documents":
+            self._send_all({"type": "documents_changed"})   # no data: dashboards refetch their own list
         elif topic in ("device_removed", "config", "show"):
             self._send_all({"type": "reload"})
 
@@ -910,6 +939,11 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         row = hub.recorder.event_branding(eid)
         return repr(row["created"]) if row else ""
     logos = brand.BrandingStore(hub.data_dir, event_owner)
+    documents = docs_mod.DocumentStore(hub.data_dir, event_owner)
+    try:
+        documents.clean(hub.recorder.event_id)   # files a crash left without an index entry
+    except (OSError, docs_mod.DocError):
+        pass
     feed = LiveFeed(hub)
     failed_logins: list[float] = []
 
@@ -1900,6 +1934,162 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         hub.recorder.set_event_branding(eid, o["on_dark"], o["show_on_admin"], o["show_on_index"])
         logo_changed(eid)
         return admin_branding(eid)
+
+    # ------------------------------------------------------------ documents
+    # Per-event policy and risk documents. Admin-only until ticked for a dashboard; public routes
+    # see only the current event's documents shared with the named dashboard, and answer the same
+    # 404 for hidden and missing ones. Never in the snapshot, /api/info, admin state or OSC.
+    NO_STORE = {"Cache-Control": "no-store"}
+
+    def doc_event(event_id) -> int:
+        try:
+            eid = docs_mod.valid_event(event_id)
+        except docs_mod.DocError:
+            raise HTTPException(404, "No such event") from None
+        if hub.recorder.event_branding(eid) is None:
+            raise HTTPException(404, "No such event")
+        return eid
+
+    def doc_call(fn, *args):
+        try:
+            return fn(*args)
+        except docs_mod.DocError as e:
+            raise HTTPException(e.status, e.message) from None
+        except OSError:
+            log.warning("documents: file system error", exc_info=True)
+            raise HTTPException(503, "The document could not be saved. Check the disk has space, then try again.") from None
+
+    def check_slugs(slugs: list[str]) -> list[str]:
+        known = {d.slug for d in hub.config.dashboards}
+        if any(s not in known for s in slugs):
+            raise HTTPException(422, "Unknown dashboard. Reload the page and try again.")
+        return list(dict.fromkeys(slugs))
+
+    def docs_changed(eid: int) -> None:
+        if eid == hub.recorder.event_id:
+            hub.bus.publish("documents", None)
+
+    def shared_doc(doc_id: str, slug: str) -> tuple[int, dict]:
+        eid = hub.recorder.event_id
+        try:
+            doc = documents.get(eid, doc_id)
+        except docs_mod.DocError:
+            raise HTTPException(404, "No such document") from None
+        dash = hub.config.dashboard(slug)
+        # A wall shows titles only, so it never serves the content (same 404 as hidden or missing).
+        if dash is None or dash.layout == "wall" or slug not in doc["dashboards"] or not doc["ext"]:
+            raise HTTPException(404, "No such document")
+        return eid, doc
+
+    def admin_docs(eid: int) -> dict:
+        return {"event_id": eid, "current": eid == hub.recorder.event_id,
+                "max_docs": docs_mod.MAX_DOCS,
+                "documents": [docs_mod.admin(x) for x in doc_call(documents.docs, eid)]}
+
+    @app.get("/api/documents")
+    async def list_documents(dashboard: str = Query(..., max_length=64)):
+        found = []
+        if hub.config.dashboard(dashboard) is not None:
+            found = [docs_mod.public(x) for x in documents.docs(hub.recorder.event_id)
+                     if dashboard in x["dashboards"] and x["ext"]]
+        return JSONResponse({"documents": found}, headers=NO_STORE)
+
+    @app.get("/api/documents/{doc_id}")
+    async def read_document(doc_id: str, dashboard: str = Query(..., max_length=64)):
+        eid, doc = shared_doc(doc_id, dashboard)
+        text = None
+        if doc["ext"] != "pdf":
+            try:
+                text = documents.path(eid, doc).read_text(encoding="utf-8")
+            except OSError:
+                raise HTTPException(404, "No such document") from None
+        return JSONResponse({**docs_mod.public(doc), "text": text}, headers=NO_STORE)
+
+    def doc_file(eid: int, doc: dict) -> FileResponse:
+        path = documents.path(eid, doc)
+        if path is None or not path.is_file():
+            raise HTTPException(404, "No such document")
+        ctype = "application/pdf" if doc["ext"] == "pdf" else "text/plain; charset=utf-8"
+        return FileResponse(path, media_type=ctype, headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Content-Disposition": f'inline; filename="document.{doc["ext"]}"',
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "Referrer-Policy": "no-referrer",
+            "Cache-Control": "no-store"})
+
+    @app.get("/api/documents/{doc_id}/file")
+    async def document_file(doc_id: str, dashboard: str = Query(..., max_length=64)):
+        return doc_file(*shared_doc(doc_id, dashboard))
+
+    @app.get("/api/admin/events/{event_id}/documents", dependencies=[Depends(require_admin)])
+    async def admin_list_documents(event_id: str):
+        return JSONResponse(admin_docs(doc_event(event_id)), headers=NO_STORE)
+
+    @app.get("/api/admin/events/{event_id}/documents/{doc_id}/file", dependencies=[Depends(require_admin)])
+    async def admin_document_file(event_id: str, doc_id: str):
+        eid = doc_event(event_id)
+        return doc_file(eid, doc_call(documents.get, eid, doc_id))
+
+    @app.post("/api/admin/events/{event_id}/documents", dependencies=admin_deps)
+    async def create_document(event_id: str, body: DocumentNew):
+        eid = doc_event(event_id)
+        slugs = check_slugs(body.dashboards)
+        doc = await asyncio.to_thread(doc_call, documents.create, eid, body.title, body.category, slugs)
+        docs_changed(eid)
+        return {"id": doc["id"], **admin_docs(eid)}
+
+    @app.put("/api/admin/events/{event_id}/documents/{doc_id}/file", dependencies=admin_deps)
+    async def put_document_file(event_id: str, doc_id: str, request: Request,
+                                kind: Literal["md", "txt", "pdf"] = Query("txt")):
+        # Takes only the Request: the admin and same-origin checks run before any byte is read.
+        eid = doc_event(event_id)
+        doc_call(documents.get, eid, doc_id)
+        declared = request.headers.get("content-length")
+        if declared is None:
+            raise HTTPException(411, "Send the file with a Content-Length")
+        if not declared.isdigit() or int(declared) > docs_mod.PDF_MAX_BYTES:
+            raise HTTPException(413, docs_mod.MSG_PDF_LARGE)
+        data = bytearray()
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > docs_mod.PDF_MAX_BYTES:
+                raise HTTPException(413, docs_mod.MSG_PDF_LARGE)
+        await asyncio.to_thread(doc_call, documents.upload, eid, doc_id, bytes(data), kind)
+        docs_changed(eid)
+        return admin_docs(eid)
+
+    @app.patch("/api/admin/events/{event_id}/documents/{doc_id}", dependencies=admin_deps)
+    async def patch_document(event_id: str, doc_id: str, body: DocumentPatch):
+        eid = doc_event(event_id)
+        slugs = check_slugs(body.dashboards) if body.dashboards is not None else None
+        await asyncio.to_thread(doc_call, documents.patch, eid, doc_id, body.title, body.category, slugs)
+        docs_changed(eid)
+        return admin_docs(eid)
+
+    @app.post("/api/admin/documents/demo", dependencies=admin_deps)
+    async def documents_demo():
+        """Emulate only: three example documents in the current event (one shared with the
+        first dashboard, so the reader and the warning can be seen)."""
+        if not hub.emulate:
+            raise HTTPException(409, "Demo documents only work in emulate mode. Nothing has been changed.")
+        eid = hub.recorder.event_id
+        first = [hub.config.dashboards[0].slug] if hub.config.dashboards else []
+        have = {x["title"] for x in documents.docs(eid)}
+        for title, cat, slugs, kind, body in docs_mod.demo_documents(first):
+            if title in have:
+                continue   # loaded already
+            doc = await asyncio.to_thread(doc_call, documents.create, eid, title, cat, slugs)
+            await asyncio.to_thread(doc_call, documents.upload, eid, doc["id"], body, kind)
+        docs_changed(eid)
+        return admin_docs(eid)
+
+    @app.delete("/api/admin/events/{event_id}/documents/{doc_id}", dependencies=admin_deps)
+    async def delete_document(event_id: str, doc_id: str):
+        eid = doc_event(event_id)
+        await asyncio.to_thread(doc_call, documents.delete, eid, doc_id)
+        docs_changed(eid)
+        return admin_docs(eid)
 
     # Schedule (admin writes). Like the show handlers these never await, so the stale-show check
     # and the write can't interleave with another request.

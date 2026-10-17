@@ -1305,6 +1305,78 @@
     u.temp.hidden = !v.tempNote;
   }
 
+  // ----------------------------------------------------------- documents
+  // Event plans shared with this dashboard (plans/policy-documents.md). The list is fetched, never
+  // in the snapshot; a "documents_changed" message (no data) makes it fetch again. Text documents
+  // open in a reader on this page; PDFs open in a new tab with the browser's own viewer. The wall
+  // shows titles only. Document text is never kept in localStorage.
+  const DOC_CATS = { lightning: "Lightning", wind: "Wind", heat: "Heat", evacuation: "Evacuation", electrical: "Electrical",
+    site_rules: "Site rules", medical: "Medical", noise: "Noise", other: "Other" };
+  const DOC_SIZE_KEY = "stagewatch.docs.size";
+  let docList = null, docTicket = 0, docFailed = false;
+  async function loadDocuments() {
+    if (!has("documents")) return;
+    const t = ++docTicket;
+    try {
+      const r = await SW.api("GET", `/api/documents?dashboard=${encodeURIComponent(slug)}`);
+      if (t !== docTicket) return;
+      docList = Array.isArray(r.documents) ? r.documents : [];
+      docFailed = false;
+    } catch (_) { docFailed = true; if (docList === null) docList = []; }
+    CARDS.documents.el.hidden = CARDS.documents.empty();
+    renderDocuments();
+  }
+  const docAge = (t) => { const s = serverNow() - t; return s >= 172800 ? `${Math.floor(s / 86400)} days ago` : SW.age(t, serverNow()); };
+  const docUrl = (d, file) => `/api/documents/${encodeURIComponent(d.id)}${file ? "/file" : ""}?dashboard=${encodeURIComponent(slug)}`;
+  function renderDocuments() {
+    const body = $("documents-body");
+    if (!body || docList === null) return;
+    if (docFailed && !docList.length) {
+      body.replaceChildren(h("p", { class: "muted" }, "Could not load the list. It tries again when the connection is back."));
+      return;
+    }
+    if (!docList.length) {
+      body.replaceChildren(h("p", { class: "muted" }, "No plans shared with this screen. Admin → Documents to share one."));
+      return;
+    }
+    if (isWall()) {
+      body.replaceChildren(h("p", { class: "doc-wall" }, docList.map((d) => d.title).join(" · ")),
+        h("p", { class: "muted" }, "Read on a tablet or phone."));
+      return;
+    }
+    body.replaceChildren(h("ul", { class: "doc-list" }, docList.map((d) => h("li", {},
+      d.kind === "pdf"
+        ? h("a", { class: "doc-open touch", href: docUrl(d, true), target: "_blank", rel: "noopener noreferrer" },
+          h("strong", {}, d.title), h("span", { class: "muted" }, ` ${DOC_CATS[d.category] || "Other"} · PDF · updated ${docAge(d.updated)} ↗`))
+        : h("button", { class: "doc-open touch", type: "button", onclick: () => openDocument(d) },
+          h("strong", {}, d.title), h("span", { class: "muted" }, ` ${DOC_CATS[d.category] || "Other"} · updated ${docAge(d.updated)}`))))));
+  }
+  async function openDocument(d) {
+    let r;
+    try { r = await SW.api("GET", docUrl(d, false)); } catch (err) { SW.toast(err.message || "Could not open the document", true); return; }
+    let size = 18;
+    try { size = Math.min(32, Math.max(14, Number(localStorage.getItem(DOC_SIZE_KEY)) || 18)); } catch (_) { /* default size */ }
+    const text = h("div", { class: "doc-text" }, r.kind === "md" ? SW.renderMarkdown(r.text) : h("pre", { class: "doc-plain" }, r.text));
+    const setSize = (n) => {
+      size = Math.min(32, Math.max(14, n));
+      text.style.fontSize = `${size}px`;
+      try { localStorage.setItem(DOC_SIZE_KEY, String(size)); } catch (_) { /* not remembered */ }
+    };
+    setSize(size);
+    const close = () => { box.remove(); document.removeEventListener("keydown", onKey); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    const box = h("div", { class: "doc-reader", role: "dialog", "aria-modal": "true", "aria-label": r.title },
+      h("div", { class: "doc-head" },
+        h("div", { class: "doc-title" }, h("strong", {}, r.title),
+          h("span", { class: "muted" }, ` Updated ${docAge(r.updated)}. Check you have the latest version.`)),
+        h("button", { class: "touch", type: "button", "aria-label": "Smaller text", onclick: () => setSize(size - 2) }, "A−"),
+        h("button", { class: "touch", type: "button", "aria-label": "Larger text", onclick: () => setSize(size + 2) }, "A+"),
+        h("button", { class: "touch primary", type: "button", onclick: close }, "Close")),
+      text);
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(box);
+  }
+
   // --------------------------------------------------------------- cards
   // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists
   // which cards it shows and in what order (dash.cards); ids this build doesn't know (from a
@@ -1336,6 +1408,9 @@
     power: { el: cardEl("power"), wide: true, render: renderPower, empty: () => !Object.keys(state.devices).some((k) => state.devices[k].category === "meter") },
     // This Raspberry Pi. Hidden unless the server runs on a Pi (renderPiHost keeps it in step).
     pi_host: { el: cardEl("pi_host"), render: renderPiHost, empty: () => !state.devices.pi_host },
+    // Event plans shared with this dashboard. Fetched on its own; the wall hides it while there are none.
+    documents: { el: cardEl("documents"), render: () => { renderDocuments(); loadDocuments(); },   // every snapshot (and so every reconnect) refetches
+      empty: () => docList === null || (isWall() && !docList.length) },
     // Hidden while no sound level values are set up (renderSpl keeps it in step).
     spl_live: { el: cardEl("spl_live"), render: renderSpl, empty: () => SW.spl.entities(state.entities).length === 0 },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
@@ -1495,6 +1570,7 @@
       case "globcon_meters": state.globcon = msg; if (has("globcon_meters")) renderGlobcon(); break;
       case "ontime_rundown": state.ontimeRundown = msg; if (has("ontime_rundown")) renderOntimeRundown(); break;
       case "alarms": setAlarms(msg.alarms); state.sounding = msg.sounding; renderAlarms(); break;
+      case "documents_changed": loadDocuments(); break;
       case "reload": location.reload(); break;
     }
   }

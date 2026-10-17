@@ -25,6 +25,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "globcon_meters",  # DirectOut GLOBCON level meters for 4 or 8 strips of one controller; hidden until GLOBCON has answered; never added by default
     "power",           # Shelly power meters (watts, volts, amps, energy): read-only Equipment readings; hidden while there are none; never added by default
     "pi_host",         # This Raspberry Pi: temperature, power supply, load, memory, disk; hidden unless Stagewatch runs on a Pi; never added by default
+    "documents",       # event policy and risk documents shared with this dashboard; hidden while none are; never added by default
 )
 KNOWN_CARDS = KNOWN_CARDS_0_3
 

@@ -1,7 +1,7 @@
 """Data backup and restore for updates and rollbacks (stdlib only; amendment F).
 
 Layout:
-- Backup files:  ``<data>/backups/<id>/``   (config.yaml, secret.key, contacts/, branding/, DB)
+- Backup files:  ``<data>/backups/<id>/``   (config.yaml, secret.key, contacts/, branding/, documents/, DB)
 - Manifest:      ``<repo>/.git/stagewatch/backups/<id>.json``  (admin-only; holds the sha256s
   the launcher verifies before restoring, so a tampered backup in the data dir is refused)
 - Displaced:     ``<data>/backups/displaced-<ts>/``  (what a restore moved out of the way;
@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 DB_NAME = "stagewatch.sqlite3"
 FILES = ("config.yaml", "secret.key")
-DIRS = ("contacts", "branding")
+DIRS = ("contacts", "branding", "documents")
 RETENTION = 10
 BACKUPS_DIRNAME = "backups"
 
