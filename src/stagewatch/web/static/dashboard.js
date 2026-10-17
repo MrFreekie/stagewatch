@@ -1640,6 +1640,22 @@
     resetHeights();
   }
 
+  // Wall alarm edge: one shared hook, data-level="alert" | "stop" on the card, from the level
+  // classes each card already sets (style.css draws the edge on the wall layout only). Kept in
+  // step by a class observer, so cards that tick on their own timers need no extra call.
+  const LEVEL_STOP = ".pw-l-over, .wm-l3";
+  const LEVEL_ALERT = ".lvl-alert:not(.baro-tend):not(.next):not(.next *), .rd-lvl-alert, .ot-over, .lim-over, .wm-l2";
+  function markLevels() {
+    for (const card of $("main").querySelectorAll("[data-card]")) {
+      const hit = (sel) => card.matches(sel) || !!card.querySelector(sel);
+      const lvl = hit(LEVEL_STOP) ? "stop" : hit(LEVEL_ALERT) ? "alert" : "";
+      if ((card.getAttribute("data-level") || "") === lvl) continue;
+      if (lvl) card.setAttribute("data-level", lvl); else card.removeAttribute("data-level");
+    }
+  }
+  // Observer callbacks come batched; data-level is outside the filter, so this cannot loop.
+  new MutationObserver(markLevels).observe($("main"), { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+
   // No holes in the grid: a half-width card with no half-width partner beside it, or the odd card
   // left over in a two-up row, takes the full width (data-lone, style.css). Runs again whenever a
   // card shows or hides itself, as cards with nothing to show do.
