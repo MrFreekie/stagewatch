@@ -51,7 +51,6 @@ Untested. Windows Bluetooth may not work for a program started at boot with nobo
 ## Known limits
 
 * Whether the sensor puts its `ffe5` service in its advertisement is not known (the captures show the services only after connecting), so Stagewatch does not scan by service.
-
 * Checked against real captures of one WT901BLECL (advertises as `WT901BLE67`). The live Bluetooth link has not yet been run on a Raspberry Pi.
 * The battery voltage is read as the raw number divided by 100 (411 = 4.11 V). That is an inference from one sensor, not a documented fact. The percentage is a rough lithium-cell curve.
 * The WT9011DCL and WIT-WWS01 are not supported yet.

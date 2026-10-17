@@ -123,6 +123,8 @@ class WitmotionReader:
                 if device is None:
                     self.on_status("not found")
                     return False
+                if not self.address:   # first-time convenience: tell the admin which sensor this was, to put in the config
+                    log.info("WitMotion: found %s, address %s", getattr(device, "name", ""), getattr(device, "address", ""))
                 self.on_status("connecting")
                 self._lost.clear()
                 self.splitter.reset()
