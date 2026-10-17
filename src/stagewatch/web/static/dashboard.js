@@ -1220,21 +1220,25 @@
     $("spl-limits-empty").hidden = !none;
     $("spl-limits-main").hidden = none;
     if (none) return;
-    const top = L.headline(d), now = serverNow();
-    const ent = top && top.reading && top.reading.entity_id ? state.entities[top.reading.entity_id] : null;
-    const st = top ? L.status(top, ent) : "not_recorded";
-    setText($("spl-limits-label"), top ? `${top.kind === "guidance" ? "Guidance" : "Limit"}: ${top.label || top.metric}` : "No limit now");
-    setText($("spl-limits-value"), top ? L.db(top.value_db) : "—");
-    setText($("spl-limits-live"), L.value(ent, st, top ? top.value_db : null));
-    setText($("spl-limits-state"), st === "over" ? (top.kind === "limit" ? "▲ OVER the limit" : "▲ over guidance") : (L.WORDS[st] || "At or under"));
-    setClass(card, `card spl-limits-card lim-${st}${top && top.kind === "guidance" ? " lim-guidance" : ""}`);
-    const nxt = (d.upcoming || []).find((u) => u.kind === "limit") || (d.upcoming || [])[0];
-    setText($("spl-limits-next"), nxt ? `Next: ${SW.fmtTime(nxt.ts)} → ${nxt.to_db === null ? "no limit" : L.db(nxt.to_db) + " dB"} (${nxt.metric}), ${L.countdown(nxt.ts, now)}` : "No more changes today");
-    $("spl-limits-list").replaceChildren(...(d.current || []).filter((c) => c !== top).map((c) => {
-      const e2 = c.reading && c.reading.entity_id ? state.entities[c.reading.entity_id] : null;
-      const s2 = L.status(c, e2);
-      return h("li", { class: `lim-${s2}` }, `${c.label || c.metric}: ${L.line(c, SW.fmtTime)} · now ${L.value(e2, s2, c.value_db)} dB${s2 === "over" ? " ▲ OVER" : (L.WORDS[s2] ? " · " + L.WORDS[s2] : "")}`);
-    }));
+    // One tile per limit in force (licence limits first). The live value is on the Sound level card;
+    // here only the word OVER / No reading says how it compares.
+    const now = serverNow(), cur = d.current || [];
+    const tiles = cur.map((c) => {
+      const ent = c.reading && c.reading.entity_id ? state.entities[c.reading.entity_id] : null;
+      const st = L.status(c, ent);
+      const word = st === "over" ? (c.kind === "limit" ? "▲ OVER the limit" : "▲ over guidance") : (L.WORDS[st] || "At or under");
+      return h("div", { class: `tile spl-lim-tile lim-${st}${c.kind === "guidance" ? " lim-guidance" : ""}` },
+        h("div", { class: "label" }, `${c.kind === "guidance" ? "Guidance" : "Limit"}: ${c.label || c.metric}`),
+        h("div", { class: "value" }, h("span", { class: "spl-num" }, L.db(c.value_db)), h("span", { class: "unit" }, L.unit(c.metric))),
+        h("div", { class: "foot" }, [c.label ? c.metric : "", c.next_ts ? `until ${SW.fmtTime(c.next_ts)}` : "", word].filter(Boolean).join(" · ")));
+    });
+    $("spl-limits-head").replaceChildren(...(tiles.length ? tiles : [h("div", { class: "tile spl-lim-tile" }, h("div", { class: "label" }, "No limit now"), h("div", { class: "value" }, "—"))]));
+    const over = cur.some((c) => L.status(c, c.reading && state.entities[c.reading.entity_id]) === "over" && c.kind === "limit");
+    setClass(card, `card spl-limits-card${over ? " lim-over" : ""}`);
+    const nxt = (d.upcoming || []).slice(0, 3);
+    $("spl-limits-next").replaceChildren(...(nxt.length ? nxt.map((u) => h("li", {},
+      `Next: ${SW.fmtTime(u.ts)} → ${u.to_db === null ? "no limit" : `${L.db(u.to_db)} ${L.unit(u.metric)}`} (${u.metric}), ${L.countdown(u.ts, now)}`))
+      : [h("li", {}, "No more changes today")]));
     const cf = $("spl-limits-curfew");
     cf.hidden = !d.curfew_ts;
     setText(cf, d.curfew_ts ? `Curfew ${SW.fmtTime(d.curfew_ts)} (${L.countdown(d.curfew_ts, now)})` : "");

@@ -18,6 +18,10 @@ SW.splLimits = (function () {
 
   L.WORDS = { over: "OVER", under: "", no_reading: "No reading", not_recorded: "Metric not available" };
 
+  // The frequency weighting from Smaart's metric name ("LAeq 15" → "A", "LCpeak" → "C"), or "".
+  L.weight = (metric) => { const m = /^L([ACZ])/i.exec(String(metric || "").trim()); return m ? m[1].toUpperCase() : ""; };
+  L.unit = (metric) => (L.weight(metric) ? `dB(${L.weight(metric)})` : "dB");
+
   L.db = (v) => (v === null || v === undefined ? "—" : String(Number(v)));
 
   // "Limit now 102 dB until 22:00, then 98" / "Guidance 100 dB" (fmt formats a time).

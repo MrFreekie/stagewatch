@@ -442,7 +442,11 @@
       const end = h("input", { class: "touch", type: "time", value: l.end || "", "aria-label": "Until" });
       const label = h("input", { class: "touch", maxlength: "60", value: l.label || "", "aria-label": "Label" });
       const r = { l, met, kind, val, start, end, label };
-      r.el = h("div", { class: "row spl-lim-row" }, field("Smaart value", met), field("Kind", kind), field("dB", val),
+      // The weighting comes from Smaart's value name (LAeq → dB(A), LCeq → dB(C)); shown, not chosen.
+      const unitOf = () => { const s = met.value === "keep" ? l : slots[Number(met.value)] || {}; const w = /^L([ACZ])/i.exec(String(s.metric || "").trim()); return w ? `dB(${w[1].toUpperCase()})` : "dB"; };
+      const dbField = field(unitOf(), val);
+      met.addEventListener("change", () => { const lab = dbField.querySelector("span, .label, legend") || dbField.firstChild; if (lab) lab.textContent = unitOf(); });
+      r.el = h("div", { class: "row spl-lim-row" }, field("Smaart value", met), field("Kind", kind), dbField,
         field("From (empty = start of day)", start), field("Until (empty = end of day)", end), field("Label (optional)", label),
         h("button", { class: "touch", onclick: () => { rows = rows.filter((x) => x !== r); r.el.remove(); } }, "Remove"));
       rows.push(r);
@@ -1407,7 +1411,7 @@
     ontime_rundown: ["Ontime Rundown", "The running event, whether Ontime is ahead or behind, the planned and expected end and the list of events with their times. Read from Ontime; set its address in the Ontime card. Event titles and notes are shown on the dashboard, and follow the Ontime card setting \"Show the event title on dashboards\"."],
     equipment: ["Equipment", "Readings from Equipment sensors (amp racks, power supplies), by node. Never part of the site average. Stays hidden until a sensor has the Equipment role."],
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
-    spl_limits: ["Sound level limits", "The licence limit in force now, the next change and the live Smaart value beside it. Public wording only. Stays hidden on phones and walls until limits are entered (Sound level limits)."],
+    spl_limits: ["Sound level limits", "Every limit in force now with its weighting (dB(A), dB(C)), whether it is over, and the next changes. Public wording only. Stays hidden on phones and walls until limits are entered (Sound level limits)."],
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
     globcon_meters: ["DirectOut GLOBCON", "Live level meters for a group of channels (for example 1 to 8 or 9 to 16) of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Pick the controller and channels here; set the GLOBCON address in the GLOBCON settings."],
     power: ["Power", "Watts, volts, amps, frequency and energy from Shelly power meters, as the meters report them. Read only. Never part of a site average. Add meters in the Shelly power meters settings. Stays hidden until a meter has been added."],

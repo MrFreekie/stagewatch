@@ -41,5 +41,9 @@ eq(L.headline({ current: [{ kind: "guidance" }, { kind: "limit", id: "l" }] }).i
 eq(L.footer({ set_by: "A", reference: "R", rev: 3, updated: 5, copied: true }, () => "14:05"),
   "Set by A · Ref R · Rev 3 · Updated 14:05 · Copied from another event, not yet confirmed", "footer");
 
+eq(L.unit("LAeq 15"), "dB(A)", "A weighting from the name");
+eq(L.unit("LCpeak"), "dB(C)", "C weighting from the name");
+eq(L.unit("Leq"), "dB", "no weighting in the name");
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("spl_limits_test: all passed");
