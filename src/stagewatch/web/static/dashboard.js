@@ -1227,7 +1227,7 @@
     const st = top ? L.status(top, ent) : "not_recorded";
     setText($("spl-limits-label"), top ? `${top.kind === "guidance" ? "Guidance" : "Limit"}: ${top.label || top.metric}` : "No limit now");
     setText($("spl-limits-value"), top ? L.db(top.value_db) : "—");
-    setText($("spl-limits-live"), L.value(ent, st, top.value_db));
+    setText($("spl-limits-live"), L.value(ent, st, top ? top.value_db : null));
     setText($("spl-limits-state"), st === "over" ? (top.kind === "limit" ? "▲ OVER the limit" : "▲ over guidance") : (L.WORDS[st] || "At or under"));
     setClass(card, `card spl-limits-card lim-${st}${top && top.kind === "guidance" ? " lim-guidance" : ""}`);
     const nxt = (d.upcoming || []).find((u) => u.kind === "limit") || (d.upcoming || [])[0];

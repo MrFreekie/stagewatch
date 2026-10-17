@@ -1748,6 +1748,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(422, err)
         rec = hub.recorder
         show_id = rec.show_id if body.scope == "show" else None
+        latest = rec._spl_latest(rec.event_id, show_id)
+        doc = limits_mod.dump_set(body.limit_set)
+        if latest is not None and latest[5] == doc and not latest[4]:
+            return {"ok": True, "rev": latest[0], "unchanged": True}   # same set again: no revision, no marker
         rev = rec.spl_limits_save(rec.event_id, show_id, limits_mod.dump_set(body.limit_set),
                                   _clean_line(body.entered_by, limits_mod.ENTERED_BY_MAX),
                                   _clean_line(body.change_note, limits_mod.CHANGE_NOTE_MAX))
@@ -1779,6 +1783,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             got = limits_mod.SplLimitSet.model_validate(row["set"])
         except ValidationError:
             raise HTTPException(409, "That event's limits could not be read") from None
+        if limits_mod.set_errors(got, hub.config.site):
+            raise HTTPException(409, "That event's limits do not fit this site's show day; enter them again")
         rev = rec.spl_limits_save(rec.event_id, None, limits_mod.dump_set(got), "", "Copied from another event",
                                   copied_from_event=body.from_event_id)
         hub.spl_limits.changed("copied from another event, not yet confirmed")

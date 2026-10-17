@@ -176,9 +176,13 @@ def evaluate(s: SplLimitSet, now: float, site) -> dict:
         if a <= now < b:
             active[lim.group] = (lim, a, b)
 
+    by_group: dict[tuple, list] = {}
+    for w in wins:
+        by_group.setdefault(w[2].group, []).append(w)
+
     def at(group, t):
-        for a, b, lim in wins:
-            if lim.group == group and a <= t < b:
+        for a, b, lim in by_group.get(group, ()):
+            if a <= t < b:
                 return lim
         return None
 
@@ -186,15 +190,16 @@ def evaluate(s: SplLimitSet, now: float, site) -> dict:
     horizon = sitetime.resolve(day + timedelta(days=2), sitetime._rollover(site).strftime("%H:%M"), site)
     stamps = sorted({t for a, b, _l in wins for t in (a, b) if now < t < horizon})
     changes = []
-    groups = {lim.group for lim in s.limits}
     for t in stamps:
-        for g in sorted(groups):
+        for g in sorted(by_group):
             before, after = at(g, t - 0.001), at(g, t)
             bv = before.value_db if before else None
             av = after.value_db if after else None
             if bv != av:
                 changes.append({"ts": t, "group": g, "before": before, "after": after})
-    return {"day": day.isoformat(), "active": active, "changes": changes}
+    end = sitetime.resolve(day + timedelta(days=1), sitetime._rollover(site).strftime("%H:%M"), site)
+    valid_until = min([t for t in stamps] + [end])   # nothing in the result changes before this
+    return {"day": day.isoformat(), "active": active, "changes": changes, "valid_until": valid_until}
 
 
 def tightens(before: SplLimit | None, after: SplLimit | None) -> bool:
@@ -232,9 +237,11 @@ class SplLimitService:
         self.set = SplLimitSet()
         self._active: dict[tuple, str] | None = None   # group -> active limit id (None until first tick)
         self._active_val: dict[tuple, float] = {}
+        self._active_end: dict[tuple, float] = {}
         self._over: dict[str, dict] = {}      # limit id -> {"on", "under_since", "seen"}
         self._warn: dict[str, float] = {}     # alarm id -> boundary ts
         self._sig = None
+        self._ev = None                       # (set, site key, from ts, evaluate result)
         self.reload()
 
     # -- the stored set
@@ -246,6 +253,7 @@ class SplLimitService:
             log.exception("Could not read the sound level limits")
             row = None
         self.doc = row
+        self._ev = None
         try:
             self.set = SplLimitSet.model_validate(row["set"]) if row else SplLimitSet()
         except Exception:  # noqa: BLE001 - a damaged row shows no limits rather than wrong ones
@@ -261,7 +269,19 @@ class SplLimitService:
             self.hub.add_marker(f"Sound level limits updated (rev {rev})" + (f": {note}" if note else ""),
                                 MARKER_SOURCE)
         self._sig = None
+        self._active = None   # a save or show switch is not a boundary passing: no change marker
         self.tick(time.time())
+
+    def evaluate(self, now: float) -> dict:
+        """evaluate() for now, reused until the next boundary or day end (it runs every second)."""
+        site = self.hub.config.site
+        key = (id(self.set), site.timezone, site.day_rollover)
+        c = self._ev
+        if c and c[0] == key and c[1] <= now < c[2]["valid_until"]:
+            return c[2]
+        ev = evaluate(self.set, now, site)
+        self._ev = (key, now, ev)
+        return ev
 
     # -- matching limits to recorded values
     def slot_entity(self, lim: SplLimit) -> str | None:
@@ -296,7 +316,7 @@ class SplLimitService:
     def _tick(self, now: float) -> None:
         site = self.hub.config.site
         cfg = self.hub.config.spl.limits_alert
-        ev = evaluate(self.set, now, site)
+        ev = self.evaluate(now)
         active = {g: v[0].id for g, v in ev["active"].items()}
 
         # 1. a boundary crossed live: one marker per limit change (kind=limit), never back-filled
@@ -305,8 +325,8 @@ class SplLimitService:
                 if g[2] != "limit" or active.get(g) == self._active.get(g):
                     continue
                 cur = ev["active"].get(g)
-                start = cur[1] if cur else None
-                if start is not None and now - start > LATE_S:
+                at_ts = cur[1] if cur else self._active_end.get(g)   # when the change happened
+                if at_ts is None or now - at_ts > LATE_S:
                     continue
                 was = self._active_val.get(g)
                 if cur:
@@ -319,6 +339,7 @@ class SplLimitService:
                     self.hub.add_marker(text, MARKER_SOURCE)
         self._active = active
         self._active_val = {g: v[0].value_db for g, v in ev["active"].items()}
+        self._active_end = {g: v[2] for g, v in ev["active"].items()}
 
         # 2. exceed: on a live received value, debounced for the marker/alarm only
         live_ids = set()
@@ -326,6 +347,8 @@ class SplLimitService:
             live_ids.add(lim.id)
             st = self._over.setdefault(lim.id, {"on": False, "under_since": None, "seen": None})
             r = self.reading(lim, now)
+            if r["state"] == "no_reading":
+                st["under_since"] = None   # the 2 minutes at or under must be seen, not assumed
             fresh = r["updated"] is not None and r["updated"] != st["seen"] and r["state"] in ("over", "under")
             if not fresh:
                 continue
@@ -392,8 +415,7 @@ class SplLimitService:
     # -- the public view
     def public(self, now: float | None = None) -> dict:
         now = time.time() if now is None else now
-        site = self.hub.config.site
-        ev = evaluate(self.set, now, site)
+        ev = self.evaluate(now)
         current = []
         for g, (lim, a, b) in sorted(ev["active"].items(), key=lambda kv: (kv[0][2] != "limit", kv[0])):
             nxt = next((c for c in ev["changes"] if c["group"] == g), None)

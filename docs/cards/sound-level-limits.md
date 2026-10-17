@@ -30,6 +30,8 @@ These are only made live, as things happen. If Stagewatch was off, nothing is fi
 - **"Sound level limits updated (rev 3): ..."**: when someone saves the limits.
 - A quiet notice **10 minutes before a limit drops** ("Sound level limit drops to 98 at 22:00"), cleared 2 minutes after.
 
+Stagewatch looks at Smaart's latest value once a second, so a peak that comes and goes between two looks can be missed; the card itself always shows the latest value. On the two nights a year the clocks change, avoid limit times inside the hour that is skipped or repeated: check the card that night.
+
 Guidance figures show on the cards only: no markers or notices. The notices and the warning time can be changed or switched off in Admin.
 
 ## Which Smaart number is compared

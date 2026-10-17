@@ -181,6 +181,27 @@ def test_no_back_filled_boundary_marker_after_downtime(hub):
     assert markers(hub) == []
 
 
+def test_late_limit_ended_marker_is_skipped(hub):
+    save(hub, lim("a", 102, end="22:00"))
+    hub.spl_limits.tick(ts(21, 0))
+    hub.spl_limits.tick(ts(23, 30))                      # 90 minutes late: no back-filled "ended"
+    assert markers(hub) == []
+
+
+def test_rearm_needs_two_observed_minutes(hub):
+    save(hub, lim("a", 100))
+    t = ts(20, 0)
+    hub.spl_limits.tick(t)
+    hub.update_state(EID, 101.0, t)
+    hub.spl_limits.tick(t)
+    hub.update_state(EID, 99.0, t + 1)
+    hub.spl_limits.tick(t + 1)
+    hub.spl_limits.tick(t + 400)                         # stale in between: not "under"
+    hub.update_state(EID, 99.0, t + 401)
+    hub.spl_limits.tick(t + 401)
+    assert "spl:over:a" in alarms(hub)
+
+
 def test_restart_makes_no_marker(hub):
     save(hub, lim("a", 102, end="22:00"), lim("b", 98, "22:00"))
     hub.spl_limits.tick(ts(22, 0, ))                    # first tick: just learns what is in force
@@ -233,14 +254,22 @@ def test_admin_routes_need_login_and_same_origin(client):
     assert client.put("/api/admin/spl-limits", json=BODY).status_code == 401
     assert client.delete("/api/admin/spl-limits/override").status_code == 401
     assert client.post("/api/admin/spl-limits/copy", json={"from_event_id": 1}).status_code == 401
+    assert client.get("/api/admin/spl-limits/revisions").status_code == 401
+    settings = {"change_warning_min": 5, "exceed_marker": True, "exceed_alarm": True}
+    assert client.put("/api/admin/spl-limits/settings", json=settings).status_code == 401
     _admin(client)
     r = client.put("/api/admin/spl-limits", json=BODY, headers={"Origin": "http://evil.example"})
     assert r.status_code == 403
+    evil = {"Origin": "http://evil.example"}
+    assert client.delete("/api/admin/spl-limits/override", headers=evil).status_code == 403
+    assert client.post("/api/admin/spl-limits/copy", json={"from_event_id": 1}, headers=evil).status_code == 403
+    assert client.put("/api/admin/spl-limits/settings", json=settings, headers=evil).status_code == 403
 
 
 def test_put_then_public_get(client, hub):
     _admin(client)
     assert client.put("/api/admin/spl-limits", json=BODY).json()["rev"] == 1
+    assert client.put("/api/admin/spl-limits", json=BODY).json() == {"ok": True, "rev": 1, "unchanged": True}
     r = client.get("/api/spl-limits")
     assert r.headers["cache-control"] == "no-store"
     j = r.json()
