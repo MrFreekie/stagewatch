@@ -544,6 +544,61 @@ class Recorder:
     def record_state(self, entity_id: str, value: float | None, ts: float) -> None:
         self._pending.append((self.show_id, ts, entity_id, value))
 
+    # ------------------------------------------------------- sound level limits
+    # spl_limit_revisions: every save is a new row (kept for audit). show_id NULL = the event's
+    # default; a row with doc "null" for a show clears that show's override (back to the default).
+    def spl_limits_save(self, event_id: int, show_id: int | None, doc: str | None, entered_by: str,
+                        change_note: str, copied_from_event: int | None = None) -> int:
+        rev = (self._db.execute("SELECT MAX(rev) FROM spl_limit_revisions WHERE event_id = ?",
+                                (event_id,)).fetchone()[0] or 0) + 1
+        self._db.execute(
+            "INSERT INTO spl_limit_revisions (event_id, show_id, rev, saved_at, entered_by, change_note, "
+            "copied_from_event, doc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (event_id, show_id, rev, time.time(), entered_by, change_note, copied_from_event,
+             doc if doc is not None else "null"))
+        self._db.commit()
+        return rev
+
+    def _spl_latest(self, event_id: int, show_id: int | None) -> tuple | None:
+        where = "show_id IS NULL" if show_id is None else "show_id = ?"
+        args = (event_id,) if show_id is None else (event_id, show_id)
+        return self._db.execute(
+            "SELECT rev, saved_at, entered_by, change_note, copied_from_event, doc FROM spl_limit_revisions "
+            f"WHERE event_id = ? AND {where} ORDER BY rev DESC LIMIT 1", args).fetchone()
+
+    def spl_limits_effective(self, event_id: int, show_id: int | None) -> dict | None:
+        """The set in force for the show: its latest override, else the event's latest default.
+        None when neither has a set."""
+        import json
+        for scope, sid in (("show", show_id), ("event", None)):
+            if scope == "show" and show_id is None:
+                continue
+            row = self._spl_latest(event_id, sid)
+            if row is None:
+                continue
+            doc = json.loads(row[5]) if row[5] else None
+            if doc is None:
+                if scope == "show":
+                    continue   # override cleared: fall back to the event default
+                return None
+            return {"scope": scope, "rev": row[0], "saved_at": row[1], "entered_by": row[2],
+                    "change_note": row[3], "copied_from_event": row[4], "set": doc}
+        return None
+
+    def spl_limits_override_active(self, event_id: int, show_id: int) -> bool:
+        row = self._spl_latest(event_id, show_id)
+        return row is not None and row[5] not in (None, "null")
+
+    def spl_limits_revisions(self, event_id: int, limit: int = 50) -> list[dict]:
+        rows = self._db.execute(
+            "SELECT rev, show_id, saved_at, entered_by, change_note, copied_from_event, doc = 'null' "
+            "FROM spl_limit_revisions WHERE event_id = ? ORDER BY rev DESC LIMIT ?", (event_id, limit)).fetchall()
+        return [{"rev": r[0], "show_id": r[1], "saved_at": r[2], "entered_by": r[3], "change_note": r[4],
+                 "copied_from_event": r[5], "cleared": bool(r[6])} for r in rows]
+
+    def event_exists(self, event_id: int) -> bool:
+        return self._db.execute("SELECT 1 FROM events WHERE id = ?", (event_id,)).fetchone() is not None
+
     def flush(self) -> None:
         """Write buffered readings (and, every 30 s, the run heartbeat) in one commit.  If the
         write fails (e.g. "database is locked") the rows are kept for the next flush, up to

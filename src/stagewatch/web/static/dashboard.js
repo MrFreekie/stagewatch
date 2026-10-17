@@ -1142,10 +1142,11 @@
         name: h("span", {}), value: h("span", { class: "spl-num" }), unit: h("span", { class: "unit" }, "dB"),
         loc: h("div", { class: "foot spl-loc" }),
         sub: h("div", { class: "foot spl-sub" }), note: h("div", { class: "foot spl-note-line" }),
+        limit: h("div", { class: "foot spl-limit-line" }),
       };
       r.chip.style.borderTopColor = `var(--spl-${(i % 3) + 1})`;
       r.el = h("div", { class: "tile spl-tile" }, h("div", { class: "label" }, r.chip, r.name),
-        r.loc, h("div", { class: "value" }, r.value, r.unit), r.sub, r.note);
+        r.loc, h("div", { class: "value" }, r.value, r.unit), r.limit, r.sub, r.note);
       splUi.rows[e.id] = r;
       return r.el;
     }));
@@ -1169,6 +1170,7 @@
       setText(r.sub, v.sub);
       setText(r.note, v.note);
       setClass(r.el, `tile spl-tile spl-${v.state}`);
+      splLimitLine(r.limit, e);
     }
     setText($("spl-title"), SW.spl.title(ents));
     if (!splUi.status) { splUi.status = SW.sourceStatusUi("smaart"); const badge = card.querySelector(".spl-badge"); badge.parentNode.insertBefore(splUi.status.el, badge); }
@@ -1183,6 +1185,68 @@
     setText(status, down ? `Smaart: ${dev.status_detail || dev.status}. Readings are missing until it comes back.` : "");
     updateSplChart();
   }
+  // Sound level limits: fetched from /api/spl-limits (on load, on "spl_limits_changed" and once a
+  // minute); the live value beside a limit is the dashboard's own entity, compared as received.
+  const splLim = { data: null, loading: false, at: 0 };
+  const wantLimits = () => has("spl_limits") || has("spl_live");
+  async function loadSplLimits() {
+    if (!wantLimits() || splLim.loading) return;
+    splLim.loading = true;
+    splLim.at = Date.now();
+    try {
+      const stage = schedStage();
+      splLim.data = await SW.api("GET", `/api/spl-limits${stage ? `?stage=${encodeURIComponent(stage)}` : ""}`);
+    } catch (_) { /* keep what is on screen; the next message or minute tries again */ } finally { splLim.loading = false; }
+    if (has("spl_limits")) renderSplLimits();
+    if (has("spl_live")) renderSpl();
+  }
+  function splLimitLine(el, e) {
+    const L = SW.splLimits, rows = L.forEntity(splLim.data, e.id);
+    el.hidden = !rows.length;
+    if (!rows.length) { setText(el, ""); return; }
+    let cls = "";
+    const parts = rows.map((c) => {
+      const st = L.status(c, e);
+      if (st === "over") cls = c.kind === "limit" ? " lim-over" : (cls || " lim-guide-over");
+      return L.line(c, SW.fmtTime) + (st === "over" ? (c.kind === "limit" ? " · ▲ OVER" : " · ▲ over guidance") : st === "no_reading" ? " · No reading" : "");
+    });
+    setText(el, parts.join(" | "));
+    setClass(el, `foot spl-limit-line${cls}`);
+  }
+  function renderSplLimits() {
+    const card = $("spl-limits-card"), d = splLim.data, L = SW.splLimits;
+    if (!has("spl_limits")) { card.hidden = true; return; }
+    const layout = (state.dash && state.dash.layout) || "tablet";
+    const none = !d || !d.has_limits;
+    card.hidden = none && layout !== "tablet";      // phone and wall: hidden while no limits are entered
+    $("spl-limits-empty").hidden = !none;
+    $("spl-limits-main").hidden = none;
+    if (none) return;
+    const top = L.headline(d), now = serverNow();
+    const ent = top && top.reading && top.reading.entity_id ? state.entities[top.reading.entity_id] : null;
+    const st = top ? L.status(top, ent) : "not_recorded";
+    setText($("spl-limits-label"), top ? `${top.kind === "guidance" ? "Guidance" : "Limit"}: ${top.label || top.metric}` : "No limit now");
+    setText($("spl-limits-value"), top ? L.db(top.value_db) : "—");
+    setText($("spl-limits-live"), L.value(ent, st, top.value_db));
+    setText($("spl-limits-state"), st === "over" ? (top.kind === "limit" ? "▲ OVER the limit" : "▲ over guidance") : (L.WORDS[st] || "At or under"));
+    setClass(card, `card spl-limits-card lim-${st}${top && top.kind === "guidance" ? " lim-guidance" : ""}`);
+    const nxt = (d.upcoming || []).find((u) => u.kind === "limit") || (d.upcoming || [])[0];
+    setText($("spl-limits-next"), nxt ? `Next: ${SW.fmtTime(nxt.ts)} → ${nxt.to_db === null ? "no limit" : L.db(nxt.to_db) + " dB"} (${nxt.metric}), ${L.countdown(nxt.ts, now)}` : "No more changes today");
+    $("spl-limits-list").replaceChildren(...(d.current || []).filter((c) => c !== top).map((c) => {
+      const e2 = c.reading && c.reading.entity_id ? state.entities[c.reading.entity_id] : null;
+      const s2 = L.status(c, e2);
+      return h("li", { class: `lim-${s2}` }, `${c.label || c.metric}: ${L.line(c, SW.fmtTime)} · now ${L.value(e2, s2, c.value_db)} dB${s2 === "over" ? " ▲ OVER" : (L.WORDS[s2] ? " · " + L.WORDS[s2] : "")}`);
+    }));
+    const cf = $("spl-limits-curfew");
+    cf.hidden = !d.curfew_ts;
+    setText(cf, d.curfew_ts ? `Curfew ${SW.fmtTime(d.curfew_ts)} (${L.countdown(d.curfew_ts, now)})` : "");
+    const notes = $("spl-limits-notes");
+    notes.hidden = !d.public_notes;
+    setText(notes, d.public_notes || "");
+    setText($("spl-limits-foot"), L.footer(d, SW.fmtTime));
+    setText($("spl-limits-disclaimer"), `${d.disclaimer} ${d.period_note}`);
+  }
+
   function renderSplSpan() {
     $("spl-span-seg").replaceChildren(...SPL_SPANS.map(([s, label]) =>
       h("button", { class: s === state.splSpan ? "on" : "", onclick: () => { state.splSpan = s; localSet("sw.splspan", String(s)); renderSplSpan(); loadSplHistory(); } }, label)));
@@ -1337,6 +1401,8 @@
     // This Raspberry Pi. Hidden unless the server runs on a Pi (renderPiHost keeps it in step).
     pi_host: { el: cardEl("pi_host"), render: renderPiHost, empty: () => !state.devices.pi_host },
     // Hidden while no sound level values are set up (renderSpl keeps it in step).
+    // Shows a hint on tablets while no limits are entered; hidden on phones and walls until then.
+    spl_limits: { el: cardEl("spl_limits"), render: () => { if (!splLim.data) loadSplLimits(); renderSplLimits(); } },
     spl_live: { el: cardEl("spl_live"), render: renderSpl, empty: () => SW.spl.entities(state.entities).length === 0 },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
     connect_footer: { el: cardEl("connect_footer"), footer: true, render: renderConnectFooter },
@@ -1495,6 +1561,7 @@
       case "globcon_meters": state.globcon = msg; if (has("globcon_meters")) renderGlobcon(); break;
       case "ontime_rundown": state.ontimeRundown = msg; if (has("ontime_rundown")) renderOntimeRundown(); break;
       case "alarms": setAlarms(msg.alarms); state.sounding = msg.sounding; renderAlarms(); break;
+      case "spl_limits_changed": loadSplLimits(); break;   // no payload: fetch the limits
       case "reload": location.reload(); break;
     }
   }
@@ -1536,5 +1603,5 @@
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
   setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("pi_host")) renderPiHost(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("pi_host")) renderPiHost(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
 })();

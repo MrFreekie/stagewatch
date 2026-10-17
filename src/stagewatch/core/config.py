@@ -649,6 +649,14 @@ def spl_password_error(v) -> str | None:
     return None
 
 
+class SplLimitsAlert(_Model):
+    """Sound level limits (0.4.0): the optional notices. Additive, no schema bump; the limits
+    themselves live in the database, so a downgrade loses only these three options."""
+    change_warning_min: int = Field(10, ge=0, le=60)   # silent warning before a limit tightens; 0 = off
+    exceed_marker: bool = True
+    exceed_alarm: bool = True
+
+
 class SplConfig(_Model):
     """Sound level from Smaart (read-only). Additive with defaults (off, the usual three values):
     no config schema bump. An older build ignores the new keys and forgets them on its next save.
@@ -674,6 +682,19 @@ class SplConfig(_Model):
     chart_range: Literal["auto", "custom"] = "auto"
     chart_min_db: float = spl.CHART_MIN_DEFAULT
     chart_max_db: float = spl.CHART_MAX_DEFAULT
+    limits_alert: SplLimitsAlert = Field(default_factory=SplLimitsAlert)
+
+    @field_validator("limits_alert", mode="before")
+    @classmethod
+    def _limits_alert(cls, v):
+        """On load: damaged options fall back to the defaults (a notice, not a reason to lose the section)."""
+        if v is None:
+            return SplLimitsAlert()
+        try:
+            return SplLimitsAlert.model_validate(v)
+        except Exception:  # noqa: BLE001
+            log.warning("Sound level: the saved limit notice options were not usable and were reset")
+            return SplLimitsAlert()
 
     @model_validator(mode="before")
     @classmethod
@@ -705,6 +726,8 @@ class SplConfig(_Model):
                 data.pop(k, None)   # defaults stay out of the file, so an unchanged file stays unchanged
         if data.get("meters") is None:
             data.pop("meters", None)
+        if data.get("limits_alert") == SplLimitsAlert().model_dump():
+            data.pop("limits_alert", None)   # defaults stay out of the file
         return data
 
     def effective_slots(self) -> list[tuple[str, str]]:

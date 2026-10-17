@@ -53,8 +53,8 @@ def _put(c, dashboards):
 def test_put_dashboards_refuses_unknown_cards_and_keeps_the_old_list(client):
     _admin(client)
     before = client.hub.config.dashboard("foh").cards
-    r = _put(client, [{"slug": "foh", "cards": ["env_tiles", "spl_limits"]}])
-    assert r.status_code == 422 and "Unknown card" in r.text and "spl_limits" not in r.text
+    r = _put(client, [{"slug": "foh", "cards": ["env_tiles", "network_events"]}])
+    assert r.status_code == 422 and "Unknown card" in r.text and "network_events" not in r.text
     for bad in (["env_tiles", "env_tiles"], ["Env-Tiles"], ["env_tiles"] * 17, "env_tiles"):
         assert _put(client, [{"slug": "foh", "cards": bad}]).status_code == 422
     assert client.hub.config.dashboard("foh").cards == before
@@ -197,7 +197,7 @@ def test_migrated_dashboards_show_the_same_cards_as_0_2_0(tmp_path):
 
 
 def test_renderer_skips_cards_from_a_newer_release():
-    assert _visible_cards(["spl_limits", "env_tiles", "contacts", "chart"]) == ["env_tiles", "chart"]
+    assert _visible_cards(["network_events", "env_tiles", "contacts", "chart"]) == ["env_tiles", "chart"]
     assert _visible_cards([]) == []
 
 

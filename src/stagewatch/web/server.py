@@ -47,6 +47,7 @@ from ..core import cards as cards_mod
 from ..core import device_errors as errors_mod
 from ..core import schedule as sched
 from ..core import spl as spl_mod
+from ..core import spl_limits as limits_mod
 from ..integrations.lanwm import importer as logimport
 from ..integrations.ontime.client import check_connection
 from ..integrations.shelly import TEXT as SHELLY_TEXT, InUse
@@ -323,6 +324,28 @@ class SplSlotBody(BaseModel):
 
     metric: str = Field(min_length=1, max_length=spl_mod.METRIC_NAME_MAX)
     source: str = Field("", max_length=spl_mod.INPUT_NAME_MAX)
+
+
+class SplLimitsBody(BaseModel):
+    """PUT /api/admin/spl-limits: a whole limit set for the event (every day) or this show only.
+    Strict (unknown fields refused); public wording only, so no secrets, but errors never echo input."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True, populate_by_name=True)
+    scope: Literal["event", "show"]
+    limit_set: limits_mod.SplLimitSet = Field(alias="set")
+    entered_by: str = Field("", max_length=limits_mod.ENTERED_BY_MAX)
+    change_note: str = Field("", max_length=limits_mod.CHANGE_NOTE_MAX)
+
+
+class SplLimitsCopyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    from_event_id: StrictInt = Field(ge=1, le=2**31)
+
+
+class SplLimitsSettingsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    change_warning_min: StrictInt = Field(ge=0, le=60)
+    exceed_marker: StrictBool
+    exceed_alarm: StrictBool
 
 
 class SplBody(BaseModel):
@@ -880,6 +903,8 @@ class LiveFeed:
             # Small on purpose: clients fetch GET /api/schedule?stage= for the list itself.
             self._send_all({"type": "schedule", "show_id": payload.get("show_id"),
                             "revision": payload.get("revision")})
+        elif topic == "spl_limits":
+            self._send_all({"type": "spl_limits_changed"})   # no payload: clients refetch GET /api/spl-limits
         elif topic in ("device_removed", "config", "show"):
             self._send_all({"type": "reload"})
 
@@ -1566,7 +1591,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # an empty port means Smaart's usual one (the page shows 26000 as its placeholder)
             new = SplConfig(enabled=body.enabled, host=body.host, port=body.port or 26000, password=password,
                             location=location, locations=locations,
-                            chart_range=chart_range, chart_min_db=chart_min, chart_max_db=chart_max, **extra)
+                            chart_range=chart_range, chart_min_db=chart_min, chart_max_db=chart_max,
+                            limits_alert=old.limits_alert, **extra)
         except ValidationError:
             raise HTTPException(422, "The address must be a host name or an IP address on the local network") from None
         if new.enabled and not hub.emulate and not (new.host and new.port):
@@ -1669,6 +1695,101 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             await shelly_integ().remove(device_id)
         except LookupError:
             raise HTTPException(404, "No such power meter") from None
+        return {"ok": True}
+
+    # ------------------------------------------------------- sound level limits
+    def _clean_line(text: str, cap: int) -> str:
+        return " ".join(spl_mod._clean_text(text, cap).split())
+
+    @app.get("/api/spl-limits")
+    async def get_spl_limits(stage: str | None = Query(None, max_length=sched.STAGE_MAX)):
+        """Public: the limits in force now, the next change, and who set them (public wording only:
+        no admin data, no addresses). The schedule's curfew rides along for the Limits card."""
+        now = time.time()
+        out = hub.spl_limits.public(now)
+        try:
+            nn = sched.now_next(hub.schedule.public(stage)["items"], now, None)
+            cur = nn.get("curfew")
+            out["curfew_ts"] = cur["planned_start"] if cur else None
+        except Exception:  # noqa: BLE001 - the curfew line is a nicety
+            out["curfew_ts"] = None
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+    def _limits_admin() -> dict:
+        rec = hub.recorder
+        ev = rec._spl_latest(rec.event_id, None)
+        doc = json.loads(ev[5]) if ev and ev[5] else None
+        sh = rec._spl_latest(rec.event_id, rec.show_id)
+        sdoc = json.loads(sh[5]) if sh and sh[5] else None
+        pairs = hub.config.spl.effective_slots()
+        return {
+            "event_id": rec.event_id, "show_id": rec.show_id,
+            "event_set": doc, "show_set": sdoc, "override_active": sdoc is not None,
+            "copied": bool(ev and ev[4]) and not sdoc,
+            "slots": [{"source": s, "metric": m} for s, m in pairs],
+            "events": [{"id": e["id"], "name": e["name"]} for e in rec.events() if e["id"] != rec.event_id][:50],
+            "revisions": rec.spl_limits_revisions(rec.event_id, 20),
+            "settings": hub.config.spl.limits_alert.model_dump(),
+            "max_limits": limits_mod.MAX_LIMITS,
+        }
+
+    @app.get("/api/admin/spl-limits", dependencies=[Depends(require_admin)])
+    async def admin_spl_limits():
+        return JSONResponse(_limits_admin(), headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/admin/spl-limits/revisions", dependencies=[Depends(require_admin)])
+    async def admin_spl_limit_revisions():
+        return {"revisions": hub.recorder.spl_limits_revisions(hub.recorder.event_id, 50)}
+
+    @app.put("/api/admin/spl-limits", dependencies=admin_deps)
+    async def put_spl_limits(body: SplLimitsBody):
+        err = limits_mod.set_errors(body.limit_set, hub.config.site)
+        if err:
+            raise HTTPException(422, err)
+        rec = hub.recorder
+        show_id = rec.show_id if body.scope == "show" else None
+        rev = rec.spl_limits_save(rec.event_id, show_id, limits_mod.dump_set(body.limit_set),
+                                  _clean_line(body.entered_by, limits_mod.ENTERED_BY_MAX),
+                                  _clean_line(body.change_note, limits_mod.CHANGE_NOTE_MAX))
+        hub.spl_limits.changed(_clean_line(body.change_note, limits_mod.CHANGE_NOTE_MAX))
+        log.info("Sound level limits saved (rev %d, %s, %d limit%s)", rev, body.scope, len(body.limit_set.limits),
+                 "" if len(body.limit_set.limits) == 1 else "s")
+        return {"ok": True, "rev": rev}
+
+    @app.delete("/api/admin/spl-limits/override", dependencies=admin_deps)
+    async def delete_spl_limits_override():
+        rec = hub.recorder
+        if not rec.spl_limits_override_active(rec.event_id, rec.show_id):
+            return {"ok": True, "changed": False}
+        rev = rec.spl_limits_save(rec.event_id, rec.show_id, None, "", "Back to the event's limits")
+        hub.spl_limits.changed("back to the event's limits")
+        return {"ok": True, "changed": True, "rev": rev}
+
+    @app.post("/api/admin/spl-limits/copy", dependencies=admin_deps)
+    async def copy_spl_limits(body: SplLimitsCopyBody):
+        """Copy another event's limits as this event's default, flagged "copied, not confirmed"
+        until the next save."""
+        rec = hub.recorder
+        if body.from_event_id == rec.event_id or not rec.event_exists(body.from_event_id):
+            raise HTTPException(404, "No such event")
+        row = rec.spl_limits_effective(body.from_event_id, None)
+        if row is None:
+            raise HTTPException(409, "That event has no sound level limits")
+        try:
+            got = limits_mod.SplLimitSet.model_validate(row["set"])
+        except ValidationError:
+            raise HTTPException(409, "That event's limits could not be read") from None
+        rev = rec.spl_limits_save(rec.event_id, None, limits_mod.dump_set(got), "", "Copied from another event",
+                                  copied_from_event=body.from_event_id)
+        hub.spl_limits.changed("copied from another event, not yet confirmed")
+        return {"ok": True, "rev": rev}
+
+    @app.put("/api/admin/spl-limits/settings", dependencies=admin_deps)
+    async def put_spl_limits_settings(body: SplLimitsSettingsBody):
+        from ..core.config import SplLimitsAlert
+        hub.config.spl.limits_alert = SplLimitsAlert(**body.model_dump())
+        hub.save_config()
+        hub.spl_limits.tick()
         return {"ok": True}
 
     @app.post("/api/admin/spl/refresh", dependencies=admin_deps)

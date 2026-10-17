@@ -25,6 +25,9 @@ from .derived import OUTLIER_LIMITS, AvgInput, AvgResult, Ema, average
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
 from .recorder import REASON_POWER_OR_RESTART, Recorder
+from .spl_limits import SplLimit, SplLimitService, SplLimitSet
+from .spl_limits import dump_set as dump_spl_set
+from .spl_limits import set_errors as spl_set_errors
 from .schedule import DemoDoesNotFit, ScheduleMarkers, ScheduleService
 from .ontimerundown import OntimeRundownService
 from .ontimetimer import OntimeTimerService
@@ -82,6 +85,7 @@ class Hub:
         self.alarms = AlarmEngine()
         self.schedule = ScheduleService(self)
         self.schedule_markers = ScheduleMarkers(self)
+        self.spl_limits = SplLimitService(self)  # sound level limits beside Smaart's values (0.4.0)
         self.baro = BarometerService(self)  # 3-hour tendency from one averaged sample a minute
         self.wall_clock = WallClockService(self)  # runs a clock source only while a dashboard has the card
         self.ontime_timer = OntimeTimerService(self)  # holds the shared Ontime source while a dashboard has its card
@@ -614,6 +618,7 @@ class Hub:
         if changes:
             self._alarm_changed(changes)
         self.check_schedule_markers(now)
+        self.spl_limits.tick(now)
 
     def check_schedule_markers(self, now: float | None = None) -> list[Marker]:
         """Add any schedule markers that are due (never raises: a failure is logged)."""
@@ -751,6 +756,7 @@ class Hub:
         """Next day of the current event, or (new_event_name) day one of a new event. Dashboards
         reload; markers, alarms and history follow the new show."""
         self.recorder.start_show(name, new_event_name=new_event_name, day=day)
+        self.spl_limits.changed()
         show = self.show_info()
         self.bus.publish("show", show)
         return show
@@ -788,10 +794,36 @@ class Hub:
                 rec.rename_show("Day 1")
             if not self.schedule.items():
                 self.schedule.load_demo()
+            self._emulate_demo_limits()
         except DemoDoesNotFit:
             log.info("No demo schedule this time: it would cross the day rollover")
         except Exception:  # noqa: BLE001 - a demo must never stop the hub
             log.exception("Could not set up the emulate demo day")
+
+    def _emulate_demo_limits(self) -> None:
+        """Emulate mode: demo sound level limits on the simulated "LAeq 10" (95 dB, dropping to 92 in
+        about 25 minutes), a guidance figure on "SPL A Slow", and one limit on "LAeq 15", which the
+        simulated Smaart does not list (shows "not recorded"). Only when the event has no limits yet."""
+        rec = self.recorder
+        if rec.spl_limits_revisions(rec.event_id, 1):
+            return
+        site = self.config.site
+        now = time.time()
+        t = now + 25 * 60
+        t -= t % 300
+        hhmm = sitetime.local_hhmm(t, site)
+        demo = SplLimitSet(set_by="Demo noise consultant", reference="Demo licence, condition 12",
+                           public_notes="Demo limits for the simulated Smaart.", limits=[
+                               SplLimit(id="d1", metric="LAeq 10", value_db=95, end=hhmm, label="LAeq 10"),
+                               SplLimit(id="d2", metric="LAeq 10", value_db=92, start=hhmm, label="LAeq 10"),
+                               SplLimit(id="d3", metric="SPL A Slow", kind="guidance", value_db=100),
+                               SplLimit(id="d4", metric="LAeq 15", value_db=98),
+                           ])
+        if spl_set_errors(demo, site) or sitetime.show_day(t, site) != sitetime.show_day(now, site):
+            log.info("No demo sound level limits this time: they would cross the day rollover")
+            return
+        rec.spl_limits_save(rec.event_id, None, dump_spl_set(demo), "Demo", "Demo limits")
+        self.spl_limits.reload()
 
     def rename_event(self, name: str) -> dict:
         event = self.recorder.rename_event(name)
