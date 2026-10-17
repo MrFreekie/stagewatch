@@ -37,6 +37,8 @@ class EmulatedReader:
     def registers(self, t: float) -> list[parser.RegisterReply]:
         raw = round(412 - 30 * (t / 36000.0))   # about 4.12 V, down 0.3 V over ten hours
         return [parser.RegisterReply(parser.REG_BATTERY, (raw, 0, 0, 0, 0, 0, 0, 0)),
+                parser.RegisterReply(parser.REG_RATE, (6, 0, 0, 0, 0, 0, 0, 0)),
+                parser.RegisterReply(parser.REG_BANDWIDTH, (4, 0, 0, 0, 0, 1, 0, 0)),
                 parser.RegisterReply(parser.REG_MAG_ANGLE_TEMP, (0, 0, 0, 0, 0, 0, 2940 + round(30 * math.sin(t / 600.0)), 0))]
 
     def is_out(self, t: float) -> bool:

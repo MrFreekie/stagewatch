@@ -42,6 +42,10 @@ Try it without a sensor using `--emulate` (a simulated sensor that drops out for
 
 If the sensor's battery number cannot be read (the WT9011DCL sends a value Stagewatch does not understand), the battery shows "Not available for this sensor model" rather than a guess. The quiet-link limit follows the rate the sensor is sending at (at least three frame periods, never under 5 seconds).
 
+## Sensor settings read-out
+
+Once after each connection Stagewatch asks the sensor for its return rate, bandwidth, install direction and axis mode (it only reads; it never changes them) and keeps the answers as information, not as readings: they are not recorded and no alarm uses them. Anything the sensor does not answer shows as "unknown". Rate codes 0x01 and 0x0A/0x0B are marked "not confirmed" because WitMotion's two protocol pages disagree. The line also shows the battery state, the sensor's body temperature and, if the return rate is so slow that Stagewatch could not tell a quiet sensor from a lost link, a warning. The firmware version cannot be read over Bluetooth, so it is not shown. A card to display these lines is not built yet: the text is in the device's `witmotion` details (`setup_line`, `info_line`, `warning`).
+
 ## Raspberry Pi
 
 * Use a Pi with Bluetooth (Pi 3, 4, 5, Zero W/2 W). Wi-Fi and Bluetooth share one antenna on the Pi: **Ethernet, or 5 GHz Wi-Fi, is far more reliable**.

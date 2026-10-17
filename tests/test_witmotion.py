@@ -437,6 +437,7 @@ async def test_emulate_runs_without_hardware(hub):
         integ.tick(time.time())
         assert val(hub, "tilt_roll") == pytest.approx(2.1, abs=0.3)
         assert 29 < val(hub, "body_temp") < 30
+        assert readout(hub)["setup_line"] == "10 Hz · 20 Hz bandwidth · horizontal · 6-axis"
     finally:
         await integ.stop()
 
@@ -633,3 +634,82 @@ def test_old_config_without_the_new_fields_loads_with_defaults():
     from stagewatch.core.config import WitmotionConfig
     c = WitmotionConfig.model_validate({"enabled": True, "sensors": [{"address": "AA:BB:CC:DD:EE:01"}]})
     assert c.sensors[0].axis == "both" and c.sensors[0].smoothing_s == 2.0 and c.axis == "both"
+
+
+# ----------------------------------------------------------------------------- settings read-out
+# SYNTHETIC: built from WitMotion's register table (no capture of these two replies yet). Rate reply: register 0x03,
+# code at index 0. Bandwidth reply: register 0x1F, bandwidth at index 0, install direction at index 4, axis mode at index 5.
+RATE_10HZ = hx("55 71 03 00 06 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00")
+RATE_2HZ = hx("55 71 03 00 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00")
+RATE_UNSURE = hx("55 71 03 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00")
+BW_20_HORIZ_6AXIS = hx("55 71 1f 00 04 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00")
+BW_10_VERT_9AXIS = hx("55 71 1f 00 05 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00")
+BATT_493 = hx("55 71 64 00 ed 01 00 00 00 00 00 00 00 00 00 00 a2 00 c8 00")     # real, address zeroed: raw 493
+
+
+def test_setting_codes_decode_and_unknown_codes_stay_unknown():
+    assert parser.rate_text(one(RATE_10HZ)) == "10 Hz" and parser.rate_period_s(one(RATE_2HZ)) == 0.5
+    assert "not confirmed" in parser.rate_text(one(RATE_UNSURE))
+    assert parser.setup_texts(one(BW_20_HORIZ_6AXIS)) == {"bandwidth": "20 Hz", "orient": "horizontal", "axis_mode": "6-axis"}
+    assert parser.setup_texts(one(BW_10_VERT_9AXIS)) == {"bandwidth": "10 Hz", "orient": "vertical", "axis_mode": "9-axis"}
+    assert parser.setup_texts(RegisterReply(0x1F, (99, 0, 0, 0, 7, 3, 0, 0))) == {}      # codes not in the table: nothing said
+    assert parser.rate_text(RegisterReply(0x03, (0x55,) + (0,) * 7)) is None
+
+
+async def test_reader_reads_the_settings_once_per_connection_and_never_writes_them(quick):
+    fake = FakeBleak([FakeDevice("WT901BLE67")])
+    r, _ = make_reader(fake)
+    task = asyncio.create_task(r.run())
+    try:
+        await until(lambda: fake.clients and len(fake.clients[0].writes) >= 6)
+        await asyncio.sleep(0.15)                            # more polls happen; the settings are not asked again
+        w = fake.clients[0].writes
+        assert w[:4] == [parser.read_command(0x64), parser.read_command(0x3A), parser.read_command(0x03), parser.read_command(0x1F)]
+        assert w.count(parser.read_command(0x03)) == 1
+        assert all(b[:3] == bytes([0xFF, 0xAA, 0x27]) for b in w)   # reads only: no unlock, no setting written
+    finally:
+        await stop(task)
+
+
+def readout(hub):
+    return hub.devices[DEVICE_ID].public["witmotion"]
+
+
+async def test_readout_shows_the_settings_and_unknown_until_answered(hub):
+    integ, holder = await make(hub)
+    try:
+        cb = holder["r"].cb
+        cb["on_connected"](100.0)
+        integ.tick(100.5)
+        assert readout(hub)["setup_line"] == "unknown · bandwidth unknown · install direction unknown · axis mode unknown"
+        cb["on_frame"](one(RATE_2HZ), 101.0)
+        cb["on_frame"](one(BW_20_HORIZ_6AXIS), 101.0)
+        cb["on_frame"](one(F6), 101.0)
+        cb["on_frame"](one(F7), 101.0)
+        integ.tick(101.5)
+        r = readout(hub)
+        assert r["setup_line"] == "2 Hz · 20 Hz bandwidth · horizontal · 6-axis"
+        assert "battery 4.11 V (about 91 %, approximate)" in r["info_line"] and "sensor body 29.5 °C" in r["info_line"]
+        assert "firmware not available" in r["info_line"] and "warning" not in r
+        assert not any("setup" in k for k in hub.entities)       # information, not a recorded reading
+        cb["on_disconnected"](110.0)
+        cb["on_connected"](120.0)
+        integ.tick(120.5)
+        assert readout(hub)["setup_line"].startswith("unknown")  # read again after reconnecting, nothing carried over
+    finally:
+        await integ.stop()
+
+
+async def test_readout_says_so_for_an_unreadable_battery_and_warns_about_a_very_slow_rate(hub):
+    integ, holder = await make(hub)
+    try:
+        cb = holder["r"].cb
+        cb["on_connected"](100.0)
+        cb["on_frame"](one(BATT_493), 101.0)
+        cb["on_frame"](one(RATE_UNSURE), 101.0)                   # 0.1 or 0.2 Hz: a frame only every 5 to 10 s
+        integ.tick(101.5)
+        r = readout(hub)
+        assert "battery: not available for this sensor model" in r["info_line"]
+        assert "too slowly" in r["warning"] and "return rate" in r["warning"]
+    finally:
+        await integ.stop()
