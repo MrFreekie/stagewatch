@@ -98,7 +98,7 @@ SW.pw = (function () {
       note: "UK range 230 V +10% / -6% (advisory)", na: "Not a 230 V supply: not judged" },
     // Line-to-line, 400 V supply: 230 V -6%/+10% on 400 V = 376 to 440 V (our own arithmetic, a typical band).
     voltage_ll: { word: "voltage", unit: "V", dec: 1, scale: [340, 460], low: 376, high: 440, nearLow: 376, nearHigh: 440, judged: [300, 1e9],
-      okWord: "Within typical range", note: "Typical 400 V band 376 to 440 V (advisory)", na: "Not a 400 V line-to-line supply: not judged" },
+      okWord: "In range", note: "Typical 400 V band 376 to 440 V (advisory)", na: "Not a 400 V line-to-line supply: not judged" },
     freq: { word: "Frequency", unit: "Hz", dec: 2, scale: [49.0, 51.0], low: 49.5, high: 50.5, nearLow: 49.8, nearHigh: 50.2, judged: [40, 55],
       note: "UK 50 Hz: red outside 49.5 to 50.5, amber outside 49.8 to 50.2 (advisory)", na: "Not a 50 Hz supply: not judged" },
   };
@@ -152,7 +152,7 @@ SW.pw = (function () {
     if (v > cfg.high) return { state: "high", word: "HIGH", pos };
     if (v < cfg.nearLow) return { state: "near", word: "CLOSE TO LOW LIMIT", pos };
     if (v > cfg.nearHigh) return { state: "near", word: "CLOSE TO HIGH LIMIT", pos };
-    return { state: "ok", word: cfg.okWord || "Within UK range", pos };
+    return { state: "ok", word: cfg.okWord || "In range", pos };
   };
 
   // ---- history chart: one measurement of one meter over time (one line per phase on a 3-phase meter).
@@ -259,6 +259,7 @@ SW.pw = (function () {
 
     function buildMeter(m) {
       const r = { fields: [], energy: [], dayEnergy: [] };
+      const energyRows = [];   // several phases: the meter totals fold away with the show-day figures
       r.name = h("span", { class: "pw-name" });
       r.area = h("span", { class: "pw-area muted" });
       r.badge = h("span", { class: "pw-badge" });
@@ -309,8 +310,7 @@ SW.pw = (function () {
             continue;
           }
           const val = h("span", { class: "pw-num" }), unit = h("span", { class: "unit" });
-          body.append(h("div", { class: "pw-energy" }, h("span", { class: "pw-label" }, word[0].toUpperCase() + word.slice(1)), " ", val, unit,
-            h("span", { class: "pw-sub muted" }, " (the meter's running total)")));
+          energyRows.push(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, word[0].toUpperCase() + word.slice(1) + " (meter total)"), " ", val, unit));
           r.energy.push({ entity: x.entity.id, val, unit });
         }
       }
@@ -351,7 +351,7 @@ SW.pw = (function () {
       // This show day's figures: highest power and current, voltage range, energy used.
       r.day = [];
       r.dayHead = h("div", { class: "pw-dayhead" });
-      const dayBody = h("div", { class: "pw-day" }, r.dayHead);
+      const dayBody = h("div", { class: "pw-day" }, r.dayHead, ...energyRows);
       for (const ch of m.channels) {
         for (const g of pw.GROUP_ORDER.filter((k) => ch.groups[k] && k !== "avg")) {
           for (const f of ["power", "current", "voltage", "voltage_ll", "freq", "thd_v", "thd_i"]) {
@@ -393,7 +393,7 @@ SW.pw = (function () {
       dayBody.append(r.gaps);
       // The show-day figures (highest, lowest, energy used ...) fold away under one line, closed until
       // someone opens it; the choice holds while the page is open.
-      const dayFold = h("details", { class: "pw-dayfold" }, h("summary", {}, "Show day figures (highest, lowest, energy used)"), dayBody);
+      const dayFold = h("details", { class: "pw-dayfold" }, h("summary", {}, "Show day figures"), dayBody);
       dayFold.open = !!pw.dayFoldOpen[m.id];
       dayFold.addEventListener("toggle", () => { pw.dayFoldOpen[m.id] = dayFold.open; });
       r.root = h("div", { class: "pw-meter" }, head, r.note, body, r.gauges.length ? gaugeBox : null, dayFold);
@@ -415,7 +415,7 @@ SW.pw = (function () {
           r.badge.textContent = m.badge;
           r.badge.className = `pw-badge pw-b-${m.state}`;
           r.note.textContent = m.note;
-          r.note.hidden = !m.note;
+          SW.slot(r.note, !m.note);
           r.root.className = `pw-meter pw-s-${m.state}`;
           for (const f of r.fields) {
             const e = entities[f.entity];
@@ -446,8 +446,8 @@ SW.pw = (function () {
                 gg.band.style.display = ""; gg.band.style.left = a + "%"; gg.band.style.width = Math.max(1, b - a) + "%";
                 const lowOut = d.min < cfg.low ? `Went below ${cfg.low} ${cfg.unit} at ${hhmm(d.min_at)}. ` : "";
                 const highOut = d.max > cfg.high ? `Went above ${cfg.high} ${cfg.unit} at ${hhmm(d.max_at)}. ` : "";
-                gg.sub.textContent = `Today ${SW.num(d.min, cfg.dec)} to ${SW.num(d.max, cfg.dec)} ${cfg.unit}. ${lowOut}${highOut}${cfg.note}.`;
-              } else { gg.band.style.display = "none"; gg.sub.textContent = cfg.note + "."; }
+                gg.sub.textContent = `Today ${SW.num(d.min, cfg.dec)} to ${SW.num(d.max, cfg.dec)} ${cfg.unit}. ${lowOut}${highOut}`.trim();
+              } else { gg.band.style.display = "none"; gg.sub.textContent = ""; }
             }
           }
           const mine = Object.values(entities).filter((e) => e.device_id === m.id && e.labels && e.labels.channel);

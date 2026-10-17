@@ -737,7 +737,7 @@
       const text = step ? `${step} MIN` : "";
       setText(tag, text);
       setClass(tag, `sched-tag${lvl ? ` lvl-${lvl}` : ""}${fl}`);
-      tag.hidden = !text;
+      SW.slot(tag, !text);
     }
     setText(ui.now.title, cur ? cur.title : (idle[nn.state] || "—"));
     setText(ui.now.count, cur ? (ownEnd ? `${SW.fmtDuration(left, true)} left` : "") : "");
@@ -746,7 +746,7 @@
     // Progress bar: how much of the item's own planned time has gone. Hidden without an end time.
     const total = ownEnd ? nn.currentEnd - cur.planned_start : 0;
     const showBar = ownEnd && total > 0;
-    ui.now.bar.hidden = !showBar;
+    SW.slot(ui.now.bar, !showBar);
     if (showBar) {
       const pct = Math.max(0, Math.min(100, ((now - cur.planned_start) / total) * 100));
       const fill = ui.now.bar.firstChild;
@@ -766,7 +766,7 @@
       const text = nlvl ? `STARTS IN ${SW.nextStep()} MIN` : "";
       setText(tag, text);
       setClass(tag, `sched-tag${nlvl ? ` lvl-${nlvl}` : ""}`);
-      tag.hidden = !text;
+      SW.slot(tag, !text);
     }
     // Phone strip: one glance line, tap for the rest.
     setText(ui.stripNow, cur ? cur.title : (idle[nn.state] || "—"));
@@ -878,9 +878,9 @@
     ui.face.update(v, { reduced: SW.wc.reducedMotion() });
     if (m.source === "ontime") ui.status.update(SW.sourceInput.ontime(m, SW.wc.STALE_S), now);
     setText(ui.date, v.date);
-    ui.date.hidden = !v.date;
+    SW.slot(ui.date, !v.date);
     setText(ui.note, v.note);
-    ui.note.hidden = !v.note;
+    SW.slot(ui.note, !v.note);
     setClass(ui.note, `wc-note${v.level ? ` ${v.level}` : ""}`);
     setClass(card, `card${v.cls ? ` ${v.cls}` : ""} wc-style-${style}`);
     wc.timer = setTimeout(tickWallClock, SW.wc.nextDelayMs(m, now));
@@ -1043,7 +1043,11 @@
     if (!has("power")) { card.hidden = true; return; }
     const view = SW.pw.view(state.entities, state.devices, state.now);
     card.hidden = view.meters.length === 0;
-    if (!pwUi.ui) pwUi.ui = SW.pw.build($("power-body"));
+    if (!pwUi.ui) {
+      pwUi.ui = SW.pw.build($("power-body"));
+      // The range notes live once under "About these figures", not under every meter.
+      setText($("power-ranges"), Object.values(SW.pw.SWING).map((c) => c.note).join(". ") + ".");
+    }
     pwUi.ui.update(view, state.entities);
     if (!pwUi.status) pwUi.status = addCardStatus(card, "shelly");
     pwUi.status.update(SW.sourceInput.shelly(view.meters.map((m) => ({ dev: (state.devices || {})[m.id],
@@ -1188,7 +1192,7 @@
       setText(r.name, SW.spl.label(e));
       const loc = SW.spl.tileLocation(e, ents);
       setText(r.loc, loc);
-      r.loc.hidden = !loc;
+      SW.slot(r.loc, !loc);
       setText(r.value, v.text);
       setText(r.sub, v.sub);
       setText(r.note, v.note);
@@ -1199,12 +1203,12 @@
     if (!splUi.status) { splUi.status = SW.sourceStatusUi("smaart"); const badge = card.querySelector(".spl-badge"); badge.parentNode.insertBefore(splUi.status.el, badge); }
     splUi.status.update(SW.sourceInput.smaart(dev, ents), state.now);
     const inp = $("spl-input"), line = SW.spl.inputLine(dev);
-    inp.hidden = !line;
+    SW.slot(inp, !line);
     setText(inp, line);
     // The state of the link to Smaart, in words (never colour alone).
     const down = dev && (dev.status === "missing" || dev.status === "fault" || dev.status === "compromised");
     const status = $("spl-status");
-    status.hidden = !down;
+    SW.slot(status, !down);
     setText(status, down ? `Smaart: ${dev.status_detail || dev.status}. Readings are missing until it comes back.` : "");
     updateSplChart();
   }
@@ -1263,9 +1267,9 @@
     const nxt = (d.upcoming || []).slice(0, 3);
     $("spl-limits-next").replaceChildren(...(nxt.length ? nxt.map((u) => h("li", {},
       `Next: ${SW.fmtTime(u.ts)} → ${u.to_db === null ? "no limit" : `${L.db(u.to_db)} ${L.unit(u.metric)}`} (${u.metric}), ${L.countdown(u.ts, now)}`))
-      : [h("li", {}, "No more changes today")]));
+      : [h("li", {}, "No more changes today")]), ...[1, 2, 3].slice(Math.max(nxt.length, 1)).map(() => h("li", { "aria-hidden": "true" }, " ")));   // always 3 lines: the card keeps its size
     const cf = $("spl-limits-curfew");
-    cf.hidden = !d.curfew_ts;
+    SW.slot(cf, !d.curfew_ts);
     setText(cf, d.curfew_ts ? `Curfew ${SW.fmtTime(d.curfew_ts)} (${L.countdown(d.curfew_ts, now)})` : "");
     const notes = $("spl-limits-notes");
     notes.hidden = !d.public_notes;
@@ -1367,34 +1371,34 @@
       };
       u.tend = h("div", { class: "baro-tend" }, u.arrow, u.word, u.figure);
       u.outlook = h("div", { class: "baro-outlook" }, u.iconHost, u.outText, u.outWay);
-      u.hint = h("div", { class: "baro-hint" }, h("div", { class: "baro-label" }, "Pressure hint"), u.outlook,
-        h("p", { class: "baro-disclaimer" }, SW.baro.DISCLAIMER));
+      u.hint = h("div", { class: "baro-hint" }, h("div", { class: "baro-label" }, "Pressure hint"), u.outlook);
       u.figures = h("div", { class: "baro-figures" },
         h("div", { class: "baro-label" }, "Sea-level pressure"),
         h("div", { class: "baro-value" }, u.msl, h("span", { class: "baro-unit" }, "hPa")), u.off, u.tend, u.hint);
       u.body = h("div", { class: "baro-body" }, h("div", { class: "baro-dial-host" }, u.dial.el), u.figures);
-      card.append(u.flag, u.notes, u.body, u.info, u.temp, h("p", { class: "baro-foot muted" }, SW.baro.FOOTER));
+      card.append(u.flag, u.notes, u.body, u.info, h("p", { class: "baro-foot muted" }, SW.baro.FOOTER),
+        SW.about(h("p", { class: "baro-disclaimer muted" }, SW.baro.DISCLAIMER), u.temp));
     }
     const u = baroUi.ui;
     setClass(card, `card baro baro-${v.state}${v.dim ? " dim" : ""}`);
     u.dial.update(v);
     setText(u.msl, v.msl);
     setText(u.off, v.offScale ? "▲ Off the scale" : "");
-    u.off.hidden = !v.offScale;
-    u.flag.hidden = !v.flag;
+    SW.slot(u.off, !v.offScale);
+    SW.slot(u.flag, !v.flag);
     if (v.flag) {
       setClass(u.flag, `baro-flag lvl-${v.flag.level}`);
       setText(u.flag.firstChild, v.flag.text);
       setText(u.flag.lastChild, v.flag.line);
     }
-    u.tend.hidden = !v.tendency;
+    SW.slot(u.tend, !v.tendency);
     if (v.tendency) {
       setClass(u.tend, `baro-tend${v.tendency.level ? ` lvl-${v.tendency.level}` : ""}`);
       setText(u.arrow, v.tendency.arrow);
       setText(u.word, v.tendency.word);
       setText(u.figure, v.tendency.figure);
     }
-    u.hint.hidden = !v.outlook;
+    SW.slot(u.hint, !v.outlook);
     if (v.outlook) {
       if (baroUi.letter !== v.outlook.letter) {
         baroUi.letter = v.outlook.letter;
@@ -1406,7 +1410,7 @@
     setText(u.notes, v.notes.join(" · "));
     u.notes.hidden = !v.notes.length;
     setText(u.info, v.approx);
-    u.info.hidden = !v.approx;
+    SW.slot(u.info, !v.approx);
     setText(u.temp, v.tempNote);      // tablets only (style.css)
     u.temp.hidden = !v.tempNote;
   }
@@ -1632,7 +1636,54 @@
       if (want.indexOf(id) >= 0 && SW.cardIsHalf(state.dash, id, lay)) c.el.setAttribute("data-size", "half"); else c.el.removeAttribute("data-size");
     }
     $("no-cards").hidden = want.length > 0;
+    fillGaps();
+    resetHeights();
   }
+
+  // No holes in the grid: a half-width card with no half-width partner beside it, or the odd card
+  // left over in a two-up row, takes the full width (data-lone, style.css). Runs again whenever a
+  // card shows or hides itself, as cards with nothing to show do.
+  function fillGaps() {
+    const vis = (el) => !el.hidden;
+    const lone = [];
+    let half = [];
+    const flush = () => { if (half.length % 2) lone.push(half[half.length - 1]); half = []; };
+    for (const el of $("main").children) {
+      if (el.classList.contains("card-flow")) {
+        flush();
+        const kids = Array.prototype.filter.call(el.children, vis);
+        if (kids.length % 2) lone.push(kids[kids.length - 1]);
+      } else if (el.hasAttribute("data-card") && vis(el)) {
+        if (el.getAttribute("data-size") === "half") half.push(el); else flush();
+      }
+    }
+    flush();
+    for (const el of document.querySelectorAll("main [data-lone]")) if (lone.indexOf(el) < 0) el.removeAttribute("data-lone");
+    for (const el of lone) if (!el.hasAttribute("data-lone")) el.setAttribute("data-lone", "");
+  }
+  new MutationObserver((recs) => { if (recs.some((r) => r.target.hasAttribute("data-card"))) { fillGaps(); resetHeights(); } })
+    .observe($("main"), { subtree: true, attributes: true, attributeFilter: ["hidden"] });
+
+  // Cards keep their size while they run: a card may grow to fit (a longer list, a new tag) but does
+  // not shrink back when that line goes, so nothing below it jumps. The hold is let go when the
+  // screen size or the card list changes, or someone opens or closes a fold in a card.
+  const sizeHold = new ResizeObserver((entries) => {
+    for (const en of entries) {
+      const el = en.target;
+      if (el.hidden) continue;
+      const hgt = el.offsetHeight;
+      if (hgt > (parseFloat(el.style.minHeight) || 0)) el.style.minHeight = `${hgt}px`;
+    }
+  });
+  function resetHeights() {
+    const els = Object.keys(CARDS).filter((id) => !CARDS[id].footer).map((id) => CARDS[id].el);
+    for (const el of els) el.style.minHeight = "";
+    requestAnimationFrame(() => { for (const el of els) if (!el.hidden) el.style.minHeight = `${el.offsetHeight}px`; });   // hold from the new size
+  }
+  for (const id of Object.keys(CARDS)) if (!CARDS[id].footer) sizeHold.observe(CARDS[id].el);
+  let resizeTimer = null;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(resetHeights, 200); });
+  $("main").addEventListener("toggle", resetHeights, true);   // <details> toggle does not bubble: capture it
 
   // ---------------------------------------------------------- live feed
   function applySnapshot(msg) {

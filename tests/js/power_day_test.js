@@ -89,7 +89,7 @@ eq(mv.channels.map((c) => c.rating), [16, 10], "a circuit's own rating wins, els
 // line-to-line voltage (400 V, band 376 to 440), neutral share, the meter's own maximum rows, new words
 const LL = (v) => SW.pw.swingView(v, SW.pw.SWING.voltage_ll).state;
 eq([LL(400), LL(376), LL(440), LL(375.9), LL(440.1), LL(230), LL(null)], ["ok", "ok", "ok", "low", "high", "na", "none"], "line-to-line states");
-eq(SW.pw.swingView(400, SW.pw.SWING.voltage_ll).word, "Within typical range", "line-to-line is not called the UK range");
+eq(SW.pw.swingView(400, SW.pw.SWING.voltage_ll).word, "In range", "line-to-line is not called the UK range");
 eq(SW.pw.GROUP_WORD.l12, "Line 1 to Line 2 (Brown-Black)", "line-to-line words");
 eq(SW.pw.neutralShare(4.36, 14, 11, 9).high, false, "neutral 4.36 of 14 A is 31 %: not high");
 eq(Math.round(SW.pw.neutralShare(4.36, 14, 11, 9).pct), 31, "neutral share");

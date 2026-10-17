@@ -179,7 +179,10 @@ SW.ot = (function () {
   // ---------------------------------------------------------------- the card
   const setText = (el, s) => { if (el.textContent !== s) el.textContent = s; };
   const setClass = (el, c) => { if (el.className !== c) el.className = c; };
-  const setHidden = (el, hide) => { if (el.hidden !== hide) el.hidden = hide; };
+  // Lines that come and go keep their space (data-slot: style.css hides them with visibility), so the
+  // card never changes size while it runs.
+  const setHidden = (el, hide) => { if (el.dataset) el.dataset.slot = ""; if (el.hidden !== hide) el.hidden = hide; };
+  const setGone = (el, hide) => { if (el.hidden !== hide) el.hidden = hide; };   // a list: takes no space when empty
 
   // Builds the card's content once (everything after the card's own <h2>) and returns
   // {nodes, update(view)}; update touches only what changed. Text goes in with textContent only.
@@ -215,7 +218,7 @@ SW.ot = (function () {
       setText(ui.thr, v.thrNote);
       setHidden(ui.thr, !v.thrNote);
       setText(ui.extra, v.extra.join(" · "));
-      setHidden(ui.extra, v.extra.length === 0);
+      setGone(ui.extra, v.extra.length === 0);
       setText(ui.note, v.note);
       setClass(ui.note, `ot-note${v.note && v.noteLevel ? ` ${v.noteLevel}` : ""}`);
       setHidden(ui.note, !v.note);

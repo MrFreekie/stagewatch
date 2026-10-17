@@ -98,7 +98,7 @@
     <p class="notice" id="spl-status" role="status" hidden></p>
     <div class="chart-wrap spl-chart-wrap"><canvas id="spl-chart"></canvas></div>
     <div class="legend" id="spl-legend"></div>
-    <p class="muted spl-note" id="spl-note"></p>
+    <details class="card-about"><summary>About these figures</summary><p class="muted spl-note" id="spl-note"></p></details>
   </section>
 
   <section class="card" data-card="spl_limits" id="spl-limits-card" hidden>
@@ -109,8 +109,10 @@
       <ul class="spl-limits-next" id="spl-limits-next"></ul>
       <p class="muted spl-limits-curfew" id="spl-limits-curfew" hidden></p>
       <p class="muted spl-limits-notes" id="spl-limits-notes" hidden></p>
-      <p class="muted spl-limits-foot" id="spl-limits-foot"></p>
-      <p class="muted spl-limits-disclaimer" id="spl-limits-disclaimer"></p>
+      <details class="card-about"><summary>About these limits</summary>
+        <p class="muted spl-limits-foot" id="spl-limits-foot"></p>
+        <p class="muted spl-limits-disclaimer" id="spl-limits-disclaimer"></p>
+      </details>
     </div>
   </section>
 
@@ -124,7 +126,7 @@
   </section>
 
   <section class="card" data-card="witmotion_tilt" id="witmotion_tilt-card" hidden>
-    <h2><span>Tilt</span><span class="grow"></span></h2>
+    <h2><span>Tilt</span><span class="grow"></span><img class="card-logo" src="/static/witmotion-badge.png" alt="WitMotion" width="26" height="26" onerror="this.hidden=true"></h2>
     <div id="wm-body"></div>
   </section>
 
@@ -145,9 +147,12 @@
       <div class="pw-histbar"><select id="power-meter" aria-label="Meter for the chart"></select><span class="seg" id="power-metric-seg"></span><span class="seg" id="power-span-seg"></span></div>
       <div class="chart-wrap pw-chart-wrap"><canvas id="power-chart"></canvas></div>
       <div class="legend" id="power-legend"></div>
-      <p class="muted pw-note2" id="power-chart-note"></p>
     </div>
-    <p class="muted pw-foot">Figures come from the power meters and are advisory. They do not replace the electrician's inspection and testing, and Stagewatch never switches anything.</p>
+    <details class="card-about"><summary>About these figures</summary>
+      <p class="muted pw-note2" id="power-chart-note"></p>
+      <p class="muted" id="power-ranges"></p>
+      <p class="muted pw-foot">Figures come from the power meters and are advisory. They do not replace the electrician's inspection and testing, and Stagewatch never switches anything.</p>
+    </details>
   </section>
 
   <section class="card" data-card="wall_clock" id="wall-clock-card" hidden>
