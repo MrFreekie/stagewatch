@@ -39,19 +39,20 @@ You do not need to know how to code. Every guide tells you what you should see a
 
 1. Install Stagewatch on the computer:
    [Windows](install/windows.md), [Raspberry Pi](install/raspberry-pi.md) or [Debian Linux](install/debian-linux.md).
-2. [Build and add a sensor node](nodes/README.md).
-3. [Connect other kit](integrations/README.md): Ontime, Smaart, DirectOut GLOBCON, Shelly power meters, OSC output.
-4. [Set it up in Admin](admin/README.md).
+2. [Networking](networking.md): one network, or the sensor nodes on their own Wi-Fi.
+3. [Build and add a sensor node](nodes/README.md).
+4. [Connect other kit](integrations/README.md): Ontime, Smaart, DirectOut GLOBCON, Shelly power meters, OSC output.
+5. [Set it up in Admin](admin/README.md).
 
 **On the day**
 
-5. [Dashboard cards](cards/README.md): what each card shows and what the colours mean.
+6. [Dashboard cards](cards/README.md): what each card shows and what the colours mean.
 
 **Looking after it**
 
-6. [Updating and backups](updating-and-backups.md), including a forgotten PIN.
-7. [Troubleshooting](troubleshooting.md). Find your symptom, get the fix.
-8. [Glossary](glossary.md). Plain meanings of the odd words.
+7. [Updating and backups](updating-and-backups.md), including a forgotten PIN.
+8. [Troubleshooting](troubleshooting.md). Find your symptom, get the fix.
+9. [Glossary](glossary.md). Plain meanings of the odd words.
 
 ## Honest notes
 

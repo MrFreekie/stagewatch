@@ -198,8 +198,65 @@ sudo systemctl stop stagewatch; sudo cp -r /var/lib/stagewatch ~/stagewatch-back
 
 You will be without live readings for about half a minute while it copies.
 
-Putting a whole copy back by hand is not covered here and has not been tested. To undo an
-update, use **Roll back...** above. To fix a damaged settings file, see the last section.
+To undo an update, use **Roll back...** above. To fix a damaged settings file, see the last
+section. To put a whole copy back, see the next section.
+
+---
+
+## Put your own backup back (restore)
+
+Use this when the data folder is lost or damaged, or after you reinstall the computer or the
+Pi's SD card. Your settings, history, PIN and node keys come back exactly as they were when you
+made the copy. Anything recorded after that is not in it.
+
+> **Stop Stagewatch first, every time.** If you copy over the data while Stagewatch is
+> running, the history database gets damaged.
+
+Your current data is not deleted. It is moved to a folder called `before-restore` plus
+today's date, so you can go back if you picked the wrong copy.
+
+**After a reinstall:** install Stagewatch first, as on its
+install page ([Raspberry Pi](install/raspberry-pi.md), [Debian](install/debian-linux.md), [Windows](install/windows.md)), and check it opens. Then restore. Do not set a new PIN: the
+restored copy brings back your old one.
+
+**Raspberry Pi or Debian.** Copy your backup folder onto the Pi (for example from a USB
+stick into your home folder). Then paste this in a Terminal, with your folder's name in place
+of `stagewatch-backup-2026-10-17`:
+
+```bash
+BK=~/stagewatch-backup-2026-10-17
+sudo systemctl stop stagewatch
+sudo mkdir /var/lib/stagewatch-before-restore-$(date +%F)
+sudo sh -c 'mv /var/lib/stagewatch/* /var/lib/stagewatch-before-restore-'$(date +%F)'/'
+sudo cp -r "$BK"/. /var/lib/stagewatch/
+sudo chown -R stagewatch:stagewatch /var/lib/stagewatch
+sudo systemctl start stagewatch
+```
+
+The `chown` line matters: without it, Stagewatch cannot write to the restored files and keeps
+restarting.
+
+**Windows.** Copy your backup folder to your user folder. Open PowerShell **as
+Administrator** and paste this, with your folder's name in place of
+`stagewatch-backup-2026-10-17`:
+
+```powershell
+$BK = "$HOME\stagewatch-backup-2026-10-17"; $OLD = "C:\ProgramData\Stagewatch-before-restore-$(Get-Date -Format yyyy-MM-dd)"
+Stop-ScheduledTask -TaskName "Stagewatch"; Start-Sleep -Seconds 10
+New-Item -ItemType Directory $OLD | Out-Null; Move-Item "C:\ProgramData\Stagewatch\*" $OLD
+Copy-Item "$BK\*" "C:\ProgramData\Stagewatch" -Recurse
+Start-ScheduledTask -TaskName "Stagewatch"
+```
+
+The files are copied **into** the existing folder, so they keep its protected settings.
+
+**Check it worked.** Open Stagewatch, sign in to Admin with your **old** PIN, and look at
+yesterday's history and markers. When you are happy, you can delete the `before-restore`
+folder.
+
+> Tested on 17 Oct 2026 by restoring a copy into a new data folder and starting Stagewatch
+> from it (the old PIN worked and the markers were there). Not yet tried on a real Pi boot
+> install or the Windows boot install.
 
 ---
 

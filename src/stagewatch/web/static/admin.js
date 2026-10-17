@@ -2015,6 +2015,7 @@
     { group: "Getting started", path: "docs/install/windows.md", title: "Install on Windows", about: "Set up Stagewatch on a Windows laptop or PC" },
     { group: "Getting started", path: "docs/install/raspberry-pi.md", title: "Install on a Raspberry Pi", about: "Set up Stagewatch on a Pi for a rack or wall display" },
     { group: "Getting started", path: "docs/install/debian-linux.md", title: "Install on Debian Linux", about: "Set up Stagewatch on a Debian PC" },
+    { group: "Getting started", path: "docs/networking.md", title: "Networking", about: "One network, or the sensor nodes on their own Wi-Fi" },
     { group: "Day to day", path: "docs/cards/README.md", title: "Dashboard cards", about: "What each card does" },
     { group: "Day to day", path: "docs/admin/README.md", title: "Admin guide", about: "What each Admin card does" },
     { group: "Day to day", path: "docs/troubleshooting.md", title: "Troubleshooting", about: "What to try when something is wrong" },
