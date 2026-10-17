@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import shutil
 import struct
 import threading
 from pathlib import Path
@@ -19,7 +18,8 @@ LOGO_MAX_BYTES = 1024 * 1024
 MIN_PX, MAX_PX = 32, 2048
 VARIANTS = ("light", "dark")
 TYPES = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
-_ID = re.compile(r"^[0-9]{1,12}$")
+_ID = re.compile(r"[0-9]{1,12}")
+OWNER = "event.txt"   # the event's created time: a folder left from a rolled-back database is ignored
 
 MSG_TYPE = "Use a PNG, JPEG or WebP image."
 MSG_SVG = "SVG logos are not supported yet (coming in a later version). Use a PNG, JPEG or WebP image."
@@ -40,7 +40,7 @@ class LogoError(Exception):
 def valid_id(event_id) -> int:
     """The event id as an int, or LogoError 404. Checked before any path is built."""
     s = str(event_id)
-    if not _ID.match(s) or int(s) < 1:
+    if not _ID.fullmatch(s) or int(s) < 1:
         raise LogoError(404, "No such event")
     return int(s)
 
@@ -57,6 +57,8 @@ def _png(data: bytes) -> tuple[int, int]:
             raise LogoError(415, MSG_ANIMATED)
         if kind in (b"IDAT", b"IEND"):
             break
+        if pos + 12 + length > len(data):
+            raise LogoError(422, MSG_BROKEN)
         pos += 12 + length
     return w, h
 
@@ -102,7 +104,7 @@ def _webp(data: bytes) -> tuple[int, int]:
         bits = struct.unpack("<I", p[1:5])[0]
         return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
     if kind == b"VP8X":
-        if p[0] & 0x02:
+        if p[0] & 0x02 or b"ANIM" in data or b"ANMF" in data:
             raise LogoError(415, MSG_ANIMATED)
         w = int.from_bytes(p[4:7], "little") + 1
         h = int.from_bytes(p[7:10], "little") + 1
@@ -138,8 +140,11 @@ def sniff(data: bytes) -> tuple[str, int, int]:
 class BrandingStore:
     """Logo files per event, with a small cache of their details."""
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, owner_of=None):
+        """``owner_of(event_id)`` gives a string unique to that event (its created time), so a
+        reused id after a database rollback never picks up an older event's files."""
         self.root = Path(data_dir) / "branding" / "events"
+        self.owner_of = owner_of or (lambda _id: "")
         self._cache: dict[int, dict] = {}
         self._lock = threading.Lock()
 
@@ -149,12 +154,17 @@ class BrandingStore:
     def _scan(self, event_id: int) -> dict:
         out: dict = {v: None for v in VARIANTS}
         d = self._dir(event_id)
+        try:
+            if (d / OWNER).read_text(encoding="utf-8") != self.owner_of(event_id):
+                return out
+        except OSError:
+            return out
         for v in VARIANTS:
             for ext, ctype in TYPES.items():
                 f = d / f"logo-{v}.{ext}"
-                if not f.is_file():
-                    continue
                 try:
+                    if not f.is_file() or f.stat().st_size > LOGO_MAX_BYTES:
+                        continue
                     data = f.read_bytes()
                     _, w, h = sniff(data)
                 except (OSError, LogoError):
@@ -167,10 +177,24 @@ class BrandingStore:
 
     def info(self, event_id: int) -> dict:
         event_id = valid_id(event_id)
-        with self._lock:
-            if event_id not in self._cache:
-                self._cache[event_id] = self._scan(event_id)
-            return self._cache[event_id]
+        hit = self._cache.get(event_id)
+        if hit is None:
+            hit = self._scan(event_id)   # outside the lock: small files, read at most once
+            self._cache.setdefault(event_id, hit)
+        return hit
+
+    def _claim(self, d: Path, event_id: int) -> None:
+        """Make the folder this event's own; drop files a previous owner left."""
+        d.mkdir(parents=True, exist_ok=True)
+        owner = self.owner_of(event_id)
+        try:
+            if (d / OWNER).read_text(encoding="utf-8") == owner:
+                return
+        except OSError:
+            pass
+        for f in d.glob("logo-*"):
+            f.unlink(missing_ok=True)
+        _write(d / OWNER, owner.encode("utf-8"))
 
     def has_logo(self, event_id: int) -> bool:
         return any(self.info(event_id).values())
@@ -181,10 +205,8 @@ class BrandingStore:
         ext, _, _ = sniff(data)
         d = self._dir(event_id)
         with self._lock:
-            d.mkdir(parents=True, exist_ok=True)
-            tmp = d / f".logo-{variant}.tmp"
-            tmp.write_bytes(data)
-            os.replace(tmp, d / f"logo-{variant}.{ext}")
+            self._claim(d, event_id)
+            _write(d / f"logo-{variant}.{ext}", data)
             for other in TYPES:
                 if other != ext:
                     (d / f"logo-{variant}.{other}").unlink(missing_ok=True)
@@ -207,18 +229,39 @@ class BrandingStore:
         src = self.info(from_id)
         if not any(src.values()):
             raise LogoError(404, "That event has no logo")
+        try:   # read first: a vanished source leaves the target untouched
+            files = {v: (src[v]["ext"], src[v]["path"].read_bytes()) for v in VARIANTS if src[v]}
+        except OSError:
+            self._cache.pop(int(from_id), None)
+            raise LogoError(404, "That event has no logo") from None
         d = self._dir(to_id)
         with self._lock:
-            d.mkdir(parents=True, exist_ok=True)
+            self._claim(d, to_id)
             for v in VARIANTS:
+                keep = files.get(v)
+                if keep:
+                    _write(d / f"logo-{v}.{keep[0]}", keep[1])
                 for ext in TYPES:
-                    (d / f"logo-{v}.{ext}").unlink(missing_ok=True)
-                if src[v]:
-                    tmp = d / f".logo-{v}.tmp"
-                    shutil.copyfile(src[v]["path"], tmp)
-                    os.replace(tmp, d / f"logo-{v}.{src[v]['ext']}")
+                    if not keep or ext != keep[0]:
+                        (d / f"logo-{v}.{ext}").unlink(missing_ok=True)
             self._cache.pop(int(to_id), None)
         return self.info(to_id)
+
+
+def _write(path: Path, data: bytes) -> None:
+    """Write via a temporary file, flushed to disk, then swap it in (survives a power cut)."""
+    tmp = path.with_name(f".{path.name}.tmp")
+    with open(tmp, "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+    if hasattr(os, "O_DIRECTORY"):
+        fd = os.open(path.parent, os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
 
 def public_meta(meta: dict | None) -> dict | None:

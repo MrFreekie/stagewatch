@@ -120,7 +120,7 @@ def test_upload_serve_replace_delete(client, tmp_path):
     assert r.status_code == 200, r.text
     assert r.json()["light"]["width"] == 64 and "path" not in r.json()["light"]
     folder = tmp_path / "branding" / "events" / str(eid(client))
-    assert [p.name for p in folder.iterdir()] == ["logo-light.png"]
+    assert sorted(p.name for p in folder.glob("logo-*")) == ["logo-light.png"]
     url = client.get("/api/info").json()["branding"]["light_url"]
     g = client.get(url)
     assert g.status_code == 200 and g.content == png()
@@ -131,7 +131,7 @@ def test_upload_serve_replace_delete(client, tmp_path):
     assert client.get(url.split("?")[0]).headers["cache-control"] == "no-cache"
     # Replace with a different type: one file per variant.
     assert put(client, jpeg()).status_code == 200
-    assert [p.name for p in folder.iterdir()] == ["logo-light.jpg"]
+    assert sorted(p.name for p in folder.glob("logo-*")) == ["logo-light.jpg"]
     assert client.delete(f"/api/admin/events/{eid(client)}/logo/light").status_code == 200
     assert client.get("/api/info").json()["branding"]["light_url"] is None
     assert client.get(url).status_code == 404
@@ -202,3 +202,18 @@ def test_upload_reloads_open_screens(client):
 def test_backup_covers_branding():
     from stagewatch import backup
     assert "branding" in backup.DIRS
+
+
+def test_folder_from_rolled_back_event_is_ignored(client, tmp_path):
+    """A reused event id (database rolled back, branding/ kept) must not show the old logo."""
+    assert put(client, png()).status_code == 200
+    (tmp_path / "branding" / "events" / str(eid(client)) / brand.OWNER).write_text("someone else")
+    store = brand.BrandingStore(tmp_path, lambda _id: "new event")
+    assert store.info(eid(client)) == {"light": None, "dark": None}
+    store.save(eid(client), "dark", png())   # claiming the folder drops the old files
+    assert store.info(eid(client))["light"] is None and store.info(eid(client))["dark"]
+
+
+def test_webp_with_animation_chunks_refused():
+    with pytest.raises(brand.LogoError, match="still image"):
+        brand.sniff(webp() + b"ANMF" + b"\x00" * 20)

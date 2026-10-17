@@ -605,12 +605,12 @@ class ShowPatch(BaseModel):
 
 # Logo upload (plans/custom-logo-upload.md): raw-body PUT, capped by path pattern because the
 # path carries the event id. Headroom over the 1 MiB file cap only; the handler checks the file.
-LOGO_PATH = re.compile(r"^/api/admin/events/[0-9]{1,12}/logo/(light|dark)$")
+LOGO_PATH = re.compile(r"/api/admin/events/[0-9]{1,12}/logo/(light|dark)")
 LOGO_BODY_LIMIT = brand.LOGO_MAX_BYTES + 4096
 
 
 def _logo_limit(scope) -> int | None:
-    return LOGO_BODY_LIMIT if LOGO_PATH.match(scope.get("path", "")) else None
+    return LOGO_BODY_LIMIT if LOGO_PATH.fullmatch(scope.get("path", "")) else None
 
 
 class BrandingBody(BaseModel):
@@ -906,7 +906,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     lan_addresses = lan_addresses or netinfo.local_ipv4  # callable -> list[str]; injectable for tests
     started_at = time.time()
     signer = SessionSigner(hub.data_dir / "secret.key")
-    logos = brand.BrandingStore(hub.data_dir)
+    def event_owner(eid: int) -> str:
+        row = hub.recorder.event_branding(eid)
+        return repr(row["created"]) if row else ""
+    logos = brand.BrandingStore(hub.data_dir, event_owner)
     feed = LiveFeed(hub)
     failed_logins: list[float] = []
 
@@ -1825,7 +1828,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     def logo_file(eid: int, variant: str, v: str | None) -> FileResponse:
         meta = logos.info(eid)[variant]
-        if meta is None:
+        if meta is None or not meta["path"].is_file():
             raise HTTPException(404, "No logo")
         cache = "public, max-age=31536000, immutable" if v == meta["sha"] else "no-cache"
         return FileResponse(meta["path"], media_type=meta["content_type"], headers={
