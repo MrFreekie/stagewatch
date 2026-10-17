@@ -157,7 +157,6 @@ SW.pw = (function () {
 
   // ---- history chart: one measurement of one meter over time (one line per phase on a 3-phase meter).
   pw.METRICS = [["power", "Power"], ["current", "Current"], ["voltage", "Voltage"], ["voltage_ll", "Line-to-line"], ["freq", "Frequency"], ["thd_v", "Voltage THD"], ["thd_i", "Current THD"]];
-  pw.SPANS = [[900, "15m"], [3600, "1h"], [0, "Show"]];   // 0 = since the show started
   pw.POINTS = 500;
   // The lines to draw: [{ id, label, unit, decimals }] for one meter's field, in phase order.
   pw.chartSeries = function (entities, deviceId, field) {

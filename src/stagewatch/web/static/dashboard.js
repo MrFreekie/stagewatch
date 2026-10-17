@@ -23,7 +23,7 @@
     pressure: { label: "Pressure", site: "site.pressure", kind: "pressure", range: [98000, 104000] },
     speed_of_sound: { label: "c", site: "site.speed_of_sound", kind: "speed_of_sound", range: [335, 350] },
   };
-  const SPANS = [[900, "15m"], [3600, "1h"], [14400, "4h"], [43200, "12h"]];
+  const SPANS = [[900, "15m"], [3600, "1h"], [14400, "4h"], [43200, "12h"], [0, "Show"]];   // 0 = since the show started, one list for every chart
   const COLORS = ["--s2", "--s3", "--s4", "--s5", "--s6"];
 
   const state = {
@@ -444,6 +444,13 @@
     } catch (err) { toast(crewText(err)); }
   }
 
+  // Seconds a span button covers; 0 ("Show") runs from the show start, or the last hour before one starts.
+  function spanSeconds(span) {
+    if (span > 0) return span;
+    const since = (state.show && state.show.started) || serverNow() - 3600;
+    return Math.max(60, serverNow() - since);
+  }
+
   function renderSegs() {
     $("series-seg").replaceChildren(...Object.entries(SERIES_MODES).map(([k, m]) =>
       h("button", { class: k === state.mode ? "on" : "", onclick: () => { state.mode = k; localSet("sw.mode", k); renderSegs(); loadHistory(); } }, m.label)));
@@ -498,7 +505,7 @@
       };
     }));
     const now = serverNow();
-    chart.range = [now - state.span, now];
+    chart.range = [now - spanSeconds(state.span), now];
     chart.defaultRange = (SERIES_MODES[state.mode] || {}).range || null;
     chart.draw();
     $("legend").replaceChildren(...chart.series.map((s) => h("span", {}, h("i", { class: s.dashed ? "dashed" : "", style: s.dashed ? `color:${s.color}` : `background:${s.color}` }), s.label,
@@ -507,7 +514,7 @@
 
   async function loadHistory() {
     const ids = chartEntities().concat(equipmentChartIds());
-    const since = serverNow() - state.span;
+    const since = serverNow() - spanSeconds(state.span);
     try {
       state.history = await SW.api("GET", `/api/history?entities=${encodeURIComponent(ids.join(","))}&since=${since}&points=500`);
     } catch (_) { state.history = {}; }
@@ -1062,11 +1069,7 @@
 
   // History chart under the meters: pick a meter, a measurement and a span. Lines are what was recorded
   // (as received, averaged only into time buckets); a silence breaks the line; nothing is filled in.
-  const pwSpanS = () => {
-    if (state.pwSpan > 0) return state.pwSpan;
-    const since = (state.show && state.show.started) || serverNow() - 3600;
-    return Math.max(60, serverNow() - since);
-  };
+  const pwSpanS = () => spanSeconds(state.pwSpan);
   function renderPowerHist(view) {
     const box = $("power-hist");
     const meters = view.meters;
@@ -1086,7 +1089,7 @@
     if (metrics.length && !metrics.some(([f]) => f === state.pwMetric)) state.pwMetric = metrics[0][0];
     $("power-metric-seg").replaceChildren(...metrics.map(([f, label]) =>
       h("button", { class: f === state.pwMetric ? "on" : "", onclick: () => { state.pwMetric = f; localSet("sw.pwmetric", f); loadPowerHistory(); renderPowerHist(view); } }, label)));
-    $("power-span-seg").replaceChildren(...SW.pw.SPANS.map(([s, label]) =>
+    $("power-span-seg").replaceChildren(...SPANS.map(([s, label]) =>
       h("button", { class: s === state.pwSpan ? "on" : "", onclick: () => { state.pwSpan = s; localSet("sw.pwspan", String(s)); state.pwHistory = {}; loadPowerHistory(); renderPowerHist(view); } }, label)));
     if (!pwHist.loaded) { pwHist.loaded = true; loadPowerHistory(); }
     updatePowerChart();
@@ -1126,14 +1129,9 @@
   // server gives (the last reading in each interval on long views) and breaks the line wherever
   // there was no reading. A missing value is a dash. The rows are built once and then only their
   // text changes. The card hides itself while no values are set up.
-  const SPL_SPANS = [[900, "15m"], [3600, "1h"], [0, "Show"]];   // 0 = since the show started
   const SPL_POINTS = 500;
   const splUi = { rows: {}, key: "" };
-  const splSpanS = () => {
-    if (state.splSpan > 0) return state.splSpan;
-    const since = (state.show && state.show.started) || serverNow() - 3600;
-    return Math.max(60, serverNow() - since);
-  };
+  const splSpanS = () => spanSeconds(state.splSpan);
   function splBuildRows(ents) {
     splUi.rows = {};
     $("spl-rows").replaceChildren(...ents.map((e, i) => {
@@ -1248,7 +1246,7 @@
   }
 
   function renderSplSpan() {
-    $("spl-span-seg").replaceChildren(...SPL_SPANS.map(([s, label]) =>
+    $("spl-span-seg").replaceChildren(...SPANS.map(([s, label]) =>
       h("button", { class: s === state.splSpan ? "on" : "", onclick: () => { state.splSpan = s; localSet("sw.splspan", String(s)); renderSplSpan(); loadSplHistory(); } }, label)));
   }
   function updateSplChart() {
