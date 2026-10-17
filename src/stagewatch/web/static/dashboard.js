@@ -1667,7 +1667,8 @@
   // Cards keep their size while they run: a card may grow to fit (a longer list, a new tag) but does
   // not shrink back when that line goes, so nothing below it jumps. The hold is let go when the
   // screen size or the card list changes, or someone opens or closes a fold in a card.
-  const sizeHold = new ResizeObserver((entries) => {
+  // Older Safari (13.1) has no ResizeObserver: cards there simply aren't held.
+  const sizeHold = typeof ResizeObserver === "undefined" ? null : new ResizeObserver((entries) => {
     for (const en of entries) {
       const el = en.target;
       if (el.hidden) continue;
@@ -1680,7 +1681,7 @@
     for (const el of els) el.style.minHeight = "";
     requestAnimationFrame(() => { for (const el of els) if (!el.hidden) el.style.minHeight = `${el.offsetHeight}px`; });   // hold from the new size
   }
-  for (const id of Object.keys(CARDS)) if (!CARDS[id].footer) sizeHold.observe(CARDS[id].el);
+  if (sizeHold) for (const id of Object.keys(CARDS)) if (!CARDS[id].footer) sizeHold.observe(CARDS[id].el);
   let resizeTimer = null;
   window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(resetHeights, 200); });
   $("main").addEventListener("toggle", resetHeights, true);   // <details> toggle does not bubble: capture it
