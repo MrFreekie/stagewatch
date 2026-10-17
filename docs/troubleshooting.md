@@ -150,6 +150,23 @@ See also the table at the end of [Build a sensor node](nodes/README.md#if-it-did
 
 ---
 
+## WitMotion tilt sensor problems
+
+See [WitMotion tilt sensor](integrations/witmotion.md) for the setup. Never pair the sensor: Stagewatch does not need it and the sensor drops the link if it is paired.
+
+| What you see | Try this |
+|---|---|
+| The Tilt card says **No data**, or the device status is **Sensor not found** | Is the sensor switched on and charged? Is the WitMotion phone app closed (only one device can connect at a time)? Is it within a few metres, and not behind a rack or truss? If you set an `address`, check it is the sensor's own address (the log shows it when you leave `sensors` out). A sensor you have renamed is not found by name: it needs its `address` in `config.yaml`. |
+| The link keeps dropping, or the log mentions **GATT 147** (also shown as 0x93) | The sensor was probably paired. Remove it from the computer's Bluetooth settings (`bluetoothctl remove` followed by its address on a Pi) and do not pair it again. If it was never paired, it is likely out of range or in a crowded 2.4 GHz area: move the Pi nearer, use Ethernet instead of 2.4 GHz Wi-Fi, or add a short USB Bluetooth adaptor on a lead. |
+| Status **Bluetooth problem** on a Raspberry Pi | The Stagewatch service may not be allowed to use Bluetooth. Add `SupplementaryGroups=bluetooth` to the service (the steps are under Raspberry Pi in [WitMotion tilt sensor](integrations/witmotion.md)), and check `systemctl is-active bluetooth` says `active`. |
+| The log says the Bluetooth library is not installed | Update Stagewatch to a version that includes the WitMotion integration, or run `pip install bleak` in its Python. |
+| Tilt shows after a few seconds and goes blank for a moment after each reconnect | Normal. The smoothing starts again after every gap and shows nothing until three new readings arrive. |
+| Battery shows **not available for this sensor model** | The WT9011DCL sends a battery number Stagewatch cannot read as a voltage. Nothing is wrong. |
+| A small-print value says **unknown** | The sensor did not answer that question at the last connection. Stagewatch never guesses. Reconnecting asks again. |
+| Nothing works on Windows | Windows Bluetooth is untested for the boot install (no one logged in). See [WitMotion tilt sensor](integrations/witmotion.md#windows). |
+
+---
+
 ## Alarms
 
 | What you see | Try this |
