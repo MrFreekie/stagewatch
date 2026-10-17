@@ -450,6 +450,16 @@ class WitmotionSensorConfig(_Model):
     label: str = Field("", max_length=60)
     axis: Literal["both", "x", "y"] = "both"        # which tilt to watch: X (roll), Y (pitch) or both
     smoothing_s: float = Field(2.0, ge=0, le=10)    # noise removal time constant, seconds (0 = off)
+    target_x: Optional[float] = Field(None, ge=-180, le=180)   # optional target angle (degrees) for X (roll)
+    target_y: Optional[float] = Field(None, ge=-180, le=180)   # ... and for Y (pitch)
+    on_target_deg: float = Field(0.2, ge=0, le=10)             # "on target" within this many degrees
+    close_deg: float = Field(1.0, ge=0, le=45)                 # "close" within this many (display only, never an alarm)
+
+    @model_validator(mode="after")
+    def _bands_in_order(self):
+        if self.close_deg < self.on_target_deg:
+            self.close_deg = self.on_target_deg   # "close" can never be tighter than "on target"
+        return self
 
 
 class WitmotionConfig(_Model):
@@ -461,6 +471,16 @@ class WitmotionConfig(_Model):
     address: str = Field("", max_length=64)
     axis: Literal["both", "x", "y"] = "both"        # for the single sensor used when ``sensors`` is empty
     smoothing_s: float = Field(2.0, ge=0, le=10)
+    target_x: Optional[float] = Field(None, ge=-180, le=180)   # optional target angle (degrees) for X (roll)
+    target_y: Optional[float] = Field(None, ge=-180, le=180)   # ... and for Y (pitch)
+    on_target_deg: float = Field(0.2, ge=0, le=10)             # "on target" within this many degrees
+    close_deg: float = Field(1.0, ge=0, le=45)                 # "close" within this many (display only, never an alarm)
+
+    @model_validator(mode="after")
+    def _bands_in_order(self):
+        if self.close_deg < self.on_target_deg:
+            self.close_deg = self.on_target_deg   # "close" can never be tighter than "on target"
+        return self
     sensors: list[WitmotionSensorConfig] = Field(default_factory=list, max_length=4)
 
 

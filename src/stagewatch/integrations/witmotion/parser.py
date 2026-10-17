@@ -160,3 +160,43 @@ def inclination_deg(f: DataFrame) -> tuple[float, float] | None:
         return None
     return (math.degrees(math.atan2(f.ay, f.az)),
             math.degrees(math.atan2(-f.ax, math.sqrt(f.ay ** 2 + f.az ** 2))))
+
+
+# ---------------------------------------------------------------------------------------------- settings
+# Read with FF AA 27 <reg> 00 (no write, no unlock). Code tables are from WitMotion's standard protocol
+# page; the BLE page disagrees on a few rate codes, so those are marked and the value is always read back.
+REG_RATE = 0x03             # index 0: return rate code
+REG_BANDWIDTH = 0x1F        # index 0: bandwidth, index 4: install direction (0x23), index 5: axis mode (0x24)
+
+_RATE = {0x02: "0.5 Hz", 0x03: "1 Hz", 0x04: "2 Hz", 0x05: "5 Hz", 0x06: "10 Hz", 0x07: "20 Hz",
+         0x08: "50 Hz", 0x09: "100 Hz"}
+_RATE_UNSURE = {0x01: "0.1 or 0.2 Hz (not confirmed)", 0x0A: "200 Hz (not confirmed)", 0x0B: "200 Hz (not confirmed)"}
+_RATE_PERIOD_S = {0x01: 10.0, 0x02: 2.0, 0x03: 1.0, 0x04: 0.5, 0x05: 0.2, 0x06: 0.1, 0x07: 0.05, 0x08: 0.02,
+                  0x09: 0.01, 0x0A: 0.005, 0x0B: 0.005}   # 0x01 takes the slower reading (0.1 Hz)
+_BANDWIDTH = {0: "256 Hz", 1: "188 Hz", 2: "98 Hz", 3: "42 Hz", 4: "20 Hz", 5: "10 Hz", 6: "5 Hz"}
+_ORIENT = {0: "horizontal", 1: "vertical"}
+_AXIS6 = {0: "9-axis", 1: "6-axis"}
+
+
+def rate_text(reply: RegisterReply) -> str | None:
+    if reply.reg != REG_RATE:
+        return None
+    code = reply.values[0]
+    return _RATE.get(code) or _RATE_UNSURE.get(code)
+
+
+def rate_period_s(reply: RegisterReply) -> float | None:
+    """Seconds between frames for a return-rate reply, or None if the code is not a fixed rate."""
+    return _RATE_PERIOD_S.get(reply.values[0]) if reply.reg == REG_RATE else None
+
+
+def setup_texts(reply: RegisterReply) -> dict[str, str]:
+    """Bandwidth, install direction and axis mode from a 0x1F reply; only the ones with a known code."""
+    if reply.reg != REG_BANDWIDTH:
+        return {}
+    out = {}
+    for key, table, idx in (("bandwidth", _BANDWIDTH, 0), ("orient", _ORIENT, 4), ("axis_mode", _AXIS6, 5)):
+        text = table.get(reply.values[idx])
+        if text:
+            out[key] = text
+    return out

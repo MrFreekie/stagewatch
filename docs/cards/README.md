@@ -26,6 +26,7 @@ This page is the one list of every card. Each card has its own page.
 | [DirectOut GLOBCON](globcon.md) | Level meters for 4, 8 or 16 channels of one controller. Hidden until GLOBCON has answered | No | Yes | [DirectOut GLOBCON](../integrations/globcon.md) |
 | [Power](power.md) | Watts, volts, amps and energy from power meters. Hidden until a meter is added | No | Yes | [Shelly](../integrations/shelly.md) |
 | [Raspberry Pi](raspberry-pi.md) | The health of the Pi Stagewatch runs on: temperature, power supply, load, memory, disk. Hidden unless it runs on a Pi | No | Yes | A Raspberry Pi |
+| [Tilt (WitMotion)](witmotion-tilt.md) | Roll and/or pitch of each WitMotion tilt sensor, an optional target angle, battery and the sensor's settings. A guide, not a safety system. Hidden until a sensor is set up | No | No | [WitMotion](../integrations/witmotion.md) |
 | [Onsite contacts](contacts.md) | Key people for the event: job title, name, radio and area. Phone numbers only where allowed | No | Yes | Contacts entered in Admin |
 | [Plans on file](documents.md) | The event's safety and risk documents shared with this dashboard. Titles only on the wall | No | Yes | Documents uploaded in Admin |
 

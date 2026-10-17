@@ -40,6 +40,7 @@ log = logging.getLogger(__name__)
 DEVICE_ID = "witmotion"
 MARKER_SOURCE = "witmotion"
 TICK_S = 1.0
+SILENCE_LIMIT_S = 15.0  # the reader drops a link silent this long (reader.SILENCE_S)
 STALE_S = 5.0          # no frame this long: the readings are a gap (the link allows ~0.3 s between frames)
 SLOW_VALID_S = 180.0   # battery and temperature are asked for every ~45 s; older than this is a gap
 
@@ -109,19 +110,29 @@ STATUS_TEXT = {
 }
 
 
+def target_bands(cfg) -> dict:
+    """The target angles that are set, with the bands. Display only: nothing here raises an alarm."""
+    out = {}
+    for key, t in (("tilt_roll", cfg.target_x), ("tilt_pitch", cfg.target_y)):
+        if t is not None:
+            out[key] = {"target": t, "on": cfg.on_target_deg, "close": cfg.close_deg}
+    return out
+
+
 class Sensor:
     """One sensor: its device, entities, state and gap handling. Found by its configured Bluetooth
     address (its own name can be changed by crew, so the name is never what finds it); the label is a
     Stagewatch setting and is never written to the sensor."""
 
     def __init__(self, hub, device_id: str, address: str, label: str, axis: str = "both",
-                 smoothing_s: float = 0.0) -> None:
+                 smoothing_s: float = 0.0, targets: dict | None = None) -> None:
         self.hub = hub
         self.device_id = device_id
         self.address = address
         self.label = label
         self.title = label or "Tilt sensor"
         self.axis, self.smoothing_s = axis, smoothing_s
+        self.targets = targets or {}   # {"tilt_roll": {"target", "on", "close"}} for watched axes that have a target
         self.specs = entity_specs(axis, smoothing_s)
         self._roll_f = Smoother(smoothing_s, circular=True)
         self._pitch_f = Smoother(smoothing_s)
@@ -129,6 +140,11 @@ class Sensor:
         self._pitch_raw: float | None = None
         self._arrivals: deque[float] = deque(maxlen=10)   # recent frame times: the sensor's own return rate
         self._battery_note = ""
+        self._setup: dict[str, str] = {}
+        self._rate_period_s: float | None = None
+        self._battery_v: float | None = None
+        self._body_c: float | None = None
+        self._readout_sent: dict | None = None
         self.reader = None
         self.task: asyncio.Task | None = None
         self.link = "off"
@@ -150,9 +166,49 @@ class Sensor:
         self._public()
 
     def _public(self) -> None:
+        """What reaches the public snapshot: fixed words and numbers only (no addresses, no sensor name)."""
         self.hub.set_device_public(self.device_id, {"witmotion": {
             "axis": self.axis, "axis_text": AXIS_TEXT[self.axis], "axis_help": AXIS_HELP,
-            "smoothing_s": self.smoothing_s, "battery_note": self._battery_note}})
+            "smoothing_s": self.smoothing_s, "battery_note": self._battery_note,
+            "targets": {k: v for k, v in self.targets.items() if k in self.specs}, **self.readout()}})
+
+    def limits(self) -> dict:
+        """For each tilt reading that has an enabled threshold: the level of its alarm now (0 = within limit,
+        1-3 = advisory, alert, stop). Absent = no threshold, so the card shows no limit colour."""
+        out = {}
+        for key in ("tilt_roll", "tilt_pitch"):
+            eid = f"{self.device_id}.{key}"
+            if key not in self.specs or not any(t.enabled and t.entity == eid for t in self.hub.config.thresholds):
+                continue
+            level = 0
+            for t in self.hub.config.thresholds:
+                a = self.hub.alarms.active.get(f"threshold:{t.id}") if t.enabled and t.entity == eid else None
+                if a is not None:
+                    level = max(level, a.level)
+            out[key] = level
+        return out
+
+    def readout(self) -> dict:
+        """The small-print lines for the card: what the sensor said about itself, "unknown" where it did not
+        answer, never a guess. Information only: nothing here is recorded or used by an alarm."""
+        u = self._setup
+        line1 = " · ".join([
+            u.get("rate", "unknown"),
+            f"{u['bandwidth']} bandwidth" if "bandwidth" in u else "bandwidth unknown",
+            u.get("orient", "install direction unknown"),
+            u.get("axis_mode", "axis mode unknown")])
+        if self._battery_note:
+            batt = "battery: " + self._battery_note.lower()
+        elif self._battery_v is not None:
+            batt = f"battery {self._battery_v:.2f} V (about {parser.battery_percent_approx(self._battery_v):.0f} %, approximate)"
+        else:
+            batt = "battery unknown"
+        temp = f"sensor body {self._body_c:.1f} °C" if self._body_c is not None else "sensor body temperature unknown"
+        out = {"limits": self.limits(), "setup_line": line1, "info_line": f"WT901BLE family · firmware not available over Bluetooth · {batt} · {temp}"}
+        if self._rate_period_s is not None and 3 * self._rate_period_s >= SILENCE_LIMIT_S:
+            out["warning"] = ("The sensor sends data too slowly (every %g s) for Stagewatch to tell a quiet sensor from "
+                              "a lost link. Raise its return rate in the WitMotion app." % self._rate_period_s)
+        return out
 
     def callbacks(self) -> dict:
         return dict(on_frame=self._on_frame, on_connected=self._on_connected,
@@ -171,6 +227,7 @@ class Sensor:
     def _on_connected(self, ts: float) -> None:
         self._up = True
         self._reset_filters()
+        self._setup, self._rate_period_s = {}, None   # read again on every connection: the app may have changed them
         if self._had_loss:
             self.hub.add_marker(f"{self.title} back (readings missed while it was away are not filled in)", MARKER_SOURCE, ts)
             self._had_loss = False
@@ -184,6 +241,8 @@ class Sensor:
         for key in self.specs:
             self._put(key, None, ts)
         self._slow.clear()
+        self._battery_v = self._body_c = None
+        self._setup, self._rate_period_s = {}, None
         self._reset_filters()
         self._peak_g = self._last_frame = None
         if not self._had_loss:
@@ -215,8 +274,16 @@ class Sensor:
             g = math.sqrt(frame.ax ** 2 + frame.ay ** 2 + frame.az ** 2)
             self._peak_g = g if self._peak_g is None else max(self._peak_g, g)
         elif isinstance(frame, parser.RegisterReply):
-            if frame.reg == parser.REG_BATTERY:
+            if frame.reg == parser.REG_RATE:
+                text = parser.rate_text(frame)
+                if text:
+                    self._setup["rate"] = text
+                self._rate_period_s = parser.rate_period_s(frame)
+            elif frame.reg == parser.REG_BANDWIDTH:
+                self._setup.update(parser.setup_texts(frame))
+            elif frame.reg == parser.REG_BATTERY:
                 v = parser.battery_volts(frame)
+                self._battery_v = v
                 note = "" if v is not None else BATTERY_UNKNOWN   # a raw value we cannot read is not a voltage
                 if note != self._battery_note:
                     self._battery_note = note
@@ -224,7 +291,8 @@ class Sensor:
                 self._slow_value("battery_volts", v, ts)
                 self._slow_value("battery_pct", parser.battery_percent_approx(v), ts)
             elif frame.reg in (parser.REG_MAG_ANGLE_TEMP, parser.REG_TEMPERATURE):
-                self._slow_value("body_temp", parser.temperature_c(frame), ts)
+                self._body_c = parser.temperature_c(frame)
+                self._slow_value("body_temp", self._body_c, ts)
 
     def _slow_value(self, key: str, value: float | None, ts: float) -> None:
         """Battery and temperature arrive every ~45 s: stored when they arrive, a gap when they get old."""
@@ -254,6 +322,13 @@ class Sensor:
             if now - got > SLOW_VALID_S:
                 self._put(key, None, now)
                 del self._slow[key]
+                if key == "body_temp":
+                    self._body_c = None
+                elif key == "battery_volts":
+                    self._battery_v = None
+        if self.readout() != self._readout_sent:
+            self._readout_sent = self.readout()
+            self._public()
 
     def _set_status(self, status: Status, detail: str) -> None:
         if self._status_sent != (status, detail):
@@ -276,22 +351,23 @@ class WitmotionIntegration(Integration):
         cfg = getattr(self.hub.config, "witmotion", None)
         return self.emulate or bool(cfg and cfg.enabled)
 
-    def configured(self) -> list[tuple[str, str, str, float]]:
-        """[(address, label, axis, smoothing_s)] for each sensor. No address at all means one sensor found by its factory
+    def configured(self) -> list[tuple[str, str, str, float, dict]]:
+        """[(address, label, axis, smoothing_s, targets)] for each sensor. No address at all means one sensor found by its factory
         name (WT901BLE...), a convenience for the first try; with two sensors each needs its address."""
         cfg = self.hub.config.witmotion
         if cfg.sensors:
-            return [(s.address, s.label, s.axis, s.smoothing_s) for s in cfg.sensors]
-        return [(cfg.address, "", cfg.axis, cfg.smoothing_s)]
+            return [(s.address, s.label, s.axis, s.smoothing_s, target_bands(s)) for s in cfg.sensors]
+        return [(cfg.address, "", cfg.axis, cfg.smoothing_s, target_bands(cfg))]
 
     async def start(self) -> None:
         if not self.wanted():
             return
         self._active = True
         self._scan_lock = asyncio.Lock()   # one scan or connect at a time across all sensors (BlueZ needs it)
-        entries = [("", "", "both", 2.0)] if self.emulate else self.configured()
-        for i, (address, label, axis, smoothing) in enumerate(entries):
-            s = Sensor(self.hub, DEVICE_ID if i == 0 else f"{DEVICE_ID}_{i + 1}", address, label, axis, smoothing)
+        entries = [("", "", "both", 2.0, {"tilt_roll": {"target": 2.0, "on": 0.2, "close": 1.0},
+                                         "tilt_pitch": {"target": -2.0, "on": 0.2, "close": 1.0}})] if self.emulate else self.configured()
+        for i, (address, label, axis, smoothing, targets) in enumerate(entries):
+            s = Sensor(self.hub, DEVICE_ID if i == 0 else f"{DEVICE_ID}_{i + 1}", address, label, axis, smoothing, targets)
             s.register()
             if self._factory is not None:
                 s.reader = self._factory(address=address, **s.callbacks())

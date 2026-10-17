@@ -101,8 +101,9 @@ def normalise_mac(value: object) -> str | None:
 
 
 # The only extra public fields a device may carry (the sound level graph range, power meter ratings and
-# labels, and the Raspberry Pi's uptime, throttle flags and warnings: never its addresses).
-PUBLIC_EXTRA = frozenset({"chart_range", "chart_min_db", "chart_max_db", "rating_a", "channels", "pi"})
+# labels, the Raspberry Pi's uptime, throttle flags and warnings, and the WitMotion tilt card's fixed words and
+# numbers: never addresses).
+PUBLIC_EXTRA = frozenset({"chart_range", "chart_min_db", "chart_max_db", "rating_a", "channels", "pi", "witmotion"})
 
 
 @dataclass

@@ -35,6 +35,7 @@ SILENCE_S = 15.0            # connected but no frame this long: drop it and reco
 POLL_EVERY_S = 45.0         # battery and temperature: 30-60 s is plenty
 POLL_SPACING_S = 0.2        # between register reads (the sensor needs a moment)
 POLL_REGS = (parser.REG_BATTERY, parser.REG_MAG_ANGLE_TEMP)
+SETTINGS_REGS = (parser.REG_RATE, parser.REG_BANDWIDTH)   # read once after each connect, never written
 TICK_S = 1.0
 FIRST_POLL_S = 2.0          # not at once: the link is still settling for about 5 s after connecting
 
@@ -108,8 +109,8 @@ class WitmotionReader:
         except Exception:
             return uuid
 
-    async def _poll(self, client, write_char) -> None:
-        for reg in POLL_REGS:
+    async def _poll(self, client, write_char, regs=POLL_REGS) -> None:
+        for reg in regs:
             await client.write_gatt_char(write_char, parser.read_command(reg), response=False)
             await self._sleep(POLL_SPACING_S)
 
@@ -142,6 +143,7 @@ class WitmotionReader:
                 pass
             began = time.monotonic()
             next_poll = began + FIRST_POLL_S
+            first = True   # the settings are read once per connection, with the first poll
             while not self._lost.is_set():
                 await self._sleep(TICK_S)
                 now = time.monotonic()
@@ -151,7 +153,8 @@ class WitmotionReader:
                 if write_char is not None and now >= next_poll:
                     next_poll = now + self.poll_every_s
                     try:
-                        await self._poll(client, write_char)
+                        await self._poll(client, write_char, POLL_REGS + (SETTINGS_REGS if first else ()))
+                        first = False
                     except Exception:   # a failed read request is not a lost link
                         log.warning("WitMotion: a register request failed", exc_info=True)
         finally:
