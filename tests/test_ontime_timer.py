@@ -387,8 +387,9 @@ async def test_the_timer_card_alone_runs_only_ontime_while_the_clock_uses_the_pc
         timer = hub.snapshot()["ontime_timer"]
         assert timer["status"] == "ok" and timer["label"] == "Ontime" and set(timer) == PUBLIC_KEYS
         set_cards(hub, "wall_clock")
-        await until(lambda: not hub.ontime_timer.active)
-        assert probe.stops == 1 and "ontime" not in hub.devices and hub.snapshot()["ontime_timer"] is None
+        # Wait for the whole stop (the device is removed a moment after "active" drops; slow on Windows CI).
+        await until(lambda: not hub.ontime_timer.active and probe.stops == 1 and "ontime" not in hub.devices)
+        assert hub.snapshot()["ontime_timer"] is None
         assert hub.wall_clock.active   # the PC clock carries on
     finally:
         await hub.stop()
