@@ -1046,7 +1046,6 @@ body.layout-wall .eq-tile .value .unit { font-size: 22px; }
 body.layout-wall .eq-tile .foot { font-size: 16px; }
 
 /* ---- Power card (power.js): Shelly power meters, read only. Words and a symbol go with every colour. ---- */
-.pw-tag { font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; }
 .pw-meter + .pw-meter { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--grid); }
 .pw-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; margin-bottom: 6px; }
 .pw-name { font-size: 18px; font-weight: 700; }
