@@ -11,7 +11,7 @@ as read. A reading that cannot be taken is a gap, never a zero, and an unknown t
 Addresses and the Wi-Fi network name are admin only (info()); dashboards get the numbers.
 
 STATUS: written from the Raspberry Pi documentation (vcgencmd get_throttled bits) and the Linux
-/proc and /sys files; not yet tested on a real Pi. Use ``--emulate`` to see the cards.
+/proc and /sys files; tested on a Raspberry Pi 4 (4 GB), other models not tested. Use ``--emulate`` to see the cards.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ MANIFEST = Manifest(
     description="Shows the health of the Raspberry Pi that Stagewatch runs on: CPU temperature, "
                 "under-voltage and throttling (as the Pi itself reports them), load, memory, free disk "
                 "space, uptime and Wi-Fi signal. Only reads; never changes a setting. Runs only on a "
-                "Raspberry Pi. Not yet tested on a real Pi.",
+                "Raspberry Pi. Tested on a Raspberry Pi 4 (4 GB); other models are not tested.",
     tier="experimental",
     direction="in",
     iot_class="local_poll",

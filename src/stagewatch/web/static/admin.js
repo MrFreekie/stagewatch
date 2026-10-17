@@ -485,7 +485,7 @@
         h("th", { scope: "row" }, r.label), h("td", {}, r.value, r.unit ? " " + r.unit : "")))))),
       h("p", { class: "muted" }, addr ? `Network addresses (admin only): ${addr}` : "Network addresses: not known"),
       (dev.pi && dev.pi.warnings && dev.pi.warnings.length) ? h("p", { class: "pi-warnline" }, dev.pi.warnings.join(" ")) : null,
-      h("p", { class: "muted hint" }, "Warnings show quietly in the dashboard header's messages (they never sound): short of power, slowed down, 80 °C or more, or under 1 GB / 5% disk free. Under-voltage and throttling also add a marker when they start and stop. Not yet tested on a real Pi."));
+      h("p", { class: "muted hint" }, "Warnings show quietly in the dashboard header's messages (they never sound): short of power, slowed down, 80 °C or more, or under 1 GB / 5% disk free. Under-voltage and throttling also add a marker when they start and stop. Tested on a Raspberry Pi 4; other models are not tested."));
   }
   function barometerCard() {
     const b = admin.config.barometer || {};

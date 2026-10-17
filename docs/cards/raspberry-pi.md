@@ -4,8 +4,7 @@ The **Raspberry Pi** card shows the health of the Raspberry Pi that Stagewatch r
 one question: "is the computer running the show data OK?". It is not on any dashboard by default,
 and it stays hidden unless Stagewatch is running on a Raspberry Pi.
 
-> **Not yet tested on a real Pi.** It was written from the Raspberry Pi documentation and checked
-> with a simulated Pi (`--emulate`). Stagewatch only reads these figures. It never changes a Pi
+> **Tested on a Raspberry Pi 4 (4 GB).** Other Pi models are not tested yet. Stagewatch only reads these figures. It never changes a Pi
 > setting, a fan or a clock, and never restarts the Pi.
 
 Back to [Dashboard cards](README.md).
