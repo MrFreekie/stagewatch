@@ -10,6 +10,7 @@
 <body>
 <noscript><p style="padding:16px;font-size:20px">Stagewatch needs JavaScript. Turn JavaScript on in your browser settings, then reload this page.</p></noscript>
 <header class="top">
+  <img class="brand brand-l" alt="" hidden><img class="brand brand-d" alt="" hidden>
   <span class="title">Stagewatch</span>
   <span class="sub" id="site"></span>
   <span class="spacer"></span>
@@ -28,6 +29,7 @@
 (async () => {
   const info = await SW.api("GET", "/api/info");
   document.getElementById("site").textContent = `${info.site} · v${info.version}`;
+  SW.applyBranding(info, "show_on_index");
   const list = document.getElementById("list");
   for (const d of info.dashboards) {
     list.append(SW.h("a", { class: "tile", href: `/d/${encodeURIComponent(d.slug)}`, style: "text-decoration:none;color:inherit" },

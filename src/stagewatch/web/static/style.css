@@ -65,6 +65,20 @@ header.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
 header.top .title { font-weight: 700; font-size: 18px; }
 header.top .sub { color: var(--muted); font-size: 13px; min-width: 0; overflow-wrap: break-word; word-wrap: break-word; }
 header.top .spacer { flex: 1; }
+/* Event logo beside the title: decorative, never larger than the header row. The dark-theme image
+   shows by default (the UI is dark by default); the light one in the light theme. */
+header.top .brand { height: 28px; width: auto; max-width: 30vw; object-fit: contain; display: block; }
+header.top .brand[hidden], header.top .brand-l { display: none; }
+header.top .brand-d.invert { filter: invert(1) hue-rotate(180deg); }
+header.top .brand-d.plate { background: #fff; border-radius: 6px; padding: 3px 6px; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) header.top .brand-l:not([hidden]) { display: block; }
+  :root:not([data-theme="dark"]) header.top .brand-d { display: none; } }
+:root[data-theme="light"] header.top .brand-l:not([hidden]) { display: block; }
+:root[data-theme="light"] header.top .brand-d { display: none; }
+:root[data-theme="dark"] header.top .brand-l { display: none; }
+:root[data-theme="dark"] header.top .brand-d:not([hidden]) { display: block; }
+@media (max-width: 640px) { header.top .brand { height: 22px; max-width: 40vw; } }
 /* The header stays at the top while a tablet or phone scrolls (-webkit-sticky for iOS 12). The wall
    screen does not scroll, so it is left exactly as it was. It sits in normal flow, so nothing jumps. */
 body:not(.layout-wall) header.top { position: -webkit-sticky; position: sticky; top: 0; z-index: 30; }
@@ -376,6 +390,7 @@ body.layout-phone .grid-2 { grid-template-columns: 1fr; }
 body.layout-phone .chart-wrap { height: 240px; }
 body.layout-wall { font-size: 18px; }
 body.layout-wall header.top .title { font-size: 32px; }
+body.layout-wall header.top .brand { height: 56px; }
 body.layout-wall header.top .sub { font-size: 26px; }   /* dashboard, event and day: readable at 5 m */
 body.layout-wall .alarm-bar { font-size: 30px; }   /* alarm and notice wording readable from the back */
 body.layout-wall .alarm-bar li .lvl { font-size: 20px; }
@@ -1187,3 +1202,13 @@ body.layout-wall .pi-model { display: none; }
 .pw-dayfold > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }
 .pw-dayfold > .pw-day { margin-top: 4px; }
 body.layout-wall .pw-dayfold { display: none; }
+
+/* Admin: event logo previews on a dark and a light swatch. */
+.brand-previews { align-items: center; }
+.brand-swatch { display: inline-flex; align-items: center; justify-content: center; padding: 8px; border-radius: 6px; border: 1px solid var(--grid); }
+.brand-swatch.dark { background: #111; } .brand-swatch.light { background: #f4f4f4; }
+.brand-swatch img { height: 40px; width: auto; max-width: 200px; object-fit: contain; }
+.brand-swatch.dark img.invert { filter: invert(1) hue-rotate(180deg); }
+.brand-swatch.dark img.plate { background: #fff; border-radius: 6px; padding: 3px 6px; }
+.brand-slot input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+label.button { display: inline-flex; align-items: center; min-height: 44px; border: 1px solid var(--grid); border-radius: 6px; padding: 6px 12px; cursor: pointer; position: relative; }

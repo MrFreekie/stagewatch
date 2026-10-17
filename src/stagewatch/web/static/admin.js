@@ -43,6 +43,72 @@
     apply(saved);
   })();
   const field = (label, input) => h("label", { class: "field" }, label, input);
+
+  // Event logo (plans/custom-logo-upload.md): light and optional dark file for the current event,
+  // the dark-screen option, where it shows, and "Use previous event's logo". Loads on its own so
+  // the rest of the card never waits for it.
+  const LOGO_MAX = 1024 * 1024;
+  let brandOpen = false;
+  function brandingPanel(ev) {
+    const box = h("div", {}, h("p", { class: "muted" }, "Loading…"));
+    const base = `/api/admin/events/${ev.id}`;
+    const fill = (b) => {
+      const reload = (p) => p.then(fill, () => {});
+      const upload = (variant, input) => {
+        const f = input.files && input.files[0];
+        input.value = "";
+        if (!f) return;
+        if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { toast("Use a PNG, JPEG or WebP image.", true); return; }
+        if (f.size > LOGO_MAX) { toast("The logo is larger than 1 MB. Save a smaller copy and retry.", true); return; }
+        reload(run(async () => {
+          const res = await fetch(`${base}/logo/${variant}`, { method: "PUT", credentials: "same-origin",
+            headers: { "Content-Type": f.type }, body: f });
+          let data = null; try { data = await res.json(); } catch (_) { /* empty */ }
+          if (!res.ok) throw new Error((data && typeof data.detail === "string") ? data.detail : "Upload failed");
+          return data;
+        }, "Logo saved"));
+      };
+      const slot = (variant, label) => {
+        const meta = b[variant];
+        const input = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", onchange: () => upload(variant, input) });
+        return h("div", { class: "card-inset brand-slot" },
+          h("strong", {}, label),
+          meta ? h("div", { class: "row brand-previews" },
+            h("span", { class: "brand-swatch dark" }, h("img", { src: meta.url, alt: `${label} on a dark screen`,
+              class: variant === "light" && !b.dark && b.on_dark !== "as_is" ? b.on_dark : "" })),
+            h("span", { class: "brand-swatch light" }, h("img", { src: meta.url, alt: `${label} on a light screen` })),
+            h("span", { class: "muted" }, `${meta.width} × ${meta.height} px, ${Math.ceil(meta.bytes / 1024)} KB`))
+            : h("p", { class: "muted" }, "No file."),
+          h("div", { class: "row" },
+            h("label", { class: "button touch" }, meta ? "Replace…" : "Choose file…", input),
+            meta ? h("button", { class: "touch", type: "button", onclick: () => {
+              if (confirm(`Remove the ${label.toLowerCase()}?`)) reload(run(() => api("DELETE", `${base}/logo/${variant}`), "Logo removed"));
+            } }, "Remove") : null));
+      };
+      const opts = (patch) => reload(run(() => api("PUT", `${base}/branding`, Object.assign(
+        { on_dark: b.on_dark, show_on_admin: b.show_on_admin, show_on_index: b.show_on_index }, patch)), "Saved"));
+      const onDark = h("select", { onchange: () => opts({ on_dark: onDark.value }) },
+        [["as_is", "Show as it is"], ["invert", "Invert colours"], ["plate", "On a white plate"]].map(([v, t]) =>
+          h("option", { value: v, selected: b.on_dark === v }, t)));
+      const tick = (key, text) => h("label", { class: "check" },
+        h("input", { type: "checkbox", checked: b[key], onchange: (e) => opts({ [key]: e.target.checked }) }), ` ${text}`);
+      const hasAny = b.light || b.dark;
+      box.replaceChildren(
+        h("p", { class: "muted hint" }, "Shown beside the title on every dashboard and the wall for this event only. PNG, JPEG or WebP, still image, up to 1 MB and 2048 pixels. Nothing shows until you upload one."),
+        h("p", { class: "muted hint" }, "The file is served exactly as uploaded, to anyone on the show network. Photos can carry hidden details (such as GPS location): export the logo from a graphics program rather than using a camera photo."),
+        slot("light", "Logo for light screens"),
+        slot("dark", "Logo for dark screens (optional)"),
+        b.light && !b.dark ? h("div", { class: "row" }, field("On dark screens, without a dark file", onDark)) : null,
+        hasAny ? h("div", { class: "row" }, tick("show_on_index", "Also on the start page"), tick("show_on_admin", "Also on Admin")) : null,
+        b.previous ? h("div", { class: "row" }, h("button", { class: "touch", type: "button", onclick: () => {
+          if (!hasAny || confirm(`Replace this event's logo with the one from "${b.previous.name}"?`))
+            reload(run(() => api("POST", `${base}/logo/copy`, { from_event_id: b.previous.id }), "Logo copied"));
+        } }, `Use previous event's logo (${b.previous.name})`)) : null);
+    };
+    api("GET", `${base}/branding`).then(fill, (err) => box.replaceChildren(h("p", { class: "muted" }, err.message)));
+    return h("details", { open: brandOpen, ontoggle: (e) => { brandOpen = e.target.open; } },
+      h("summary", { class: "muted" }, "Event logo"), box);
+  }
   const val = (el) => el.value.trim();
   const numOrNull = (el) => (el.value.trim() === "" ? null : Number(el.value));
 
@@ -1644,6 +1710,7 @@
         h("button", { class: "primary touch", type: "button", "data-show-start": "", disabled: showBusy, onclick: () => { showPanel = showPanel === "next" ? "" : "next"; render(); } }, "Next day (same event)"),
         h("button", { class: "touch", type: "button", "data-show-start": "", disabled: showBusy, onclick: () => { showPanel = showPanel === "event" ? "" : "event"; render(); } }, "New event…")),
       panel,
+      brandingPanel(ev),
       h("details", {}, h("summary", { class: "muted" }, "Rename or change the date"),
         h("div", { class: "row" }, field("Event name", evName),
           h("button", { class: "touch", type: "button", style: "align-self:flex-end", onclick: saveEvent }, "Save event name")),
@@ -2174,6 +2241,7 @@
     const commit = b.commit && b.commit !== "unknown" ? ` (${b.commit}${b.dirty ? "*" : ""})` : "";
     document.getElementById("version").textContent = `v${info.version}${commit}${info.emulate ? " · EMULATE" : ""}`;
     document.getElementById("version").title = `config schema ${b.config_schema}, db schema ${b.db_schema}, Python ${b.python}`;
+    SW.applyBranding(info, "show_on_admin");
     const logout = document.getElementById("logout");
     logout.hidden = !info.is_admin;
     logout.onclick = async () => { await api("POST", "/api/admin/logout"); location.reload(); };

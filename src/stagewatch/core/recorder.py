@@ -452,6 +452,21 @@ class Recorder:
         rows = self._db.execute("SELECT id, name, created, ended FROM events ORDER BY id DESC").fetchall()
         return [{"id": r[0], "name": r[1], "created": r[2], "ended": r[3]} for r in rows]
 
+    def event_branding(self, event_id: int) -> dict | None:
+        """The event's logo display options, or None for an unknown event."""
+        row = self._db.execute("SELECT id, name, logo_on_dark, logo_show_on_admin, logo_show_on_index, created "
+                               "FROM events WHERE id = ?", (event_id,)).fetchone()
+        if row is None:
+            return None
+        return {"id": row[0], "name": row[1], "on_dark": row[2],
+                "show_on_admin": bool(row[3]), "show_on_index": bool(row[4]), "created": row[5]}
+
+    def set_event_branding(self, event_id: int, on_dark: str, show_on_admin: bool,
+                           show_on_index: bool) -> None:
+        self._db.execute("UPDATE events SET logo_on_dark = ?, logo_show_on_admin = ?, logo_show_on_index = ? "
+                         "WHERE id = ?", (on_dark, int(show_on_admin), int(show_on_index), event_id))
+        self._db.commit()
+
     def rename_event(self, name: str) -> dict:
         name = clean_name(name, "event name")
         self._db.execute("UPDATE events SET name = ? WHERE id = ?", (name, self.event_id))
