@@ -85,8 +85,8 @@ def _not_supervised(monkeypatch):
 # ------------------------------------------------------------------ constants
 def test_version_constants_keep_the_line_format_the_updater_parses():
     text = (ROOT / "src" / "stagewatch" / "version.py").read_text(encoding="utf-8")
-    assert parse_schema_versions(text) == (2, 3) == (CONFIG_SCHEMA_VERSION, DB_SCHEMA_VERSION)
-    assert "\nCONFIG_SCHEMA_VERSION = 2\n" in text and "\nDB_SCHEMA_VERSION = 3\n" in text
+    assert parse_schema_versions(text) == (2, 4) == (CONFIG_SCHEMA_VERSION, DB_SCHEMA_VERSION)
+    assert "\nCONFIG_SCHEMA_VERSION = 2\n" in text and "\nDB_SCHEMA_VERSION = 4\n" in text
 
 
 def test_fixtures_are_v1():
@@ -115,7 +115,7 @@ def test_v1_fixture_migrates_to_v2(v1_db):
     assert cols[-2:] == ["doc", "import_id"] and {"show_id", "ts", "source", "src_ip", "msg"} <= set(cols)
     assert {r[1] for r in _q(v1_db, "PRAGMA table_info(schedule_items)")} >= {"actual_start", "actual_end"}
     # safety copy: the untouched v1 data, next to the database
-    copy = v1_db.with_name("stagewatch.sqlite3.pre-v3.bak")
+    copy = v1_db.with_name("stagewatch.sqlite3.pre-v4.bak")
     assert copy.is_file() and _q(copy, "PRAGMA user_version") == [(1,)] and _counts(copy) == before
 
 
@@ -190,11 +190,11 @@ def test_newer_db_is_refused(tmp_path):
 
 
 def test_second_safety_copy_does_not_overwrite_the_first(v1_db):
-    first = v1_db.with_name(v1_db.name + ".pre-v3.bak")
+    first = v1_db.with_name(v1_db.name + ".pre-v4.bak")
     first.write_bytes(b"older copy")
     Recorder(v1_db).close()
     assert first.read_bytes() == b"older copy"
-    others = list(v1_db.parent.glob("stagewatch.sqlite3.pre-v3-*.bak"))
+    others = list(v1_db.parent.glob("stagewatch.sqlite3.pre-v4-*.bak"))
     assert len(others) == 1 and _q(others[0], "PRAGMA user_version") == [(1,)]
 
 
@@ -214,16 +214,16 @@ def test_failed_safety_copy_stops_before_migrating(v1_db, monkeypatch):
 def test_trial_environment_variable_alone_never_skips_the_safety_copy(v1_db, monkeypatch):
     monkeypatch.setenv("STAGEWATCH_UPDATE_TRIAL", "1")
     Recorder(v1_db).close()
-    assert (v1_db.parent / "stagewatch.sqlite3.pre-v3.bak").is_file()
+    assert (v1_db.parent / "stagewatch.sqlite3.pre-v4.bak").is_file()
 
 
 def test_torn_safety_copy_is_removed_and_never_counts(v1_db):
-    torn = v1_db.with_name("stagewatch.sqlite3.pre-v3.bak.tmp")
+    torn = v1_db.with_name("stagewatch.sqlite3.pre-v4.bak.tmp")
     torn.write_bytes(b"SQLite format 3\x00 cut off by a power cut")
-    v1_db.with_name("stagewatch.sqlite3.pre-v3.bak.tmp-journal").write_bytes(b"x")
+    v1_db.with_name("stagewatch.sqlite3.pre-v4.bak.tmp-journal").write_bytes(b"x")
     Recorder(v1_db).close()
     assert not list(v1_db.parent.glob("*.tmp*"))
-    good = v1_db.with_name("stagewatch.sqlite3.pre-v3.bak")
+    good = v1_db.with_name("stagewatch.sqlite3.pre-v4.bak")
     assert _q(good, "PRAGMA integrity_check") == [("ok",)] and _q(good, "PRAGMA user_version") == [(1,)]
 
 
@@ -297,7 +297,7 @@ def test_damaged_updater_backup_means_a_safety_copy(v1_dir, tmp_path, monkeypatc
         copy.unlink()
     assert not updater_backup_covers(v1_dir / "stagewatch.sqlite3")
     Recorder(v1_dir / "stagewatch.sqlite3").close()
-    assert (v1_dir / "stagewatch.sqlite3.pre-v3.bak").is_file()
+    assert (v1_dir / "stagewatch.sqlite3.pre-v4.bak").is_file()
 
 
 def test_backup_of_a_v2_database_does_not_count(v1_dir, tmp_path, monkeypatch):
@@ -329,7 +329,7 @@ def test_pending_update_file_means_a_safety_copy(v1_dir, tmp_path, monkeypatch):
 def test_supervised_start_with_an_unrelated_backup_makes_the_safety_copy(v1_dir, tmp_path, monkeypatch):
     _updater_world(tmp_path, monkeypatch, data_dir=v1_dir, to_sha="c" * 40)
     Recorder(v1_dir / "stagewatch.sqlite3").close()
-    assert (v1_dir / "stagewatch.sqlite3.pre-v3.bak").is_file()
+    assert (v1_dir / "stagewatch.sqlite3.pre-v4.bak").is_file()
 
 
 # ------------------------------------------------------------- events/days

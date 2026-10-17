@@ -182,7 +182,7 @@ def test_admin_schedule_editor_rules():
     # preview first, then the rows are merged and saved with a PUT
     assert "dry_run: true" in js and "dry_run: false" not in js
     assert "The schedule was changed elsewhere. Reload to see it, then make your change again." in js
-    assert "Visible to anyone on the show network." in js
+    assert "Visible to anyone on the show network, except action lines and actions, which only admins see." in js
     # the poll never rebuilds over typed text
     assert 'matches("input,select,textarea")' in js
     assert "if (!sd.dirty && !isEditing()) { await loadSchedule(); rerenderSchedule(); }" in js
@@ -244,10 +244,11 @@ def test_schedule_page_is_static_html_with_a_way_back():
     html = (STATIC / "schedule.html").read_text(encoding="utf-8")
     assert 'href="/admin"' in html and 'id="day"' in html
     assert re.findall(r'<script[^>]*\ssrc="([^"]+)"', html) == [
-        "/static/compat.js", "/static/common.js", "/static/schedule-export.js", "/static/schedule-editor.js"]
+        "/static/compat.js", "/static/common.js", "/static/schedule-export.js", "/static/actions-ui.js",
+        "/static/schedule-editor.js"]
     # print view: built with SW.renderMarkdown (links off), shown only when printing
     js = _js("schedule-editor.js")
-    assert "SW.renderMarkdown(r.setlist)" in js and "window.print()" in js and "SW.scheduleCsv(sd.rows)" in js
+    assert "SW.renderMarkdown(r.setlist)" in js and "window.print()" in js and 'SW.scheduleCsv(sd.rows.filter((r) => r.kind !== "action"))' in js
     assert "@media print" in html and "#print-view { display: none; }" in html
     assert "header.top, .site-footer, #app" in html
     assert "SW.fmtDay(show.day)" in _js("schedule-editor.js")

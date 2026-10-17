@@ -24,12 +24,16 @@
   // Unknown values get a title-cased label ("some_kind" -> "Some Kind"); the fixed list is only the
   // fallback for a server that doesn't send one.
   const KIND_LABEL = { venue_access: "Venue Access", load_in: "Load In", crew_call: "Crew Call", soundcheck: "Soundcheck",
-    doors: "Doors", act: "Act", changeover: "Changeover", curfew: "Curfew", load_out: "Load Out", other: "Other" };
+    doors: "Doors", act: "Act", changeover: "Changeover", curfew: "Curfew", load_out: "Load Out", other: "Other", action: "Action (OSC)" };
+  let acts = null;          // /api/admin/actions (armed, targets, log)
+  const openActions = new Set();    // row keys whose actions panel is open
+  const ICONS = { generic: "▸", music: "♪", record: "●" };
+  const targets = () => (acts && acts.targets) || [];
   const kindLabel = (k) => KIND_LABEL[k] || String(k).split("_").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   const schedKinds = () => {
     const ks = admin && admin.schedule_limits && Array.isArray(admin.schedule_limits.kinds) && admin.schedule_limits.kinds.length
       ? admin.schedule_limits.kinds : Object.keys(KIND_LABEL);
-    return ks.map((k) => [k, kindLabel(k)]);
+    return ks.concat(["action"]).map((k) => [k, kindLabel(k)]);
   };
   const kb = (n) => `${SW.num(n / 1024, n % 1024 ? 1 : 0)} KB`;
   const utf8 = (s) => (typeof TextEncoder === "function" ? new TextEncoder().encode(s).length : s.length);
@@ -48,15 +52,18 @@
     const has = typeof it.marker === "boolean";
     return { key: ++sdKey, id: it.id || null, date: it.date || "", kind: kind,
       title: it.title || "", start: it.start || "", end: it.end || "", stage: it.stage || "", setlist: it.setlist || "",
-      marker: has ? it.marker : def, markerSet: has && it.marker !== def };
+      marker: has ? it.marker : def, markerSet: has && it.marker !== def,
+      action: it.action ? JSON.parse(JSON.stringify(it.action)) : null, runs: it.runs || {},
+      saved: { start: it.start || "", end: it.end || "" } };
   };
   function sdFromServer(s) {
     sd = { showId: s.show_id, revision: s.revision, day: s.day, rows: (s.items || []).map(sdRow), dirty: false,
       errors: {}, cardErrors: [], conflict: "", changedElsewhere: false };
     openSetlists.clear();
+    openActions.clear();
   }
   async function loadSchedule(force) {
-    sdServer = await api("GET", "/api/schedule");
+    [sdServer, acts] = await Promise.all([api("GET", "/api/admin/schedule"), api("GET", "/api/admin/actions")]);
     if (force || !sd || !sd.dirty) sdFromServer(sdServer);
   }
   function sdTouch() {
@@ -68,7 +75,7 @@
     if (old) old.replaceWith(scheduleCard());
   }
   const csvCell = (v) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  const rowsAsCsv = (rows) => ["start,end,title,kind,stage"].concat(rows.map((r) =>
+  const rowsAsCsv = (rows) => ["start,end,title,kind,stage"].concat(rows.filter((r) => r.kind !== "action").map((r) =>
     [r.start, r.end, r.title, r.kind, r.stage].map((v) => csvCell(String(v || "").trim())).join(","))).join("\n");
 
   // The server's messages are fixed crew text; pydantic's own ones are not, so use ours for those.
@@ -99,9 +106,17 @@
       rerenderSchedule();
       return false;
     }
-    const body = { show_id: sd.showId, revision: sd.revision, items: sd.rows.map((r) => {
+    // Moving an item that carries actions moves its actions too: say so and ask first.
+    const moved = [];
+    for (const r of sd.rows) {
+      if (!r.id || r.kind === "action" || !r.action) continue;
+      if (r.action.start && r.start.trim() !== r.saved.start) moved.push(`${r.title}: start action ${r.saved.start} → ${r.start.trim()}`);
+      if (r.action.end && r.end.trim() !== r.saved.end) moved.push(`${r.title}: end action ${r.saved.end || "none"} → ${r.end.trim() || "none"}`);
+    }
+    if (moved.length && !confirm(`This also moves its actions:\n${moved.join("\n")}\n\nSave anyway?`)) return false;
+    const body = { show_id: sd.showId, revision: sd.revision, with_actions: true, items: sd.rows.map((r) => {
       const o = { kind: r.kind, title: r.title.trim(), start: r.start.trim(), end: r.end.trim(), stage: r.stage.trim(), setlist: r.setlist,
-        marker: r.markerSet ? !!r.marker : null };
+        marker: r.markerSet ? !!r.marker : null, action: r.action && (r.action.start || r.action.end) ? r.action : null };
       if (r.id) o.id = r.id;
       if (r.date) o.date = r.date;
       return o;
@@ -110,7 +125,7 @@
     let ok = false;
     try {
       let res = await api("PUT", "/api/admin/schedule", body);
-      if (!res || res.revision === undefined || !Array.isArray(res.items)) res = await api("GET", "/api/schedule");
+      if (!res || res.revision === undefined || !Array.isArray(res.items)) res = await api("GET", "/api/admin/schedule");
       sdServer = res;
       sdFromServer(res);
       admin.schedule_limits = Object.assign({}, lim, { demo_allowed: isEmulate || !res.items.length });
@@ -232,9 +247,47 @@
         h("div", {}, h("div", { class: "muted", style: "font-size:13px" }, "How it looks on dashboards"), preview),
         h("p", { class: "muted hint" }, "One song per line. Optional: 1. for numbered lines, - for bullets, ## for a heading, **bold**, *italic*. Links are not shown as links."));
     }
+    // OSC actions: an Action line's message, or messages at another item's start / end.
+    const isAction = r.kind === "action";
+    const hasAct = !!(r.action && (r.action.start || r.action.end));
+    const actOpen = openActions.has(r.key) || (isAction && !hasAct);
+    const actBtn = h("button", { type: "button", class: "touch", "aria-expanded": actOpen ? "true" : "false",
+      onclick: () => { if (openActions.has(r.key)) openActions.delete(r.key); else openActions.add(r.key); rerenderSchedule(); } },
+    hasAct ? "Actions ✓" : "Actions");
+    let actPanel = null;
+    if (actOpen) {
+      const a = r.action || (r.action = { start: null, end: null, icon: isAction ? "generic" : "record", enabled: true });
+      const ed = (phase, label) => {
+        const e = SW.actionMessageEditor(a[phase], targets(), { label, test: true });
+        const upd = () => { a[phase] = e.read(); sdTouch(); };
+        e.el.addEventListener("input", upd);
+        e.el.addEventListener("change", upd);
+        e.el.addEventListener("click", () => setTimeout(() => { a[phase] = e.read(); }, 0));
+        return e.el;
+      };
+      const icon = h("select", { class: "touch", "aria-label": "Icon", onchange: (ev) => { a.icon = ev.target.value; sdTouch(); } },
+        [["generic", "▸ General"], ["music", "♪ Music"], ["record", "● Record"]].map(([v, l]) => h("option", { value: v }, l)));
+      icon.value = a.icon || "generic";
+      const en = h("input", { type: "checkbox", checked: a.enabled !== false, "aria-label": "Action on",
+        onchange: (ev) => { a.enabled = !!ev.target.checked; sdTouch(); } });
+      actPanel = h("div", { class: "act-panel card-inset" },
+        targets().length ? null : h("p", { class: "muted" }, "No action targets yet. Add one in ", h("strong", {}, "Admin → Action targets"), "."),
+        ed("start", isAction ? "At the start time, send" : "When it starts, send"),
+        ed("end", isAction ? "At the end time, send (optional)" : "When it ends, send (needs an end time)"),
+        h("div", { class: "row" }, h("label", { class: "field" }, "Icon", icon),
+          h("label", { class: "field sched-edit-marker" }, "On", h("span", { class: "sched-edit-marker-box" }, en))),
+        h("p", { class: "muted hint" }, `${SW.ACTION_EXAMPLES} Actions send only while armed, and only at their time: never late.`));
+    }
+    const runText = (ph) => {
+      const run = r.runs && r.runs[ph];
+      if (run) return `${ph}: ${SW.ACTION_STATUS[run.status] || run.status}${run.status === "sent" ? ` ${SW.fmtTime(run.due)}` : ""}`;
+      return r.action && r.action[ph] ? `${ph}: waiting` : "";
+    };
+    const chips = hasAct ? h("span", { class: "act-chip muted" },
+      `${ICONS[r.action.icon] || ICONS.generic} ${["start", "end"].map(runText).filter(Boolean).join(", ")}${r.action.enabled === false ? " (switched off)" : ""}`) : null;
     const nextDay = r.date && sd.day && r.date !== sd.day ? h("span", { class: "muted sched-date" }, `(${SW.fmtDay(r.date)})`) : null;
     const errList = Object.keys(errs).map((f) => errs[f]).filter((m, k, a) => a.indexOf(m) === k);
-    return h("li", { class: "sched-edit-row" },
+    return h("li", { class: "sched-edit-row" + (isAction ? " sched-action-row" : "") },
       h("div", { class: "sched-edit-fields" },
         h("span", { class: "sched-edit-n muted" }, String(i + 1)),
         h("label", { class: "field" }, "Start", timeInput("start", "HH:MM"), nextDay),
@@ -244,14 +297,15 @@
         h("label", { class: "field" }, "Stage", stage),
         h("label", { class: "field sched-edit-marker", title: "Put a marker on the chart when this happens" }, "Marker",
           h("span", { class: "sched-edit-marker-box" }, mark)),
-        h("div", { class: "row sched-edit-btns" }, setBtn,
+        h("div", { class: "row sched-edit-btns" }, isAction ? null : setBtn, actBtn,
           h("button", { type: "button", class: "touch", "data-move": `${r.key}-up`, "aria-label": `Move item ${i + 1} up`, title: "Move up", disabled: i === 0, onclick: () => moveRow(i, -1) }, "▲"),
           h("button", { type: "button", class: "touch", "data-move": `${r.key}-down`, "aria-label": `Move item ${i + 1} down`, title: "Move down", disabled: i === total - 1, onclick: () => moveRow(i, 1) }, "▼"),
           h("button", { type: "button", class: "touch danger", "aria-label": `Remove item ${i + 1}`, title: "Remove", onclick: () => {
             sd.rows.splice(i, 1); openSetlists.delete(r.key); delete sd.errors[r.key]; sdTouch(); rerenderSchedule();
           } }, "✕"))),
+      chips,
       errList.length ? h("p", { class: "error sched-edit-err", role: "alert" }, errList.join(". ")) : null,
-      setPanel);
+      setPanel, actPanel);
   }
 
   function moveRow(i, dir) {
@@ -266,7 +320,7 @@
 
   // ---- Export and print: both use the list as it is on the page.
   function exportCsv() {
-    const text = SW.scheduleCsv(sd.rows);
+    const text = SW.scheduleCsv(sd.rows.filter((r) => r.kind !== "action"));   // never the actions
     const name = SW.scheduleFilename((admin.show || {}).event_name, sd.day || (admin.show || {}).day);
     const a = h("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })), download: name });
     document.body.append(a); a.click(); a.remove();
@@ -279,6 +333,9 @@
     const show = admin.show || {};
     const day = sd.day || show.day || "";
     const rows = sd.rows.map((r) => {
+      if (r.kind === "action") {   // a minor line: time and label only, no OSC details
+        return [h("tr", { class: "pv-action" }, h("td", { class: "pv-time" }, r.start), h("td", {}, "(action)"), h("td", {}, ""), h("td", {}, r.title)), null];
+      }
       const when = r.start ? (r.end ? `${r.start}–${r.end}` : r.start) : "";
       const date = r.date && sd.day && r.date !== sd.day ? ` (${SW.fmtDay(r.date)})` : "";
       const main = h("tr", { class: "pv-item" },
@@ -394,9 +451,14 @@
       h("p", { class: "muted hint" }, "Puts a marker on the chart at each soundcheck, at doors, and when each act goes on and comes off stage (off stage only if the act has an end time or a curfew cuts it off). Untick Marker on a line to leave it out, or tick it on any other line. Markers come at the planned times."));
 
     const stages = admin.stages || [];
+    const actionsBox = acts ? h("div", { class: "act-box" },
+      SW.actionsArmedBar(acts, (st) => { Object.assign(acts, st); rerenderSchedule(); }),
+      h("p", { class: "muted hint" }, `${SW.ACTION_WARNING} Stagewatch sends on this computer's clock: keep it synced to network time. Action lines and actions are only shown here and in Admin, never on dashboards.`),
+      h("details", {}, h("summary", {}, "Action log"), SW.actionLogList(acts.log))) : null;
     return el(
+      actionsBox,
       h("p", { class: "muted hint" }, `The running order for ${show.name || "this show day"}${sd.day ? `, ${SW.fmtDay(sd.day)}` : ""}. Times are 24-hour, in site time. Times before ${rollover} count as the next morning, so 23:00 to 00:30 works. Leave Stage empty for items that apply to every stage.`),
-      h("p", { class: "muted hint" }, "Visible to anyone on the show network."),
+      h("p", { class: "muted hint" }, "Visible to anyone on the show network, except action lines and actions, which only admins see."),
       h("p", { class: "muted hint" }, `${sd.rows.length} of ${lim.max_items || 300} items. Titles up to ${lim.title_max || 120} characters. Setlists up to ${kb(lim.setlist_max_bytes || 8192)} each, ${kb(lim.setlist_total_max_bytes || 262144)} in total. Dashboards list items by start time: ▲ and ▼ only matter for items that start at the same time.`),
       h("datalist", { id: "sched-stage-list" }, stages.map((s) => h("option", { value: s }))),
       autoMarkers,
@@ -412,7 +474,7 @@
         h("button", { type: "button", class: "touch", disabled: !sd.rows.length, onclick: exportCsv }, "Export CSV"),
         h("button", { type: "button", class: "touch", disabled: !sd.rows.length, onclick: printSchedule }, "Print"),
         sdStatus),
-      h("p", { class: "muted hint" }, "Export CSV and Print use the list as it is on this page, including changes you have not saved. The CSV has no setlists; Print has them."),
+      h("p", { class: "muted hint" }, "Export CSV and Print use the list as it is on this page, including changes you have not saved. The CSV has no setlists and no actions. Print has the setlists, and action lines with their time and label only."),
       importBox);
   }
 
@@ -447,6 +509,10 @@
       // The schedule changed on another page: reload it, unless this page has unsaved edits
       // (then say so, and keep them). Always redraw after replacing sd: inputs still tied to the
       // old rows would otherwise take edits that Save never sends.
+      const st = await api("GET", "/api/admin/actions");
+      if (acts && (st.rev !== acts.rev || st.armed !== acts.armed) && !sd.dirty && !isEditing()) {
+        acts = st; await loadSchedule(); rerenderSchedule(); return;
+      }
       const meta = s.schedule || {};
       if (meta.show_id !== sd.showId || meta.revision !== sd.revision) {
         if (!sd.dirty && !isEditing()) { await loadSchedule(); rerenderSchedule(); }

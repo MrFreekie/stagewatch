@@ -402,11 +402,12 @@ def test_put_schedule_resolves_times_and_round_trips(client):
     r = _put(client, BASIC)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body) == {"show_id", "day", "revision", "items"} and body["day"] == DAY
+    # the admin shape: the public one plus the OSC actions (admin only)
+    assert set(body) == {"show_id", "day", "revision", "items", "actions"} and body["day"] == DAY
     assert body["revision"] == client.hub.schedule.revision() > 0
     items = body["items"]
     assert [i["title"] for i in items] == ["Doors", "Support", "Acoustic tent", "Curfew"]
-    assert all(set(i) == PUBLIC_ITEM_KEYS for i in items)
+    assert all(set(i) == PUBLIC_ITEM_KEYS | {"action", "runs"} for i in items)
     cur = items[-1]
     assert (cur["date"], cur["start"], cur["end"], cur["planned_start"]) == (
         "2026-10-03", "00:30", "", utc(2026, 10, 2, 23, 30))
