@@ -403,6 +403,99 @@
       h("p", { class: "muted" }, lines.join(" · ")));
   }
 
+  // ------------------------------------------------------------ sound level limits
+  // Limits per event (every day) with an optional override for this day. Each limit is tied to one
+  // of the recorded Smaart values. Public wording only: anyone on the show network can read it.
+  function splLimitsCard() {
+    const body = h("div", {}, h("p", { class: "muted" }, "Loading…"));
+    const c = card("Sound level limits", body);
+    api("GET", "/api/admin/spl-limits").then((d) => body.replaceChildren(...splLimitsBody(d).filter((x) => x)),
+      () => body.replaceChildren(h("p", { class: "notice" }, "Could not load the sound level limits.")));
+    return c;
+  }
+  function splLimitsBody(d) {
+    const slots = d.slots || [];
+    const slotText = (s) => (s.source ? `${s.metric} (${s.source})` : s.metric);
+    const newId = () => Math.random().toString(36).slice(2, 10).replace(/[^a-z0-9]/g, "") || "x1";
+    const scope = h("select", { class: "touch", "aria-label": "Which limits" },
+      h("option", { value: "event" }, "Every day of this event"), h("option", { value: "show" }, "This day only (override)"));
+    scope.value = d.override_active ? "show" : "event";
+    const rowsBox = h("div", { class: "spl-lim-rows" });
+    const setBy = h("input", { class: "touch", maxlength: "120" });
+    const ref = h("input", { class: "touch", maxlength: "200" });
+    const notes = h("textarea", { class: "touch", maxlength: "500", rows: "2" });
+    const enteredBy = h("input", { class: "touch", maxlength: "120" });
+    const changeNote = h("input", { class: "touch", maxlength: "200" });
+    let rows = [];
+    function addRow(l) {
+      l = l || { id: newId(), source: (slots[0] || {}).source || "", metric: (slots[0] || {}).metric || "", kind: "limit", value_db: "", start: "", end: "", label: "" };
+      const met = h("select", { class: "touch spl-sel", "aria-label": "Smaart value" });
+      const opts = slots.map((s, i) => h("option", { value: String(i) }, slotText(s)));
+      let idx = slots.findIndex((s) => s.source === l.source && s.metric === l.metric);
+      if (idx < 0) { opts.push(h("option", { value: "keep" }, `${slotText(l)} (not recorded now)`)); }
+      met.replaceChildren(...opts);
+      met.value = idx < 0 ? "keep" : String(idx);
+      const kind = h("select", { class: "touch", "aria-label": "Kind" }, h("option", { value: "limit" }, "Licence limit"), h("option", { value: "guidance" }, "Guidance"));
+      kind.value = l.kind;
+      const val = h("input", { class: "num touch", type: "number", min: "40", max: "150", step: "0.1", value: l.value_db, "aria-label": "dB" });
+      const start = h("input", { class: "touch", type: "time", value: l.start || "", "aria-label": "From" });
+      const end = h("input", { class: "touch", type: "time", value: l.end || "", "aria-label": "Until" });
+      const label = h("input", { class: "touch", maxlength: "60", value: l.label || "", "aria-label": "Label" });
+      const r = { l, met, kind, val, start, end, label };
+      r.el = h("div", { class: "row spl-lim-row" }, field("Smaart value", met), field("Kind", kind), field("dB", val),
+        field("From (empty = start of day)", start), field("Until (empty = end of day)", end), field("Label (optional)", label),
+        h("button", { class: "touch", onclick: () => { rows = rows.filter((x) => x !== r); r.el.remove(); } }, "Remove"));
+      rows.push(r);
+      rowsBox.append(r.el);
+    }
+    function fill(set) {
+      rows = []; rowsBox.replaceChildren();
+      ((set && set.limits) || []).forEach(addRow);
+      setBy.value = (set && set.set_by) || ""; ref.value = (set && set.reference) || ""; notes.value = (set && set.public_notes) || "";
+    }
+    fill(d.override_active ? d.show_set : d.event_set);
+    scope.addEventListener("change", () => fill(scope.value === "show" ? (d.show_set || d.event_set) : d.event_set));
+    const collect = () => ({
+      scope: scope.value, entered_by: enteredBy.value, change_note: changeNote.value,
+      set: {
+        set_by: setBy.value, reference: ref.value, public_notes: notes.value,
+        limits: rows.map((r) => {
+          const s = r.met.value === "keep" ? r.l : slots[Number(r.met.value)];
+          return { id: r.l.id, source: s.source || "", metric: s.metric, kind: r.kind.value, value_db: Number(r.val.value),
+            start: r.start.value, end: r.end.value, label: r.label.value };
+        }),
+      },
+    });
+    const save = h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/spl-limits", collect()), "Sound level limits saved").then(refresh, () => {}) }, "Save limits");
+    const back = d.override_active ? h("button", { class: "touch", onclick: () => run(() => api("DELETE", "/api/admin/spl-limits/override"), "Back to the event's limits").then(refresh, () => {}) }, "Use the event's limits for this day") : null;
+    const from = h("select", { class: "touch", "aria-label": "Copy from event" }, ...(d.events || []).map((e) => h("option", { value: String(e.id) }, e.name)));
+    const copy = (d.events || []).length ? h("div", { class: "row" }, field("Copy limits from another event", from),
+      h("button", { class: "touch", onclick: () => run(() => api("POST", "/api/admin/spl-limits/copy", { from_event_id: Number(from.value) }), "Limits copied: check and save them to confirm").then(refresh, () => {}) }, "Copy")) : null;
+    const st = d.settings || {};
+    const warn = h("input", { class: "num touch", type: "number", min: "0", max: "60", value: st.change_warning_min });
+    const mk = h("input", { type: "checkbox" }); mk.checked = !!st.exceed_marker;
+    const al = h("input", { type: "checkbox" }); al.checked = !!st.exceed_alarm;
+    const saveSet = h("button", { class: "touch", onclick: () => run(() => api("PUT", "/api/admin/spl-limits/settings", { change_warning_min: Number(warn.value) || 0, exceed_marker: mk.checked, exceed_alarm: al.checked }), "Saved") }, "Save notices");
+    const revs = (d.revisions || []).slice(0, 5).map((r) => `Rev ${r.rev}, ${SW.fmtTime(r.saved_at, { date: true })}${r.show_id ? " (this day)" : ""}${r.cleared ? ", back to event limits" : ""}${r.entered_by ? `, by ${r.entered_by}` : ""}${r.change_note ? `: ${r.change_note}` : ""}`);
+    return [
+      h("p", { class: "notice" }, "Visible to anyone on the show network. Don't paste confidential noise-plan wording."),
+      d.copied ? h("p", { class: "notice" }, "▲ These limits were copied from another event and are not yet confirmed. Check them and save.") : null,
+      !slots.length ? h("p", { class: "notice" }, "No Smaart values are recorded yet. Choose them in Sound level first; a limit is compared with one of them.") : null,
+      h("div", { class: "row" }, field("Which limits", scope)),
+      rowsBox,
+      h("div", { class: "row" }, h("button", { class: "touch", onclick: () => addRow() }, "Add a limit")),
+      h("div", { class: "row" }, field("Set by", setBy), field("Reference", ref)),
+      h("div", { class: "row" }, field("Notes shown on dashboards", notes)),
+      h("div", { class: "row" }, field("Entered by (admin only)", enteredBy), field("What changed (on the timeline)", changeNote)),
+      h("div", { class: "row" }, save, back),
+      h("p", { class: "muted hint" }, "Over means Smaart's value is above the entered number. A licence limit adds a marker and a silent notice the first time it is passed; guidance shows on the card only. Times are the site's clock on the show day (a time before the day rollover is after midnight). Stagewatch cannot check Smaart's Leq period: tie each limit to the Smaart value whose name matches the licence (for example LAeq 15)."),
+      copy,
+      h("div", { class: "row" }, field("Warn this many minutes before a limit drops (0 = off)", warn),
+        h("label", { class: "field inline" }, mk, " Marker when a limit is first passed"), h("label", { class: "field inline" }, al, " Silent notice while over"), saveSet),
+      revs.length ? h("p", { class: "muted" }, "Recent changes: " + revs.join(" · ")) : null,
+    ];
+  }
+
   // ------------------------------------------------------------ globcon
   // Where DirectOut GLOBCON is, for the DirectOut GLOBCON card. Read-only: Stagewatch only listens and
   // asks for names and levels. The controller and strips are chosen per dashboard (Edit cards).
@@ -1314,6 +1407,7 @@
     ontime_rundown: ["Ontime Rundown", "The running event, whether Ontime is ahead or behind, the planned and expected end and the list of events with their times. Read from Ontime; set its address in the Ontime card. Event titles and notes are shown on the dashboard, and follow the Ontime card setting \"Show the event title on dashboards\"."],
     equipment: ["Equipment", "Readings from Equipment sensors (amp racks, power supplies), by node. Never part of the site average. Stays hidden until a sensor has the Equipment role."],
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
+    spl_limits: ["Sound level limits", "The licence limit in force now, the next change and the live Smaart value beside it. Public wording only. Stays hidden on phones and walls until limits are entered (Sound level limits)."],
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
     globcon_meters: ["DirectOut GLOBCON", "Live level meters for a group of channels (for example 1 to 8 or 9 to 16) of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Pick the controller and channels here; set the GLOBCON address in the GLOBCON settings."],
     power: ["Power", "Watts, volts, amps, frequency and energy from Shelly power meters, as the meters report them. Read only. Never part of a site average. Add meters in the Shelly power meters settings. Stays hidden until a meter has been added."],
@@ -2253,6 +2347,7 @@
       foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"),
       foldCard(barometerCard(), "barometer", false),
       foldCard(splCard(), "smaart", false),
+      foldCard(splLimitsCard(), "spllimits", false),
       foldCard(globconCard(), "globcon", false),
       foldCard(shellyCard(), "shelly", false),
       piHostInfo() ? foldCard(piHostCard(), "pihost", false) : null,

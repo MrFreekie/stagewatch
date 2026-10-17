@@ -24,6 +24,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "spl_live",        # sound level from Smaart: up to 3 chosen values and their timeline; hidden while none are set up; never added by default
     "globcon_meters",  # DirectOut GLOBCON level meters for 4 or 8 strips of one controller; hidden until GLOBCON has answered; never added by default
     "power",           # Shelly power meters (watts, volts, amps, energy): read-only Equipment readings; hidden while there are none; never added by default
+    "spl_limits",      # Sound level limits: limit now, next change, live Smaart value beside it; never added by default
     "pi_host",         # This Raspberry Pi: temperature, power supply, load, memory, disk; hidden unless Stagewatch runs on a Pi; never added by default
     "documents",       # event policy and risk documents shared with this dashboard; hidden while none are; never added by default
 )

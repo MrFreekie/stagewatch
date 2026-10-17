@@ -22,6 +22,7 @@ This page is the one list of every card. Each card has its own page.
 | [Barometer](barometer.md) | Sea-level pressure dial, 3-hour tendency and a rough outlook | No | No | A pressure sensor |
 | [Equipment](equipment.md) | Readings from Equipment-role sensors, such as amp racks. Hidden while there are none | No | No | An Equipment sensor |
 | [Sound level](sound-level.md) | Up to three sound level values from Smaart, and their timeline. Hidden until set up | No | No | [Smaart](../integrations/smaart.md) |
+| [Sound level limits](sound-level-limits.md) | The licence limit now, the next change and Smaart's live value beside it. Public wording only | Tablet, phone, wall | No | [Smaart](../integrations/smaart.md) and limits entered in Admin |
 | [DirectOut GLOBCON](globcon.md) | Level meters for 4, 8 or 16 channels of one controller. Hidden until GLOBCON has answered | No | Yes | [DirectOut GLOBCON](../integrations/globcon.md) |
 | [Power](power.md) | Watts, volts, amps and energy from power meters. Hidden until a meter is added | No | Yes | [Shelly](../integrations/shelly.md) |
 | [Raspberry Pi](raspberry-pi.md) | The health of the Pi Stagewatch runs on: temperature, power supply, load, memory, disk. Hidden unless it runs on a Pi | No | Yes | A Raspberry Pi |

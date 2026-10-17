@@ -701,10 +701,10 @@ def test_fresh_install_and_new_dashboards_use_layout_defaults():
 
 
 def test_unknown_card_ids_are_kept_on_load():
-    d = Dashboard.model_validate({"slug": "x", "cards": ["env_tiles", "spl_limits", "contacts", "env_tiles",
+    d = Dashboard.model_validate({"slug": "x", "cards": ["env_tiles", "network_events", "contacts", "env_tiles",
                                                          "Bad-Id", 5, "x" * 33]})
-    assert d.cards == ["env_tiles", "spl_limits", "contacts"]
-    assert cards.unknown_cards(d.cards) == ["spl_limits", "contacts"]
+    assert d.cards == ["env_tiles", "network_events", "contacts"]
+    assert cards.unknown_cards(d.cards) == ["network_events", "contacts"]
     many = Dashboard(slug="x", cards=[f"c_{chr(97 + i)}" for i in range(17)])  # load: keep 16, no failure
     assert len(many.cards) == 16 and many.cards[0] == "c_a"
     assert Dashboard(slug="x", cards=["env_tiles\n"]).cards == []
@@ -834,7 +834,7 @@ def test_put_dashboards_is_strict_and_keeps_cards_not_sent(v1_dir):
         ok = [{**rows[0], "cards": ["chart", "wall_clock"], "stage": " Main "}]
         assert client.put("/api/admin/dashboards", json=ok).status_code == 200
         assert hub.config.dashboard("foh").cards == ["chart", "wall_clock"] and hub.config.dashboard("foh").stage == "Main"
-        for bad in (["spl_limits"], ["chart", "chart"], ["Chart"], ["chart\n"], [5], list(cards.KNOWN_CARDS) * 3):
+        for bad in (["network_events"], ["chart", "chart"], ["Chart"], ["chart\n"], [5], list(cards.KNOWN_CARDS) * 3):
             r = client.put("/api/admin/dashboards", json=[{**rows[0], "cards": bad}])
             assert r.status_code == 422, bad
             assert "evil" not in r.text

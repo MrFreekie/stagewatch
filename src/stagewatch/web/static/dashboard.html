@@ -101,6 +101,23 @@
     <p class="muted spl-note" id="spl-note"></p>
   </section>
 
+  <section class="card" data-card="spl_limits" id="spl-limits-card" hidden>
+    <h2><span>Sound level limits</span></h2>
+    <p class="muted" id="spl-limits-empty" hidden>No sound level limits have been entered for today.</p>
+    <div class="spl-limits-main" id="spl-limits-main">
+      <div class="spl-limits-head">
+        <div class="tile spl-lim-tile"><div class="label" id="spl-limits-label">Limit</div><div class="value"><span class="spl-num" id="spl-limits-value">—</span><span class="unit">dB</span></div></div>
+        <div class="tile spl-lim-tile"><div class="label">Now</div><div class="value"><span class="spl-num" id="spl-limits-live">—</span><span class="unit">dB</span></div><div class="foot" id="spl-limits-state"></div></div>
+      </div>
+      <p class="spl-limits-next" id="spl-limits-next"></p>
+      <ul class="spl-limits-list" id="spl-limits-list"></ul>
+      <p class="muted spl-limits-curfew" id="spl-limits-curfew" hidden></p>
+      <p class="muted spl-limits-notes" id="spl-limits-notes" hidden></p>
+      <p class="muted spl-limits-foot" id="spl-limits-foot"></p>
+      <p class="muted spl-limits-disclaimer" id="spl-limits-disclaimer"></p>
+    </div>
+  </section>
+
   <section class="card" data-card="globcon_meters" id="globcon-card" hidden>
     <h2><span>DirectOut GLOBCON</span><span class="grow"></span><img class="card-logo" src="/static/directout-badge.png" alt="DirectOut" width="26" height="26" onerror="this.hidden=true"></h2>
   </section>
@@ -148,6 +165,7 @@
 <script src="/static/ontimerundown.js"></script>
 <script src="/static/barometer.js"></script>
 <script src="/static/spl.js"></script>
+<script src="/static/spl-limits.js"></script>
 <script src="/static/globcon.js"></script>
 <script src="/static/power.js"></script>
 <script src="/static/pihost.js"></script>

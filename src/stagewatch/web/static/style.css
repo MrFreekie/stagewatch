@@ -1224,3 +1224,21 @@ label.button { display: inline-flex; align-items: center; min-height: 44px; bord
 .doc-text { flex: 1; overflow-y: auto; padding: 16px; line-height: 1.5; max-width: 60em; }
 .doc-plain { white-space: pre-wrap; word-break: break-word; font: inherit; margin: 0; }
 .doc-warn { margin: 6px 0; }
+/* Sound level limits: over is a word and a symbol (▲ OVER) as well as a colour */
+.spl-tile .spl-limit-line { font-size: 14px; }
+.spl-limit-line.lim-over, .spl-limits-card.lim-over .spl-limits-head .tile:last-child .value { color: var(--alert); font-weight: 600; }
+.spl-limit-line.lim-guide-over, .spl-limits-card.lim-over.lim-guidance .spl-limits-head .tile:last-child .value { color: var(--warn); }
+.spl-limits-head { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.spl-limits-head .spl-num { font-variant-numeric: tabular-nums; }
+.spl-limits-card.lim-no_reading .spl-limits-head .tile:last-child .value,
+.spl-limits-card.lim-not_recorded .spl-limits-head .tile:last-child .value { color: var(--muted); }
+.spl-limits-next { font-size: 18px; font-variant-numeric: tabular-nums; margin: 8px 0; }
+.spl-limits-list { margin: 4px 0; padding-left: 18px; }
+.spl-limits-list li.lim-over { color: var(--alert); }
+.spl-limits-disclaimer, .spl-limits-foot { font-size: 13px; }
+.spl-lim-row { flex-wrap: wrap; align-items: flex-end; }
+body.layout-wall .spl-limits-head .value { font-size: 96px; }
+body.layout-wall .spl-limits-next { font-size: 32px; }
+body.layout-wall .spl-limits-list, body.layout-wall .spl-limits-notes, body.layout-wall .spl-limits-foot { display: none; }
+body.layout-phone .spl-limits-head .value { font-size: 28px; }
+body.layout-phone .spl-limits-list, body.layout-phone .spl-limits-notes { display: none; }
