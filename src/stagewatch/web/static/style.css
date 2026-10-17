@@ -1301,3 +1301,7 @@ span[data-slot][hidden] { display: inline-block; }
 body.layout-wall .card-about { display: none; }
 /* A gauge's label stays one line, so the gauge keeps its height. */
 .pw-glabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Rundown: planned, expected and started times side by side on one line. */
+.rd-times { display: flex; flex-wrap: wrap; gap: 2px 18px; margin: 6px 0; }
+.rd-times .rd-line { margin: 0; }

@@ -1002,11 +1002,14 @@
   // The card hides itself while there is no equipment sensor, and updates in place.
   function equipmentGroups() {
     const byDev = {};
+    // Sensors with their own card on this dashboard are not repeated here.
+    const own = new Set(has("witmotion_tilt") ? SW.wm.sensorsOf(state.devices).map((d) => d.id) : []);
     for (const e of Object.values(state.entities)) {
       if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery") continue;
+      if (own.has(e.device_id)) continue;
       const cat = state.devices[e.device_id] && state.devices[e.device_id].category;
       if (cat === "meter") continue;   // shown on the Power card
-      if (cat === "host" && e.kind !== "temperature") continue;   // the Raspberry Pi: only its temperature here; the rest is on its own card
+      if (cat === "host" && (e.kind !== "temperature" || has("pi_host"))) continue;   // the Raspberry Pi: only its temperature here; the rest is on its own card
       (byDev[e.device_id] = byDev[e.device_id] || []).push(e);
     }
     return Object.keys(byDev).map((id) => ({ dev: state.devices[id] || { id, name: id, status: "" }, ents: byDev[id] }))
@@ -1091,8 +1094,7 @@
         v.live ? h("div", { class: "muted wm-smooth" }, v.smoothing) : null,
         v.axes.some((a) => a.target) ? h("p", { class: "muted wm-small" }, "Target: a guide for setting the hang, not a safety check.") : null,
         v.warning ? h("p", { class: "wm-warn" }, "▲ " + v.warning) : null,
-        v.setup ? h("p", { class: "wm-small" }, v.setup) : null,
-        v.info ? h("p", { class: "wm-small" }, v.info) : null);
+        v.setup || v.info ? SW.about(v.setup ? h("p", { class: "wm-small" }, v.setup) : null, v.info ? h("p", { class: "wm-small" }, v.info) : null) : null);
     }), h("p", { class: "muted wm-note" }, SW.wm.NOTE));
   }
 

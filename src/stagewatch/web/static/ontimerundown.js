@@ -239,9 +239,9 @@ SW.rd = (function () {
       phrase: h("p", { class: "rd-phrase" }),
       tick: h("div", { class: "rd-tick", hidden: true }),
       bar: h("div", { class: "sched-bar rd-bar", hidden: true, "aria-hidden": "true" }, h("div", { class: "sched-bar-fill" })),
-      planned: h("p", { class: "rd-line rd-planned" }),
-      expected: h("p", { class: "rd-line rd-expected" }),
-      started: h("p", { class: "rd-line rd-started" }),
+      planned: h("span", { class: "rd-line rd-planned" }),
+      expected: h("span", { class: "rd-line rd-expected" }),
+      started: h("span", { class: "rd-line rd-started" }),
       day: h("p", { class: "rd-line rd-day muted", hidden: true }),
       list: h("ul", { class: "rd-events", hidden: true }),
       listNote: h("p", { class: "rd-line rd-listnote muted", hidden: true }),
@@ -250,7 +250,7 @@ SW.rd = (function () {
     };
     ui.bar.append(ui.tick);
     ui.nodes = [ui.title, ui.evnote, h("div", { class: "rd-main" }, ui.big, ui.word, ui.mode), ui.badge, ui.phrase, ui.bar,
-      ui.planned, ui.expected, ui.started, ui.day, ui.list, ui.listNote, ui.note, ui.foot];
+      h("div", { class: "rd-times" }, ui.planned, ui.expected, ui.started), ui.day, ui.list, ui.listNote, ui.note, ui.foot];   // the times share one line
     let listKey = "";
     ui.update = function (v) {
       setClass(ui.title, v.textStale ? "rd-title stale" : "rd-title");
