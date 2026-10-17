@@ -28,13 +28,19 @@ witmotion:
   sensors:
     - address: "AA:BB:CC:DD:EE:01"
       label: "Stage Right hang"
+      axis: both          # both, x or y
+      smoothing_s: 2      # 0 (off), 1, 2, 5 or 10
 ```
 
 * **`address`** is the sensor's Bluetooth address. Stagewatch finds the sensor by this, not by its name, so it still works if someone renames the sensor. With two or more sensors each needs its own address (up to four).
 * **`label`** is the name shown in Stagewatch. It is a Stagewatch setting only: Stagewatch never writes to the sensor, including its name.
+* **`axis`** is the tilt to watch: `x` (roll, side to side), `y` (pitch, front to back) or `both` (the default). An axis you do not watch is not recorded and cannot be used in a threshold. X and Y are the sensor's own axes: which way each points in the room depends on how the sensor is fixed, so tilt it and watch which reading moves.
+* **`smoothing_s`** removes noise from the tilt (default 2 seconds; 0 turns the averaging off). Each reading first goes through a short median of the last five frames, which throws away a single spike, then a moving average over that many seconds. It works in seconds, so it behaves the same at 2 Hz and at 10 Hz. Thresholds act on the smoothed value. The unsmoothed values are recorded beside it ("unsmoothed") so the raw history is never changed. After any lost link the filter starts again from nothing: nothing is carried across the gap, and it shows nothing until three new readings have arrived.
 * Not sure of the address? Set only `enabled: true` (no `sensors`). Stagewatch then connects to the first sensor whose own name still starts `WT901BLE` (the factory name, for example `WT901BLE67`). Find the address in the Stagewatch log or in a Bluetooth scanner app on your phone, then add it.
 
 Try it without a sensor using `--emulate` (a simulated sensor that drops out for 20 seconds every 5 minutes).
+
+If the sensor's battery number cannot be read (the WT9011DCL sends a value Stagewatch does not understand), the battery shows "Not available for this sensor model" rather than a guess. The quiet-link limit follows the rate the sensor is sending at (at least three frame periods, never under 5 seconds).
 
 ## Raspberry Pi
 

@@ -20,6 +20,7 @@ from stagewatch.core.hub import Hub
 from stagewatch.core.model import Status
 from stagewatch.integrations.witmotion import DEVICE_ID, WitmotionIntegration, parser, reader as reader_mod
 from stagewatch.integrations.witmotion.emulate import EmulatedReader
+from stagewatch.integrations.witmotion.smoothing import Smoother
 from stagewatch.integrations.witmotion.parser import DataFrame, FrameSplitter, RegisterReply
 from test_ontime import until
 
@@ -323,9 +324,10 @@ def hub(tmp_path):
     h.recorder.close()
 
 
-async def make(hub, enabled=True, sensors=()):
+async def make(hub, enabled=True, sensors=(), axis="both", smoothing_s=0.0):
     hub.config.witmotion.enabled = enabled
-    hub.config.witmotion.sensors = [WitmotionSensorConfig(address=a, label=lb) for a, lb in sensors]
+    hub.config.witmotion.axis, hub.config.witmotion.smoothing_s = axis, smoothing_s
+    hub.config.witmotion.sensors = [WitmotionSensorConfig(address=a, label=lb, smoothing_s=smoothing_s) for a, lb in sensors]
     holder = {}
 
     def factory(**kw):
@@ -344,6 +346,12 @@ def val(hub, key):
 
 def markers(hub):
     return [m.label for m in hub.recorder.markers() if m.source == "witmotion"]
+
+
+def put3(cb, frame, t):
+    """Three frames at once: the spike filter wants three real readings before it says anything."""
+    for _ in range(3):
+        cb["on_frame"](frame, t)
 
 
 ALL = ("tilt_roll", "tilt_pitch", "accel_peak", "link_age", "battery_volts", "battery_pct", "body_temp")
@@ -383,7 +391,7 @@ async def test_readings_gap_marker_and_return(hub):
         cb["on_connected"](150.0)
         assert markers(hub)[1].startswith("Tilt sensor back")
         assert val(hub, "tilt_roll") is None                # not back-filled, not the old number
-        cb["on_frame"](one(F2), 150.2)
+        put3(cb, one(F2), 150.2)
         integ.tick(151.0)
         assert val(hub, "tilt_roll") == pytest.approx(120.51, abs=0.01)
     finally:
@@ -395,7 +403,7 @@ async def test_a_silent_connected_link_becomes_a_gap(hub):
     try:
         cb = holder["r"].cb
         cb["on_connected"](100.0)
-        cb["on_frame"](one(F1), 100.0)
+        put3(cb, one(F1), 100.0)
         integ.tick(101.0)
         assert val(hub, "tilt_roll") is not None
         integ.tick(106.5)                                   # more than the 5 s limit with no frame
@@ -425,6 +433,7 @@ async def test_emulate_runs_without_hardware(hub):
     await integ.start()
     try:
         await until(lambda: val(hub, "battery_volts") is not None, timeout=5)
+        await asyncio.sleep(0.5)
         integ.tick(time.time())
         assert val(hub, "tilt_roll") == pytest.approx(2.1, abs=0.3)
         assert 29 < val(hub, "body_temp") < 30
@@ -501,8 +510,8 @@ async def test_two_sensors_in_the_hub_have_their_own_devices_labels_and_gaps(hub
         assert hub.devices["witmotion"].name == "Stage Right hang" and hub.devices["witmotion_2"].name == "Stage Left hang"
         a.cb["on_connected"](100.0)
         b.cb["on_connected"](100.0)
-        a.cb["on_frame"](one(F1), 100.0)
-        b.cb["on_frame"](one(F2), 100.0)
+        put3(a.cb, one(F1), 100.0)
+        put3(b.cb, one(F2), 100.0)
         integ.tick(100.5)
         assert hub.entities["witmotion.tilt_roll"].value == pytest.approx(60.99, abs=0.02)
         assert hub.entities["witmotion_2.tilt_roll"].value == pytest.approx(120.51, abs=0.01)
@@ -511,3 +520,116 @@ async def test_two_sensors_in_the_hub_have_their_own_devices_labels_and_gaps(hub
         assert markers(hub) == ["Stage Left hang link lost"]
     finally:
         await integ.stop()
+
+
+# ----------------------------------------------------------------------------- smoothing (worked out by hand)
+def feed(sm, values, t0, dt):
+    return [sm.update(v, t0 + i * dt) for i, v in enumerate(values)]
+
+
+def test_median_rejects_a_single_spike_and_needs_three_readings():
+    out = feed(Smoother(0), [5, 5, 5, 50, 5, 5], 0, 0.1)
+    assert out == [None, None, 5, 5, 5, 5]                  # median of the last 5: the 50 never gets through
+
+
+def test_step_response_is_63_percent_after_one_time_constant_at_10_hz_and_at_2_hz():
+    """Zeros, then a step to 10. The median takes the step on the 3rd new reading; the average then starts from 0
+    and after exactly tau (2 s) it is 10 * (1 - e^-1) = 6.321, whatever the frame rate."""
+    for dt in (0.1, 0.5):
+        sm = Smoother(2.0)
+        feed(sm, [0, 0, 0, 0, 0], 0, dt)                      # t = 0 .. 4 dt
+        step_t = 5 * dt
+        outs = [sm.update(10, step_t + i * dt) for i in range(40)]
+        first = 2                                              # index where the median first says 10
+        assert outs[first - 1] == pytest.approx(0.0)           # [0,0,10,10,10] not yet: median of 0,0,0,10,10 is 0
+        k = round(2.0 / dt)                                    # k readings of dt = one time constant after the step
+        assert outs[first + k - 1] == pytest.approx(10 * (1 - math.exp(-1)), abs=1e-6)
+
+
+def test_an_angle_near_the_wrap_does_not_jump_to_zero():
+    sm = Smoother(0, circular=True)
+    out = feed(sm, [179, -179, 179, -179, 179], 0, 0.1)
+    assert out[2] == pytest.approx(179.0, abs=1e-6)         # not 0: 179 and -179 are 2 degrees apart
+
+
+def test_reset_forgets_everything():
+    sm = Smoother(2.0)
+    feed(sm, [10] * 10, 0, 0.1)
+    sm.reset()
+    assert feed(sm, [0, 0, 0], 100, 0.1) == [None, None, 0.0]   # a fresh start: nothing blended with the old 10
+
+
+async def test_axis_choice_records_only_the_chosen_axis(hub):
+    integ, holder = await make(hub, axis="x")
+    try:
+        assert f"{DEVICE_ID}.tilt_roll" in hub.entities and f"{DEVICE_ID}.tilt_pitch" not in hub.entities
+        cb = holder["r"].cb
+        cb["on_connected"](100.0)
+        put3(cb, one(F1), 100.0)
+        integ.tick(100.5)
+        assert val(hub, "tilt_roll") == pytest.approx(60.99, abs=0.02)
+        pub = hub.devices[DEVICE_ID].public["witmotion"]
+        assert pub["axis_text"] == "X (side to side)" and "depends on how the sensor is fixed" in pub["axis_help"]
+    finally:
+        await integ.stop()
+
+
+async def test_smoothed_tilt_with_raw_beside_it_and_a_gap_resets_the_filter(hub):
+    integ, holder = await make(hub, smoothing_s=2.0)
+    try:
+        cb = holder["r"].cb
+        cb["on_connected"](100.0)
+        f = one(F1)
+        for i in range(2):
+            cb["on_frame"](f, 100.0 + i * 0.1)
+        integ.tick(100.2)
+        assert val(hub, "tilt_roll") is None and val(hub, "tilt_roll_raw") == pytest.approx(60.99, abs=0.02)   # under 3 readings
+        cb["on_frame"](f, 100.2)
+        integ.tick(100.3)
+        assert val(hub, "tilt_roll") == pytest.approx(60.99, abs=0.02)
+        cb["on_disconnected"](110.0)
+        cb["on_connected"](120.0)
+        cb["on_frame"](one(F2), 120.0)
+        cb["on_frame"](one(F2), 120.1)
+        integ.tick(120.2)
+        assert val(hub, "tilt_roll") is None                 # nothing carried across the gap
+        cb["on_frame"](one(F2), 120.2)
+        integ.tick(120.3)
+        assert val(hub, "tilt_roll") == pytest.approx(120.51, abs=0.01)   # only new readings, not blended with 60.99
+    finally:
+        await integ.stop()
+
+
+async def test_stale_limit_follows_the_sensors_own_rate(hub):
+    integ, holder = await make(hub)
+    try:
+        cb = holder["r"].cb
+        cb["on_connected"](100.0)
+        for t in (100.0, 102.0, 104.0):                       # 0.5 Hz: period 2 s, so the limit is 6 s
+            cb["on_frame"](one(F1), t)
+        integ.tick(109.5)
+        assert val(hub, "tilt_roll") is not None              # 5.5 s of quiet is normal at this rate
+        integ.tick(111.0)
+        assert val(hub, "tilt_roll") is None
+    finally:
+        await integ.stop()
+
+
+async def test_battery_reading_that_is_not_understood_says_so(hub):
+    integ, holder = await make(hub)
+    try:
+        cb = holder["r"].cb
+        cb["on_connected"](100.0)
+        cb["on_frame"](one(hx("55 71 64 00 ed 01 00 00 00 00 00 00 00 00 00 00 a2 00 c8 00")), 100.0)   # raw 493
+        assert val(hub, "battery_volts") is None and val(hub, "battery_pct") is None
+        assert hub.devices[DEVICE_ID].public["witmotion"]["battery_note"] == "Not available for this sensor model"
+        cb["on_frame"](one(F6), 101.0)
+        assert hub.devices[DEVICE_ID].public["witmotion"]["battery_note"] == ""
+    finally:
+        await integ.stop()
+
+
+def test_old_config_without_the_new_fields_loads_with_defaults():
+    from stagewatch.core.config import WitmotionConfig
+    c = WitmotionConfig.model_validate({"enabled": True, "sensors": [{"address": "AA:BB:CC:DD:EE:01"}]})
+    assert c.sensors[0].axis == "both" and c.sensors[0].smoothing_s == 2.0 and c.axis == "both"

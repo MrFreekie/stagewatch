@@ -448,6 +448,8 @@ class WitmotionSensorConfig(_Model):
     only and is never written to the sensor."""
     address: str = Field(max_length=64)
     label: str = Field("", max_length=60)
+    axis: Literal["both", "x", "y"] = "both"        # which tilt to watch: X (roll), Y (pitch) or both
+    smoothing_s: float = Field(2.0, ge=0, le=10)    # noise removal time constant, seconds (0 = off)
 
 
 class WitmotionConfig(_Model):
@@ -457,6 +459,8 @@ class WitmotionConfig(_Model):
     sensor whose factory name starts WT901BLE) is used for a single sensor."""
     enabled: bool = False
     address: str = Field("", max_length=64)
+    axis: Literal["both", "x", "y"] = "both"        # for the single sensor used when ``sensors`` is empty
+    smoothing_s: float = Field(2.0, ge=0, le=10)
     sensors: list[WitmotionSensorConfig] = Field(default_factory=list, max_length=4)
 
 
