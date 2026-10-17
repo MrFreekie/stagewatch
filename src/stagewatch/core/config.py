@@ -442,6 +442,28 @@ class GlobconConfig(_Model):
         return data
 
 
+class WitmotionSensorConfig(_Model):
+    """One WitMotion sensor. ``address`` is its Bluetooth address: it finds the sensor even after crew
+    rename it. ``label`` is the name shown on dashboards ("Stage Right hang"); it is a Stagewatch setting
+    only and is never written to the sensor."""
+    address: str = Field(max_length=64)
+    label: str = Field("", max_length=60)
+    axis: Literal["both", "x", "y"] = "both"        # which tilt to watch: X (roll), Y (pitch) or both
+    smoothing_s: float = Field(2.0, ge=0, le=10)    # noise removal time constant, seconds (0 = off)
+
+
+class WitmotionConfig(_Model):
+    """WitMotion WT901BLE tilt sensors read over Bluetooth (read-only, advisory). Additive with
+    defaults, so no schema bump; an older build ignores the section and forgets it on its next save.
+    ``sensors`` lists each one by address. With none listed, ``address`` (or, if empty too, the first
+    sensor whose factory name starts WT901BLE) is used for a single sensor."""
+    enabled: bool = False
+    address: str = Field("", max_length=64)
+    axis: Literal["both", "x", "y"] = "both"        # for the single sensor used when ``sensors`` is empty
+    smoothing_s: float = Field(2.0, ge=0, le=10)
+    sensors: list[WitmotionSensorConfig] = Field(default_factory=list, max_length=4)
+
+
 class Threshold(_Model):
     id: str
     entity: str
@@ -912,6 +934,7 @@ class Config(_Model):
     alarms: AlarmsConfig = Field(default_factory=AlarmsConfig)
     spl: SplConfig = Field(default_factory=SplConfig)
     globcon: GlobconConfig = Field(default_factory=GlobconConfig)
+    witmotion: WitmotionConfig = Field(default_factory=WitmotionConfig)
     # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
     shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list)
     contacts: ContactsSettings = Field(default_factory=ContactsSettings)
