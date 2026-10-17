@@ -1151,3 +1151,27 @@ SW.applyBranding = function (info, flag) {
   set(dark, b && (b.dark_url || b.light_url), mode);
   document.body.classList.toggle("has-brand", on);
 };
+
+// Trend line for a figure tile: the SVG path "d" for points [[ts, value], ...] across [t0, t1]
+// in a w x h box. A gap longer than gapS (or a null value) breaks the line: missing data stays a
+// gap, never joined. A lone point is a short dash. "" when there is nothing to draw.
+SW.trendPath = function (points, t0, t1, gapS, w, h) {
+  const pts = (points || []).filter((p) => p && p[0] >= t0 && p[0] <= t1);
+  const vals = pts.map((p) => p[1]).filter((v) => typeof v === "number" && isFinite(v));
+  if (!vals.length || !(t1 > t0)) return "";
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }   // a flat line sits in the middle
+  const pad = h * 0.1;
+  const x = (t) => ((t - t0) / (t1 - t0) * w).toFixed(1);
+  const y = (v) => (pad + (hi - v) / (hi - lo) * (h - 2 * pad)).toFixed(1);
+  let d = "", run = 0, prevT = null;
+  for (const [t, v] of pts) {
+    if (typeof v !== "number" || !isFinite(v)) { if (run === 1) d += "h1"; run = 0; prevT = null; continue; }
+    const brk = prevT === null || t - prevT > gapS;
+    if (brk && run === 1) d += "h1";            // close a lone point as a dash
+    if (brk) { d += `M${x(t)} ${y(v)}`; run = 1; } else { d += `L${x(t)} ${y(v)}`; run++; }
+    prevT = t;
+  }
+  if (run === 1) d += "h1";
+  return d;
+};

@@ -177,6 +177,13 @@ body.layout-wall main > [data-size="half"] .ss-word { font-size: 18px; }
 .tile .value .unit { font-size: 16px; font-weight: 500; color: var(--muted); margin-left: 4px; }
 .tile .foot { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .tile.stale .value { color: var(--muted); }
+/* Trend line: a fixed-height box from the first render (the tile never changes height), one faint line. */
+.tile .trend { height: 28px; margin-top: 4px; }
+.tile .trend svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.tile .trend path { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: .55; }
+body.layout-phone .tile .trend { height: 22px; }
+body.layout-wall .tile .trend { height: 48px; }
+body.layout-wall .tile .trend path { stroke-width: 3; }
 /* "Outside the formula's tested range": a quiet note, not a warning colour. */
 .approx { font-style: italic; }
 
