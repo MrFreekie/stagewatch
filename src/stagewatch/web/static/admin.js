@@ -17,6 +17,31 @@
     catch (err) { toast(err.message, true); throw err; }
   }
   const card = SW.card;
+  // Day / Night, as on the dashboards: follows the device until tapped, then this browser remembers
+  // the choice (the same setting the dashboards on this device use).
+  (function themeToggle() {
+    const KEY = "stagewatch.theme", btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    const isDay = () => {
+      const t = document.documentElement.getAttribute("data-theme");
+      return t ? t === "light" : !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches);
+    };
+    const apply = (pick) => {
+      if (pick === "day" || pick === "night") document.documentElement.setAttribute("data-theme", pick === "day" ? "light" : "dark");
+      else document.documentElement.removeAttribute("data-theme");
+      const day = isDay();
+      btn.textContent = day ? "☾ Night" : "☀ Day";   // what a tap switches to
+      btn.setAttribute("aria-label", day ? "Switch to night mode (dark)" : "Switch to day mode (light)");
+    };
+    btn.addEventListener("click", () => {
+      const pick = isDay() ? "night" : "day";
+      try { localStorage.setItem(KEY, pick); } catch (_) { /* not remembered; still switches */ }
+      apply(pick);
+    });
+    let saved = "";
+    try { saved = localStorage.getItem(KEY) || ""; } catch (_) { /* private mode: follow the device */ }
+    apply(saved);
+  })();
   const field = (label, input) => h("label", { class: "field" }, label, input);
   const val = (el) => el.value.trim();
   const numOrNull = (el) => (el.value.trim() === "" ? null : Number(el.value));
