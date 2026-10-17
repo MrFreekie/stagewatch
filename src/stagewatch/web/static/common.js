@@ -1108,6 +1108,16 @@ SW.qrSvg = function (text, size = 176) {
   return svg;
 };
 
+// The small print of a card (how figures are made, advisory wording) folds away under one closed
+// "About these figures" line, so the card shows titles and figures, not paragraphs.
+SW.about = function (...nodes) {
+  return SW.h("details", { class: "card-about" }, SW.h("summary", {}, "About these figures"), ...nodes);
+};
+
+// A line inside a card that comes and goes: hidden, but its space is kept (style.css [data-slot]),
+// so cards keep one size while they run. Use instead of `el.hidden = hide` for such lines.
+SW.slot = function (el, hide) { if (el.dataset) el.dataset.slot = ""; if (el.hidden !== hide) el.hidden = hide; };
+
 // Card size (Dashboard.card_sizes, core/cards.py HALF_CAPABLE). A card is half width only when
 // the dashboard says "half" for it, the card is allowed to be half, and the layout is not the
 // phone (a phone always shows full width). Anything else is full.

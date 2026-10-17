@@ -1279,3 +1279,25 @@ body.layout-phone .spl-limits-next li + li, body.layout-phone .spl-limits-notes 
 body.layout-wall .contact-list { flex-direction: row; flex-wrap: wrap; gap: 6px 28px; }
 body.layout-wall .contact-list li { border: 0; padding: 0; }
 body.layout-wall .contact-who { font-size: 28px; }
+
+/* Fixed card size: a line that comes and goes inside a card (data-slot, or SW.slot in common.js) keeps
+   its space while hidden, so the card never grows or shrinks during a show. An empty line still holds
+   one line of height. */
+[data-slot][hidden] { display: block; visibility: hidden; }
+span[data-slot][hidden] { display: inline-block; }
+[data-slot]:empty::before { content: "\00a0"; }
+
+/* No gaps: card rows are at most two across on a tablet or wall screen, and a card left on its own in a
+   row (dashboard.js fillGaps marks it data-lone) takes the full width. */
+@media (min-width: 900px) {
+  body:not(.layout-phone) .card-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body:not(.layout-phone) main [data-lone] { grid-column: 1 / -1; }
+}
+
+/* "About these figures": a card's small print, folded away under one quiet line (SW.about). */
+.card-about { margin-top: 10px; font-size: 13px; }
+.card-about > summary { color: var(--muted); min-height: 44px; display: flex; align-items: center; cursor: pointer; }
+.card-about p { margin: 4px 0; }
+body.layout-wall .card-about { display: none; }
+/* A gauge's label stays one line, so the gauge keeps its height. */
+.pw-glabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

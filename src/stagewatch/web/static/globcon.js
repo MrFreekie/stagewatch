@@ -184,6 +184,7 @@ SW.gc = (function () {
       });
       setHidden(ui.strips, v.strips.length === 0);
       setText(ui.note, v.note);
+      if (ui.note.dataset) ui.note.dataset.slot = "";   // the note line keeps its space: the card keeps its size
       setHidden(ui.note, !v.note);
     };
     return ui;
