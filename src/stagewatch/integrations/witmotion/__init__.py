@@ -161,6 +161,22 @@ class Sensor:
             "axis": self.axis, "axis_text": AXIS_TEXT[self.axis], "axis_help": AXIS_HELP,
             "smoothing_s": self.smoothing_s, "battery_note": self._battery_note, **self.readout()}})
 
+    def limits(self) -> dict:
+        """For each tilt reading that has an enabled threshold: the level of its alarm now (0 = within limit,
+        1-3 = advisory, alert, stop). Absent = no threshold, so the card shows no limit colour."""
+        out = {}
+        for key in ("tilt_roll", "tilt_pitch"):
+            eid = f"{self.device_id}.{key}"
+            if key not in self.specs or not any(t.enabled and t.entity == eid for t in self.hub.config.thresholds):
+                continue
+            level = 0
+            for t in self.hub.config.thresholds:
+                a = self.hub.alarms.active.get(f"threshold:{t.id}") if t.enabled and t.entity == eid else None
+                if a is not None:
+                    level = max(level, a.level)
+            out[key] = level
+        return out
+
     def readout(self) -> dict:
         """The small-print lines for the card: what the sensor said about itself, "unknown" where it did not
         answer, never a guess. Information only: nothing here is recorded or used by an alarm."""
@@ -177,7 +193,7 @@ class Sensor:
         else:
             batt = "battery unknown"
         temp = f"sensor body {self._body_c:.1f} °C" if self._body_c is not None else "sensor body temperature unknown"
-        out = {"setup_line": line1, "info_line": f"WT901BLE family · firmware not available over Bluetooth · {batt} · {temp}"}
+        out = {"limits": self.limits(), "setup_line": line1, "info_line": f"WT901BLE family · firmware not available over Bluetooth · {batt} · {temp}"}
         if self._rate_period_s is not None and 3 * self._rate_period_s >= SILENCE_LIMIT_S:
             out["warning"] = ("The sensor sends data too slowly (every %g s) for Stagewatch to tell a quiet sensor from "
                               "a lost link. Raise its return rate in the WitMotion app." % self._rate_period_s)

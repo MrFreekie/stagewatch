@@ -713,3 +713,38 @@ async def test_readout_says_so_for_an_unreadable_battery_and_warns_about_a_very_
         assert "too slowly" in r["warning"] and "return rate" in r["warning"]
     finally:
         await integ.stop()
+
+
+# ----------------------------------------------------------------------------- the dashboard card
+def test_the_tilt_card_is_known_and_can_be_added_to_a_dashboard(tmp_path):
+    from fastapi.testclient import TestClient
+    from stagewatch.core import cards
+    from stagewatch.web.server import create_app
+    assert "witmotion_tilt" in cards.KNOWN_CARDS and "witmotion_tilt" not in cards.default_cards("tablet")
+    h = Hub(tmp_path, emulate=True)
+    with TestClient(create_app(h)) as c:
+        assert c.post("/api/admin/setup", json={"pin": "4711"}).status_code == 200
+        r = c.put("/api/admin/dashboards", json=[{"slug": "foh", "cards": ["env_tiles", "witmotion_tilt"]}])
+        assert r.status_code == 200, r.text
+    h.recorder.close()
+
+
+async def test_limit_levels_reach_the_public_block_without_private_details(hub):
+    from stagewatch.core.config import Threshold
+    hub.config.thresholds = [Threshold(id="t1", entity="witmotion.tilt_roll", label="Roll", above=3.0, level=2)]
+    integ, holder = await make(hub, sensors=[("AA:BB:CC:DD:EE:01", "Stage Right hang")])
+    try:
+        cb = holder["r"].cb
+        cb["on_connected"](100.0)
+        put3(cb, one(F1), 100.0)                          # roll 60.99: above the limit
+        now = time.time()
+        hub.alarms.set_condition("threshold:t1", True, 2, "x", now)
+        integ.tick(100.5)
+        pub = readout(hub)
+        assert pub["limits"] == {"tilt_roll": 2}           # only the reading that has a threshold, at its alarm level
+        assert "AA:BB" not in str(hub.devices[DEVICE_ID].to_dict(now)) and "AA:BB" not in str(pub)   # no address in public
+        hub.alarms.set_condition("threshold:t1", False, 2, "", now)
+        integ.tick(100.6)
+        assert readout(hub)["limits"] == {"tilt_roll": 0}
+    finally:
+        await integ.stop()

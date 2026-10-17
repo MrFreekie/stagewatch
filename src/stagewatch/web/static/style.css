@@ -1198,6 +1198,30 @@ body:not(.layout-wall):not(.layout-phone) main > [data-size="half"] .gc-strips[d
 body.layout-wall .pi-value { font-size: 34px; }
 body.layout-wall .pi-wide .pi-value { font-size: 24px; }
 body.layout-wall .pi-model { display: none; }
+/* WitMotion tilt card (witmotion.js): large degrees, a direction hint, words with every limit colour. */
+.wm-sensor + .wm-sensor { margin-top: 14px; border-top: 1px solid var(--grid); padding-top: 12px; }
+.wm-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+.wm-name { font-weight: 700; font-size: 18px; }
+.wm-axes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 14px; margin-top: 6px; }
+.wm-value { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.wm-value .unit { font-size: 22px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.wm-nodata { font-size: 26px; color: var(--muted); font-weight: 600; }
+.wm-limit { font-weight: 700; font-size: 14px; }
+.wm-l1 .wm-value, .wm-l1 .wm-limit { color: var(--warn); }
+.wm-l2 .wm-value, .wm-l2 .wm-limit { color: var(--alert); }
+.wm-l3 .wm-value, .wm-l3 .wm-limit { color: var(--stop); }
+.wm-smooth, .wm-small { font-size: 12px; margin: 4px 0 0; color: var(--muted); opacity: .85; }
+.wm-warn { margin: 6px 0 0; color: var(--warn); font-weight: 600; }
+.wm-note { font-size: 12px; margin: 12px 0 0; }
+body.layout-phone .wm-value { font-size: 34px; }
+body.layout-wall .wm-name { font-size: 34px; }
+body.layout-wall .wm-value { font-size: 88px; }
+body.layout-wall .wm-value .unit { font-size: 44px; }
+body.layout-wall .wm-nodata { font-size: 48px; }
+body.layout-wall .wm-limit { font-size: 28px; }
+body.layout-wall .pw-label { font-size: 18px; }
+body.layout-wall .wm-small, body.layout-wall .wm-smooth { display: none; }
+body.layout-wall .wm-note { font-size: 18px; }
 /* Power card: the show-day figures fold away under one quiet line. */
 .pw-dayfold { margin-top: 10px; }
 .pw-dayfold > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }

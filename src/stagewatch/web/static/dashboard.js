@@ -1067,6 +1067,27 @@
     piUi.status.update(SW.sourceInput.smaart(dev, Object.values(ents)), state.now);
   }
 
+  // WitMotion tilt sensors (SW.wm, witmotion.js). Advisory; a gap or stale reading is "No data", never the last angle.
+  function renderWitmotion() {
+    const card = $("witmotion_tilt-card");
+    const sensors = SW.wm.sensorsOf(state.devices);
+    if (!has("witmotion_tilt") || !sensors.length) { card.hidden = true; return; }
+    card.hidden = false;
+    $("wm-body").replaceChildren(...sensors.map((dev) => {
+      const v = SW.wm.view(dev, state.entities);
+      return h("div", { class: "wm-sensor" },
+        h("div", { class: "wm-head" }, h("span", { class: "wm-name" }, v.name), h("span", { class: "muted wm-link" }, v.linkText)),
+        h("div", { class: "wm-axes" }, v.axes.map((a) => h("div", { class: "wm-axis" + (a.level ? ` wm-l${a.level}` : "") },
+          h("div", { class: "pw-label" }, `${a.label} · ${a.hint}`),
+          h("div", { class: "wm-value" + (a.unit ? "" : " wm-nodata") }, a.text, a.unit ? h("span", { class: "unit" }, a.unit) : null),
+          a.levelText ? h("div", { class: "wm-limit" }, a.levelText) : null))),
+        v.live ? h("div", { class: "muted wm-smooth" }, v.smoothing) : null,
+        v.warning ? h("p", { class: "wm-warn" }, "▲ " + v.warning) : null,
+        v.setup ? h("p", { class: "wm-small" }, v.setup) : null,
+        v.info ? h("p", { class: "wm-small" }, v.info) : null);
+    }), h("p", { class: "muted wm-note" }, SW.wm.NOTE));
+  }
+
   // History chart under the meters: pick a meter, a measurement and a span. Lines are what was recorded
   // (as received, averaged only into time buckets); a silence breaks the line; nothing is filled in.
   const pwSpanS = () => spanSeconds(state.pwSpan);
@@ -1554,6 +1575,7 @@
     power: { el: cardEl("power"), wide: true, render: renderPower, empty: () => !Object.keys(state.devices).some((k) => state.devices[k].category === "meter") },
     // This Raspberry Pi. Hidden unless the server runs on a Pi (renderPiHost keeps it in step).
     pi_host: { el: cardEl("pi_host"), render: renderPiHost, empty: () => !state.devices.pi_host },
+    witmotion_tilt: { el: cardEl("witmotion_tilt"), render: renderWitmotion, empty: () => !SW.wm.sensorsOf(state.devices).length },
     // Event plans shared with this dashboard. Fetched on its own; the wall hides it while there are none.
     documents: { el: cardEl("documents"), render: () => { renderDocuments(); loadDocuments(); },   // every snapshot (and so every reconnect) refetches
       empty: () => docList === null || (isWall() && !docList.length) },
@@ -1692,6 +1714,7 @@
         if (has("barometer")) renderBarometer();
         if (has("equipment")) renderEquipment();
         if (has("power")) renderPower();
+        if (has("witmotion_tilt")) renderWitmotion();
         if (has("spl_live")) { splOnStates(msg.entities); renderSpl(); }
         if (has("chart")) updateChartSeries();
         break;
@@ -1702,6 +1725,7 @@
         if (has("equipment")) renderEquipment();
         if (has("power")) renderPower();
         if (has("pi_host")) renderPiHost();
+        if (has("witmotion_tilt")) renderWitmotion();
         if (has("spl_live")) renderSpl();
         break;
       case "marker":
@@ -1765,5 +1789,5 @@
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
   setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("pi_host")) renderPiHost(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("pi_host")) renderPiHost(); if (has("witmotion_tilt")) renderWitmotion(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
 })();
