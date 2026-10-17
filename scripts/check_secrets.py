@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 BLOCKED_PATHS = [
     re.compile(p) for p in (
-        r"(^|/)data/", r"(^|/)documents/[0-9]+/", r"(^|/)config\.ya?ml$", r"(^|/)secret\.key$", r"\.key$", r"\.pem$",
+        r"(^|/)data/", r"(^|/)documents/[0-9]+/", r"(^|/)contacts/[0-9]+(\.invalid)?\.ya?ml$", r"(^|/)config\.ya?ml$", r"(^|/)secret\.key$", r"\.key$", r"\.pem$",
         r"(^|/)\.env(\..*)?$", r"\.sqlite3(-.*)?$", r"(^|/)secrets\.ya?ml$",
         r"(^|/)CLAUDE(\.local)?\.md$", r"(^|/)\.claude/", r"(^|/)plans/", r"\.plan\.md$",
         r"\.bak$", r"\.sqlite3\.", r"\.invalid.*\.ya?ml$",

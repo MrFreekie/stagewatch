@@ -1242,3 +1242,12 @@ body.layout-wall .spl-limits-next { font-size: 32px; }
 body.layout-wall .spl-limits-list, body.layout-wall .spl-limits-notes, body.layout-wall .spl-limits-foot { display: none; }
 body.layout-phone .spl-limits-head .value { font-size: 28px; }
 body.layout-phone .spl-limits-list, body.layout-phone .spl-limits-notes { display: none; }
+
+/* Onsite contacts card */
+.contact-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.contact-list li { border-bottom: 1px solid var(--grid); padding-bottom: 6px; }
+.contact-who { font-size: 18px; }
+.contact-phone { display: inline-flex; align-items: center; min-height: 44px; font-size: 20px; font-variant-numeric: tabular-nums; color: inherit; }
+body.layout-wall .contact-list { flex-direction: row; flex-wrap: wrap; gap: 6px 28px; }
+body.layout-wall .contact-list li { border: 0; padding: 0; }
+body.layout-wall .contact-who { font-size: 28px; }

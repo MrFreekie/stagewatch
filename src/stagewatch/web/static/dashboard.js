@@ -1441,6 +1441,61 @@
     document.body.appendChild(box);
   }
 
+  // ----------------------------------------------------------- contacts
+  // Onsite contacts for the current event (plans/onsite-contacts.md). Fetched, never in the
+  // snapshot; "contacts_changed" (no data) makes it fetch again. Phone numbers come only when the
+  // server allows them for this screen; with a reveal PIN they are fetched on request, held in
+  // memory for 2 minutes and never stored on the device.
+  const CONTACT_REVEAL_MS = 120000;
+  let contactList = null, contactTicket = 0, contactFailed = false, contactPinNeeded = false, contactHideTimer = null;
+  async function loadContacts() {
+    if (!has("contacts")) return;
+    const t = ++contactTicket;
+    try {
+      const r = await SW.api("GET", `/api/contacts?dashboard=${encodeURIComponent(slug)}`);
+      if (t !== contactTicket) return;
+      contactList = Array.isArray(r.contacts) ? r.contacts : [];
+      contactPinNeeded = !!r.pin_needed;
+      contactFailed = false;
+    } catch (_) { contactFailed = true; if (contactList === null) contactList = []; }
+    clearTimeout(contactHideTimer);
+    CARDS.contacts.el.hidden = CARDS.contacts.empty();
+    renderContacts();
+  }
+  async function revealContacts() {
+    const pin = prompt("Contacts PIN to show phone numbers");
+    if (!pin) return;
+    let r;
+    try { r = await SW.api("POST", "/api/contacts/reveal", { dashboard: slug, pin }); } catch (err) { SW.toast(err.message || "Could not show the numbers", true); return; }
+    ++contactTicket;
+    contactList = Array.isArray(r.contacts) ? r.contacts : [];
+    contactPinNeeded = false;
+    renderContacts();
+    clearTimeout(contactHideTimer);
+    contactHideTimer = setTimeout(loadContacts, CONTACT_REVEAL_MS);   // the list without numbers again
+  }
+  function renderContacts() {
+    const body = $("contacts-body");
+    if (!body || contactList === null) return;
+    if (contactFailed && !contactList.length) {
+      body.replaceChildren(h("p", { class: "muted" }, "Could not load the contacts. It tries again when the connection is back."));
+      return;
+    }
+    if (!contactList.length) {
+      body.replaceChildren(h("p", { class: "muted" }, "No contacts on duty. Admin → Onsite contacts to add them."));
+      return;
+    }
+    const phoneOf = (c) => (c.tel ? h("a", { class: "contact-phone touch", href: `tel:${c.tel}` }, `☎ ${c.phone}`)
+      : c.phone ? h("span", { class: "contact-phone" }, `☎ ${c.phone}`) : null);
+    const extra = (c) => [c.radio ? `Radio ${c.radio}` : "", c.area].filter(Boolean).join(" · ");
+    body.replaceChildren(
+      h("ul", { class: "contact-list" }, contactList.map((c) => h("li", {},
+        h("div", { class: "contact-who" }, h("strong", {}, c.role), h("span", {}, ` ${c.name || "TBC"}`)),
+        extra(c) ? h("div", { class: "muted" }, extra(c)) : null,
+        phoneOf(c)))),
+      contactPinNeeded && !isWall() ? h("button", { class: "touch", type: "button", onclick: revealContacts }, "Show numbers") : null);
+  }
+
   // --------------------------------------------------------------- cards
   // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists
   // which cards it shows and in what order (dash.cards); ids this build doesn't know (from a
@@ -1475,6 +1530,9 @@
     // Event plans shared with this dashboard. Fetched on its own; the wall hides it while there are none.
     documents: { el: cardEl("documents"), render: () => { renderDocuments(); loadDocuments(); },   // every snapshot (and so every reconnect) refetches
       empty: () => docList === null || (isWall() && !docList.length) },
+    // Onsite contacts for the current event. Fetched on its own; the wall hides it while there are none.
+    contacts: { el: cardEl("contacts"), render: () => { renderContacts(); loadContacts(); },
+      empty: () => contactList === null || (isWall() && !contactList.length) },
     // Hidden while no sound level values are set up (renderSpl keeps it in step).
     // Shows a hint on tablets while no limits are entered; hidden on phones and walls until then.
     spl_limits: { el: cardEl("spl_limits"), render: () => { if (!splLim.data) loadSplLimits(); renderSplLimits(); } },
@@ -1637,6 +1695,7 @@
       case "ontime_rundown": state.ontimeRundown = msg; if (has("ontime_rundown")) renderOntimeRundown(); break;
       case "alarms": setAlarms(msg.alarms); state.sounding = msg.sounding; renderAlarms(); break;
       case "documents_changed": loadDocuments(); break;
+      case "contacts_changed": loadContacts(); break;
       case "spl_limits_changed": loadSplLimits(); break;   // no payload: fetch the limits
       case "reload": location.reload(); break;
     }

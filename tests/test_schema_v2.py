@@ -701,10 +701,10 @@ def test_fresh_install_and_new_dashboards_use_layout_defaults():
 
 
 def test_unknown_card_ids_are_kept_on_load():
-    d = Dashboard.model_validate({"slug": "x", "cards": ["env_tiles", "network_events", "contacts", "env_tiles",
+    d = Dashboard.model_validate({"slug": "x", "cards": ["env_tiles", "network_events", "lightning_radar", "env_tiles",
                                                          "Bad-Id", 5, "x" * 33]})
-    assert d.cards == ["env_tiles", "network_events", "contacts"]
-    assert cards.unknown_cards(d.cards) == ["network_events", "contacts"]
+    assert d.cards == ["env_tiles", "network_events", "lightning_radar"]
+    assert cards.unknown_cards(d.cards) == ["network_events", "lightning_radar"]
     many = Dashboard(slug="x", cards=[f"c_{chr(97 + i)}" for i in range(17)])  # load: keep 16, no failure
     assert len(many.cards) == 16 and many.cards[0] == "c_a"
     assert Dashboard(slug="x", cards=["env_tiles\n"]).cards == []

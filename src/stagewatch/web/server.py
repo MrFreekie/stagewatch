@@ -34,7 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from .. import __version__, acoustics
 from ..core.config import (
     ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
-    SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_host_error, spl_password_error,
+    ContactsSettings, SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_host_error, spl_password_error,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
 from ..core import calibration_io
@@ -58,6 +58,7 @@ from ..version import build_info
 from .auth import COOKIE, SESSION_S, SessionSigner, hash_pin, verify_pin
 from . import branding as brand
 from ..core import documents as docs_mod
+from ..core import contacts as contacts_mod
 from .limits import DEFAULT_BODY_LIMIT, WS_MAX_MESSAGE, BodySizeLimitMiddleware
 
 log = logging.getLogger(__name__)
@@ -497,6 +498,13 @@ class DashboardBody(Dashboard):
             raise ValueError("Stage names can't contain hidden or control characters")
         return v
 
+    @field_validator("contacts_area")
+    @classmethod
+    def _contacts_area_strict(cls, v: str) -> str:
+        if _has_hidden_chars(v):
+            raise ValueError("Area names can't contain hidden or control characters")
+        return v
+
     @field_validator("clock_style", mode="before")
     @classmethod
     def _clock_style(cls, v):
@@ -654,6 +662,35 @@ class DocumentNew(BaseModel):
     title: str = Field(min_length=1, max_length=docs_mod.TITLE_MAX * 2)
     category: DocCategory
     dashboards: list[str] = Field(default_factory=list, max_length=64)
+
+
+class ContactIn(contacts_mod.Contact):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+
+class ContactsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    contacts: list[ContactIn] = Field(max_length=contacts_mod.MAX_CONTACTS)
+
+
+class ContactsSettingsBody(BaseModel):
+    """PUT /api/admin/contacts/settings. ``reveal_pin`` sets the dashboard PIN for phone numbers;
+    ``clear_reveal_pin`` removes it."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    phones_enabled: StrictBool
+    reveal_pin: str | None = Field(None, min_length=4, max_length=12, pattern=r"^[0-9]+$")
+    clear_reveal_pin: StrictBool = False
+
+
+class ContactsCopyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_event_id: int = Field(ge=1)
+
+
+class ContactsRevealBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    dashboard: str = Field(max_length=64)
+    pin: str = Field(max_length=64)
 
 
 class DocumentPatch(BaseModel):
@@ -930,6 +967,8 @@ class LiveFeed:
             # Small on purpose: clients fetch GET /api/schedule?stage= for the list itself.
             self._send_all({"type": "schedule", "show_id": payload.get("show_id"),
                             "revision": payload.get("revision")})
+        elif topic == "contacts":
+            self._send_all({"type": "contacts_changed"})   # no data: dashboards refetch their own list
         elif topic == "documents":
             self._send_all({"type": "documents_changed"})   # no data: dashboards refetch their own list
         elif topic == "spl_limits":
@@ -965,6 +1004,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         return repr(row["created"]) if row else ""
     logos = brand.BrandingStore(hub.data_dir, event_owner)
     documents = docs_mod.DocumentStore(hub.data_dir, event_owner)
+    contacts = contacts_mod.ContactStore(hub.data_dir, event_owner)
+    failed_reveals: list[float] = []
     try:
         documents.clean(hub.recorder.event_id)   # files a crash left without an index entry
     except (OSError, docs_mod.DocError):
@@ -1210,6 +1251,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def admin_state():
         cfg = hub.config.model_dump(mode="json")
         cfg.pop("admin", None)
+        if "contacts" in cfg:   # the reveal PIN: only "set / not set"
+            cfg["contacts"]["reveal_pin_set"] = bool(cfg["contacts"].pop("reveal_pin_hash", ""))
         cfg.get("globcon", {}).pop("password", None)   # GLOBCON's controller password: only "set / not set" (globcon.password_set)
         for dev in cfg.get("esphome_devices", []):
             dev["noise_psk"] = "set" if dev.get("noise_psk") else ""
@@ -1516,7 +1559,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             data = d.model_dump()
             # A save that doesn't send cards/stage/clock_style/card_sizes (today's admin page) keeps what the
             # dashboard has; only a new dashboard gets its layout's default cards.
-            for key in ("cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point"):
+            for key in ("cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point",
+                        "show_contact_phones", "contacts_area"):
                 if key not in d.model_fields_set and existing is not None:
                     data[key] = getattr(existing, key)
             if "cards" not in d.model_fields_set and existing is None:
@@ -2217,6 +2261,149 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         await asyncio.to_thread(doc_call, documents.delete, eid, doc_id)
         docs_changed(eid)
         return admin_docs(eid)
+
+    # ------------------------------------------------------------ onsite contacts
+    # Personal data. Per event, admin-only except what a dashboard with the Contacts card may see:
+    # job title, name, radio and area, and a phone number only when the installation, the dashboard
+    # and the contact all allow it (and after the reveal PIN, if one is set). Never in the
+    # snapshot, /api/info, admin state, diagnostics, logs or a bus payload.
+    def contact_event(event_id) -> int:
+        try:
+            eid = contacts_mod.valid_event(event_id)
+        except contacts_mod.ContactError:
+            raise HTTPException(404, "No such event") from None
+        if hub.recorder.event_branding(eid) is None:
+            raise HTTPException(404, "No such event")
+        return eid
+
+    def contact_call(fn, *args):
+        try:
+            return fn(*args)
+        except contacts_mod.ContactError as e:
+            raise HTTPException(e.status, e.message) from None
+        except OSError as e:
+            log.warning("contacts: file system error (%s)", type(e).__name__)   # no path, no traceback
+            raise HTTPException(503, "The contacts could not be saved. Check the disk has space, then try again.") from None
+
+    def contacts_changed(eid: int) -> None:
+        if eid == hub.recorder.event_id:
+            hub.bus.publish("contacts", None)
+
+    def contact_reminders() -> list[dict]:
+        """Ended events that still hold contacts (GDPR: storage limitation), unless dismissed."""
+        out = []
+        current = hub.recorder.event_id
+        for e in hub.recorder.events():
+            if e["id"] == current or e["ended"] is None:
+                continue
+            st = contact_call(contacts.state, e["id"])
+            if st["contacts"] and not st["reminder_dismissed"]:
+                out.append({"event_id": e["id"], "name": e["name"], "count": len(st["contacts"])})
+        return out[:20]
+
+    def admin_contacts(eid: int) -> dict:
+        st = contact_call(contacts.state, eid)
+        edited = st["edited"]
+        return {"event_id": eid, "current": eid == hub.recorder.event_id,
+                "max_contacts": contacts_mod.MAX_CONTACTS, "contacts": st["contacts"], "edited": edited,
+                "stale": bool(st["contacts"] and edited and time.time() - edited > contacts_mod.STALE_DAYS * 86400),
+                "roles": contacts.roles(), "reminders": contact_reminders(),
+                "phones_enabled": hub.config.contacts.phones_enabled,
+                "reveal_pin_set": bool(hub.config.contacts.reveal_pin_hash)}
+
+    def public_contacts(slug: str, with_phones: bool) -> dict:
+        dash = hub.config.dashboard(slug)
+        if dash is None:
+            raise HTTPException(404, "No such dashboard")
+        rows = contacts_mod.contacts_for(contacts.contacts(hub.recorder.event_id), dash,
+                                         hub.config.contacts.phones_enabled, with_phones)
+        return {"contacts": rows, "pin_needed": any(r.get("has_phone") for r in rows)}
+
+    @app.get("/api/contacts")
+    async def list_contacts(dashboard: str = Query(..., max_length=64)):
+        return JSONResponse(public_contacts(dashboard, not hub.config.contacts.reveal_pin_hash), headers=NO_STORE)
+
+    @app.post("/api/contacts/reveal", dependencies=[Depends(require_same_origin)])
+    async def reveal_contacts(body: ContactsRevealBody):
+        """The phone numbers this dashboard may show, after the reveal PIN. Its own rate limiter."""
+        pin_hash = hub.config.contacts.reveal_pin_hash
+        if pin_hash:
+            now = time.time()
+            failed_reveals[:] = [t for t in failed_reveals if now - t < 60]
+            if len(failed_reveals) >= 5:
+                raise HTTPException(429, "Too many attempts; wait a minute")
+            if not verify_pin(body.pin, pin_hash):
+                failed_reveals.append(now)
+                await asyncio.sleep(1.0)
+                raise HTTPException(401, "Wrong PIN")
+        return JSONResponse(public_contacts(body.dashboard, True), headers=NO_STORE)
+
+    @app.get("/api/admin/events/{event_id}/contacts", dependencies=[Depends(require_admin)])
+    async def admin_list_contacts(event_id: str):
+        return JSONResponse(admin_contacts(contact_event(event_id)), headers=NO_STORE)
+
+    @app.put("/api/admin/events/{event_id}/contacts", dependencies=admin_deps)
+    async def put_contacts(event_id: str, body: ContactsBody):
+        eid = contact_event(event_id)
+        await asyncio.to_thread(contact_call, contacts.replace, eid, list(body.contacts))
+        contacts_changed(eid)
+        return JSONResponse(admin_contacts(eid), headers=NO_STORE)
+
+    @app.delete("/api/admin/events/{event_id}/contacts", dependencies=admin_deps)
+    async def clear_contacts(event_id: str):
+        eid = contact_event(event_id)
+        await asyncio.to_thread(contact_call, contacts.clear, eid)
+        contacts_changed(eid)
+        return JSONResponse(admin_contacts(eid), headers=NO_STORE)
+
+    @app.post("/api/admin/events/{event_id}/contacts/copy", dependencies=admin_deps)
+    async def copy_contacts(event_id: str, body: ContactsCopyBody):
+        eid, src = contact_event(event_id), contact_event(str(body.from_event_id))
+        if src == eid:
+            raise HTTPException(422, "Choose a different event to copy from")
+        await asyncio.to_thread(contact_call, contacts.copy, src, eid)
+        contacts_changed(eid)
+        return JSONResponse(admin_contacts(eid), headers=NO_STORE)
+
+    @app.post("/api/admin/events/{event_id}/contacts/dismiss-reminder", dependencies=admin_deps)
+    async def dismiss_contacts_reminder(event_id: str):
+        eid = contact_event(event_id)
+        await asyncio.to_thread(contact_call, contacts.dismiss_reminder, eid)
+        return JSONResponse(admin_contacts(hub.recorder.event_id), headers=NO_STORE)
+
+    @app.put("/api/admin/contacts/settings", dependencies=admin_deps)
+    async def put_contacts_settings(body: ContactsSettingsBody):
+        if body.reveal_pin is not None and body.clear_reveal_pin:
+            raise HTTPException(422, "Set a new PIN or remove it, not both")
+        pin_hash = hub.config.contacts.reveal_pin_hash
+        if body.clear_reveal_pin:
+            pin_hash = ""
+        elif body.reveal_pin:
+            pin_hash = hash_pin(body.reveal_pin)
+        hub.config.contacts = ContactsSettings(phones_enabled=body.phones_enabled, reveal_pin_hash=pin_hash)
+        hub.save_config()
+        hub.bus.publish("contacts", None)
+        return {"ok": True, "phones_enabled": body.phones_enabled, "reveal_pin_set": bool(pin_hash)}
+
+    @app.post("/api/admin/contacts/demo", dependencies=admin_deps)
+    async def contacts_demo():
+        """Emulate only: made-up contacts in the current event, with phone numbers allowed on the
+        first dashboard so the whole path can be seen."""
+        if not hub.emulate:
+            raise HTTPException(409, "Demo contacts only work in emulate mode. Nothing has been changed.")
+        eid = hub.recorder.event_id
+        if not contacts.contacts(eid):
+            rows = [contacts_mod.Contact.model_validate(c) for c in contacts_mod.DEMO]
+            await asyncio.to_thread(contact_call, contacts.replace, eid, rows)
+        hub.config.contacts = ContactsSettings(phones_enabled=True, reveal_pin_hash=hub.config.contacts.reveal_pin_hash)
+        if hub.config.dashboards:
+            d = hub.config.dashboards[0]
+            d.show_contact_phones = True
+            if "contacts" not in d.cards:
+                d.cards = [*d.cards, "contacts"]
+        hub.save_config()
+        contacts_changed(eid)
+        return JSONResponse(admin_contacts(eid), headers=NO_STORE)
 
     # Schedule (admin writes). Like the show handlers these never await, so the stale-show check
     # and the write can't interleave with another request.

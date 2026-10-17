@@ -502,6 +502,10 @@ class Dashboard(_Model):
     show_dew_point: bool = True
     # The GLOBCON levels card's controller and channel group on this screen.
     globcon: GlobconCardOptions = Field(default_factory=GlobconCardOptions)
+    # Onsite contacts card: phone numbers on this screen (needs ContactsSettings.phones_enabled and the
+    # contact's own switch too), and which area's contacts it lists ("" = all).
+    show_contact_phones: bool = False
+    contacts_area: str = Field("", max_length=40)
 
     @field_validator("slug")
     @classmethod
@@ -527,6 +531,11 @@ class Dashboard(_Model):
     @classmethod
     def _stage(cls, v):
         return v.strip() if isinstance(v, str) else v
+
+    @field_validator("contacts_area", mode="before")
+    @classmethod
+    def _contacts_area(cls, v):
+        return v.strip()[:40] if isinstance(v, str) else ""
 
     @field_validator("clock_style", mode="before")
     @classmethod
@@ -832,6 +841,14 @@ class SplConfig(_Model):
         return kept
 
 
+class ContactsSettings(_Model):
+    """Onsite contacts (the contacts themselves live in contacts/<event_id>.yaml, never here).
+    ``phones_enabled`` is the installation-wide master switch for phone numbers on dashboards;
+    ``reveal_pin_hash`` (optional) makes dashboards ask for a PIN before showing them."""
+    phones_enabled: bool = False
+    reveal_pin_hash: str = ""
+
+
 class Config(_Model):
     schema_version: int = CONFIG_SCHEMA_VERSION
     site: SiteConfig = Field(default_factory=SiteConfig)
@@ -859,6 +876,7 @@ class Config(_Model):
     globcon: GlobconConfig = Field(default_factory=GlobconConfig)
     # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
     shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list)
+    contacts: ContactsSettings = Field(default_factory=ContactsSettings)
 
     @field_validator("shelly_devices")
     @classmethod
