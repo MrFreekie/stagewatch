@@ -15,6 +15,7 @@ import time
 
 import pytest
 
+from stagewatch.core.config import WitmotionSensorConfig
 from stagewatch.core.hub import Hub
 from stagewatch.core.model import Status
 from stagewatch.integrations.witmotion import DEVICE_ID, WitmotionIntegration, parser, reader as reader_mod
@@ -307,8 +308,8 @@ async def test_missing_bleak_is_a_clear_error(monkeypatch):
 
 # ----------------------------------------------------------------------------- integration through the hub
 class FakeReader:
-    def __init__(self, **cb):
-        self.cb = cb
+    def __init__(self, address="", **cb):
+        self.address, self.cb = address, cb
 
     async def run(self):
         await asyncio.Event().wait()
@@ -322,12 +323,14 @@ def hub(tmp_path):
     h.recorder.close()
 
 
-async def make(hub, enabled=True):
+async def make(hub, enabled=True, sensors=()):
     hub.config.witmotion.enabled = enabled
+    hub.config.witmotion.sensors = [WitmotionSensorConfig(address=a, label=lb) for a, lb in sensors]
     holder = {}
 
-    def factory(**cb):
-        holder["r"] = FakeReader(**cb)
+    def factory(**kw):
+        holder["r"] = FakeReader(**kw)
+        holder.setdefault("all", []).append(holder["r"])
         return holder["r"]
 
     integ = WitmotionIntegration(hub, reader_factory=factory)
@@ -432,3 +435,79 @@ async def test_emulate_runs_without_hardware(hub):
 def test_emulated_reader_has_an_outage_cycle():
     r = EmulatedReader()
     assert not r.is_out(10.0) and r.is_out(245.0) and not r.is_out(265.0)
+
+
+# ----------------------------------------------------------------------------- renamed sensors, two sensors
+async def test_reader_finds_a_renamed_sensor_by_its_address(quick):
+    """Crew can rename the sensor (its Device Name is writable): the address still finds it, the name does not matter."""
+    fake = FakeBleak([FakeDevice("WT901BLE67", "11:22:33:44:55:66"), FakeDevice("Stage Right", "AA:BB:CC:DD:EE:01")])
+    r, _ = make_reader(fake, address="AA:BB:CC:DD:EE:01")
+    task = asyncio.create_task(r.run())
+    try:
+        await until(lambda: fake.clients)
+        assert fake.clients[0].device.name == "Stage Right"
+    finally:
+        await stop(task)
+
+
+async def test_renamed_sensor_is_not_found_by_prefix_alone(quick):
+    fake = FakeBleak([FakeDevice("Stage Right", "AA:BB:CC:DD:EE:01")])
+    r, _ = make_reader(fake)
+    task = asyncio.create_task(r.run())
+    try:
+        await until(lambda: fake.scans >= 2)
+        assert fake.clients == []
+    finally:
+        await stop(task)
+
+
+async def test_factory_name_with_a_suffix_is_found_by_prefix(quick):
+    fake = FakeBleak([FakeDevice("WT901BLE68-SR", "AA:BB:CC:DD:EE:02")])
+    r, _ = make_reader(fake)
+    task = asyncio.create_task(r.run())
+    try:
+        await until(lambda: fake.clients)
+        assert fake.clients[0].device.name == "WT901BLE68-SR"
+    finally:
+        await stop(task)
+
+
+async def test_two_sensors_are_both_read_and_scanned_one_at_a_time(quick):
+    fake = FakeBleak([FakeDevice("WT901BLE67", "11:22:33:44:55:66"), FakeDevice("Stage Right", "AA:BB:CC:DD:EE:01")])
+    lock = asyncio.Lock()
+    evs, tasks = [], []
+    for addr in ("11:22:33:44:55:66", "AA:BB:CC:DD:EE:01"):
+        ev: list = []
+        evs.append(ev)
+        r = reader_mod.WitmotionReader(addr, bleak_module=fake, sleep=fast_sleep, poll_every_s=0.02, scan_lock=lock,
+                                       on_frame=lambda f, t, ev=ev: ev.append(f))
+        tasks.append(asyncio.create_task(r.run()))
+    try:
+        await until(lambda: len(fake.clients) == 2 and all(c.handler for c in fake.clients))
+        by_name = {c.device.name: c for c in fake.clients}
+        by_name["WT901BLE67"].handler(None, bytearray(F1))
+        by_name["Stage Right"].handler(None, bytearray(F2))
+        assert evs[0][0].roll == pytest.approx(60.99, abs=0.02) and evs[1][0].roll == pytest.approx(120.51, abs=0.01)
+    finally:
+        for t in tasks:
+            await stop(t)
+
+
+async def test_two_sensors_in_the_hub_have_their_own_devices_labels_and_gaps(hub):
+    integ, holder = await make(hub, sensors=[("11:22:33:44:55:66", "Stage Right hang"), ("AA:BB:CC:DD:EE:01", "Stage Left hang")])
+    try:
+        a, b = holder["all"]
+        assert (a.address, b.address) == ("11:22:33:44:55:66", "AA:BB:CC:DD:EE:01")
+        assert hub.devices["witmotion"].name == "Stage Right hang" and hub.devices["witmotion_2"].name == "Stage Left hang"
+        a.cb["on_connected"](100.0)
+        b.cb["on_connected"](100.0)
+        a.cb["on_frame"](one(F1), 100.0)
+        b.cb["on_frame"](one(F2), 100.0)
+        integ.tick(100.5)
+        assert hub.entities["witmotion.tilt_roll"].value == pytest.approx(60.99, abs=0.02)
+        assert hub.entities["witmotion_2.tilt_roll"].value == pytest.approx(120.51, abs=0.01)
+        b.cb["on_disconnected"](110.0)                      # only the second one goes
+        assert hub.entities["witmotion_2.tilt_roll"].value is None and hub.entities["witmotion.tilt_roll"].value is not None
+        assert markers(hub) == ["Stage Left hang link lost"]
+    finally:
+        await integ.stop()

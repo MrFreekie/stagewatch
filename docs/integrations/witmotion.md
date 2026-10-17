@@ -25,8 +25,14 @@ There is no Admin page for it yet. Stop Stagewatch, add this to `config.yaml` in
 ```yaml
 witmotion:
   enabled: true
-  address: ""        # optional: the sensor's Bluetooth address; empty = the first sensor named WT901BLE...
+  sensors:
+    - address: "AA:BB:CC:DD:EE:01"
+      label: "Stage Right hang"
 ```
+
+* **`address`** is the sensor's Bluetooth address. Stagewatch finds the sensor by this, not by its name, so it still works if someone renames the sensor. With two or more sensors each needs its own address (up to four).
+* **`label`** is the name shown in Stagewatch. It is a Stagewatch setting only: Stagewatch never writes to the sensor, including its name.
+* Not sure of the address? Set only `enabled: true` (no `sensors`). Stagewatch then connects to the first sensor whose own name still starts `WT901BLE` (the factory name, for example `WT901BLE67`). Find the address in the Stagewatch log or in a Bluetooth scanner app on your phone, then add it.
 
 Try it without a sensor using `--emulate` (a simulated sensor that drops out for 20 seconds every 5 minutes).
 
@@ -43,6 +49,8 @@ Try it without a sensor using `--emulate` (a simulated sensor that drops out for
 Untested. Windows Bluetooth may not work for a program started at boot with nobody logged in (the SYSTEM boot task). Do not rely on it until it has been tried on real hardware.
 
 ## Known limits
+
+* Whether the sensor puts its `ffe5` service in its advertisement is not known (the captures show the services only after connecting), so Stagewatch does not scan by service.
 
 * Checked against real captures of one WT901BLECL (advertises as `WT901BLE67`). The live Bluetooth link has not yet been run on a Raspberry Pi.
 * The battery voltage is read as the raw number divided by 100 (411 = 4.11 V). That is an inference from one sensor, not a documented fact. The percentage is a rough lithium-cell curve.

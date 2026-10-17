@@ -442,12 +442,22 @@ class GlobconConfig(_Model):
         return data
 
 
+class WitmotionSensorConfig(_Model):
+    """One WitMotion sensor. ``address`` is its Bluetooth address: it finds the sensor even after crew
+    rename it. ``label`` is the name shown on dashboards ("Stage Right hang"); it is a Stagewatch setting
+    only and is never written to the sensor."""
+    address: str = Field(max_length=64)
+    label: str = Field("", max_length=60)
+
+
 class WitmotionConfig(_Model):
-    """A WitMotion WT901BLE tilt sensor read over Bluetooth (read-only, advisory). Additive with
+    """WitMotion WT901BLE tilt sensors read over Bluetooth (read-only, advisory). Additive with
     defaults, so no schema bump; an older build ignores the section and forgets it on its next save.
-    ``address`` is optional: empty means "the first sensor advertising a name starting WT901BLE"."""
+    ``sensors`` lists each one by address. With none listed, ``address`` (or, if empty too, the first
+    sensor whose factory name starts WT901BLE) is used for a single sensor."""
     enabled: bool = False
     address: str = Field("", max_length=64)
+    sensors: list[WitmotionSensorConfig] = Field(default_factory=list, max_length=4)
 
 
 class Threshold(_Model):

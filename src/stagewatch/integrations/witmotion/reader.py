@@ -54,12 +54,14 @@ class WitmotionReader:
                  on_disconnected: Callable[[float], None] = lambda t: None,
                  on_status: Callable[[str], None] = lambda s: None,
                  sleep: Callable[[float], Awaitable] = asyncio.sleep,
+                 scan_lock: asyncio.Lock | None = None,
                  poll_every_s: float = POLL_EVERY_S, scan_s: float = SCAN_S) -> None:
         self.address = address.strip().lower()
         self._bleak = bleak_module
         self.on_frame, self.on_connected, self.on_disconnected, self.on_status = (
             on_frame, on_connected, on_disconnected, on_status)
         self._sleep = sleep
+        self._scan_lock = scan_lock or asyncio.Lock()   # shared by all sensors: one scan or connect at a time
         self.poll_every_s = poll_every_s
         self.scan_s = scan_s
         self.splitter = parser.FrameSplitter()
@@ -113,20 +115,22 @@ class WitmotionReader:
 
     async def _session(self) -> bool:
         """One find, connect and read cycle. True if a connection was made."""
-        device = await self._find()
-        if device is None:
-            self.on_status("not found")
-            return False
-        self.on_status("connecting")
-        self._lost.clear()
-        self.splitter.reset()
-        self.last_frame = None
-        client = self._client(device)
         connected = False
+        client = None
         try:
-            await asyncio.wait_for(client.connect(), CONNECT_S)
-            connected = True
-            await client.start_notify(self._char(client, NOTIFY_UUID), self._on_notify)
+            async with self._scan_lock:
+                device = await self._find()
+                if device is None:
+                    self.on_status("not found")
+                    return False
+                self.on_status("connecting")
+                self._lost.clear()
+                self.splitter.reset()
+                self.last_frame = None
+                client = self._client(device)
+                await asyncio.wait_for(client.connect(), CONNECT_S)
+                connected = True
+                await client.start_notify(self._char(client, NOTIFY_UUID), self._on_notify)
             self.on_status("connected")
             self.on_connected(time.time())
             write_char = None
@@ -150,7 +154,8 @@ class WitmotionReader:
                         log.warning("WitMotion: a register request failed", exc_info=True)
         finally:
             try:
-                await asyncio.wait_for(client.disconnect(), 5)
+                if client is not None:
+                    await asyncio.wait_for(client.disconnect(), 5)
             except Exception:
                 pass
             if connected:
