@@ -246,15 +246,16 @@ SW.pw = (function () {
   };
 
   // ------------------------------------------------------------------ DOM
+  pw.dayFoldOpen = {};   // meter id -> the show-day fold is open (this page visit)
   pw.build = function (host) {
     const h = SW.h;
     const ui = { key: null, meters: {} };
 
-    const cell = (label, unit, big) => {
-      const val = h("span", { class: "pw-num" });
-      const el = h("div", { class: "pw-cell" + (big ? " pw-big" : "") }, h("div", { class: "pw-label" }, label),
-        h("div", { class: "pw-value" }, val, h("span", { class: "unit" }, unit)));
-      return { el, val };
+    // Every headline figure (power, voltage, current, frequency, energy ...) in the same format.
+    const cell = (label, unit) => {
+      const val = h("span", { class: "pw-num" }), unitEl = h("span", { class: "unit" }, unit);
+      const el = h("div", { class: "pw-cell" }, h("div", { class: "pw-label" }, label), h("div", { class: "pw-value" }, val, unitEl));
+      return { el, val, unit: unitEl };
     };
 
     function buildMeter(m) {
@@ -269,13 +270,14 @@ SW.pw = (function () {
         const title = pw.channelTitle(ch, m.channels.length > 1);
         if (title) body.append(h("div", { class: "pw-chhead" }, title));
         const groupKeys = pw.GROUP_ORDER.filter((g) => ch.groups[g] && !pw.LL.includes(g));
+        let grid = null;   // one circuit: its figures, and its energy, share one evenly spread row
         if (groupKeys.length === 1 && groupKeys[0] === "") {
-          // One circuit: a big power reading and the rest beside it.
+          // One circuit: every figure in the same format, spread evenly across the card.
           const g = ch.groups[""];
-          const grid = h("div", { class: "pw-grid" });
+          grid = h("div", { class: "pw-grid" });
           for (const f of ["power", "voltage", "current", "freq", "reactive", "apparent", "pf", "device_temp"]) {
             if (!g[f]) continue;
-            const c = cell(pw.FIELD_WORD[f], pw.UNIT[f], f === "power");
+            const c = cell(pw.FIELD_WORD[f], pw.UNIT[f]);
             r.fields.push({ entity: g[f].id, val: c.val, el: c.el });
             grid.append(c.el);
           }
@@ -301,6 +303,12 @@ SW.pw = (function () {
         }
         for (const x of ch.energy) {
           const word = (pw.GROUP_WORD[x.group] ? pw.GROUP_WORD[x.group] + " " : "") + (x.field === "energy_ret" ? "energy returned" : "energy");
+          if (grid) {   // a cell like the others; the label says it is the meter's own running total
+            const c = cell(word[0].toUpperCase() + word.slice(1) + " (meter total)", "");
+            grid.append(c.el);
+            r.energy.push({ entity: x.entity.id, val: c.val, unit: c.unit });
+            continue;
+          }
           const val = h("span", { class: "pw-num" }), unit = h("span", { class: "unit" });
           body.append(h("div", { class: "pw-energy" }, h("span", { class: "pw-label" }, word[0].toUpperCase() + word.slice(1)), " ", val, unit,
             h("span", { class: "pw-sub muted" }, " (the meter's running total)")));
@@ -384,7 +392,12 @@ SW.pw = (function () {
       });
       r.gaps = h("p", { class: "pw-note pw-gaps", role: "status" });
       dayBody.append(r.gaps);
-      r.root = h("div", { class: "pw-meter" }, head, r.note, body, r.gauges.length ? gaugeBox : null, dayBody);
+      // The show-day figures (highest, lowest, energy used ...) fold away under one line, closed until
+      // someone opens it; the choice holds while the page is open.
+      const dayFold = h("details", { class: "pw-dayfold" }, h("summary", {}, "Show day figures (highest, lowest, energy used)"), dayBody);
+      dayFold.open = !!pw.dayFoldOpen[m.id];
+      dayFold.addEventListener("toggle", () => { pw.dayFoldOpen[m.id] = dayFold.open; });
+      r.root = h("div", { class: "pw-meter" }, head, r.note, body, r.gauges.length ? gaugeBox : null, dayFold);
       return r;
     }
 
