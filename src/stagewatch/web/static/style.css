@@ -1212,3 +1212,15 @@ body.layout-wall .pw-dayfold { display: none; }
 .brand-swatch.dark img.plate { background: #fff; border-radius: 6px; padding: 3px 6px; }
 .brand-slot input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
 label.button { display: inline-flex; align-items: center; min-height: 44px; border: 1px solid var(--grid); border-radius: 6px; padding: 6px 12px; cursor: pointer; position: relative; }
+
+/* Plans on file (documents card) and the reader */
+.doc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.doc-open { display: block; width: 100%; min-height: 44px; text-align: left; padding: 8px 10px; color: inherit; text-decoration: none; }
+.doc-wall { font-size: 28px; margin: 0 0 6px; }
+.doc-reader { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 50; background: var(--bg); color: var(--text); display: flex; flex-direction: column; overflow: hidden; }
+.doc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--grid); }
+.doc-head .doc-title { flex: 1 1 240px; }
+.doc-head button { min-width: 44px; min-height: 44px; }
+.doc-text { flex: 1; overflow-y: auto; padding: 16px; line-height: 1.5; max-width: 60em; }
+.doc-plain { white-space: pre-wrap; word-break: break-word; font: inherit; margin: 0; }
+.doc-warn { margin: 6px 0; }

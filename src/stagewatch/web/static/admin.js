@@ -1317,6 +1317,7 @@
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
     globcon_meters: ["DirectOut GLOBCON", "Live level meters for a group of channels (for example 1 to 8 or 9 to 16) of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Pick the controller and channels here; set the GLOBCON address in the GLOBCON settings."],
     power: ["Power", "Watts, volts, amps, frequency and energy from Shelly power meters, as the meters report them. Read only. Never part of a site average. Add meters in the Shelly power meters settings. Stays hidden until a meter has been added."],
+    documents: ["Plans on file", "The event's safety and risk documents you have shared with this dashboard (Admin → Documents). The wall shows titles only."],
     pi_host: ["Raspberry Pi", "The health of the Raspberry Pi Stagewatch runs on: temperature, power supply (under-voltage), speed, load, memory, disk and Wi-Fi signal. Hidden unless Stagewatch runs on a Pi."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
@@ -1748,6 +1749,107 @@
     schedData = await api("GET", "/api/schedule");
     if (typeof schedData.now === "number") schedSkew = schedData.now - Date.now() / 1000;
   }
+  // Event documents (plans/policy-documents.md): safety and risk plans per event, admin-only until
+  // ticked for a dashboard. Loads on its own; the add form keeps its fields because typing in it
+  // marks the page as being edited, so the poll never rebuilds it.
+  const DOC_CATS = [["lightning", "Lightning"], ["wind", "Wind"], ["heat", "Heat"], ["evacuation", "Evacuation"],
+    ["electrical", "Electrical"], ["site_rules", "Site rules"], ["medical", "Medical"], ["noise", "Noise"], ["other", "Other"]];
+  const DOC_PDF_MAX = 10 * 1024 * 1024, DOC_TEXT_MAX = 256 * 1024;
+  let docEvent = null;
+  function documentsCard() {
+    const events = admin.events || [];
+    if (docEvent === null || !events.some((e) => e.id === docEvent)) docEvent = admin.show ? admin.show.event_id : (events[0] && events[0].id);
+    const box = h("div", {}, h("p", { class: "muted" }, "Loading…"));
+    const dashes = admin.config.dashboards || [];
+    const catName = (c) => (DOC_CATS.find((x) => x[0] === c) || [c, "Other"])[1];
+    const kindOf = (f) => (/\.pdf$/i.test(f.name) ? "pdf" : /\.(md|markdown)$/i.test(f.name) ? "md" : /\.txt$/i.test(f.name) ? "txt" : "");
+    const base = () => `/api/admin/events/${docEvent}/documents`;
+    const sendFile = async (id, f) => {
+      const kind = kindOf(f);
+      if (!kind) throw new Error("Use a PDF, a Markdown (.md) file or a plain text (.txt) file. Save Word files as PDF first.");
+      if (f.size > (kind === "pdf" ? DOC_PDF_MAX : DOC_TEXT_MAX)) throw new Error(kind === "pdf" ? "PDF files can be up to 10 MB. Save a smaller copy and retry." : "Text files can be up to 256 KB. Split it into smaller files and retry.");
+      const res = await fetch(`${base()}/${id}/file?kind=${kind}`, { method: "PUT", credentials: "same-origin",
+        headers: { "Content-Type": "application/octet-stream" }, body: f });
+      let data = null; try { data = await res.json(); } catch (_) { /* empty */ }
+      if (!res.ok) throw new Error((data && typeof data.detail === "string") ? data.detail : "Upload failed");
+      return data;
+    };
+    const warning = () => h("p", { class: "warn-text doc-warn" }, "▲ Dashboards have no login: anyone on the show network can read this file once it is shared. Remove names and phone numbers, or keep it admin-only.");
+    const ticks = (chosen, onChange) => h("div", { class: "row" }, dashes.length ? dashes.map((d) => h("label", { class: "check" },
+      h("input", { type: "checkbox", checked: chosen.indexOf(d.slug) >= 0, onchange: (e) => {
+        const next = chosen.filter((s) => s !== d.slug).concat(e.target.checked ? [d.slug] : []);
+        onChange(next);
+      } }), ` ${d.title || d.slug}`)) : h("span", { class: "muted" }, "No dashboards yet."));
+    const fill = (r) => {
+      const reload = (p) => p.then(fill, () => {});
+      const rows = r.documents.map((d) => {
+        const shared = d.dashboards.map((s) => (dashes.find((x) => x.slug === s) || {}).title || s);
+        const input = h("input", { type: "file", accept: ".pdf,.md,.txt,application/pdf,text/plain,text/markdown", onchange: () => {
+          const f = input.files && input.files[0]; input.value = "";
+          if (f) reload(run(() => sendFile(d.id, f), "Document replaced"));
+        } });
+        let panel = null;
+        const edit = h("button", { class: "touch", type: "button", onclick: () => {
+          if (panel) { panel.remove(); panel = null; return; }
+          let chosen = d.dashboards.slice();
+          const warnBox = h("div", {}, chosen.length ? warning() : null);
+          panel = h("div", { class: "card-inset" }, h("strong", {}, "Shown on"),
+            ticks(chosen, (next) => { chosen = next; warnBox.replaceChildren(chosen.length ? warning() : ""); }), warnBox,
+            h("div", { class: "row" }, h("button", { class: "primary touch", type: "button", onclick: () =>
+              reload(run(() => api("PATCH", `${base()}/${d.id}`, { dashboards: chosen }), "Saved")) }, "Save")));
+          tr.after(h("tr", {}, h("td", { colspan: 5 }, panel)));
+        } }, "Share…");
+        const open = d.kind ? h("a", { href: `${base()}/${d.id}/file`, target: "_blank", rel: "noopener noreferrer" }, d.title) : h("span", {}, d.title);
+        const tr = h("tr", {},
+          h("td", {}, open, d.kind ? null : h("span", { class: "warn-text" }, " (no file yet)")),
+          h("td", {}, catName(d.category)),
+          h("td", {}, d.kind ? `${d.kind.toUpperCase()}, ${Math.max(1, Math.ceil(d.bytes / 1024))} KB` : "—"),
+          h("td", {}, shared.length ? shared.join(", ") : h("span", { class: "muted" }, "Admin only")),
+          h("td", {}, h("div", { class: "row" }, edit,
+            h("label", { class: "button touch" }, d.kind ? "Replace…" : "Choose file…", input),
+            h("button", { class: "touch danger", type: "button", onclick: () => {
+              if (confirm(`Delete "${d.title}"? This cannot be undone.`)) reload(run(() => api("DELETE", `${base()}/${d.id}`), "Document deleted"));
+            } }, "Delete"))));
+        return tr;
+      });
+      // Add form
+      const title = h("input", { maxlength: 100, placeholder: "For example: Lightning action plan" });
+      const cat = h("select", {}, DOC_CATS.map(([v, t]) => h("option", { value: v }, t)));
+      const file = h("input", { type: "file", accept: ".pdf,.md,.txt,application/pdf,text/plain,text/markdown" });
+      let chosen = [];
+      const warnBox = h("div");
+      const add = async () => {
+        const f = file.files && file.files[0];
+        if (!val(title)) { toast("Give the document a title.", true); return; }
+        if (!f) { toast("Choose a file.", true); return; }
+        if (!kindOf(f)) { toast("Use a PDF, a Markdown (.md) file or a plain text (.txt) file. Save Word files as PDF first.", true); return; }
+        const made = await run(() => api("POST", base(), { title: val(title), category: cat.value, dashboards: chosen }));
+        try { fill(await run(() => sendFile(made.id, f), "Document added")); }
+        catch (_) { fill(await api("GET", base())); }   // the entry stays, marked "no file yet"
+        dirty = false;
+      };
+      const full = r.documents.length >= r.max_docs;
+      box.replaceChildren(
+        h("p", { class: "muted hint" }, "Safety and risk plans for this event: PDF, Markdown (.md) or plain text (.txt). PDF up to 10 MB, text up to 256 KB, 20 files per event. Each one is admin-only until you tick a dashboard. Dashboards have no login. Upload only files you trust."),
+        events.length > 1 ? h("div", { class: "row" }, field("Event", h("select", { onchange: (e) => { docEvent = Number(e.target.value); load(); } },
+          events.map((e) => h("option", { value: e.id, selected: e.id === docEvent }, e.name))))) : null,
+        rows.length ? h("div", { class: "table-scroll" }, h("table", {},
+          h("thead", {}, h("tr", {}, ["Title", "Category", "File", "Shown on", ""].map((x) => h("th", {}, x)))), h("tbody", {}, rows)))
+          : h("p", { class: "muted" }, "No documents for this event yet."),
+        full ? h("p", { class: "muted" }, `This event has ${r.max_docs} documents, the most it can hold. Delete one to add another.`)
+          : h("details", {}, h("summary", { class: "muted" }, "Add a document"),
+            h("div", { class: "row" }, field("Title", title), field("Category", cat), field("File", file)),
+            h("strong", {}, "Shown on (none ticked = admin only)"),
+            ticks(chosen, (next) => { chosen = next; warnBox.replaceChildren(chosen.length ? warning() : ""); }), warnBox,
+            h("div", { class: "row" }, h("button", { class: "primary touch", type: "button", onclick: add }, "Add document"))),
+        admin.emulate || (snap && snap.emulate) ? h("div", { class: "row" }, h("button", { class: "touch", type: "button", onclick: () =>
+          reload(run(() => api("POST", "/api/admin/documents/demo"), "Demo documents loaded")) }, "Load demo documents")) : null);
+    };
+    const load = () => api("GET", base()).then(fill, (err) => box.replaceChildren(h("p", { class: "muted" }, err.message)));
+    if (docEvent) load(); else box.replaceChildren(h("p", { class: "muted" }, "No event yet."));
+    return card("Documents", box);
+  }
+
   function scheduleCard() {
     const c = card("Schedule", scheduleBody());
     c.id = "schedule-admin";
@@ -2140,6 +2242,7 @@
       foldButtons(setAllCards, " cards"),
       h("div", { class: "grid-2" }, foldCard(siteCard(), "site", false, !admin.config.site.timezone), foldCard(eventShowCard(), "event", true)),
       scheduleCard(),     // summary and a link to /schedule
+      foldCard(documentsCard(), "documents", false),
       connectCard(),
       softwareCard(),
       foldCard(devicesCard(), "nodes", true), foldCard(deviceErrorsCard(), "deviceerrors", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),

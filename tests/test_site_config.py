@@ -11,12 +11,12 @@ site_config = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(site_config)
 
 TRACKED = ["config.yaml", "README.md", "branding/events/1/logo-light.png", "branding/events/1/logo-dark.webp",
-           "contacts/1.yaml", "documents/1/abc/r3.md", "documents/1/index.json",
+           "contacts/1.yaml", "documents/1/abcdefabcdef.md", "documents/1/abcdefabcdef.pdf", "documents/1/abcdefabcdef.txt", "documents/1/index.json",
            "documents/templates/xyz/r1.md", "documents/templates/index.json"]
 IGNORED = ["config.yaml.bak", "contacts/.contacts-x.yaml", ".config-abc.yaml", "emulate/config.yaml",
            "emulate/contacts/1.yaml", "backups/x/contacts/1.yaml", "secret.key", "stagewatch.sqlite3",
            "stagewatch.sqlite3-wal", "stagewatch.sqlite3-shm", "logs/stagewatch.log",
-           "documents/1/abc/r3.md.tmp", "documents/1/.documents-x.json", "config.invalid-1.yaml",
+           "documents/1/.abcdefabcdef.pdf.tmp", "documents/1/abc/r3.md", "documents/1/.documents-x.json", "config.invalid-1.yaml",
            "stagewatch.sqlite3.pre-v2-20260101T000000Z.bak", "updater.json", "branding/events/1/notes.txt"]
 
 

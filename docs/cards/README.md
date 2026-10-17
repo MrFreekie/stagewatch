@@ -25,6 +25,7 @@ This page is the one list of every card. Each card has its own page.
 | [DirectOut GLOBCON](globcon.md) | Level meters for 4, 8 or 16 channels of one controller. Hidden until GLOBCON has answered | No | Yes | [DirectOut GLOBCON](../integrations/globcon.md) |
 | [Power](power.md) | Watts, volts, amps and energy from power meters. Hidden until a meter is added | No | Yes | [Shelly](../integrations/shelly.md) |
 | [Raspberry Pi](raspberry-pi.md) | The health of the Pi Stagewatch runs on: temperature, power supply, load, memory, disk. Hidden unless it runs on a Pi | No | Yes | A Raspberry Pi |
+| [Plans on file](documents.md) | The event's safety and risk documents shared with this dashboard. Titles only on the wall | No | Yes | Documents uploaded in Admin |
 
 "On by default" is what a new dashboard of that layout starts with. A dashboard from an earlier
 version keeps the cards it already had.
