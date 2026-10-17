@@ -1510,12 +1510,13 @@
     const phoneOf = (c) => (c.tel ? h("a", { class: "contact-phone touch", href: `tel:${c.tel}` }, `☎ ${c.phone}`)
       : c.phone ? h("span", { class: "contact-phone" }, `☎ ${c.phone}`) : null);
     const extra = (c) => [c.radio ? `Radio ${c.radio}` : "", c.area].filter(Boolean).join(" · ");
-    body.replaceChildren(
+    // replaceChildren would print a null as the text "null", so leave the button out instead.
+    body.replaceChildren(...[
       h("ul", { class: "contact-list" }, contactList.map((c) => h("li", {},
         h("div", { class: "contact-who" }, h("strong", {}, c.role), h("span", {}, ` ${c.name || "TBC"}`)),
         extra(c) ? h("div", { class: "muted" }, extra(c)) : null,
         phoneOf(c)))),
-      contactPinNeeded && !isWall() ? h("button", { class: "touch", type: "button", onclick: askContactsPin }, "Show numbers") : null);
+      contactPinNeeded && !isWall() ? h("button", { class: "touch", type: "button", onclick: askContactsPin }, "Show numbers") : null].filter(Boolean));
   }
 
   // --------------------------------------------------------------- cards
