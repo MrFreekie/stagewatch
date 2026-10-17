@@ -1117,3 +1117,27 @@ SW.cardIsHalf = function (dash, id, layout) {
   const sizes = dash && dash.card_sizes;
   return !!sizes && typeof sizes === "object" && Object.prototype.hasOwnProperty.call(sizes, id) && sizes[id] === "half";
 };
+
+// Event logo in the page header (plans/custom-logo-upload.md). Two decorative images: .brand-l
+// for the light theme, .brand-d for the dark one (CSS shows the right one). With no dark file the
+// dark theme uses the light file, inverted or on a white plate if the admin chose so. `flag` names
+// the info.branding option that must be on for this page ("show_on_index", "show_on_admin").
+SW.applyBranding = function (info, flag) {
+  const b = info && info.branding;
+  const light = document.querySelector("header.top .brand-l");
+  const dark = document.querySelector("header.top .brand-d");
+  if (!light || !dark) return;
+  const on = !!(b && (b.light_url || b.dark_url) && (!flag || b[flag]));
+  const set = (img, url, extra) => {
+    img.classList.remove("invert", "plate");
+    if (!on || !url) { img.hidden = true; img.removeAttribute("src"); return; }
+    if (extra) img.classList.add(extra);
+    img.onerror = () => { img.hidden = true; };
+    img.src = url;
+    img.hidden = false;
+  };
+  set(light, b && (b.light_url || b.dark_url));
+  const mode = b && !b.dark_url && b.on_dark !== "as_is" ? b.on_dark : "";
+  set(dark, b && (b.dark_url || b.light_url), mode);
+  document.body.classList.toggle("has-brand", on);
+};

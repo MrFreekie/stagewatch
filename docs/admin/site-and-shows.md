@@ -145,6 +145,23 @@ If you set the date by hand, **Use the start date** puts it back to the date the
 
 **Previous shows (n)** lists every earlier day, grouped by event, with the date it was started.
 
+### Event logo
+
+Open **Event logo** in the Event & show card to show your event's logo beside the title on every
+dashboard, on the wall screen, and (if you tick them) on the start page and in Admin.
+
+- Use a **still** PNG, JPEG or WebP image, up to **1 MB** and between 32 and 2048 pixels on each side.
+  Animated images, GIF, HEIC and SVG are not accepted yet.
+- **Logo for light screens** is the main one. **Logo for dark screens** is optional: without it,
+  choose how the light logo looks on dark screens (as it is, colours inverted, or on a white plate).
+- Each event has its own logo. Nothing shows until you upload one. When you start a new event,
+  **Use previous event's logo** copies the last one across.
+- Open screens reload by themselves when you change the logo.
+- The file is shown exactly as uploaded to anyone on the show network. Photos can hold hidden
+  details, such as where they were taken: export the logo from a graphics program, not a camera.
+- Only the current event's logo is shown to the public pages. Logos are kept in the `branding`
+  folder of the data folder and are included in update backups.
+
 ### If it didn't work
 
 If two people click start at the same moment, only one new day is started. The other gets
@@ -159,7 +176,7 @@ are on [the Schedule page](../cards/schedule.md#edit-the-schedule-for-the-person
 
 ## Tested status
 
-**Tested on hardware: pending.** The Site settings and the Event & show card have been checked with
+**Tested on hardware: pending.** The Site settings, the Event & show card and the event logo have been checked with
 simulated data (emulate mode), not yet through a full show run on real equipment.
 
 Related: [Glossary](../glossary.md), [Troubleshooting](../troubleshooting.md).

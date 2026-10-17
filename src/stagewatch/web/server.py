@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import unicodedata
 
@@ -55,6 +55,7 @@ from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
 from ..version import build_info
 from .auth import COOKIE, SESSION_S, SessionSigner, hash_pin, verify_pin
+from . import branding as brand
 from .limits import DEFAULT_BODY_LIMIT, WS_MAX_MESSAGE, BodySizeLimitMiddleware
 
 log = logging.getLogger(__name__)
@@ -602,6 +603,28 @@ class ShowPatch(BaseModel):
         return self
 
 
+# Logo upload (plans/custom-logo-upload.md): raw-body PUT, capped by path pattern because the
+# path carries the event id. Headroom over the 1 MiB file cap only; the handler checks the file.
+LOGO_PATH = re.compile(r"^/api/admin/events/[0-9]{1,12}/logo/(light|dark)$")
+LOGO_BODY_LIMIT = brand.LOGO_MAX_BYTES + 4096
+
+
+def _logo_limit(scope) -> int | None:
+    return LOGO_BODY_LIMIT if LOGO_PATH.match(scope.get("path", "")) else None
+
+
+class BrandingBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    on_dark: Literal["as_is", "invert", "plate"] = "as_is"
+    show_on_admin: StrictBool = True
+    show_on_index: StrictBool = True
+
+
+class LogoCopyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_event_id: StrictInt = Field(ge=1)
+
+
 class EventPatch(BaseModel):
     """PATCH /api/admin/events/current: rename the current event."""
 
@@ -883,6 +906,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     lan_addresses = lan_addresses or netinfo.local_ipv4  # callable -> list[str]; injectable for tests
     started_at = time.time()
     signer = SessionSigner(hub.data_dir / "secret.key")
+    logos = brand.BrandingStore(hub.data_dir)
     feed = LiveFeed(hub)
     failed_logins: list[float] = []
 
@@ -904,7 +928,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     app.state.hub = hub
     app.state.updater = updater
     app.add_middleware(BodySizeLimitMiddleware, default_limit=body_limit,
-                       overrides={**DEFAULT_BODY_OVERRIDES, **(body_limit_overrides or {})})
+                       overrides={**DEFAULT_BODY_OVERRIDES, **(body_limit_overrides or {})},
+                       limit_for=_logo_limit)
     app.mount("/static", RevalidatingStaticFiles(directory=STATIC), name="static")
 
     # ---------------------------------------------------------- helpers
@@ -974,6 +999,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "recovery_required": hub.store.recovery_required,
             "is_admin": is_admin(request),
             "dashboards": [d.model_dump() for d in hub.config.dashboards],
+            "branding": public_branding(),
         }
 
     @app.get("/api/dashboard/{slug}")
@@ -1750,6 +1776,127 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(409, "A new event was already started on another admin page. "
                                      "Nothing has been changed. Reload to see it.")
         return hub.rename_event(body.name)
+
+    # ------------------------------------------------------------ event logo
+    def public_branding() -> dict:
+        """The current event's logo for page headers. The URL carries the file's hash, so a
+        browser keeps a logo until it changes."""
+        eid = hub.recorder.event_id
+        opts = hub.recorder.event_branding(eid) or {}
+        meta = logos.info(eid)
+
+        def url(v: str) -> str | None:
+            return f"/branding/event/{eid}/{v}?v={meta[v]['sha']}" if meta[v] else None
+        return {"light_url": url("light"), "dark_url": url("dark"),
+                "on_dark": opts.get("on_dark", "as_is"),
+                "show_on_admin": opts.get("show_on_admin", True),
+                "show_on_index": opts.get("show_on_index", True)}
+
+    def logo_event(event_id: str) -> int:
+        try:
+            eid = brand.valid_id(event_id)
+        except brand.LogoError:
+            raise HTTPException(404, "No such event") from None
+        if hub.recorder.event_branding(eid) is None:
+            raise HTTPException(404, "No such event")
+        return eid
+
+    def logo_variant(variant: str) -> str:
+        if variant not in brand.VARIANTS:
+            raise HTTPException(404, "No such logo")
+        return variant
+
+    def admin_branding(eid: int) -> dict:
+        meta = logos.info(eid)
+        previous = None   # the newest other event with a logo ("Use previous event's logo")
+        for e in hub.recorder.events()[:EVENTS_MAX]:
+            if e["id"] != eid and logos.has_logo(e["id"]):
+                previous = {"id": e["id"], "name": e["name"]}
+                break
+        variants = {v: ({**brand.public_meta(meta[v]),
+                         "url": f"/api/admin/events/{eid}/logo/{v}?v={meta[v]['sha']}"} if meta[v] else None)
+                    for v in brand.VARIANTS}
+        return {**hub.recorder.event_branding(eid), "current": eid == hub.recorder.event_id,
+                "previous": previous, **variants}
+
+    def logo_changed(eid: int) -> None:
+        if eid == hub.recorder.event_id:
+            hub.bus.publish("config", None)   # open screens reload and pick up the new logo
+
+    def logo_file(eid: int, variant: str, v: str | None) -> FileResponse:
+        meta = logos.info(eid)[variant]
+        if meta is None:
+            raise HTTPException(404, "No logo")
+        cache = "public, max-age=31536000, immutable" if v == meta["sha"] else "no-cache"
+        return FileResponse(meta["path"], media_type=meta["content_type"], headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+            "Content-Disposition": f'inline; filename="logo.{meta["ext"]}"',
+            "Cache-Control": cache})
+
+    @app.get("/branding/event/{event_id}/{variant}", include_in_schema=False)
+    async def public_logo(event_id: str, variant: str, v: str | None = Query(None, max_length=16)):
+        # Only the current event's logo is public; older events' logos are admin-only.
+        if event_id != str(hub.recorder.event_id):
+            raise HTTPException(404, "No logo")
+        return logo_file(hub.recorder.event_id, logo_variant(variant), v)
+
+    @app.get("/api/admin/events/{event_id}/logo/{variant}", dependencies=[Depends(require_admin)])
+    async def admin_logo(event_id: str, variant: str, v: str | None = Query(None, max_length=16)):
+        return logo_file(logo_event(event_id), logo_variant(variant), v)
+
+    @app.get("/api/admin/events/{event_id}/branding", dependencies=[Depends(require_admin)])
+    async def get_branding(event_id: str):
+        return admin_branding(logo_event(event_id))
+
+    @app.put("/api/admin/events/{event_id}/branding", dependencies=admin_deps)
+    async def put_branding(event_id: str, body: BrandingBody):
+        eid = logo_event(event_id)
+        hub.recorder.set_event_branding(eid, body.on_dark, body.show_on_admin, body.show_on_index)
+        logo_changed(eid)
+        return admin_branding(eid)
+
+    @app.put("/api/admin/events/{event_id}/logo/{variant}", dependencies=admin_deps)
+    async def put_logo(event_id: str, variant: str, request: Request):
+        # Takes only the Request: the admin and same-origin checks run before any byte is read.
+        eid, variant = logo_event(event_id), logo_variant(variant)
+        declared = request.headers.get("content-length")
+        if declared is None:
+            raise HTTPException(411, "Send the file with a Content-Length")
+        if not declared.isdigit() or int(declared) > brand.LOGO_MAX_BYTES:
+            raise HTTPException(413, brand.MSG_LARGE)
+        data = bytearray()
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > brand.LOGO_MAX_BYTES:
+                raise HTTPException(413, brand.MSG_LARGE)
+        try:
+            await asyncio.to_thread(logos.save, eid, variant, bytes(data))
+        except brand.LogoError as e:
+            raise HTTPException(e.status, e.message) from None
+        logo_changed(eid)
+        return admin_branding(eid)
+
+    @app.delete("/api/admin/events/{event_id}/logo/{variant}", dependencies=admin_deps)
+    async def delete_logo(event_id: str, variant: str):
+        eid, variant = logo_event(event_id), logo_variant(variant)
+        await asyncio.to_thread(logos.delete, eid, variant)
+        logo_changed(eid)
+        return admin_branding(eid)
+
+    @app.post("/api/admin/events/{event_id}/logo/copy", dependencies=admin_deps)
+    async def copy_logo(event_id: str, body: LogoCopyBody):
+        eid, src = logo_event(event_id), logo_event(str(body.from_event_id))
+        if src == eid:
+            raise HTTPException(422, "Choose a different event to copy from")
+        try:
+            await asyncio.to_thread(logos.copy, src, eid)
+        except brand.LogoError as e:
+            raise HTTPException(e.status, e.message) from None
+        o = hub.recorder.event_branding(src)
+        hub.recorder.set_event_branding(eid, o["on_dark"], o["show_on_admin"], o["show_on_index"])
+        logo_changed(eid)
+        return admin_branding(eid)
 
     # Schedule (admin writes). Like the show handlers these never await, so the stale-show check
     # and the write can't interleave with another request.

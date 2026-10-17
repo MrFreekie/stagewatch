@@ -1525,6 +1525,7 @@
   });
   SW.api("GET", "/api/info").then((i) => {
     $("emulate").hidden = !i.emulate;
+    SW.applyBranding(i);
     loadedBuild = buildKey(i);
   }).catch(() => {});
   if (soundWanted()) sounder.enable(); // works in kiosk mode (autoplay allowed); otherwise tap the sound button
