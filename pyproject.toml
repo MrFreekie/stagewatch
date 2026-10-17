@@ -11,6 +11,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "aioesphomeapi>=46.6.0",
+    "bleak>=1.0.0",
     "fastapi>=0.142.0",
     "ifaddr>=0.2.0",
     "python-osc>=1.10.2",

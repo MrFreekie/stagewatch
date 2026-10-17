@@ -442,6 +442,14 @@ class GlobconConfig(_Model):
         return data
 
 
+class WitmotionConfig(_Model):
+    """A WitMotion WT901BLE tilt sensor read over Bluetooth (read-only, advisory). Additive with
+    defaults, so no schema bump; an older build ignores the section and forgets it on its next save.
+    ``address`` is optional: empty means "the first sensor advertising a name starting WT901BLE"."""
+    enabled: bool = False
+    address: str = Field("", max_length=64)
+
+
 class Threshold(_Model):
     id: str
     entity: str
@@ -912,6 +920,7 @@ class Config(_Model):
     alarms: AlarmsConfig = Field(default_factory=AlarmsConfig)
     spl: SplConfig = Field(default_factory=SplConfig)
     globcon: GlobconConfig = Field(default_factory=GlobconConfig)
+    witmotion: WitmotionConfig = Field(default_factory=WitmotionConfig)
     # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
     shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list)
     contacts: ContactsSettings = Field(default_factory=ContactsSettings)
