@@ -93,7 +93,7 @@
       const tick = (key, text) => h("label", { class: "check" },
         h("input", { type: "checkbox", checked: b[key], onchange: (e) => opts({ [key]: e.target.checked }) }), ` ${text}`);
       const hasAny = b.light || b.dark;
-      box.replaceChildren(
+      box.replaceChildren(...[
         h("p", { class: "muted hint" }, "Shown beside the title on every dashboard and the wall for this event only. PNG, JPEG or WebP, still image, up to 1 MB and 2048 pixels. Nothing shows until you upload one."),
         h("p", { class: "muted hint" }, "The file is served exactly as uploaded, to anyone on the show network. Photos can carry hidden details (such as GPS location): export the logo from a graphics program rather than using a camera photo."),
         slot("light", "Logo for light screens"),
@@ -103,7 +103,7 @@
         b.previous ? h("div", { class: "row" }, h("button", { class: "touch", type: "button", onclick: () => {
           if (!hasAny || confirm(`Replace this event's logo with the one from "${b.previous.name}"?`))
             reload(run(() => api("POST", `${base}/logo/copy`, { from_event_id: b.previous.id }), "Logo copied"));
-        } }, `Use previous event's logo (${b.previous.name})`)) : null);
+        } }, `Use previous event's logo (${b.previous.name})`)) : null].filter(Boolean));
     };
     api("GET", `${base}/branding`).then(fill, (err) => box.replaceChildren(h("p", { class: "muted" }, err.message)));
     return h("details", { open: brandOpen, ontoggle: (e) => { brandOpen = e.target.open; } },
@@ -1939,7 +1939,8 @@
         dirty = false;
       };
       const full = r.documents.length >= r.max_docs;
-      box.replaceChildren(
+      // replaceChildren prints a null as "null": drop the parts that are not shown.
+      box.replaceChildren(...[
         h("p", { class: "muted hint" }, "Safety and risk plans for this event: PDF, Markdown (.md) or plain text (.txt). PDF up to 10 MB, text up to 256 KB, 20 files per event. Each one is admin-only until you tick a dashboard. Dashboards have no login. Upload only files you trust."),
         events.length > 1 ? h("div", { class: "row" }, field("Event", h("select", { onchange: (e) => { docEvent = Number(e.target.value); load(); } },
           events.map((e) => h("option", { value: e.id, selected: e.id === docEvent }, e.name))))) : null,
@@ -1953,7 +1954,7 @@
             ticks(chosen, (next) => { chosen = next; warnBox.replaceChildren(chosen.length ? warning() : ""); }), warnBox,
             h("div", { class: "row" }, h("button", { class: "primary touch", type: "button", onclick: add }, "Add document"))),
         admin.emulate || (snap && snap.emulate) ? h("div", { class: "row" }, h("button", { class: "touch", type: "button", onclick: () =>
-          reload(run(() => api("POST", "/api/admin/documents/demo"), "Demo documents loaded")) }, "Load demo documents")) : null);
+          reload(run(() => api("POST", "/api/admin/documents/demo"), "Demo documents loaded")) }, "Load demo documents")) : null].filter(Boolean));
     };
     const load = () => api("GET", base()).then(fill, (err) => box.replaceChildren(h("p", { class: "muted" }, err.message)));
     if (docEvent) load(); else box.replaceChildren(h("p", { class: "muted" }, "No event yet."));
@@ -2432,7 +2433,7 @@
     pageFolds = [];
     // Core daily cards start open, set-up-once cards closed. A card with a notice is held open.
     const oscErr = ((admin.integrations.find((i) => i.manifest.domain === "osc_out") || {}).last_error);
-    app.replaceChildren(
+    app.replaceChildren(...[
       foldButtons(setAllCards, " cards"),
       h("div", { class: "grid-2" }, foldCard(siteCard(), "site", false, !admin.config.site.timezone), foldCard(eventShowCard(), "event", true)),
       scheduleCard(),     // summary and a link to /schedule
@@ -2455,7 +2456,7 @@
       foldCard(alarmLogCard(), "alarmlog", true),
       foldCard(logImportCard(), "logimport", false),
       foldCard(supportCard(), "help", false),
-      foldCard(catalogCard(), "integrations", false));
+      foldCard(catalogCard(), "integrations", false)].filter(Boolean));
   }
 
   async function refresh() {
