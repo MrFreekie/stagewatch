@@ -691,14 +691,16 @@
     sched.rows = sched.items.map((it, i) => {
       const tap = hasSetlist(it);
       const nowTag = h("span", { class: "sched-nowtag", hidden: true }, "NOW");
+      const mark = h("span", { class: "cue-mark", "aria-hidden": "true" }, "·");
       const pick = () => { sched.selected = sched.selected === it.id ? null : it.id; tickSchedule(); };
       const el = h("li", tap ? { role: "button", tabindex: "0", title: "Show the setlist", onclick: pick,
         onkeydown: (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); pick(); } } } : {},
-      h("span", { class: "sched-row-time" }, timeRange(it)),
-      h("span", { class: "sched-row-title" }, it.title, it.stage && !stage ? h("span", { class: "muted" }, ` · ${it.stage}`) : null),
+      mark,
+      h("span", { class: "sched-row-time cue-time" }, timeRange(it)),
+      h("span", { class: "sched-row-title cue-title" }, it.title, it.stage && !stage ? h("span", { class: "muted" }, ` · ${it.stage}`) : null),
       nowTag,
-      h("span", { class: "sched-row-kind" }, tap ? "Setlist ›" : kindNote(it)));
-      return { el, item: it, end: ends[i], nowTag, tap };
+      h("span", { class: "sched-row-kind cue-tag" }, tap ? "Setlist ›" : kindNote(it)));
+      return { el, item: it, end: ends[i], nowTag, mark, tap };
     });
     sched.ui = ui;
     sched.setlistKey = "";
@@ -790,9 +792,12 @@
     for (const r of sched.rows) {
       const isNow = !!cur && r.item.id === cur.id;
       const past = !isNow && r.end !== null && r.end <= now;
-      setClass(r.el, "sched-row" + (past ? " past" : "") + (isNow ? " now" : "") + (r.tap ? " tap" : "")
-        + (r.tap && r.item.id === showId ? " sel" : ""));
+      const isNext = !isNow && !!nxt && r.item.id === nxt.id;
+      setClass(r.el, "sched-row cue-row" + (past ? " past cue-past" : "") + (isNow ? " now cue-now" : "") + (isNext ? " cue-next" : "")
+        + (r.tap ? " tap" : "") + (r.tap && r.item.id === showId ? " sel" : ""));
       r.nowTag.hidden = !isNow;
+      const m = isNow ? "▶" : isNext ? "→" : past ? "✓" : "·";
+      if (r.mark.textContent !== m) r.mark.textContent = m;
     }
     // Setlist panel: the tapped act, else what's on now (or next) with a setlist.
     const item = showId === null ? null : sched.items.filter((it) => it.id === showId)[0] || null;

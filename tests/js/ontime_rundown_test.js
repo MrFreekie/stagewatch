@@ -212,7 +212,7 @@ eq(rd.view(msg(), NOW).rows, [], "no list sent: nothing");
 const ui4 = rd.createUi();
 ui4.update(rd.view(msg({ events: ev }), NOW, "tablet"));
 eq([ui4.list.hidden, ui4.list.children.length], [false, 11], "rows are built");
-eq(ui4.list.children[2].className, "rd-ev rd-ev-current", "the current row has its own class");
+eq(ui4.list.children[2].className, "rd-ev rd-ev-current cue-row cue-now", "the current row has its own class and the shared cue-row classes");
 const w0 = ui4.list.writes;
 ui4.update(rd.view(msg({ events: ev }), NOW + 1, "tablet"));
 eq(ui4.list.writes, w0, "list not rebuilt when nothing changed");

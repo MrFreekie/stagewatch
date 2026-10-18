@@ -107,6 +107,8 @@ SW.rd = (function () {
   // after); each layout shows fewer. Counts, not scrolling: whatever does not fit is left out.
   rd.LIST_LIMITS = { tablet: { past: 2, ahead: 8 }, phone: { past: 0, ahead: 4 }, wall: { past: 0, ahead: 10 } };
   rd.MARKS = { current: "▶", next: "→", later: "·", past: "✓", skipped: "⊘" };
+  // The shared cue-row state classes (the Schedule running order uses the same ones).
+  const CUE_STATE = { current: "cue-now", next: "cue-next", past: "cue-past", skipped: "cue-past cue-skipped" };
   const hhmm = (ms) => (isNum(ms) && ms >= 0 && ms <= MAX_TIME_MS
     ? `${pad2(Math.floor((ms % DAY_MS) / 3600000))}:${pad2(Math.floor((ms % 3600000) / 60000))}` : "--:--");
 
@@ -277,12 +279,12 @@ SW.rd = (function () {
       const key = JSON.stringify(v.rows);
       if (key !== listKey) {   // rebuilt only when a row changes (about once per event)
         listKey = key;
-        ui.list.replaceChildren(...v.rows.map((r) => h("li", { class: `rd-ev rd-ev-${r.state}` },
-          h("span", { class: "rd-ev-mark", "aria-hidden": "true" }, r.mark),
-          h("span", { class: "rd-ev-time" }, r.time),
+        ui.list.replaceChildren(...v.rows.map((r) => h("li", { class: `rd-ev rd-ev-${r.state} cue-row${CUE_STATE[r.state] ? ` ${CUE_STATE[r.state]}` : ""}` },
+          h("span", { class: "rd-ev-mark cue-mark", "aria-hidden": "true" }, r.mark),
+          h("span", { class: "rd-ev-time cue-time" }, r.time),
           h("span", { class: "rd-ev-cue" }, r.cue),
-          h("span", { class: "rd-ev-title" }, r.title),
-          r.tag ? h("span", { class: "rd-ev-tag" }, r.tag) : null)));
+          h("span", { class: "rd-ev-title cue-title" }, r.title),
+          r.tag ? h("span", { class: "rd-ev-tag cue-tag" }, r.tag) : null)));
       }
       setGone(ui.list, v.rows.length === 0);
       setText(ui.listNote, v.listNote);
