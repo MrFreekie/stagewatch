@@ -786,12 +786,27 @@ class Recorder:
 
     def value_at(self, entity_id: str, ts: float, max_age_s: float = 600.0) -> float | None:
         """Last recorded value of entity_id at or before ts (current show)."""
+        return self.value_near(entity_id, ts, self.show_id, before_s=max_age_s, after_s=0.0)
+
+    def value_near(self, entity_id: str, ts: float, show_id: int | None = None,
+                   before_s: float = 600.0, after_s: float = 120.0) -> float | None:
+        """The recorded value of entity_id nearest in the past to ts, within one show: the last
+        reading at or before ts and no more than ``before_s`` older; failing that, the first
+        reading after ts within ``after_s``. None if there is neither (nothing is guessed).
+        Read only; "not available" records are ignored."""
         self.flush()
+        show_id = show_id if show_id is not None else self.show_id
         row = self._db.execute(
             "SELECT value FROM states WHERE show_id = ? AND entity_id = ? AND ts <= ? "
             "AND ts >= ? AND value IS NOT NULL ORDER BY ts DESC LIMIT 1",
-            (self.show_id, entity_id, ts, ts - max_age_s),
+            (show_id, entity_id, ts, ts - before_s),
         ).fetchone()
+        if row is None and after_s > 0:
+            row = self._db.execute(
+                "SELECT value FROM states WHERE show_id = ? AND entity_id = ? AND ts > ? "
+                "AND ts <= ? AND value IS NOT NULL ORDER BY ts ASC LIMIT 1",
+                (show_id, entity_id, ts, ts + after_s),
+            ).fetchone()
         return row[0] if row else None
 
     # ---------------------------------------------------------------- markers

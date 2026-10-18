@@ -923,6 +923,93 @@ class SplConfig(_Model):
         return kept
 
 
+ADVICE_ID_RE = r"^[a-z0-9_]{1,32}$"
+ADVICE_MAX_PATHS = 12
+ADVICE_MAX_POSITIONS = 4
+
+
+def _advice_name(v):
+    """Names are trimmed before the length rule, so "  " is refused."""
+    return v.strip() if isinstance(v, str) else v
+
+
+def _advice_id_from_name(data):
+    """No id given: the slug of the name (the id is the OSC address and alarm id, so it stays put)."""
+    if isinstance(data, dict) and "id" not in data and isinstance(data.get("name"), str):
+        data = {**data, "id": slugify(data["name"])[:32]}
+    return data
+
+
+class AdvicePath(_Model):
+    """One alignment-drift path (a delay tower, a fill, sub to tops): how far sound now arrives
+    from the main PA compared with the reference marker. Advice only; nothing is ever sent to a
+    processor. ``source_area`` is the Environment area whose sensors give the air ("" = the site
+    average)."""
+    id: str = Field(pattern=ADVICE_ID_RE)
+    name: str = Field(min_length=1, max_length=40)
+    distance_m: float = Field(ge=0.5, le=1000)
+    source_area: str = Field("", max_length=40)
+    current_delay_ms: Optional[float] = Field(None, ge=0, le=2000)
+    drift_threshold_ms: Optional[float] = Field(1.0, ge=0.2, le=10)   # None = no alarm
+    phase_hint_hz: Optional[float] = Field(None, ge=20, le=20000)     # display only
+    enabled: bool = True
+
+    @field_validator("name", "source_area", mode="before")
+    @classmethod
+    def _trim(cls, v):
+        return _advice_name(v)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_id(cls, data):
+        return _advice_id_from_name(data)
+
+
+class AdvicePosition(_Model):
+    """A named listening position for the high-frequency air loss estimate ("FOH", "Rear"): its
+    distance from the main PA, typed in. Each is compared with a marker, never with the other."""
+    id: str = Field(pattern=ADVICE_ID_RE)
+    name: str = Field(min_length=1, max_length=40)
+    distance_m: float = Field(ge=0.5, le=1000)
+    enabled: bool = True
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _trim(cls, v):
+        return _advice_name(v)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_id(cls, data):
+        return _advice_id_from_name(data)
+
+
+class AdviceConfig(_Model):
+    """FOH advice: alignment drift per path and high-frequency air loss per position (read-only,
+    advisory). Additive with defaults, so no schema bump; an older build ignores the section and
+    forgets it on its next save. Air loss always uses the site average air, above 4 kHz only."""
+    paths: list[AdvicePath] = Field(default_factory=list, max_length=ADVICE_MAX_PATHS)
+    positions: list[AdvicePosition] = Field(default_factory=list, max_length=ADVICE_MAX_POSITIONS)
+    drift_reference: str = Field("Aligned", min_length=1, max_length=120)
+    air_loss_reference: str = Field("Soundcheck", min_length=1, max_length=120)
+    air_loss_resolution: Literal["octave", "third"] = "octave"
+    alarm: Literal["off", "silent", "beep"] = "silent"   # level 1 always; never 2 or 3
+    hold_s: float = Field(120, ge=0, le=900)
+    marker_on_alert: bool = True
+
+    @field_validator("drift_reference", "air_loss_reference", mode="before")
+    @classmethod
+    def _trim(cls, v):
+        return _advice_name(v)
+
+    @field_validator("paths", "positions")
+    @classmethod
+    def _unique_ids(cls, v: list) -> list:
+        if len({x.id for x in v}) != len(v):
+            raise ValueError("ids must be unique")
+        return v
+
+
 class ContactsSettings(_Model):
     """Onsite contacts (the contacts themselves live in contacts/<event_id>.yaml, never here).
     ``phones_enabled`` is the installation-wide master switch for phone numbers on dashboards;
@@ -961,6 +1048,39 @@ class Config(_Model):
     # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
     shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list)
     contacts: ContactsSettings = Field(default_factory=ContactsSettings)
+    advice: AdviceConfig = Field(default_factory=AdviceConfig)
+
+    @field_validator("advice", mode="before")
+    @classmethod
+    def _lenient_advice(cls, v):
+        """On load (the API is strict): a path or position that is not usable, or repeats an id,
+        is dropped and the list cut to its limit, so one bad entry never costs the rest. Logs a
+        count only."""
+        if not isinstance(v, dict):
+            return v
+        out, dropped = dict(v), 0
+        for key, model, limit in (("paths", AdvicePath, ADVICE_MAX_PATHS),
+                                  ("positions", AdvicePosition, ADVICE_MAX_POSITIONS)):
+            items = v.get(key)
+            if not isinstance(items, list):
+                continue
+            kept, seen = [], set()
+            for item in items:
+                try:
+                    got = model.model_validate(item)
+                except Exception:  # noqa: BLE001 - any unreadable entry is simply left out
+                    dropped += 1
+                    continue
+                if got.id in seen or len(kept) >= limit:
+                    dropped += 1
+                    continue
+                seen.add(got.id)
+                kept.append(got)
+            out[key] = kept
+        if dropped:
+            log.warning("FOH advice: %d unusable or surplus entr%s left out", dropped,
+                        "y" if dropped == 1 else "ies")
+        return out
 
     @field_validator("shelly_devices")
     @classmethod

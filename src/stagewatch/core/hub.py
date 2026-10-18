@@ -29,6 +29,7 @@ from .spl_limits import SplLimit, SplLimitService, SplLimitSet
 from .spl_limits import dump_set as dump_spl_set
 from .spl_limits import set_errors as spl_set_errors
 from .actions import ActionService
+from .advice import AdviceService
 from .schedule import DemoDoesNotFit, ScheduleMarkers, ScheduleService
 from .ontimerundown import OntimeRundownService
 from .ontimetimer import OntimeTimerService
@@ -89,6 +90,7 @@ class Hub:
         self.actions = ActionService(self)  # OSC actions: off (not armed) after every start
         self.spl_limits = SplLimitService(self)  # sound level limits beside Smaart's values (0.4.0)
         self.baro = BarometerService(self)  # 3-hour tendency from one averaged sample a minute
+        self.advice = AdviceService(self)  # alignment drift and HF air loss (advisory, read only)
         self.wall_clock = WallClockService(self)  # runs a clock source only while a dashboard has the card
         self.ontime_timer = OntimeTimerService(self)  # holds the shared Ontime source while a dashboard has its card
         self.ontime_rundown = OntimeRundownService(self)  # likewise for the rundown card (same shared source)
@@ -154,6 +156,7 @@ class Hub:
         if self.emulate:
             self._emulate_demo_day()
             self.baro.start_demo("front", time.time())
+            self.advice.start_demo()
         else:
             try:
                 self.baro.seed(time.time())
@@ -178,6 +181,7 @@ class Hub:
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
+        await self.advice.stop()
         await self.ontime_rundown.stop()
         await self.ontime_timer.stop()
         await self.wall_clock.stop()
@@ -624,6 +628,7 @@ class Hub:
         self.check_schedule_markers(now)
         self.check_actions(now)
         self.spl_limits.tick(now)
+        self.advice.tick(now)
 
     def check_schedule_markers(self, now: float | None = None) -> list[Marker]:
         """Add any schedule markers that are due (never raises: a failure is logged)."""
@@ -895,6 +900,7 @@ class Hub:
             "ontime_timer": self.ontime_timer.snapshot(),  # likewise
             "ontime_rundown": self.ontime_rundown.snapshot(),  # likewise
             "globcon_meters": self._globcon_snapshot(),  # likewise
+            "advice": self.advice.snapshot(),  # drift paths and air-loss positions (names, distances, numbers)
             "devices": [d.to_dict(now) for d in self.devices.values()],
             "entities": [self.entity_dict(e, now, stale_after) for e in self.entities.values()],
             "markers": [m.to_dict() for m in self.recorder.markers()],
