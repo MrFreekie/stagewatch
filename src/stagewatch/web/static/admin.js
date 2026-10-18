@@ -858,25 +858,25 @@
     }
     const t = (el, label) => { el.setAttribute("aria-label", label); return el; };
     const paths = listTable(["Name", "Distance (m)", "Current delay (ms)", "Warn at (ms)", "Area", "On"], a.paths || [], (p) => {
-      const name = t(h("input", { value: p.name || "", maxlength: 40, placeholder: "e.g. Delay tower L" }), "Path name");
+      const name = t(h("input", { class: "touch", value: p.name || "", maxlength: 40, placeholder: "e.g. Delay tower L" }), "Path name");
       const dist = t(h("input", { class: "num touch", type: "number", step: "0.1", min: "0.5", max: "1000", value: p.distance_m === undefined ? "" : p.distance_m }), "Distance in metres");
       const delay = t(h("input", { class: "num touch", type: "number", step: "0.01", min: "0", max: "2000", value: p.current_delay_ms === null || p.current_delay_ms === undefined ? "" : p.current_delay_ms, placeholder: "optional" }), "Current delay in milliseconds");
       const warn = t(h("input", { class: "num touch", type: "number", step: "0.1", min: "0.2", max: "10", value: p.drift_threshold_ms === undefined ? 1 : (p.drift_threshold_ms === null ? "" : p.drift_threshold_ms), placeholder: "no notice" }), "Warn at, in milliseconds");
-      const area = t(h("input", { value: p.source_area || "", list: "advice-areas", maxlength: 40, placeholder: "Site average", autocomplete: "off" }), "Area");
-      const on = t(h("input", { type: "checkbox", checked: p.enabled !== false }), "On");
-      const tr = h("tr", {}, h("td", {}, name), h("td", {}, dist), h("td", {}, delay), h("td", {}, warn), h("td", {}, area), h("td", {}, on));
+      const area = t(h("input", { class: "touch", value: p.source_area || "", list: "advice-areas", maxlength: 40, placeholder: "Site average", autocomplete: "off" }), "Area");
+      const on = t(h("input", { type: "checkbox", checked: p.enabled !== false }), "On"), onBox = h("label", { class: "adv-on" }, on);
+      const tr = h("tr", {}, h("td", {}, name), h("td", {}, dist), h("td", {}, delay), h("td", {}, warn), h("td", {}, area), h("td", {}, onBox));
       return { tr, id: p.id || "", read: () => Object.assign({}, p, { name: val(name), distance_m: Number(dist.value), current_delay_ms: num(delay),
         drift_threshold_ms: num(warn), source_area: val(area), enabled: on.checked }) };
     }, ADVICE_MAX_PATHS, "Add path");
     const positions = listTable(["Name", "Distance from the main PA (m)", "On"], a.positions || [], (p) => {
-      const name = t(h("input", { value: p.name || "", maxlength: 40, placeholder: "e.g. FOH or Rear" }), "Position name");
+      const name = t(h("input", { class: "touch", value: p.name || "", maxlength: 40, placeholder: "e.g. FOH or Rear" }), "Position name");
       const dist = t(h("input", { class: "num touch", type: "number", step: "0.1", min: "0.5", max: "1000", value: p.distance_m === undefined ? "" : p.distance_m }), "Distance in metres");
-      const on = t(h("input", { type: "checkbox", checked: p.enabled !== false }), "On");
-      const tr = h("tr", {}, h("td", {}, name), h("td", {}, dist), h("td", {}, on));
+      const on = t(h("input", { type: "checkbox", checked: p.enabled !== false }), "On"), onBox = h("label", { class: "adv-on" }, on);
+      const tr = h("tr", {}, h("td", {}, name), h("td", {}, dist), h("td", {}, onBox));
       return { tr, id: p.id || "", read: () => Object.assign({}, p, { name: val(name), distance_m: Number(dist.value), enabled: on.checked }) };
     }, ADVICE_MAX_POSITIONS, "Add position");
-    const driftRef = h("input", { value: a.drift_reference || "Aligned", maxlength: 120 });
-    const airRef = h("input", { value: a.air_loss_reference || "Soundcheck", maxlength: 120 });
+    const driftRef = h("input", { class: "touch", value: a.drift_reference || "Aligned", maxlength: 120 });
+    const airRef = h("input", { class: "touch", value: a.air_loss_reference || "Soundcheck", maxlength: 120 });
     const res = h("select", { class: "touch" }, h("option", { value: "octave" }, "Octave: 4k, 8k, 16k"), h("option", { value: "third" }, "Third-octave: 4k, 5k, 6.3k, 8k, 10k, 12.5k, 16k"));
     res.value = a.air_loss_resolution === "third" ? "third" : "octave";
     const alarm = h("select", { class: "touch" }, h("option", { value: "off" }, "Off"), h("option", { value: "silent" }, "Silent notice"), h("option", { value: "beep" }, "Beep"));
@@ -2281,8 +2281,8 @@
             h("td", {}, inp("area", { maxlength: 40, list: "stage-list", placeholder: "All areas", "aria-label": "Area" })),
             h("td", {}, tick("on_duty", "On duty")),
             h("td", {}, h("div", { class: "row" },
-              h("button", { type: "button", class: "touch", "aria-label": "Move up", disabled: i === 0, onclick: () => move(-1) }, "▲"),
-              h("button", { type: "button", class: "touch", "aria-label": "Move down", disabled: i === rows.length - 1, onclick: () => move(1) }, "▼"),
+              h("button", { type: "button", class: "small touch", "aria-label": "Move up", disabled: i === 0, onclick: () => move(-1) }, "▲"),
+              h("button", { type: "button", class: "small touch", "aria-label": "Move down", disabled: i === rows.length - 1, onclick: () => move(1) }, "▼"),
               h("button", { type: "button", class: "touch danger", onclick: () => { rows.splice(i, 1); dirty = true; draw(); } }, "Remove"))));
         }));
       };

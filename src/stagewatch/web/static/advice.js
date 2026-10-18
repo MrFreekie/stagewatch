@@ -279,9 +279,11 @@ SW.advice = (function () {
         const more = h("div", { class: "adv-more", hidden: true }, v.bandKeys.filter((b) => b !== a.HEADLINE_BAND).map((band) => {
           const d = cell("div"); refs2[r.id].bands[band] = d; return h("div", { class: "adv-bandrow" }, h("span", { class: "adv-bandname" }, a.bandLabel(band)), d.cell);
         }));
+        const chev = h("span", { class: "adv-chev", "aria-hidden": "true" }, "▸");
         const btn = h("button", { type: "button", class: "adv-tap touch", "aria-expanded": "false", onclick: () => {
           const open = more.hidden; more.hidden = !open; btn.setAttribute("aria-expanded", open ? "true" : "false");
-        } }, h("span", { class: "adv-name" }, r.name, h("span", { class: "adv-dist" }, ` ${r.distance} · ${a.bandLabel(a.HEADLINE_BAND)}`)), c.cell);
+          chev.textContent = open ? "▾" : "▸";
+        } }, h("span", { class: "adv-name" }, r.name, h("span", { class: "adv-dist" }, ` ${r.distance} · ${a.bandLabel(a.HEADLINE_BAND)}`)), c.cell, chev);
         const li = h("li", { class: "adv-row" }, btn, more);
         refs2[r.id].row = li; refs2[r.id].base = "adv-row";
         return li;

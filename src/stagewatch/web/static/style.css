@@ -1461,7 +1461,11 @@ button.primary:disabled { background: var(--panel-2); color: var(--muted); borde
 .adv-status { font-weight: 600; white-space: nowrap; }
 .adv-status.adv-check { color: var(--warn); }
 .adv-status.adv-none { color: var(--muted); }
-.adv-stale, .adv-stale * { color: var(--muted); opacity: .75; }
+/* Day mode: --warn on white is under 4.5:1 for small text, so the CHECK word uses a darker amber (about 6:1). */
+:root[data-theme="light"] .adv-status.adv-check { color: #8a5a00; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .adv-status.adv-check { color: #8a5a00; } }
+/* Stale: greyed, not faded (opacity on every child compounded and dropped the text under 4.5:1). */
+.adv-stale, .adv-stale * { color: var(--muted); }
 .adv-list { list-style: none; margin: 0; padding: 0; }
 .adv-list > li { padding: 8px 0; border-bottom: 1px solid var(--grid); }
 .adv-list > li:last-child { border-bottom: 0; }
@@ -1475,6 +1479,8 @@ button.primary:disabled { background: var(--panel-2); color: var(--muted); borde
 .adv-now { display: block; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .adv-tap { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; min-height: 44px; text-align: left;
   background: transparent; border: 0; padding: 0; color: inherit; font: inherit; }
+.adv-chev { color: var(--muted); font-size: 18px; min-width: 20px; text-align: center; }
+.adv-tap:focus-visible { outline: 3px solid var(--accent, currentColor); outline-offset: 2px; }
 .adv-more { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--grid); }
 .adv-bandrow { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 6px 0; }
 .adv-bandname { font-weight: 600; min-width: 64px; }
@@ -1490,10 +1496,11 @@ body.layout-wall .adv-list > li { padding: 14px 0; }
 body.layout-wall .adv-list .adv-name { font-size: 30px; }
 body.layout-wall .adv-drift, body.layout-wall .adv-fig { font-size: 64px; font-weight: 700; line-height: 1.05; }
 body.layout-wall .adv-sym { font-size: 40px; }
-body.layout-wall .adv-status { font-size: 30px; }
+body.layout-wall .adv-status { font-size: 44px; min-width: 3.4em; text-align: left; }
 body.layout-wall .adv-words { font-size: 28px; }
 body.layout-wall .adv-now { font-size: 20px; }
-body.layout-wall .adv-dist { font-size: 20px; }
+body.layout-wall .adv-dist { font-size: 26px; }
 body.layout-wall .adv-list > li.adv-line { flex-wrap: nowrap; align-items: center; }
 .adv-admin-btns { white-space: nowrap; }
-.adv-admin-btns button { min-width: 44px; }
+.adv-admin-btns button { min-width: 44px; min-height: 44px; }
+.adv-on { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
