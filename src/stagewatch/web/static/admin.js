@@ -277,11 +277,7 @@
     const max = st.max_slots || 3, inputs = st.inputs || [], metrics = st.metrics || [];
     const defaults = st.default_metrics || {};
     const on = h("input", { type: "checkbox", checked: !!s.enabled });
-    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", value: s.host || "", placeholder: "127.0.0.1" });
-    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: s.port || "", placeholder: "26000" });
     // Smaart's API password: write-only. The saved one is never shown, only whether there is one.
-    const pw = h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: st.password_set ? "Saved" : "None" });
-    const clearPw = h("input", { type: "checkbox" });
     // What is saved: the current form, or the older metric-only form (a slot with no input means
     // "the first input Smaart lists").
     const saved = (s.meters || (s.slots || []).map((k) => ({ source: "", metric: defaults[k] || k }))).slice(0, max);
@@ -379,20 +375,18 @@
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated Smaart with two inputs and the values SPL A Slow, SPL C Slow, LAeq 1 and LAeq 10, so no Smaart or address is needed. It has no LAeq 15, and now and then flags one reading as overload, to show how \"not available\" looks.")
         : h("p", { class: "notice" }, "Tested live on Smaart Suite 9.6.4; other Smaart versions have not been tested. Turn on Smaart's API under Options → Preferences → API first. The port is normally the one Smaart's SPL web page uses (26000 is the usual example); please confirm it on your Smaart."),
       h("div", { class: "row" }, h("label", { class: "field inline" }, on, " Record sound level"),
-        admin.emulate ? null : field("Smaart computer (127.0.0.1 is this computer)", host), admin.emulate ? null : field("Port (26000 unless Smaart says otherwise)", port)),
+        admin.emulate ? null : h("span", { class: "muted" }, connText(s.host, s.port, st.password_set))),
       h("div", { class: "row" }, field("Default location (shown on the card)", defLoc),
         h("span", { class: "muted hint" }, "For example FOH or Stage left. Shown on the dashboard card, for any input without its own location below.")),
       h("div", { class: "row" }, field("Graph range", rangeMode), rangeNums,
         h("span", { class: "muted hint" }, "Automatic fits the graph to what Smaart reports. Custom keeps it fixed, for example 22 to 145 dB.")),
-      admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "Smaart API password: one is saved, type here to replace it" : "Smaart API password (leave empty if Smaart has none)", pw),
-        st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
       ...slotRows.map((r, i) => h("div", { class: "row spl-slot" }, field(`Value ${i + 1}: input`, r.src), field(`Value ${i + 1}: value`, r.met))),
       locBox,
       h("div", { class: "row" }, refreshBtn, h("span", { class: "muted hint" }, "Re-reads the input and metric names from Smaart"), refreshStatus),
       h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/spl", {
-        enabled: on.checked, host: host.value.trim(), port: port.value ? Number(port.value) : null,
+        enabled: on.checked, host: s.host || "", port: s.port || null,   // the address is set under Connections
         meters: slotRows.filter((r) => r.met.value).map((r) => ({ source: r.src.value, metric: r.met.value })),
-        password: pw.value, clear_password: clearPw.checked,
+        password: "", clear_password: false,
         location: defLoc.value,
         chart_range: rangeMode.value,
         ...(rangeMode.value === "custom" ? { chart_min_db: Number(rangeMin.value), chart_max_db: Number(rangeMax.value) } : {}),
@@ -505,10 +499,6 @@
   // asks for names and levels. The controller and strips are chosen per dashboard (Edit cards).
   function globconCard() {
     const g = admin.config.globcon || {}, st = admin.globcon || {};
-    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", spellcheck: "false", value: g.host || "", placeholder: "127.0.0.1" });
-    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: g.port || 9091, placeholder: "9091" });
-    const pw = h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: st.password_set ? "Saved" : "None" });
-    const clearPw = h("input", { type: "checkbox" });
     const lines = [];
     if (!st.running) lines.push(st.card_assigned ? "Starting…" : "Not running. It starts when a dashboard has the DirectOut GLOBCON card (User dashboards → Edit cards).");
     else {
@@ -522,12 +512,7 @@
         h("p", { class: "muted" }, "Only \"are you there?\", \"tell me this\" and \"tell me when it changes\" (and \"stop telling me\"), for controller names, strip labels, the layer and the meter levels. If you save a password, it is sent to log in, and only when GLOBCON asks for one. It is sent as plain text on the show network, so use a password you use nowhere else.")),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated GLOBCON with 16 controllers, so no GLOBCON or address is needed. It drops out for a few seconds every minute and a half, to show how a frozen card looks.")
         : h("p", { class: "notice" }, "Names, layers and labels checked on one real controller (2026-10). Live level meters work. The metering scale for different channel types and password login are not yet tested. Please check the levels against GLOBCON's own screen."),
-      admin.emulate ? null : h("div", { class: "row" }, field("GLOBCON computer (127.0.0.1 is this computer)", host), field("Port (9091 unless GLOBCON says otherwise)", port)),
-      admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "GLOBCON password: one is saved, type here to replace it" : "GLOBCON password (leave empty if GLOBCON has none)", pw),
-        st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
-      admin.emulate ? null : h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/globcon", {
-        host: host.value.trim(), port: Number(port.value) || 9091, password: pw.value, clear_password: clearPw.checked,
-      }), "GLOBCON saved").then(refresh, () => {}) }, "Save")),
+      admin.emulate ? null : h("p", { class: "muted" }, connText(g.host, g.port || 9091, st.password_set)),
       h("p", { class: "muted" }, lines.join(" · ")));
   }
 
@@ -1582,25 +1567,119 @@
     if (adm.config.wall_clock.source === "ontime") list.push(adm.wall_clock || {});
     return list.some((st) => st.active && st.status && st.status !== "ok");
   }
+  // ------------------------------------------------------------ connections
+  // Where each outside product is. The card lists the products that are set up, each with an Edit
+  // button; "Add integration" picks one that is not. Both open the same pop-out, the same shape for
+  // every product: address (IP or host name), port, password where the product has one, Test where
+  // Stagewatch can try it, Save. Each Save uses that product's own settings call and keeps its other
+  // settings as saved (they stay on its own card).
+  const connText = (host, port, pwSet) => `Address: ${host || "not set"}${port ? `, port ${port}` : ""}${pwSet ? ", password saved" : ""}. Change it under Connections.`;
+  // Ontime's address is one URL (http://host:port); the pop-out shows it as two boxes and rebuilds it.
+  const splitUrl = (u) => {
+    const m = /^(https?:\/\/)(\[[^\]]+\]|[^/:]+)(?::(\d+))?(\/.*)?$/i.exec(String(u || "").trim());
+    return m ? { scheme: m[1], host: m[2], port: m[3] || "", path: m[4] || "" } : { scheme: "http://", host: "", port: "", path: "" };
+  };
+  // One entry per product: what is saved now, and how to test and save an address.
+  function connProducts() {
+    const w = admin.config.wall_clock, ot = splitUrl(w.ontime_url);
+    const otUrl = (v) => `${ot.scheme}${v.host}${v.port ? `:${v.port}` : ""}${ot.path}`;
+    const s = admin.config.spl || {}, sst = admin.spl || {};
+    const g = admin.config.globcon || {}, gst = admin.globcon || {};
+    return [
+      // Ontime counts as added once its address is changed from the default or any card uses it.
+      { key: "ontime", name: "Ontime", badge: "ontime-badge.png", host: ot.host, port: ot.port, dflt: 4001, password: null,
+        added: w.ontime_url !== "http://127.0.0.1:4001" || w.source === "ontime" || [admin.ontime_timer, admin.ontime_rundown].some((x) => x && (x.active || x.card_assigned)),
+        test: async (v) => { const r = await api("POST", "/api/admin/wall-clock/test", { ontime_url: otUrl(v) }); return r.ok ? `Ontime ${r.version} answered.` : r.message; },
+        save: async (v) => { await api("PUT", "/api/admin/wall-clock", { source: w.source, ontime_url: otUrl(v), warn_offset_s: w.warn_offset_s, display: w.display }); return "Ontime address saved."; } },
+      { key: "smaart", name: "Smaart", badge: "smaart-badge.png", host: s.host, port: s.port, dflt: 26000, added: !!(s.host || s.enabled), password: { set: !!sst.password_set },
+        save: async (v) => {
+          // The values chosen on the Sound level card are sent back as saved; the server keeps the rest.
+          const keep = s.meters ? { meters: s.meters.map((m) => ({ source: m.source || "", metric: m.metric })) } : { slots: s.slots || [] };
+          await api("PUT", "/api/admin/spl", Object.assign({ enabled: !!s.enabled || v.adding, host: v.host, port: v.port, password: v.password, clear_password: v.clear }, keep));
+          return "Smaart address saved.";
+        } },
+      { key: "globcon", name: "DirectOut GLOBCON", badge: "directout-badge.png", host: g.host, port: g.port || 9091, dflt: 9091, added: !!(g.host || gst.running), password: { set: !!gst.password_set },
+        save: async (v) => { await api("PUT", "/api/admin/globcon", { host: v.host, port: v.port || 9091, password: v.password, clear_password: v.clear }); return "GLOBCON address saved."; } },
+    ].map((p) => Object.assign(p, { emulated: admin.emulate && p.key !== "ontime", added: p.added || admin.emulate }));
+  }
+  const connLogo = (p) => h("img", { class: "card-logo", src: `/static/${p.badge}`, alt: "", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } });
+
+  // The pop-out. `pick` is the product to edit, or null for Add (then a product list comes first).
+  function connDialog(pick) {
+    const all = connProducts();
+    const choices = pick ? [pick] : all.filter((p) => !p.added && !p.emulated);
+    const dlg = h("dialog", { class: "sw-dialog conn-dialog", "aria-labelledby": "conn-dlg-title" });
+    const close = () => { dlg.close(); dlg.remove(); };
+    const status = h("p", { class: "muted conn-status", role: "status" });
+    const body = h("div", {});
+    const product = h("select", { class: "touch", "aria-label": "Product", onchange: () => fill() }, choices.map((p) => h("option", { value: p.key }, p.name)));
+    let read = null, current = null;
+    function fill() {
+      current = choices.find((p) => p.key === product.value) || choices[0];
+      status.textContent = "";
+      const host = h("input", { class: "touch", id: current.key === "ontime" ? "ontime-address" : null, maxlength: "253", autocomplete: "off", spellcheck: "false", value: current.host || "", placeholder: "192.168.1.20 or name.local" });
+      const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: current.port || "", placeholder: String(current.dflt) });
+      const pw = current.password ? h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: current.password.set ? "Saved" : "None" }) : null;
+      const clearPw = current.password && current.password.set ? h("input", { type: "checkbox" }) : null;
+      read = () => ({ host: val(host), port: port.value ? Number(port.value) : null, password: pw ? pw.value : "", clear: clearPw ? clearPw.checked : false, adding: !pick });
+      body.replaceChildren(
+        field("Address (IP or host name)", host),
+        field(`Port (usually ${current.dflt})`, port),
+        pw ? field("Password (empty keeps the saved one)", pw) : h("p", { class: "muted" }, `${current.name} has no password.`),
+        clearPw ? h("label", { class: "check" }, clearPw, " Remove the saved password") : "");
+      testBtn.hidden = !current.test;
+      (pick ? host : product).focus();
+    }
+    const act = (btn, fn, busy) => async () => {
+      btn.disabled = true; status.textContent = busy;
+      try { status.textContent = await fn(read()); return true; } catch (err) { status.textContent = err.message; return false; }
+      finally { btn.disabled = false; }
+    };
+    const testBtn = h("button", { type: "button", class: "touch", id: "ontime-test" }, "Test");
+    testBtn.onclick = () => act(testBtn, (v) => current.test(v), "Testing…")();
+    const saveBtn = h("button", { type: "button", class: "primary touch" }, "Save");
+    saveBtn.onclick = async () => { if (await act(saveBtn, (v) => current.save(v), "Saving…")()) { toast(status.textContent); close(); refresh(); } };
+    dlg.append(...[
+      h("h3", { id: "conn-dlg-title" }, pick ? h("span", {}, connLogo(pick), ` Edit ${pick.name}`) : "Add integration"),
+      choices.length ? null : h("p", {}, "Every product Stagewatch can connect to is already added. Use Edit on its row to change it."),
+      !pick && choices.length ? field("Product", product) : null,
+      body,
+      status,
+      h("div", { class: "row sw-dlg-actions" }, h("span", { class: "grow" }), h("button", { type: "button", class: "touch", onclick: close }, choices.length ? "Cancel" : "Close"),
+        choices.length ? testBtn : null, choices.length ? saveBtn : null)].filter(Boolean));   // append() would print a null
+    dlg.addEventListener("cancel", () => dlg.remove());   // Escape
+    document.body.append(dlg);
+    dlg.showModal();
+    if (choices.length) fill();
+  }
+
+  function connectionsCard() {
+    const list = connProducts();
+    const added = list.filter((p) => p.added || p.emulated);
+    const rows = added.map((p) => h("tr", {},
+      h("td", {}, h("span", { class: "conn-name" }, connLogo(p), h("strong", {}, p.name))),
+      h("td", {}, p.emulated ? h("span", { class: "muted" }, "Simulated (emulate mode)") : `${p.host || "not set"}${p.port ? `:${p.port}` : ""}`),
+      h("td", { class: "muted" }, p.password ? (p.password.set ? "Password saved" : "No password") : "No password needed"),
+      h("td", { class: "conn-edit" }, p.emulated ? null : h("button", { class: "touch", "aria-label": `Edit ${p.name}`, onclick: () => connDialog(p) }, "Edit"))));
+    const canAdd = list.some((p) => !p.added && !p.emulated);
+    return card("Connections",
+      h("p", { class: "muted" }, "Where each outside product is on the show network: its address, port and password. Each product's other settings are on its own card. Shelly power meters, ESPHome nodes and OSC targets keep their addresses on their own cards, because there can be several of each."),
+      h("div", { class: "table-scroll" }, h("table", {},
+        h("thead", {}, h("tr", {}, ["Product", "Address and port", "Password", ""].map((x) => h("th", {}, x)))),
+        h("tbody", {}, rows))),
+      h("div", { class: "row conn-actions" }, h("span", { class: "grow" }),
+        h("button", { class: "primary touch", disabled: !canAdd, title: canAdd ? "" : "Every product is already added", onclick: () => connDialog(null) }, "Add integration")));
+  }
+
   function ontimeCard() {
     const w = admin.config.wall_clock, t = admin.config.ontime_timer || { show_title: true };
-    const url = h("input", { id: "ontime-address", value: w.ontime_url, placeholder: "http://127.0.0.1:4001", autocomplete: "off", spellcheck: "false", style: "min-width:260px" });
     const warn = h("input", { id: "ontime-warn", class: "num", type: "number", step: "0.5", min: "1", max: "60", value: w.warn_offset_s });
     const title = h("input", { id: "ontime-show-title", type: "checkbox", checked: t.show_title !== false });
-    const result = h("p", { class: "muted", role: "status", id: "ontime-test-result" });
-    const testBtn = h("button", { id: "ontime-test", style: "align-self:flex-end", onclick: async (ev) => {
-      const btn = ev.target; btn.disabled = true; result.textContent = "Testing…";
-      try {
-        const r = await api("POST", "/api/admin/wall-clock/test", { ontime_url: val(url) });
-        result.textContent = r.ok ? `Ontime ${r.version} answered.` : r.message;
-      } catch (err) { result.textContent = err.message; }
-      finally { btn.disabled = false; }
-    } }, "Test connection");
-    // One Save: the address and clock warning limit go to the Wall Clock settings, the title switch to
-    // the Ontime Timer settings. The clock's own source and look are kept as they are saved.
+    // One Save: the clock warning limit goes to the Wall Clock settings, the title switch to the Ontime
+    // Timer settings. The address (Connections), the clock's own source and its look are kept as saved.
     const save = () => run(async () => {
       await api("PUT", "/api/admin/wall-clock", {
-        source: w.source, ontime_url: val(url), warn_offset_s: Number(warn.value) || 2, display: w.display,
+        source: w.source, ontime_url: w.ontime_url, warn_offset_s: Number(warn.value) || 2, display: w.display,
       });
       return api("PUT", "/api/admin/ontime-timer", { show_title: title.checked });
     }, "Ontime saved").then(refresh, () => {});
@@ -1608,9 +1687,7 @@
     return SW.brandCard("Ontime", "ontime-badge.png", "Ontime",
       h("p", { class: "muted" }, "Settings for the three Ontime cards: Wall Clock (when it uses Ontime), Ontime Timer and Ontime Rundown. Stagewatch only listens to Ontime: it never starts, pauses or changes anything in it. Ontime is only contacted while a dashboard has one of these cards."),
       heading("Connection"),
-      h("p", { class: "muted" }, "One address serves all three cards. Test it, then click Save."),
-      h("div", { class: "row" }, field("Ontime address (Ontime computer's address and port)", url), testBtn),
-      result,
+      h("p", { class: "muted" }, `One address serves all three cards: ${w.ontime_url}. Change it under Connections.`),
       h("div", { id: "ontime-status", class: "muted" }, ontimeStatusLines(admin).map((l) => h("p", {}, l))),
       heading("Wall Clock"),
       h("div", { class: "row" }, field("Warn if more than this many seconds out", warn)),
@@ -2428,6 +2505,8 @@
     pageFolds = [];
     chips = [];
     // Core daily cards start open, set-up-once cards closed. A card with a notice is held open.
+    // A maker's card shows once it is added under Connections (Add integration).
+    const added = Object.fromEntries(connProducts().map((p) => [p.key, p.added]));
     const oscErr = ((admin.integrations.find((i) => i.manifest.domain === "osc_out") || {}).last_error);
     app.replaceChildren(...[
       groupMenu(),
@@ -2449,11 +2528,12 @@
       foldCard(deviceErrorsCard(), "deviceerrors", true),
       foldCard(logImportCard(), "logimport", false),
       groupHead(...GROUPS[2]),
-      chip(foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"), "ontime"),
+      foldCard(connectionsCard(), "connections", true),
+      added.ontime ? chip(foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"), "ontime") : null,
       foldCard(wallClockCard(), "wallclock", false),
-      chip(foldCard(splCard(), "smaart", false), "smaart"),
-      foldCard(splLimitsCard(), "spllimits", false),
-      chip(foldCard(globconCard(), "globcon", false), "globcon"),
+      added.smaart ? chip(foldCard(splCard(), "smaart", false), "smaart") : null,
+      added.smaart ? foldCard(splLimitsCard(), "spllimits", false) : null,
+      added.globcon ? chip(foldCard(globconCard(), "globcon", false), "globcon") : null,
       chip(foldCard(shellyCard(), "shelly", false), "shelly"),
       foldCard(barometerCard(), "barometer", false),
       piHostInfo() ? chip(foldCard(piHostCard(), "pihost", false), "pihost") : null,

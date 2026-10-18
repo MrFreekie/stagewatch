@@ -1375,3 +1375,14 @@ header.top .back { display: inline-flex; align-items: center; min-height: 44px; 
 .de-cards .card-picker li > label.card-look { flex-direction: column; align-items: flex-start; }
 .de-cards .card-up, .de-cards .card-down { min-width: 44px; min-height: 44px; }
 .de-cards .cards-panel { background: none; padding: 0; }
+/* Connections (admin.js connectionsCard): one row per product, and one pop-out to add or edit, the
+   same boxes for every product (address, port, password). */
+.conn-name { display: inline-flex; align-items: center; gap: 8px; }
+.conn-edit { text-align: right; }
+.conn-actions { margin-top: 10px; }
+.conn-dialog { width: min(440px, 92vw); }
+.conn-dialog .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.conn-dialog .field input, .conn-dialog .field select { width: 100%; box-sizing: border-box; min-height: 44px; }
+.conn-dialog h3 .card-logo { vertical-align: middle; }
+.conn-status { min-height: 1.4em; margin: 8px 0 0; }
+.conn-actions .grow, .conn-dialog .grow { flex: 1; }

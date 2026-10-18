@@ -55,16 +55,15 @@ show network as readable text. Use a password that you use nowhere else.
 
 ## Set up Stagewatch
 
-1. Open **Admin** and find the **Sound level (Smaart)** card. It is closed at first. Click its
-   heading to open it.
-2. Tick **Record sound level**.
-3. Check **Smaart computer (127.0.0.1 is this computer)**. It starts as `127.0.0.1`. Change it if Smaart runs
-   on another computer.
-4. Check **Port (26000 unless Smaart says otherwise)**. Confirm it on your Smaart. Leave it empty
-   and Stagewatch uses 26000.
-5. If Smaart has an API password, type it in **Smaart API password**.
-6. Click **Save**.
-7. Wait for the card to say it is connected. The input and value lists then fill with Smaart's own
+1. Open **Admin**. Under **Integrations**, in the **Connections** card, click **Add integration**
+   and choose **Smaart**. (Already added? Click **Edit** on its row instead.)
+2. Type the Smaart computer in **Address (IP or host name)**: `127.0.0.1` if Smaart runs on this
+   computer.
+3. Type the **Port**. Confirm it on your Smaart. Leave it empty and Stagewatch uses 26000.
+4. If Smaart has an API password, type it in **Password**.
+5. Click **Save**. Adding Smaart also switches recording on. The **Sound level (Smaart)** card now
+   shows in Admin; click its heading to open it. **Record sound level** switches recording off and on.
+6. Wait for the card to say it is connected. The input and value lists then fill with Smaart's own
    names.
 8. For each of up to three values, choose **Value 1: input** and **Value 1: value** (then Value 2 and
    Value 3 if you want them). The input starts as `First input in Smaart`.
@@ -139,7 +138,7 @@ The Admin card says why, in words.
 
 | What the card says | What it means and what to do |
 |---|---|
-| `Smaart's API has a password. Enter it in the Sound level settings` | Type the password in **Smaart API password** and click **Save**. Stagewatch checks again once a minute. |
+| `Smaart's API has a password. Enter it in the Sound level settings` | In **Connections**, click **Edit** on Smaart, type the password in **Password** and click **Save**. Stagewatch checks again once a minute. |
 | `Smaart did not accept the password. Check it in the Sound level settings; Stagewatch will not try again until you save it` | Retype the password and click **Save**. |
 | `Connected, but Smaart has no active inputs. Start logging in Smaart` | Start logging in Smaart. |
 | `That address did not answer like Smaart's API. This build only knows the v4 API (/api/v4/)…` | Check the API is switched on in Smaart and the port is right. Stagewatch knows only Smaart's `/api/v4/` address. Another Smaart version may answer differently. |
