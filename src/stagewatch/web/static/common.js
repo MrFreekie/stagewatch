@@ -189,6 +189,8 @@ SW.SOURCES = {
     error: "Tell the system admin." },
   pihost: { name: "The Raspberry Pi", offline: "Stagewatch cannot read the Pi's own figures. Tell the system admin.",
     error: "Tell the system admin." },
+  esphome: { name: "The ESPHome nodes", offline: "Check the nodes are powered and on the show Wi-Fi, and their addresses in Admin → ESPHome nodes.",
+    error: "Check the node's status in Admin → ESPHome nodes, then tell the system admin." },
   shelly: { name: "Shelly", offline: "Check the meters are powered and on the same network, and their addresses in Admin → Shelly power meters.",
     error: "Check the meter settings in Admin → Shelly power meters, then tell the system admin." },
 };

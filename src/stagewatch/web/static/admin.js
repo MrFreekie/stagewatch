@@ -2476,37 +2476,120 @@
       h("div", { class: "row" }, btn), status, helpLinks());
   }
 
+  // ------------------------------------------------------------ card status chips
+  // The Online / Offline / Error chip (SW.sourceStatusUi) in the header of each integration card
+  // that is in use, just before the maker's badge. Built from data this page already has (admin
+  // state and the snapshot). An input is null when the integration is off or not set up, and the
+  // card then shows no chip. Where the admin state has no data time, a source the server reports
+  // as working counts as fresh at the snapshot time.
+  const devOf = (id) => snap.devices.find((d) => d.id === id);
+  const entsOf = (id) => snap.entities.filter((e) => e.device_id === id);
+  const CHIP_INPUT = {
+    smaart() {
+      if (!(admin.config.spl || {}).enabled) return null;
+      const ents = SW.spl.entities(snap.entities);
+      return SW.sourceInput.smaart(ents.length ? devOf(ents[0].device_id) : null, ents);
+    },
+    shelly() {
+      const meters = (admin.shelly || {}).meters || [];
+      return meters.length ? SW.sourceInput.shelly(meters.map((m) => ({ dev: devOf(m.id), ents: entsOf(m.id) }))) : null;
+    },
+    pihost() {
+      return piHostInfo() ? Object.assign(SW.sourceInput.smaart(devOf("pi_host"), entsOf("pi_host")), { source: "pihost" }) : null;
+    },
+    globcon() {
+      const st = admin.globcon || {};
+      if (!st.running && !st.card_assigned) return null;
+      const reported = !st.running ? "waiting" : st.status === "ok" ? "ok"
+        : ["error", "locked", "waiting"].indexOf(st.status) >= 0 ? st.status : "offline";
+      return { source: "globcon", reported, dataAt: reported === "ok" ? snap.now : null };
+    },
+    ontime() {
+      const used = [admin.ontime_timer, admin.ontime_rundown, admin.config.wall_clock.source === "ontime" ? admin.wall_clock : null]
+        .filter((x) => x && (x.active || x.card_assigned));
+      if (!used.length) return null;
+      const reported = used.some((x) => x.active && x.status === "error") ? "error"
+        : used.every((x) => x.active && x.status === "ok") ? "ok" : used.some((x) => !x.active) ? "waiting" : "offline";
+      const stamps = used.map((x) => x.last_message).filter((t) => typeof t === "number");
+      return { source: "ontime", reported, dataAt: reported === "ok" ? (stamps.length ? Math.max(...stamps) : snap.now) : null };
+    },
+    esphome() {
+      // The adopted nodes, as the ESPHome nodes card lists them.
+      const nodes = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter" && d.category !== "host");
+      if (!nodes.length) return null;
+      const has = (...st) => nodes.some((d) => st.indexOf(d.status) >= 0);
+      const reported = has("fault", "compromised") ? "error" : has("missing") ? "offline" : has("initializing") ? "waiting" : "ok";
+      return { source: "esphome", reported, dataAt: reported === "ok" ? snap.now : null };
+    },
+  };
+  let chips = [];
+  function chip(c, key) {
+    const input = CHIP_INPUT[key]();
+    if (!input) return c;
+    const ui = SW.sourceStatusUi(input.source);
+    // In a folded card the header is a <summary>: a click on the chip opens its pop-out only.
+    ui.el.addEventListener("click", (ev) => ev.preventDefault());
+    const h2 = c.querySelector("h2");
+    const logo = h2.querySelector(".card-logo");
+    if (!logo && !h2.querySelector(".grow")) h2.append(h("span", { class: "grow" }));
+    h2.insertBefore(ui.el, logo || null);
+    ui.update(input, snap.now);
+    chips.push({ key, ui });
+    return c;
+  }
+  function updateChips() {
+    chips.forEach((x) => { const input = CHIP_INPUT[x.key](); if (input) x.ui.update(input, snap.now); });
+  }
+
+  // The page in four groups, most used first. Each has a heading that the menu at the top jumps to.
+  const GROUPS = [["show", "Show day"], ["sensors", "Sensors and nodes"], ["integrations", "Integrations"], ["system", "Setup and system"]];
+  const groupHead = (id, title) => h("h2", { class: "admin-group", id: `group-${id}` }, title);
+  const groupMenu = () => h("nav", { class: "row admin-groups", "aria-label": "Admin sections" },
+    GROUPS.map(([id, title]) => h("a", { class: "touch", href: `#group-${id}` }, title)));
+
   function render() {
     entityIdsRendered = snap.entities.map((e) => e.id).join(",");
     dirty = false;   // everything on screen now matches saved state
     pageFolds = [];
+    chips = [];
     // Core daily cards start open, set-up-once cards closed. A card with a notice is held open.
     const oscErr = ((admin.integrations.find((i) => i.manifest.domain === "osc_out") || {}).last_error);
     app.replaceChildren(...[
+      groupMenu(),
       foldButtons(setAllCards, " cards"),
-      foldCard(eventShowCard(), "event", true), foldCard(siteCard(), "site", false, !admin.config.site.timezone),
+      groupHead(...GROUPS[0]),
+      foldCard(eventShowCard(), "event", true),
       scheduleCard(),     // summary and a link to /schedule
+      foldCard(alarmLogCard(), "alarmlog", true),
+      foldCard(alarmNoticesCard(), "notices", true),
+      foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
+      connectCard(),
       foldCard(documentsCard(), "documents", false),
       foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0),
-      connectCard(),
-      softwareCard(),
-      foldCard(devicesCard(), "nodes", true), foldCard(deviceErrorsCard(), "deviceerrors", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
-      foldCard(thresholdsCard(), "thresholds", true), foldCard(alarmNoticesCard(), "notices", true),
-      foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
-      foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false),
-      foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
-      foldCard(wallClockCard(), "wallclock", false),
-      foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"),
-      foldCard(barometerCard(), "barometer", false),
-      foldCard(splCard(), "smaart", false),
-      foldCard(splLimitsCard(), "spllimits", false),
-      foldCard(globconCard(), "globcon", false),
-      foldCard(shellyCard(), "shelly", false),
-      piHostInfo() ? foldCard(piHostCard(), "pihost", false) : null,
-      foldCard(alarmLogCard(), "alarmlog", true),
+      groupHead(...GROUPS[1]),
+      chip(foldCard(devicesCard(), "nodes", true), "esphome"),
+      foldCard(entitiesCard(), "sensors", true),
+      foldCard(thresholdsCard(), "thresholds", true),
+      foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
+      foldCard(deviceErrorsCard(), "deviceerrors", true),
       foldCard(logImportCard(), "logimport", false),
-      foldCard(supportCard(), "help", false),
-      foldCard(catalogCard(), "integrations", false)].filter(Boolean));
+      groupHead(...GROUPS[2]),
+      chip(foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"), "ontime"),
+      foldCard(wallClockCard(), "wallclock", false),
+      chip(foldCard(splCard(), "smaart", false), "smaart"),
+      foldCard(splLimitsCard(), "spllimits", false),
+      chip(foldCard(globconCard(), "globcon", false), "globcon"),
+      chip(foldCard(shellyCard(), "shelly", false), "shelly"),
+      foldCard(barometerCard(), "barometer", false),
+      piHostInfo() ? chip(foldCard(piHostCard(), "pihost", false), "pihost") : null,
+      foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
+      foldCard(oscCard(), "osc", false, !!oscErr),
+      foldCard(catalogCard(), "integrations", false),
+      groupHead(...GROUPS[3]),
+      foldCard(siteCard(), "site", false, !admin.config.site.timezone),
+      foldCard(securityCard(), "security", false),
+      softwareCard(),
+      foldCard(supportCard(), "help", false)].filter(Boolean));
   }
 
   async function refresh() {
@@ -2564,14 +2647,17 @@
       }
       rerenderScheduleSummary();
       // Ontime connection status, refreshed in place (text only, so nothing typed is lost).
+      // The header chips follow the same live state.
       const ot = document.getElementById("ontime-status");
-      if (ot) {
+      if (ot || chips.length) {
         try {
           const live = await api("GET", "/api/admin/state");
           admin.wall_clock = live.wall_clock; admin.ontime_timer = live.ontime_timer; admin.ontime_rundown = live.ontime_rundown;
-          ot.replaceChildren(...ontimeStatusLines(admin).map((l) => h("p", {}, l)));
+          admin.globcon = live.globcon;
+          if (ot) ot.replaceChildren(...ontimeStatusLines(admin).map((l) => h("p", {}, l)));
         } catch (err) { if (err.status === 401) throw err; }
       }
+      updateChips();
       // The Sound level drop-downs follow Smaart's lists (a renamed or new input) without a rebuild.
       if (pollN % 3 === 1 && admin.spl && admin.spl.running) await pullSplLists();
       // Software status changes on its own (history entry once a new build is confirmed healthy,

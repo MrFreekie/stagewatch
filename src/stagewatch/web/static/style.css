@@ -1348,3 +1348,10 @@ body.layout-wall #ontime-timer-card[data-level], body.layout-wall #ontime-rundow
 @media (pointer: coarse) {
   #app button, #app select, #app input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
 }
+/* Admin groups: a heading per group (Show day, Sensors and nodes, Integrations, Setup and system) and
+   a menu of the groups at the top, so a card is easy to find on the long page. */
+.admin-group { margin: 18px 0 -4px; font-size: 20px; font-weight: 700; padding-bottom: 6px; border-bottom: 2px solid var(--grid); scroll-margin-top: 8px; }
+.admin-groups a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--grid);
+  border-radius: 999px; background: var(--panel); color: inherit; text-decoration: none; font-weight: 600; }
+/* A card header's status chip keeps one width (Online, Offline or Error), so the header never moves. */
+#app .card h2 .ss-btn { min-width: 104px; }
