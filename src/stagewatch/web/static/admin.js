@@ -1605,10 +1605,10 @@
     ].map((p) => Object.assign(p, { emulated: admin.emulate && p.key !== "ontime", added: p.added || admin.emulate })).concat([
       // One entry per device: always addable; each has its own add form, and is edited on its own card.
       { key: "shelly", name: "Shelly power meter", badge: "shelly-badge.svg", device: true, form: (prefill, done) => shellyAddForm(done) },
-      { key: "esphome", name: "ESPHome node", badge: "stagewatch-badge.png", device: true, form: (prefill, done) => adoptForm(prefill || {}, done) },
+      { key: "esphome", name: "ESPHome node", badge: "", device: true, form: (prefill, done) => adoptForm(prefill || {}, done) },
     ]);
   }
-  const connLogo = (p) => h("img", { class: "card-logo", src: `/static/${p.badge}`, alt: "", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } });
+  const connLogo = (p) => !p.badge ? null : h("img", { class: "card-logo", src: `/static/${p.badge}`, alt: "", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } });
 
   // The pop-out. `pick` is the product to edit, or null for Add (then a product list comes first).
   function connDialog(pick, prefill) {
