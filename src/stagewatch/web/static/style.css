@@ -1445,3 +1445,55 @@ header.top .back { display: inline-flex; align-items: center; min-height: 44px; 
 button.primary:disabled { background: var(--panel-2); color: var(--muted); border-color: var(--grid); opacity: 1; }
 /* Edit cards preview frame (dashboard.js ?preview=1): says plainly whether it shows unsaved changes. */
 .preview-strip { position: sticky; top: 0; z-index: 50; padding: 6px 12px; font-weight: 700; text-align: center; background: var(--warn); color: #000; }
+/* ---- FOH advice cards (advice.js): Alignment drift and HF air loss. Advice only; neutral colours,
+   a symbol and words with every state, ▲ CHECK in --warn and never red. ---- */
+.adv-head { margin: 0 0 8px; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.adv-sub, .adv-foot { margin: 6px 0 0; font-size: 13px; }
+.adv-notes { margin: 8px 0 0; font-size: 13px; }
+.adv-note-line { display: block; }
+.adv-table { font-variant-numeric: tabular-nums; }
+.adv-table th.adv-num, .adv-table td.adv-num { text-align: right; }
+.adv-table td, .adv-table th { padding: 10px 8px; }
+.adv-table tbody th { font-weight: 600; }
+.adv-dist { color: var(--muted); font-weight: 400; font-size: 12px; }
+.adv-drift { font-weight: 700; font-size: 18px; }
+.adv-num, .adv-fig { font-variant-numeric: tabular-nums; }
+.adv-status { font-weight: 600; white-space: nowrap; }
+.adv-status.adv-check { color: var(--warn); }
+.adv-status.adv-none { color: var(--muted); }
+.adv-stale, .adv-stale * { color: var(--muted); opacity: .75; }
+.adv-list { list-style: none; margin: 0; padding: 0; }
+.adv-list > li { padding: 8px 0; border-bottom: 1px solid var(--grid); }
+.adv-list > li:last-child { border-bottom: 0; }
+.adv-list > li.adv-line { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.adv-list .adv-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adv-cell { vertical-align: top; }
+.adv-main { display: flex; align-items: baseline; gap: 6px; }
+.adv-sym { color: var(--muted); font-size: 14px; }
+.adv-fig { font-size: 17px; font-weight: 700; }
+.adv-words { display: block; font-size: 13px; color: var(--text); }
+.adv-now { display: block; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.adv-tap { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; min-height: 44px; text-align: left;
+  background: transparent; border: 0; padding: 0; color: inherit; font: inherit; }
+.adv-more { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--grid); }
+.adv-bandrow { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 6px 0; }
+.adv-bandname { font-weight: 600; min-width: 64px; }
+.adv-bandrow .adv-cell { text-align: right; }
+.adv-bandrow .adv-main { justify-content: flex-end; }
+#airloss-seg button { min-height: 44px; }
+body.layout-phone .adv-table { font-size: 13px; }
+body.layout-phone .adv-head { font-size: 14px; }
+body.layout-phone .adv-drift { font-size: 17px; }
+body.layout-wall .adv-head { font-size: 26px; }
+body.layout-wall .adv-sub, body.layout-wall .adv-foot, body.layout-wall .adv-notes { font-size: 20px; }
+body.layout-wall .adv-list > li { padding: 14px 0; }
+body.layout-wall .adv-list .adv-name { font-size: 30px; }
+body.layout-wall .adv-drift, body.layout-wall .adv-fig { font-size: 64px; font-weight: 700; line-height: 1.05; }
+body.layout-wall .adv-sym { font-size: 40px; }
+body.layout-wall .adv-status { font-size: 30px; }
+body.layout-wall .adv-words { font-size: 28px; }
+body.layout-wall .adv-now { font-size: 20px; }
+body.layout-wall .adv-dist { font-size: 20px; }
+body.layout-wall .adv-list > li.adv-line { flex-wrap: nowrap; align-items: center; }
+.adv-admin-btns { white-space: nowrap; }
+.adv-admin-btns button { min-width: 44px; }

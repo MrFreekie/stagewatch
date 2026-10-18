@@ -29,6 +29,8 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "documents",       # event policy and risk documents shared with this dashboard; hidden while none are; never added by default
     "witmotion_tilt",  # WitMotion tilt sensors: roll and/or pitch, battery, sensor settings; hidden while none are set up; never added by default
     "contacts",        # onsite contacts for the current event (job title, name, radio; phone only when allowed); never added by default
+    "alignment_drift",  # FOH advice: how far delay paths have drifted since the Aligned marker; hidden while no path is set up; never added by default
+    "hf_air_loss",     # FOH advice: estimated top-end air loss at FOH and Rear since the Soundcheck marker; hidden while no position is set up; never added by default
 )
 KNOWN_CARDS = KNOWN_CARDS_0_3
 

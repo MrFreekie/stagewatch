@@ -547,7 +547,7 @@ def test_air_loss_uses_octave_or_third_octave_bands_above_4k(tmp_path):
 def test_positions_are_not_compared_with_each_other_and_have_one_marker(tmp_path):
     _h, snap = air_loss_snapshot(tmp_path, *DAMP_EVENING)
     f, r = snap["positions"]
-    assert set(f) == {"id", "name", "distance_m", "bands", "flags", "stale"}
+    assert set(f) == {"id", "name", "distance_m", "bands", "other_bands", "flags", "stale"}
     assert band(r, "8k")["change_db"] / band(f, "8k")["change_db"] == pytest.approx(90 / 40)   # same air, longer throw
     assert snap["air_ref"]["label"] == "Soundcheck" and snap["air_ref"]["delta"]["t_c"] == pytest.approx(-10.0)
     assert snap["air_ref"]["delta"]["rh"] == pytest.approx(34.32)
@@ -684,7 +684,7 @@ def test_the_snapshot_block_has_the_planned_fields_and_nothing_private(tmp_path)
     hub.advice.tick(now)
     block = hub.snapshot()["advice"]
     assert set(block) == {"drift_ref", "air_ref", "resolution", "paths", "positions"}
-    assert set(block["drift_ref"]) == {"label", "ts", "marker_id", "has_readings", "delta"}
+    assert set(block["drift_ref"]) == {"label", "ts", "marker_id", "has_readings", "was", "delta"}
     assert set(block["paths"][0]) == {
         "id", "name", "distance_m", "source", "source_fallback", "drift_ms", "suggested_delay_ms",
         "current_delay_ms", "threshold_ms", "phase_deg", "phase_hint_hz", "level", "flags", "stale"}

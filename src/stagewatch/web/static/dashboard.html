@@ -155,6 +155,17 @@
     </details>
   </section>
 
+  <section class="card" data-card="alignment_drift" id="drift-card" hidden>
+    <h2><span>Alignment drift</span><span class="grow"></span></h2>
+    <div id="drift-body"></div>
+  </section>
+
+  <section class="card" data-card="hf_air_loss" id="airloss-card" hidden>
+    <h2><span>HF air loss</span><span class="grow"></span><span class="seg only-interactive" id="airloss-seg" role="group" aria-label="Band view"></span></h2>
+    <div id="airloss-body"></div>
+    <details class="card-about"><summary>About these figures</summary><p class="muted" id="airloss-hint"></p></details>
+  </section>
+
   <section class="card" data-card="wall_clock" id="wall-clock-card" hidden>
     <h2>Wall Clock</h2>
   </section>
@@ -181,6 +192,7 @@
 <script src="/static/power.js"></script>
 <script src="/static/pihost.js"></script>
 <script src="/static/witmotion.js"></script>
+<script src="/static/advice.js"></script>
 <script src="/static/dashboard.js"></script>
 </body>
 </html>

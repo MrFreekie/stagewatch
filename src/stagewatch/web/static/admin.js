@@ -813,6 +813,102 @@
       demos);
   }
 
+  // ------------------------------------------------------------ FOH advice
+  // Paths for Alignment drift, positions (FOH, Rear) for HF air loss, and the notice settings. Advice only:
+  // nothing here, or anywhere, sends a delay or any other setting to a processor or the mix. The cards are
+  // added to a dashboard under User dashboards → Edit cards. Saves with PUT /api/admin/advice.
+  const ADVICE_MAX_PATHS = 12, ADVICE_MAX_POSITIONS = 4;
+  // A stable id from a name (the server makes the same slug; the id is never shown, it names the OSC address and the notice).
+  const adviceSlug = (s) => (String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 32) || "item");
+  function adviceCard() {
+    const a = admin.config.advice || {};
+    const areas = h("datalist", { id: "advice-areas" }, (admin.stages || []).map((s) => h("option", { value: s })));
+    const num = (el) => (el.value.trim() === "" ? null : Number(el.value));
+    // A table of rows the admin can add, remove and reorder. `makeRow(item)` returns {tr, read()}.
+    function listTable(heads, items, makeRow, max, addLabel) {
+      const tbody = h("tbody");
+      const rows = [];
+      const redraw = () => {
+        tbody.replaceChildren(...rows.map((r) => r.tr));
+        rows.forEach((r, i) => { r.up.disabled = i === 0; r.down.disabled = i === rows.length - 1; });
+        add.disabled = rows.length >= max;
+      };
+      const add = h("button", { type: "button", class: "touch" }, addLabel);
+      const addRow = (item) => {
+        const r = makeRow(item || {});
+        const move = (d) => { const i = rows.indexOf(r), j = i + d; if (j < 0 || j >= rows.length) return; rows.splice(i, 1); rows.splice(j, 0, r); redraw(); };
+        r.up = h("button", { type: "button", class: "small touch", "aria-label": "Move up", onclick: () => move(-1) }, "▲");
+        r.down = h("button", { type: "button", class: "small touch", "aria-label": "Move down", onclick: () => move(1) }, "▼");
+        const del = h("button", { type: "button", class: "small danger touch", "aria-label": "Remove", onclick: () => { rows.splice(rows.indexOf(r), 1); redraw(); } }, "✕");
+        r.tr.append(h("td", { class: "adv-admin-btns" }, r.up, r.down, del));
+        rows.push(r);
+        redraw();
+      };
+      add.addEventListener("click", () => addRow());
+      items.forEach(addRow);
+      return { el: h("div", {}, h("div", { class: "table-scroll" }, h("table", {}, h("thead", {}, h("tr", {}, heads.concat([""]).map((x) => h("th", {}, x)))), tbody)), h("div", { class: "row", style: "margin-top:8px" }, add)),
+        read: () => {
+          const used = new Set(rows.map((r) => r.id).filter(Boolean));   // new rows get a free id from their name
+          return rows.map((r) => {
+            const out = r.read();
+            if (!out.id) { let id = adviceSlug(out.name), n = 2; while (used.has(id)) id = `${adviceSlug(out.name).slice(0, 29)}_${n++}`; used.add(id); out.id = id; }
+            return out;
+          });
+        } };
+    }
+    const t = (el, label) => { el.setAttribute("aria-label", label); return el; };
+    const paths = listTable(["Name", "Distance (m)", "Current delay (ms)", "Warn at (ms)", "Area", "On"], a.paths || [], (p) => {
+      const name = t(h("input", { value: p.name || "", maxlength: 40, placeholder: "e.g. Delay tower L" }), "Path name");
+      const dist = t(h("input", { class: "num touch", type: "number", step: "0.1", min: "0.5", max: "1000", value: p.distance_m === undefined ? "" : p.distance_m }), "Distance in metres");
+      const delay = t(h("input", { class: "num touch", type: "number", step: "0.01", min: "0", max: "2000", value: p.current_delay_ms === null || p.current_delay_ms === undefined ? "" : p.current_delay_ms, placeholder: "optional" }), "Current delay in milliseconds");
+      const warn = t(h("input", { class: "num touch", type: "number", step: "0.1", min: "0.2", max: "10", value: p.drift_threshold_ms === undefined ? 1 : (p.drift_threshold_ms === null ? "" : p.drift_threshold_ms), placeholder: "no notice" }), "Warn at, in milliseconds");
+      const area = t(h("input", { value: p.source_area || "", list: "advice-areas", maxlength: 40, placeholder: "Site average", autocomplete: "off" }), "Area");
+      const on = t(h("input", { type: "checkbox", checked: p.enabled !== false }), "On");
+      const tr = h("tr", {}, h("td", {}, name), h("td", {}, dist), h("td", {}, delay), h("td", {}, warn), h("td", {}, area), h("td", {}, on));
+      return { tr, id: p.id || "", read: () => Object.assign({}, p, { name: val(name), distance_m: Number(dist.value), current_delay_ms: num(delay),
+        drift_threshold_ms: num(warn), source_area: val(area), enabled: on.checked }) };
+    }, ADVICE_MAX_PATHS, "Add path");
+    const positions = listTable(["Name", "Distance from the main PA (m)", "On"], a.positions || [], (p) => {
+      const name = t(h("input", { value: p.name || "", maxlength: 40, placeholder: "e.g. FOH or Rear" }), "Position name");
+      const dist = t(h("input", { class: "num touch", type: "number", step: "0.1", min: "0.5", max: "1000", value: p.distance_m === undefined ? "" : p.distance_m }), "Distance in metres");
+      const on = t(h("input", { type: "checkbox", checked: p.enabled !== false }), "On");
+      const tr = h("tr", {}, h("td", {}, name), h("td", {}, dist), h("td", {}, on));
+      return { tr, id: p.id || "", read: () => Object.assign({}, p, { name: val(name), distance_m: Number(dist.value), enabled: on.checked }) };
+    }, ADVICE_MAX_POSITIONS, "Add position");
+    const driftRef = h("input", { value: a.drift_reference || "Aligned", maxlength: 120 });
+    const airRef = h("input", { value: a.air_loss_reference || "Soundcheck", maxlength: 120 });
+    const res = h("select", { class: "touch" }, h("option", { value: "octave" }, "Octave: 4k, 8k, 16k"), h("option", { value: "third" }, "Third-octave: 4k, 5k, 6.3k, 8k, 10k, 12.5k, 16k"));
+    res.value = a.air_loss_resolution === "third" ? "third" : "octave";
+    const alarm = h("select", { class: "touch" }, h("option", { value: "off" }, "Off"), h("option", { value: "silent" }, "Silent notice"), h("option", { value: "beep" }, "Beep"));
+    alarm.value = ["off", "silent", "beep"].indexOf(a.alarm) >= 0 ? a.alarm : "silent";
+    const hold = h("input", { class: "num touch", type: "number", step: "10", min: "0", max: "900", value: a.hold_s === undefined ? 120 : a.hold_s });
+    const mark = h("input", { type: "checkbox", checked: a.marker_on_alert !== false });
+    const save = () => run(() => api("PUT", "/api/admin/advice", {
+      paths: paths.read(), positions: positions.read(), drift_reference: val(driftRef), air_loss_reference: val(airRef),
+      air_loss_resolution: res.value, alarm: alarm.value, hold_s: Number(hold.value), marker_on_alert: mark.checked,
+    }), "FOH advice saved").then(refresh, () => {});
+    return card("FOH advice",
+      h("p", { class: "muted" }, "Two cards for dashboards (User dashboards → Edit cards): Alignment drift shows how far each delay path has drifted since you set it up, and HF air loss shows how much top end the air is estimated to take out at FOH and at the back. They are advice only: Stagewatch never changes a delay, a processor or the mix."),
+      areas,
+      h("h3", {}, "Delay paths (Alignment drift)"),
+      paths.el,
+      h("p", { class: "muted hint" }, "Distance: the extra distance the main PA's sound travels to the alignment point compared with the fill's own sound, in metres. For a delay tower on axis this is about the distance from the main PA to the tower; for sub to tops it is the path difference. Current delay: what the processor is set to now, so the card can show a suggested value. Warn at: how far it can drift before a notice shows (0.2 to 10 ms; empty means no notice). 0.5 ms is about 1.6 °C of change at 60 m. Area: use the air sensors in this area instead of the site average (empty means the site average); any missing reading falls back to the site average."),
+      h("h3", {}, "Positions (HF air loss)"),
+      positions.el,
+      h("p", { class: "muted hint" }, "FOH is usually where you measure and Rear is the back of the venue. Type each distance from the main PA in metres. Each position is compared with the marker only, never with the other one. Air loss always uses the site average air."),
+      h("div", { class: "row" },
+        field("Alignment marker name", driftRef), field("Soundcheck marker name", airRef),
+        field("Air loss bands", res)),
+      h("p", { class: "muted hint" }, "Markers: the card compares with the newest marker today whose name starts with this text. Add a marker with that name when the system is aligned or at soundcheck. A new marker starts the comparison again. Bands are 4 kHz and above, on graphic EQ centres; you can also switch a card between octave and third-octave on the dashboard."),
+      h("div", { class: "row" },
+        field("Drift notice", alarm), field("Hold time (s)", hold),
+        field("Add a marker when a notice shows", mark),
+        h("button", { class: "primary touch", style: "align-self:flex-end", type: "button", onclick: save }, "Save")),
+      h("p", { class: "muted hint" }, "Silent notice: a line in the alarm list with no sound. Beep: the same with the advisory sound. Hold time: how long the drift must stay past the limit before the notice shows. It clears by itself once the drift falls back."),
+      SW.help(h("p", { class: "muted" }, "What these figures are. Drift is how much later or earlier sound now arrives over a path than when you set the delays, worked out from the speed of sound at the site. Air loss is the estimated loss at 4 kHz and above over the distance, worked out from air temperature, humidity and pressure (ISO 9613-1)."),
+        h("p", { class: "muted" }, "Limits. Both are estimates. They assume the air is the same all along the throw and use the site average temperature, humidity and pressure (area sensors for delay paths only when you pick an area, and the site average where a reading is missing). Wind, a hot stage or cold field, rig height, the ground and the crowd are not included. Air loss needs a humidity reading; without one the card shows no numbers. Drift assumes 50 % humidity when it has none and says so. This is a sound quality aid. It does not check sound levels and does not replace your measurement tools or your ears. Not yet tested on hardware.")));
+  }
+
   // Environment (air at the site: feeds the site average) or Equipment (gear: never averaged).
   function roleSelect(value, aria) {
     const sel = h("select", aria ? { "aria-label": aria } : {},
@@ -1616,6 +1712,7 @@
     o.destinations.forEach(addRow);
     const perNode = h("input", { type: "checkbox", checked: o.per_node });
     const rate = h("input", { class: "num", type: "number", step: "0.5", value: o.rate_hz });
+    const advOsc = h("input", { type: "checkbox", checked: !!o.include_advice });
     const info = admin.integrations.find((i) => i.manifest.domain === "osc_out") || {};
     return card("OSC output",
       SW.help(h("p", { class: "muted" }, "Sends /stagewatch/avg/env [temp °C, RH %, pressure Pa, c m/s, sensors] and /stagewatch/alarm [level, sounding]."),
@@ -1623,10 +1720,10 @@
       h("table", {}, h("thead", {}, h("tr", {}, ["Host", "Port", "On", "Alarm messages", ""].map((x) => h("th", {}, x)))), tbody),
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { onclick: () => addRow() }, "Add destination"),
-        field("Per-node messages", perNode), field("Rate (Hz)", rate),
+        field("Per-node messages", perNode), field("FOH advice numbers (values only)", advOsc), field("Rate (Hz)", rate),
         h("button", { class: "primary", onclick: () => run(() => api("PUT", "/api/admin/osc", {
           destinations: [...tbody.children].map((tr) => tr._read()).filter((d) => d.host),
-          per_node: perNode.checked, rate_hz: Number(rate.value) || 1,
+          per_node: perNode.checked, include_advice: advOsc.checked, rate_hz: Number(rate.value) || 1,
         }), "OSC saved").then(refresh) }, "Save OSC")),
       info.last_error ? h("p", { class: "error" }, info.last_error) : null);
   }
@@ -2781,6 +2878,7 @@
         foldCard(alarmLogCard(), "alarmlog", true),
         foldCard(alarmNoticesCard(), "notices", true),
         foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
+        foldCard(adviceCard(), "advice", false),          // FOH advice: alignment drift paths and HF air loss positions
         connectCard(),
         foldCard(documentsCard(), "documents", false),
         foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0)),

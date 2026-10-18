@@ -170,9 +170,10 @@ def _split(snap: dict) -> tuple[dict, dict]:
             nums[("path", p["id"], key)] = (p.pop(key), DRIFT_PUBLISH_MS)
         p["phase_deg"] = p["phase_deg"] is None
     for pos in shape["positions"]:
-        for b in pos["bands"]:
-            for key in ("now_db", "change_db"):
-                nums[("pos", pos["id"], b["band"], key)] = (b.pop(key), DB_PUBLISH)
+        for which in ("bands", "other_bands"):
+            for b in pos.get(which, []):
+                for key in ("now_db", "change_db"):
+                    nums[("pos", pos["id"], which, b["band"], key)] = (b.pop(key), DB_PUBLISH)
     return shape, nums
 
 
@@ -344,6 +345,7 @@ class AdviceService:
 
         return {"label": ref.marker.label, "ts": ref.marker.ts, "marker_id": ref.marker.id,
                 "has_readings": ref.site[0] is not None,
+                "was": {"t_c": ref.site[0], "rh": ref.site[1], "p_pa": ref.site[2]},   # the site air at the marker
                 "delta": {"t_c": delta(0), "rh": delta(1), "p_pa": delta(2)}}
 
     def _area_at_marker(self, ref: _Ref, area: str, ents: list[list]) -> Air:
@@ -401,8 +403,12 @@ class AdviceService:
                   site_stale: bool, altitude: float) -> dict:
         usable_ref = ref.site if ref.marker is not None and ref.site[0] is not None else None
         bands, flags = air_bands(resolution, pos.distance_m, site_now, usable_ref, altitude)
+        # The other view too, so a dashboard card can show octave or third-octave whatever the
+        # system setting is (a card option). Same air, same flags.
+        other, _flags = air_bands("octave" if resolution == "third" else "third",
+                                  pos.distance_m, site_now, usable_ref, altitude)
         return {"id": pos.id, "name": pos.name, "distance_m": pos.distance_m,
-                "bands": bands, "flags": flags, "stale": site_stale}
+                "bands": bands, "other_bands": other, "flags": flags, "stale": site_stale}
 
     def compute(self, now: float) -> dict:
         cfg: AdviceConfig = self.hub.config.advice

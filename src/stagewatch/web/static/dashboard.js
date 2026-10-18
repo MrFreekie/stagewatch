@@ -1118,6 +1118,46 @@
     piUi.status.update(SW.sourceInput.smaart(dev, Object.values(ents)), state.now);
   }
 
+  // FOH advice (SW.advice, advice.js): alignment drift and HF air loss, from the server's "advice" block
+  // (snapshot and live feed). Advice only. Both cards update their elements in place and have no timers
+  // of their own; they hide while nothing enabled uses them.
+  const advUi = { drift: null, air: null, airSig: "", seg: null };
+  const advLayout = () => (state.dash && state.dash.layout) || "tablet";
+  // How old the readings are, in words, when the advice says they are stale ("" otherwise). The site
+  // temperature's own age is used; the advice block has no timestamp of its own.
+  function adviceAge(list) {
+    if (!list.some((x) => x.stale)) return "";
+    const e = state.entities["site.temperature"];
+    return e && e.updated ? SW.age(e.updated, state.now) : "a while ago";
+  }
+  function renderDrift() {
+    const card = $("drift-card");
+    const adv = state.advice;
+    if (!has("alignment_drift") || !adv || !adv.paths.length) { card.hidden = true; return; }
+    card.hidden = false;
+    if (!advUi.drift) advUi.drift = SW.advice.mountDrift($("drift-body"));
+    advUi.drift(SW.advice.driftView(adv, advLayout(), adviceAge(adv.paths)));
+  }
+  function airChoice() { return localGet("sw.airloss", ""); }   // "" follows the system setting
+  function renderAir() {
+    const card = $("airloss-card");
+    const adv = state.advice;
+    if (!has("hf_air_loss") || !adv || !adv.positions.length) { card.hidden = true; return; }
+    card.hidden = false;
+    if (!advUi.air) {
+      advUi.air = SW.advice.mountAir($("airloss-body"));
+      setText($("airloss-hint"), SW.advice.RULE_OF_THUMB);
+    }
+    const wanted = airChoice() || adv.resolution;
+    if (advUi.seg !== wanted) {   // the Octave / Third-octave pick, right-aligned in the card header
+      advUi.seg = wanted;
+      $("airloss-seg").replaceChildren(...[["octave", "Octave"], ["third", "Third-octave"]].map(([k, label]) =>
+        h("button", { type: "button", class: "touch" + (wanted === k ? " on" : ""), "aria-pressed": wanted === k ? "true" : "false",
+          onclick: () => { localSet("sw.airloss", k); renderAir(); } }, label)));
+    }
+    advUi.air(SW.advice.airView(adv, advLayout(), wanted, adviceAge(adv.positions)));
+  }
+
   // WitMotion tilt sensors (SW.wm, witmotion.js). Advisory; a gap or stale reading is "No data", never the last angle.
   const wmUi = {};   // device id -> its status indicator
   // Tilt trend under each angle: the recorded smoothed tilt over the last 30 minutes, fetched at most every
@@ -1673,6 +1713,9 @@
     // This Raspberry Pi. Hidden unless the server runs on a Pi (renderPiHost keeps it in step).
     pi_host: { el: cardEl("pi_host"), render: renderPiHost, empty: () => !state.devices.pi_host },
     witmotion_tilt: { el: cardEl("witmotion_tilt"), render: renderWitmotion, empty: () => !SW.wm.sensorsOf(state.devices).length },
+    // FOH advice. Each hides itself while no enabled path (drift) or position (air loss) uses it; never added by default.
+    alignment_drift: { el: cardEl("alignment_drift"), wide: true, render: renderDrift, empty: () => !(state.advice && state.advice.paths.length) },
+    hf_air_loss: { el: cardEl("hf_air_loss"), wide: true, render: renderAir, empty: () => !(state.advice && state.advice.positions.length) },
     // Event plans shared with this dashboard. Fetched on its own; the wall hides it while there are none.
     documents: { el: cardEl("documents"), render: () => { renderDocuments(); loadDocuments(); },   // every snapshot (and so every reconnect) refetches
       empty: () => docList === null || (isWall() && !docList.length) },
@@ -1807,6 +1850,7 @@
     state.ontimeTimer = msg.ontime_timer || null; // likewise
     state.ontimeRundown = msg.ontime_rundown || null; // likewise
     state.globcon = msg.globcon_meters || null;       // likewise
+    state.advice = msg.advice || null;                // FOH advice block (drift paths, air-loss positions)
     state.isAdmin = msg.is_admin;
     savedDash = msg.dashboard;
     state.dash = previewDash();
@@ -1942,6 +1986,11 @@
       case "wall_clock": state.wallClock = msg; if (has("wall_clock")) renderWallClock(); break;
       case "ontime_timer": state.ontimeTimer = msg; if (has("ontime_timer")) renderOntimeTimer(); break;
       case "globcon_meters": state.globcon = msg; if (has("globcon_meters")) renderGlobcon(); break;
+      case "advice":   // the same block as the snapshot's; the cards patch their cells in place
+        state.advice = { drift_ref: msg.drift_ref, air_ref: msg.air_ref, resolution: msg.resolution, paths: msg.paths || [], positions: msg.positions || [] };
+        if (has("alignment_drift")) renderDrift();
+        if (has("hf_air_loss")) renderAir();
+        break;
       case "ontime_rundown": state.ontimeRundown = msg; if (has("ontime_rundown")) renderOntimeRundown(); break;
       case "alarms": setAlarms(msg.alarms); state.sounding = msg.sounding; renderAlarms(); break;
       case "documents_changed": loadDocuments(); break;
@@ -1988,5 +2037,5 @@
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); if (has("env_tiles")) loadTileHistory(false); }, 60000);
   setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("pi_host")) renderPiHost(); if (has("witmotion_tilt")) renderWitmotion(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("pi_host")) renderPiHost(); if (has("witmotion_tilt")) renderWitmotion(); if (has("alignment_drift")) renderDrift(); if (has("hf_air_loss")) renderAir(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
 })();
