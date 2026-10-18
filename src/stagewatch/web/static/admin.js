@@ -1714,22 +1714,27 @@
       const detail = h("span", { class: "int-detail muted" }, t.detail);
       const main = t.open ? h("button", { type: "button", class: "int-main", "aria-label": `${t.name}: ${t.detail}. ${t.hint}`, onclick: t.open }, logo, name, detail)
         : h("div", { class: "int-main" }, logo, name, detail);
-      const slot = h("span", { class: "int-chip" });
-      const input = CHIP_INPUT[t.key] ? CHIP_INPUT[t.key]() : null;
-      if (input) {
-        const ui = SW.sourceStatusUi(input.source);
-        slot.append(ui.el);
-        chips.push({ key: t.key, ui, state: (ui.update(input, snap.now) || {}).state, el: slot });
-      } else SW.slot(slot, true);
-      return h("div", { class: "int-tile" }, main, slot);
+      return h("div", { class: "int-tile" }, main);   // no status here: each product's card header shows it
     };
+    // Nodes found on the network but not adopted yet: a lightly shaded tile with an Adopt button.
+    const esphome = connProducts().find((p) => p.key === "esphome");
+    const foundTile = (d) => {
+      const name = d.friendly_name || d.name;
+      const where = `${d.address}:${d.port}`;
+      return h("div", { class: "int-tile int-found" },
+        h("div", { class: "int-main" }, h("span", { class: "card-logo int-nologo", "aria-hidden": "true" }),
+          h("strong", { class: "int-name" }, name), h("span", { class: "int-detail muted" }, `Found on the network · ${where}`)),
+        h("div", { class: "int-act" }, h("button", { type: "button", class: "touch", "aria-label": `Adopt ${name} (${where})`,
+          onclick: () => connDialog(esphome, d) }, "Adopt")));
+    };
+    const found = (admin.discovered || []).filter((d) => !d.adopted);
     const addTile = h("div", { class: "int-tile int-add" },
       h("button", { type: "button", class: "int-main", onclick: () => connDialog(null) },
         h("span", { class: "card-logo int-nologo int-plus", "aria-hidden": "true" }, "+"), h("strong", { class: "int-name" }, "Add integration"),
         h("span", { class: "int-detail muted" }, "Ontime, Smaart, GLOBCON, a Shelly meter or an ESPHome node")));
     return card("Integrations",
       h("p", { class: "muted" }, "Each outside product Stagewatch reads from. Tap a tile to change its address or settings, or to remove it. Removing a product keeps its history. Each product's other settings are on its own card below."),
-      h("div", { class: "int-tiles" }, tiles.map(tileEl), addTile));
+      h("div", { class: "int-tiles" }, tiles.map(tileEl), found.map(foundTile), addTile));
   }
 
   function ontimeCard() {
@@ -2555,7 +2560,6 @@
   }
   function updateChips() {
     chips.forEach((x) => { const input = CHIP_INPUT[x.key](); if (input) x.state = (x.ui.update(input, snap.now) || {}).state; });
-    markTabs();
   }
 
   // The page in four tabs, most used first; only the chosen tab's cards are shown. The tab is kept in
@@ -2585,12 +2589,10 @@
     tabEls = {};
     const bar = h("div", { class: "admin-tabs", role: "tablist", "aria-label": "Admin sections" });
     GROUPS.forEach(([id, title]) => {
-      const mark = h("span", { class: "tab-mark", "aria-hidden": "true", hidden: true }, "▲");
-      const label = h("span", { class: "sr-only" });
       const tab = h("button", { type: "button", role: "tab", class: "admin-tab", id: `tab-${id}`, "aria-controls": `panel-${id}`,
-        onclick: () => selectTab(id) }, title, mark, label);
+        onclick: () => selectTab(id) }, title);
       bar.append(tab);
-      tabEls[id] = { tab, mark, label };
+      tabEls[id] = { tab };
     });
     bar.addEventListener("keydown", (ev) => {
       const i = tabIds.indexOf(activeTab);
@@ -2606,14 +2608,7 @@
     tabEls[id].panel = panel;
     return panel;
   };
-  function markTabs() {
-    Object.values(tabEls).forEach((t) => {
-      const bad = chips.some((x) => (x.state === "error" || x.state === "offline") && t.panel && t.panel.contains(x.el));
-      if (t.mark.hidden === bad) t.mark.hidden = !bad;
-      t.label.textContent = bad ? " (▲ warning: a card here is Offline or in Error)" : "";
-      t.tab.title = bad ? "A card here is Offline or in Error" : "";
-    });
-  }
+
   // Open a card's fold, switching to its tab first, and bring it into view.
   function openCard(key) {
     const d = document.getElementById(`card-fold-${key}`);
@@ -2685,7 +2680,6 @@
         softwareCard(),
         foldCard(supportCard(), "help", false)));
     selectTab(activeTab);
-    markTabs();
   }
 
 
@@ -2745,10 +2739,13 @@
       rerenderScheduleSummary();
       // Ontime connection status, refreshed in place (text only, so nothing typed is lost).
       // The header chips follow the same live state.
+      // Newly found nodes get their tile (and the Discovered list) without a page reload.
       const ot = document.getElementById("ontime-status");
-      if (ot || chips.length) {
+      {
         try {
           const live = await api("GET", "/api/admin/state");
+          const found = (x) => (x || []).filter((d) => !d.adopted).map((d) => d.key).sort().join(",");
+          if (found(live.discovered) !== found(admin.discovered) && canRebuild && !document.querySelector("dialog[open]")) { await refresh(); return; }
           admin.wall_clock = live.wall_clock; admin.ontime_timer = live.ontime_timer; admin.ontime_rundown = live.ontime_rundown;
           admin.globcon = live.globcon;
           if (ot) ot.replaceChildren(...ontimeStatusLines(admin).map((l) => h("p", {}, l)));
