@@ -1333,8 +1333,8 @@ body.layout-wall [data-card][data-level="stop"] > h2 { background: rgba(255, 77,
 /* The timer and rundown cards' own 6 px border would double up with the edge on the wall. */
 body.layout-wall #ontime-timer-card[data-level], body.layout-wall #ontime-rundown-card[data-level] { border-left: 1px solid var(--grid); padding-left: 19px; }
 
-/* Admin console (admin.js). A card's how-to text folds under one "Help" line (SW.help), shown
-   above the card's own status line rather than as paragraphs. */
+/* Admin console (admin.js). Setup text stays visible; only long reference detail folds under one
+   "More detail" line (SW.help). */
 .card-help { margin-top: 12px; }
 .card-help .card-help, .card-help details { margin-top: 6px; }
 /* Hints read the same size whether they are a paragraph or sit in a row beside a field. */

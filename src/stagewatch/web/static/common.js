@@ -1113,10 +1113,10 @@ SW.qrSvg = function (text, size = 176) {
 SW.about = function (...nodes) {
   return SW.h("details", { class: "card-about" }, SW.h("summary", {}, "About these figures"), ...nodes);
 };
-// The same fold for the admin console's how-to text: one closed "Help" line, so admin cards show
-// their settings, not paragraphs.
+// The same fold for the admin console: one closed "More detail" line for long reference detail
+// (message formats, datasheet notes). Setup explanations stay visible on admin cards.
 SW.help = function (...nodes) {
-  return SW.h("details", { class: "card-about card-help" }, SW.h("summary", {}, "Help"), ...nodes);
+  return SW.h("details", { class: "card-about card-help" }, SW.h("summary", {}, "More detail"), ...nodes);
 };
 
 // A line inside a card that comes and goes: hidden, but its space is kept (style.css [data-slot]),
