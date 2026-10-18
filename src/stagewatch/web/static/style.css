@@ -1386,3 +1386,4 @@ header.top .back { display: inline-flex; align-items: center; min-height: 44px; 
 .conn-dialog h3 .card-logo { vertical-align: middle; }
 .conn-status { min-height: 1.4em; margin: 8px 0 0; }
 .conn-actions .grow, .conn-dialog .grow { flex: 1; }
+.conn-dialog form.row { flex-direction: column; align-items: stretch; } .conn-dialog form.row > button { align-self: flex-end !important; } .conn-dialog .row .field { flex: 1; } .conn-dialog .row > button { align-self: flex-end; }

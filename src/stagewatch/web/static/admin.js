@@ -520,6 +520,44 @@
   // Shelly power meters for the Power card. Read-only: Stagewatch only asks a meter for its readings and
   // never switches a relay, changes a setting, restarts or resets it. Addresses and MACs are shown here
   // and nowhere public. Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3.
+  // Add a Shelly meter (the Add integration pop-out). onDone runs after the meter is added.
+  function shellyAddForm(onDone) {
+    // Add a meter: type the address, press Test to see what is there, then Save.
+    const host = h("input", { class: "touch", maxlength: "64", autocomplete: "off", spellcheck: "false", placeholder: "e.g. 192.168.1.50", value: shellyTest ? shellyTest.host : "", "aria-label": "Meter address" });
+    const name = h("input", { maxlength: "60", value: "Power meter", "aria-label": "Name for this meter" });
+    const area = h("input", { maxlength: "40", placeholder: "e.g. FOH", "aria-label": "Area" });
+    const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: "3", "aria-label": "Reads every (seconds)" });
+    const result = h("div", { class: "shelly-result", role: "status" });
+    const save = h("button", { class: "primary touch", disabled: true }, "Save meter");
+    const showResult = (r) => {
+      if (!r) { result.replaceChildren(); save.disabled = true; return; }
+      if (!r.ok) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${r.message} Nothing has been changed.`)); save.disabled = true; return; }
+      const lines = [h("p", {}, `Found ${r.model || "a Shelly"}${r.firmware ? `, firmware ${r.firmware}` : ""}. It measures: ${r.components.join(", ") || "power"}.`)];
+      if (r.already_added) lines.push(h("p", { class: "warn-text" }, "▲ This meter has already been added."));
+      lines.push(h("ul", { class: "shelly-readings" }, r.readings.map((x) => h("li", {}, `${x.name}: ${SW.num(x.value, Math.min(3, x.decimals))}${x.unit ? " " + x.unit : ""}`))));
+      lines.push(h("p", { class: "muted" }, "These are live readings from the meter. Nothing has been changed on it."));
+      result.replaceChildren(...lines);
+      save.disabled = !!r.already_added;
+    };
+    const test = h("button", { class: "touch", onclick: async () => {
+      shellyTest = null; showResult(null);
+      result.replaceChildren(h("p", { class: "muted" }, "Asking the meter…"));
+      try {
+        const r = await api("POST", "/api/admin/shelly/test", { host: val(host) });
+        shellyTest = Object.assign({ host: val(host) }, r);
+        showResult(r);
+      } catch (err) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${err.message}`)); }
+    } }, "Test");
+    save.onclick = () => run(() => api("POST", "/api/admin/shelly/add", { host: val(host), name: val(name), area: val(area), interval_s: Number(every.value) }), "Meter added")
+      .then(() => { shellyTest = null; if (onDone) onDone(); return refresh(); }, () => {});
+    if (shellyTest && shellyTest.ok) showResult(shellyTest);
+    return h("div", {},
+      h("div", { class: "row" }, field("Meter address (an IP address on your local network)", host), test),
+      result,
+      field("Name", name), field("Area (optional)", area), field("Reads every (seconds, 2 to 5)", every),
+      h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it."),
+      h("div", { class: "row sw-dlg-actions" }, h("span", { class: "grow" }), save));
+  }
   let shellyTest = null;   // the last Test result for the Add form: {host, ...} (kept across a re-render)
   function shellyCard() {
     const st = admin.shelly || { meters: [] };
@@ -565,46 +603,14 @@
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Rating (amps)"), h("th", {}, "Polls"), h("th", {}, ""))),
       h("tbody", {}, [].concat(...rows)));
 
-    // Add a meter: type the address, press Test to see what is there, then Save.
-    const host = h("input", { class: "touch", maxlength: "64", autocomplete: "off", spellcheck: "false", placeholder: "e.g. 192.168.1.50", value: shellyTest ? shellyTest.host : "", "aria-label": "Meter address" });
-    const name = h("input", { maxlength: "60", value: "Power meter", "aria-label": "Name for this meter" });
-    const area = h("input", { maxlength: "40", placeholder: "e.g. FOH", "aria-label": "Area" });
-    const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: "3", "aria-label": "Reads every (seconds)" });
-    const result = h("div", { class: "shelly-result", role: "status" });
-    const save = h("button", { class: "primary touch", disabled: true }, "Save meter");
-    const showResult = (r) => {
-      if (!r) { result.replaceChildren(); save.disabled = true; return; }
-      if (!r.ok) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${r.message} Nothing has been changed.`)); save.disabled = true; return; }
-      const lines = [h("p", {}, `Found ${r.model || "a Shelly"}${r.firmware ? `, firmware ${r.firmware}` : ""}. It measures: ${r.components.join(", ") || "power"}.`)];
-      if (r.already_added) lines.push(h("p", { class: "warn-text" }, "▲ This meter has already been added."));
-      lines.push(h("ul", { class: "shelly-readings" }, r.readings.map((x) => h("li", {}, `${x.name}: ${SW.num(x.value, Math.min(3, x.decimals))}${x.unit ? " " + x.unit : ""}`))));
-      lines.push(h("p", { class: "muted" }, "These are live readings from the meter. Nothing has been changed on it."));
-      result.replaceChildren(...lines);
-      save.disabled = !!r.already_added;
-    };
-    const test = h("button", { class: "touch", onclick: async () => {
-      shellyTest = null; showResult(null);
-      result.replaceChildren(h("p", { class: "muted" }, "Asking the meter…"));
-      try {
-        const r = await api("POST", "/api/admin/shelly/test", { host: val(host) });
-        shellyTest = Object.assign({ host: val(host) }, r);
-        showResult(r);
-      } catch (err) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${err.message}`)); }
-    } }, "Test");
-    save.onclick = () => run(() => api("POST", "/api/admin/shelly/add", { host: val(host), name: val(name), area: val(area), interval_s: Number(every.value) }), "Meter added")
-      .then(() => { shellyTest = null; return refresh(); }, () => {});
-    if (shellyTest && shellyTest.ok) showResult(shellyTest);
 
     return SW.brandCard("Shelly power meters", "shelly-badge.svg", "Shelly",
       h("p", { class: "muted" }, "Shows watts, volts, amps, frequency and energy from Shelly power meters on dashboards that have the Power card (User dashboards → Edit cards). Stagewatch only reads: every few seconds it asks each meter for its readings, and that is all it ever sends. It never switches a relay, changes a setting, restarts or resets a meter. Type a meter's rating in amps (for example 16 for a PM Mini, or the breaker it watches) to get a load bar with warnings at 80% and 100%. Voltage and frequency are checked against the UK ranges."),
       h("p", { class: "notice" }, "A Shelly Plug or any Shelly with a relay is read for its power only. Stagewatch never touches the relay, but it cannot stop the Shelly's own button, schedule or app from switching it. For a distro, prefer a meter with no relay, such as the PM Mini."),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: meters are simulated, so any private address (such as 192.0.2.20) will \"find\" a simulated PM Mini. The demo meter stops answering for 40 seconds every 5 minutes, to show how a frozen card looks.")
         : h("p", { class: "notice" }, "Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3. Other Shelly meters are read by what they report, but are not tested. A meter with a password is not supported yet."),
-      meters.length ? h("div", { class: "table-scroll" }, table) : h("p", { class: "muted" }, "No power meters yet. Type the meter's IP address below and press Test."),
-      h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADD A METER"),
-      h("div", { class: "row" }, field("Meter address (an IP address on your local network)", host), test),
-      result,
-      h("div", { class: "row" }, field("Name", name), field("Area (optional)", area), field("Reads every (seconds, 2 to 5)", every), save),
+      meters.length ? h("div", { class: "table-scroll" }, table) : h("p", { class: "muted" }, "No power meters yet."),
+      h("p", { class: "muted" }, "To add a meter, use Add integration in the Connections card."),
       h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it. Stagewatch recognises a meter by its own hardware address, so if its address changes, type the new one in its row and press Save. Warnings at the breaker rating are planned for a later version. Figures are advisory and do not replace the electrician's inspection and testing."));
   }
 
@@ -688,7 +694,8 @@
     return sel;
   }
 
-  function adoptForm(prefill = {}) {
+  // Adopt a node (the Add integration pop-out). onDone runs after a successful adopt.
+  function adoptForm(prefill = {}, onDone) {
     const host = h("input", { placeholder: "node-name.local or IP", value: prefill.host || "" });
     const port = h("input", { class: "num", type: "number", value: prefill.port || 6053 });
     const name = h("input", { placeholder: "e.g. Stage L node", value: prefill.friendly_name || "" });
@@ -699,7 +706,7 @@
       ev.preventDefault();
       run(() => api("POST", "/api/admin/esphome/adopt", {
         host: val(host), port: Number(port.value), name: val(name), area: val(area), noise_psk: val(psk), role: role.value,
-      }), "Node adopted").then(refresh);
+      }), "Node adopted").then(() => { if (onDone) onDone(); return refresh(); }, () => {});
     } }, field("Host", host), field("Port", port), field("Name", name), field("Area", area),
     field("Role", role), field("Encryption key", psk), h("button", { class: "primary", type: "submit", style: "align-self:flex-end" }, "Adopt"));
   }
@@ -713,11 +720,7 @@
         h("td", {}, `${d.address}:${d.port}`),
         h("td", {}, d.board, d.encrypted ? h("div", { class: "muted", style: "font-size:12px" }, "encrypted") : null),
         h("td", {}, h("div", { class: "row" },
-          h("button", { class: "small", onclick: (ev) => {
-            const row = ev.target.closest("tr");
-            const formRow = h("tr", {}, h("td", { colspan: 4 }, adoptForm(d)));
-            row.after(formRow);
-          } }, "Adopt…"),
+          h("button", { class: "small", onclick: () => connDialog(connProducts().find((p) => p.key === "esphome"), d) }, "Adopt…"),
           h("button", { class: "small", title: "Hide this node from the list. It is not connected to either way.",
             onclick: () => run(() => api("POST", "/api/admin/esphome/ignore", { key: d.key }), "Node ignored").then(refresh) }, "Ignore")))))))
       : h("p", { class: "muted" }, snap && admin.integrations.some((i) => i.emulate)
@@ -772,8 +775,7 @@
     return card("ESPHome nodes",
       h("div", { class: "table-scroll" }, discTable),
       ignoredBlock,
-      h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADD BY HOST / IP"),
-      adoptForm(),
+      h("p", { class: "muted" }, "To add a node by its address, use Add integration in the Connections card."),
       h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADOPTED"),
       h("div", { class: "table-scroll" }, devices.length ? devTable : h("p", { class: "muted" }, "None yet.")));
   }
@@ -1600,14 +1602,18 @@
         } },
       { key: "globcon", name: "DirectOut GLOBCON", badge: "directout-badge.png", host: g.host, port: g.port || 9091, dflt: 9091, added: !!(g.host || gst.running), password: { set: !!gst.password_set },
         save: async (v) => { await api("PUT", "/api/admin/globcon", { host: v.host, port: v.port || 9091, password: v.password, clear_password: v.clear }); return "GLOBCON address saved."; } },
-    ].map((p) => Object.assign(p, { emulated: admin.emulate && p.key !== "ontime", added: p.added || admin.emulate }));
+    ].map((p) => Object.assign(p, { emulated: admin.emulate && p.key !== "ontime", added: p.added || admin.emulate })).concat([
+      // One entry per device: always addable; each has its own add form, and is edited on its own card.
+      { key: "shelly", name: "Shelly power meter", badge: "shelly-badge.svg", device: true, form: (prefill, done) => shellyAddForm(done) },
+      { key: "esphome", name: "ESPHome node", badge: "stagewatch-badge.png", device: true, form: (prefill, done) => adoptForm(prefill || {}, done) },
+    ]);
   }
   const connLogo = (p) => h("img", { class: "card-logo", src: `/static/${p.badge}`, alt: "", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } });
 
   // The pop-out. `pick` is the product to edit, or null for Add (then a product list comes first).
-  function connDialog(pick) {
+  function connDialog(pick, prefill) {
     const all = connProducts();
-    const choices = pick ? [pick] : all.filter((p) => !p.added && !p.emulated);
+    const choices = pick ? [pick] : all.filter((p) => p.device || (!p.added && !p.emulated));
     const dlg = h("dialog", { class: "sw-dialog conn-dialog", "aria-labelledby": "conn-dlg-title" });
     const close = () => { dlg.close(); dlg.remove(); };
     const status = h("p", { class: "muted conn-status", role: "status" });
@@ -1617,6 +1623,12 @@
     function fill() {
       current = choices.find((p) => p.key === product.value) || choices[0];
       status.textContent = "";
+      if (current.form) {   // a device: its own form, with its own Test and Save
+        body.replaceChildren(current.form(prefill, close));
+        testBtn.hidden = true; saveBtn.hidden = true;
+        return;
+      }
+      saveBtn.hidden = false;
       const host = h("input", { class: "touch", id: current.key === "ontime" ? "ontime-address" : null, maxlength: "253", autocomplete: "off", spellcheck: "false", value: current.host || "", placeholder: "192.168.1.20 or name.local" });
       const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: current.port || "", placeholder: String(current.dflt) });
       const pw = current.password ? h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: current.password.set ? "Saved" : "None" }) : null;
@@ -1640,7 +1652,7 @@
     const saveBtn = h("button", { type: "button", class: "primary touch" }, "Save");
     saveBtn.onclick = async () => { if (await act(saveBtn, (v) => current.save(v), "Saving…")()) { toast(status.textContent); close(); refresh(); } };
     dlg.append(...[
-      h("h3", { id: "conn-dlg-title" }, pick ? h("span", {}, connLogo(pick), ` Edit ${pick.name}`) : "Add integration"),
+      h("h3", { id: "conn-dlg-title" }, pick ? h("span", {}, connLogo(pick), pick.device ? ` Add ${pick.name}` : ` Edit ${pick.name}`) : "Add integration"),
       choices.length ? null : h("p", {}, "Every product Stagewatch can connect to is already added. Use Edit on its row to change it."),
       !pick && choices.length ? field("Product", product) : null,
       body,
@@ -1655,15 +1667,15 @@
 
   function connectionsCard() {
     const list = connProducts();
-    const added = list.filter((p) => p.added || p.emulated);
+    const added = list.filter((p) => !p.device && (p.added || p.emulated));
     const rows = added.map((p) => h("tr", {},
       h("td", {}, h("span", { class: "conn-name" }, connLogo(p), h("strong", {}, p.name))),
       h("td", {}, p.emulated ? h("span", { class: "muted" }, "Simulated (emulate mode)") : `${p.host || "not set"}${p.port ? `:${p.port}` : ""}`),
       h("td", { class: "muted" }, p.password ? (p.password.set ? "Password saved" : "No password") : "No password needed"),
       h("td", { class: "conn-edit" }, p.emulated ? null : h("button", { class: "touch", "aria-label": `Edit ${p.name}`, onclick: () => connDialog(p) }, "Edit"))));
-    const canAdd = list.some((p) => !p.added && !p.emulated);
+    const canAdd = true;   // a Shelly meter or an ESPHome node can always be added
     return card("Connections",
-      h("p", { class: "muted" }, "Where each outside product is on the show network: its address, port and password. Each product's other settings are on its own card. Shelly power meters, ESPHome nodes and OSC targets keep their addresses on their own cards, because there can be several of each."),
+      h("p", { class: "muted" }, "Where each outside product is on the show network: its address, port and password. Add integration also adds a Shelly power meter or an ESPHome node; those are listed and changed on their own cards. Each product's other settings are on its own card."),
       h("div", { class: "table-scroll" }, h("table", {},
         h("thead", {}, h("tr", {}, ["Product", "Address and port", "Password", ""].map((x) => h("th", {}, x)))),
         h("tbody", {}, rows))),
@@ -2534,7 +2546,7 @@
       added.smaart ? chip(foldCard(splCard(), "smaart", false), "smaart") : null,
       added.smaart ? foldCard(splLimitsCard(), "spllimits", false) : null,
       added.globcon ? chip(foldCard(globconCard(), "globcon", false), "globcon") : null,
-      chip(foldCard(shellyCard(), "shelly", false), "shelly"),
+      ((admin.shelly || {}).meters || []).length ? chip(foldCard(shellyCard(), "shelly", false), "shelly") : null,
       foldCard(barometerCard(), "barometer", false),
       piHostInfo() ? chip(foldCard(piHostCard(), "pihost", false), "pihost") : null,
       foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),

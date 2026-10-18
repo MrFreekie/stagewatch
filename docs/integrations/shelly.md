@@ -74,9 +74,9 @@ addresses are refused. You can add up to 16 meters.
 1. Find the meter's **IP address**: in your router's list of devices, or in the Shelly app under the
    meter's settings.
 2. Give the meter a fixed address in your router (a "DHCP reservation"), so it stays put.
-3. Open **Admin** and find the **Shelly power meters** card. It is closed at first. Click its
-   heading to open it.
-4. Under **ADD A METER**, type the address in **Meter address (an IP address on your local network)**,
+3. Open **Admin**. Under **Integrations**, in the **Connections** card, click **Add integration**
+   and choose **Shelly power meter**. (The **Shelly power meters** card shows once a meter is added.)
+4. Type the address in **Meter address (an IP address on your local network)**,
    for example `192.168.1.50`.
 5. Click **Test**.
 6. Read the answer. Nothing on the meter is changed.
