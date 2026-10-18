@@ -31,7 +31,7 @@ Only **one device at a time** can be connected to the sensor. Close the WitMotio
 
 All readings are **Equipment**: they never reach a site average. They are stored once a second.
 
-If the link is lost, or the sensor goes quiet, every reading becomes a gap (no value, never the last one, never zero). A **link lost** marker is made when it goes and a **back** marker when it returns. Nothing is filled in afterwards. The sensor counts as quiet after 5 seconds without data (longer if the sensor sends slowly: at least three times the gap between its frames).
+If the link is lost, or the sensor goes quiet, every reading becomes a gap (no value, never the last one, never zero). A **link lost** marker is made when it goes and a **back** marker when it returns. If the link drops often, you can turn these markers off in **Admin → Integrations → WitMotion tilt sensors** (untick "Add a marker when a sensor's link is lost and when it is back"). The gap in the readings is still recorded. Nothing is filled in afterwards. The sensor counts as quiet after 5 seconds without data (longer if the sensor sends slowly: at least three times the gap between its frames).
 
 ## Switch it on
 
