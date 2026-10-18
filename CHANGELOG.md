@@ -44,6 +44,15 @@ them into a dated release section and tags the commit.
 - **Dew point tile is optional.** In **Admin → User dashboards → Edit cards**, untick **Show dew point** beside the site tiles to leave it off that dashboard. It stays on unless you untick it.
 - **Day / Night button on the admin page.** The admin page header now has the same **☀ Day** / **☾ Night** button as the dashboards. The choice is remembered by the browser and shared with the dashboards on that device.
 
+### Changed
+
+- **Admin page tidied up (GUI review).** Cards are grouped by task, with a tab for each group. Integrations are now tiles with a status chip in the header, and a new **Connections** card has **Add integration**, with a pop-out for adding Shelly meters and ESPHome nodes by address. Nodes found on the network get a shaded tile with **Adopt**. Smaart can now be removed from Admin. Help text stays visible where it explains setup and folds away only where it is reference detail. The Shelly **Save** button says that **Test** comes first, and looks switched off until then.
+- **Edit cards has its own page, with a preview.** **Admin → User dashboards → Edit cards** moved to its own page. The preview follows changes you have not yet saved.
+- **Dashboards (GUI review).** Cards fill the page without gaps and keep fixed sizes, with small print folded away and less repeated text. Each site tile shows a faint trend line under its figure. The Ontime Rundown events and the Schedule running order share one row style. On the wall, Markers and Sensors are sized to be read from a distance, and a card in alert or stop gets an edge you can see from across the room. Chart flags sit in one grouped row. The Tilt card shows a WitMotion badge in its header, and the Sound level and Admin cards show the Smaart logo.
+- **Same time ranges on every chart.** Charts offer 15 minutes, 1 hour, 4 hours, 12 hours and Show.
+- **Sound level chart and limits.** The chart draws the limits in force now and redraws when they change. The Limits card shows every limit in force as its own tile, with dB(A) or dB(C) taken from the Smaart value. The Sound level, Limits and Power cards have bigger figures.
+- **Updated libraries.** aioesphomeapi, fastapi and websockets, the build tool (uv-build) and a GitHub Actions step were brought up to date. No change to how Stagewatch behaves.
+
 ### Fixed
 
 - **Ontime Timer: a timer that is not running no longer turns the card Offline.** While Stagewatch is connected to Ontime, a stopped, ready or paused timer stays Online and shows its last state (for example Stopped). Previously the card went stale and then Offline because Ontime sends nothing while nothing changes. A running timer that stops updating still goes stale, as before.
