@@ -1217,9 +1217,11 @@ body.layout-wall .pi-value { font-size: 34px; }
 body.layout-wall .pi-wide .pi-value { font-size: 24px; }
 body.layout-wall .pi-model { display: none; }
 /* WitMotion tilt card (witmotion.js): large degrees, a direction hint, words with every limit colour. */
-.wm-sensor + .wm-sensor { margin-top: 14px; border-top: 1px solid var(--grid); padding-top: 12px; }
-.wm-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
-.wm-name { font-weight: 700; font-size: 18px; }
+.wm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.wm-tile { border: 1px solid var(--grid); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.wm-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.wm-name { font-weight: 700; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-foot { font-size: 12px; margin-top: 4px; }
 /* Battery: a drawn cell filled to the approximate percentage, with the number (and "Low") in words. */
 .wm-batt { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .wm-batt-icon { position: relative; width: 26px; height: 13px; border: 2px solid currentColor; border-radius: 3px; padding: 1px; box-sizing: border-box; }
@@ -1227,10 +1229,10 @@ body.layout-wall .pi-model { display: none; }
 .wm-batt-fill { display: block; height: 100%; background: currentColor; border-radius: 1px; }
 .wm-batt-low { color: var(--warn); font-weight: 700; }
 body.layout-wall .wm-batt { font-size: 22px; }
-.wm-axes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 14px; margin-top: 6px; }
-.wm-value { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.wm-value .unit { font-size: 22px; font-weight: 500; color: var(--muted); margin-left: 2px; }
-.wm-nodata { font-size: 26px; line-height: 48.4px; color: var(--muted); font-weight: 600; }   /* same height as a number */
+.wm-axes { display: grid; grid-template-columns: repeat(auto-fit, minmax(95px, 1fr)); gap: 6px 12px; margin-top: 4px; }
+.wm-value { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.wm-value .unit { font-size: 18px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.wm-nodata { font-size: 20px; line-height: 37.4px; color: var(--muted); font-weight: 600; }   /* same height as a number */
 .wm-hold { visibility: hidden; }   /* keeps the space of a line that has no data */
 .wm-limit { font-weight: 700; font-size: 14px; }
 .wm-l1 .wm-value, .wm-l1 .wm-limit { color: var(--warn); }
@@ -1239,20 +1241,20 @@ body.layout-wall .wm-batt { font-size: 22px; }
 .wm-smooth, .wm-small { font-size: 12px; margin: 4px 0 0; color: var(--muted); opacity: .85; }
 .wm-warn { margin: 6px 0 0; color: var(--warn); font-weight: 600; }
 .wm-note { font-size: 12px; margin: 12px 0 0; }
-.wm-target { font-size: 15px; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.wm-band { display: inline-block; margin-top: 4px; padding: 2px 10px; border-radius: 6px; border: 2px solid currentColor; font-weight: 700; font-size: 16px; }
+.wm-target { font-size: 13px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.wm-band { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 6px; border: 2px solid currentColor; font-weight: 700; font-size: 14px; }
 .wm-t-on { color: var(--ok); } .wm-t-close { color: var(--warn); } .wm-t-off { color: var(--stop); }
 body.layout-wall .wm-target { font-size: 28px; }
 body.layout-wall .wm-band { font-size: 32px; padding: 4px 16px; }
-body.layout-phone .wm-value { font-size: 34px; }
-body.layout-phone .wm-nodata { line-height: 37.4px; }
-body.layout-wall .wm-name { font-size: 34px; }
-body.layout-wall .wm-value { font-size: 88px; }
-body.layout-wall .wm-value .unit { font-size: 44px; }
-body.layout-wall .wm-nodata { font-size: 48px; line-height: 96.8px; }
+body.layout-phone .wm-grid { grid-template-columns: 1fr; }
+body.layout-wall .wm-grid { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+body.layout-wall .wm-name { font-size: 30px; }
+body.layout-wall .wm-value { font-size: 72px; }
+body.layout-wall .wm-value .unit { font-size: 36px; }
+body.layout-wall .wm-nodata { font-size: 40px; line-height: 79.2px; }
 body.layout-wall .wm-limit { font-size: 28px; }
 body.layout-wall .pw-label { font-size: 18px; }
-body.layout-wall .wm-small, body.layout-wall .wm-smooth { display: none; }
+body.layout-wall .wm-small, body.layout-wall .wm-foot { display: none; }
 body.layout-wall .wm-note { font-size: 18px; }
 /* Power card: the show-day figures fold away under one quiet line. */
 .pw-dayfold { margin-top: 10px; }

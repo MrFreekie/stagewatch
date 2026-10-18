@@ -1125,28 +1125,29 @@
     if (!has("witmotion_tilt") || !sensors.length) { card.hidden = true; return; }
     card.hidden = false;
     $("wm-title").textContent = SW.wm.title(sensors.length);
-    $("wm-body").replaceChildren(...sensors.map((dev) => {
-      const v = SW.wm.view(dev, state.entities);
-      return h("div", { class: "wm-sensor" },
-        h("div", { class: "wm-head" }, h("span", { class: "wm-name" }, v.name),
-          v.battery ? h("span", { class: "wm-batt" + (v.battery.low ? " wm-batt-low" : ""), title: "Sensor battery (approximate)" },
-            h("span", { class: "wm-batt-icon", "aria-hidden": "true" }, h("span", { class: "wm-batt-fill", style: `width:${v.battery.pct}%` })),
-            `${v.battery.low ? "Low " : ""}${v.battery.pct} %`) : null,
-          h("span", { class: "muted wm-link" }, v.linkText)),
-        h("div", { class: "wm-axes" }, v.axes.map((a) => h("div", { class: "wm-axis" + (a.level ? ` wm-l${a.level}` : "") },
-          h("div", { class: "pw-label" }, `${a.label} · ${a.hint}`),
-          h("div", { class: "wm-value" + (a.unit ? "" : " wm-nodata") }, a.text, a.unit ? h("span", { class: "unit" }, a.unit) : null),
-          a.levelText ? h("div", { class: "wm-limit" }, a.levelText) : null,
-          a.target ? h("div", { class: "wm-target" }, h("span", { class: "muted" }, a.target.targetText),
-            a.target.band ? h("span", { class: `wm-diff` }, " · " + a.target.diffText) : null) : null,
-          // With no data the band and smoothing lines keep their space (hidden), so the card does not change size.
-          a.target ? (a.target.band ? h("div", { class: `wm-band wm-t-${a.target.band}` }, a.target.bandText)
-            : h("div", { class: "wm-band wm-hold", "aria-hidden": "true" }, "✓ On target")) : null))),
-        h("div", { class: "muted wm-smooth" + (v.live ? "" : " wm-hold"), "aria-hidden": v.live ? null : "true" }, v.smoothing || " "),
-        v.axes.some((a) => a.target) ? h("p", { class: "muted wm-small" }, "Target: a guide for setting the hang, not a safety check.") : null,
-        v.warning ? h("p", { class: "wm-warn" }, "▲ " + v.warning) : null,
-        v.setup || v.info ? SW.about(v.setup ? h("p", { class: "wm-small" }, v.setup) : null, v.info ? h("p", { class: "wm-small" }, v.info) : null) : null);
-    }), h("p", { class: "muted wm-note" }, SW.wm.NOTE));
+    // One compact tile per sensor; the setup small print for all of them sits once, under the tiles.
+    const views = sensors.map((dev) => SW.wm.view(dev, state.entities));
+    const tiles = views.map((v) => h("div", { class: "wm-tile" },
+      h("div", { class: "wm-head" }, h("span", { class: "wm-name", title: v.name }, v.name),
+        v.battery ? h("span", { class: "wm-batt" + (v.battery.low ? " wm-batt-low" : ""), title: "Sensor battery (approximate)" },
+          h("span", { class: "wm-batt-icon", "aria-hidden": "true" }, h("span", { class: "wm-batt-fill", style: `width:${v.battery.pct}%` })),
+          `${v.battery.low ? "Low " : ""}${v.battery.pct} %`) : null),
+      h("div", { class: "wm-axes" }, v.axes.map((a) => h("div", { class: "wm-axis" + (a.level ? ` wm-l${a.level}` : "") },
+        h("div", { class: "pw-label", title: a.hint }, a.label),
+        h("div", { class: "wm-value" + (a.unit ? "" : " wm-nodata") }, a.text, a.unit ? h("span", { class: "unit" }, a.unit) : null),
+        a.levelText ? h("div", { class: "wm-limit" }, a.levelText) : null,
+        a.target ? h("div", { class: "wm-target muted" }, a.target.band ? `${a.target.targetText} · ${a.target.diffText}` : a.target.targetText) : null,
+        // With no data the band keeps its space (hidden), so the tile does not change size.
+        a.target ? (a.target.band ? h("div", { class: `wm-band wm-t-${a.target.band}` }, a.target.bandText)
+          : h("div", { class: "wm-band wm-hold", "aria-hidden": "true" }, "✓ On target")) : null))),
+      h("div", { class: "muted wm-foot" }, v.live ? `${v.linkText} · ${v.smoothing}` : v.linkText),
+      v.warning ? h("p", { class: "wm-warn" }, "▲ " + v.warning) : null));
+    const about = views.filter((v) => v.setup || v.info).map((v) => h("p", { class: "wm-small" },
+      h("strong", {}, v.name + ": "), [v.setup, v.info].filter(Boolean).join(" · ")));
+    $("wm-body").replaceChildren(h("div", { class: "wm-grid" }, tiles),
+      views.some((v) => v.axes.some((a) => a.target)) ? h("p", { class: "muted wm-small" }, "Target: a guide for setting the hang, not a safety check.") : null,
+      about.length ? SW.about(...about) : null,
+      h("p", { class: "muted wm-note" }, SW.wm.NOTE));
   }
 
   // History chart under the meters: pick a meter, a measurement and a span. Lines are what was recorded
