@@ -381,14 +381,14 @@ def test_a_bad_advice_body_gets_a_422_that_never_echoes_it(client, bad):
 
 
 @pytest.mark.parametrize("bad", [
-    {**GOOD, "surprise": 1},
-    {**GOOD, "paths": [{**GOOD["paths"][0], "surprise": 1}]},
-    {**GOOD, "positions": [{**GOOD["positions"][0], "surprise": 1}]},
+    {**GOOD, "surprise": SECRETISH},
+    {**GOOD, "paths": [{**GOOD["paths"][0], "surprise": SECRETISH}]},
+    {**GOOD, "positions": [{**GOOD["positions"][0], "surprise": SECRETISH}]},
 ])
 def test_unknown_keys_in_an_advice_body_get_a_422_but_old_files_still_load(client, bad):
     admin(client)
     r = client.put("/api/admin/advice", json=bad)
-    assert r.status_code == 422 and "surprise" not in r.text
+    assert r.status_code == 422 and SECRETISH not in r.text
     assert client.hub.config.advice == AdviceConfig()
     from stagewatch.core.config import Config
     old = Config.model_validate({"advice": bad})                        # a file written by a newer build

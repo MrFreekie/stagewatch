@@ -2763,9 +2763,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     # ("ctx"), which can include a PIN or key. Return only where and what kind of problem.
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, exc: RequestValidationError):
-        # An unknown key's name is the sender's own text: it ends the location, so it is not echoed.
-        detail = [{"loc": list(e.get("loc", ()))[:-1] + ["(unknown key)"] if e.get("type") == "extra_forbidden"
-                   else list(e.get("loc", ())), "msg": str(e.get("msg", "Invalid value")),
+        detail = [{"loc": list(e.get("loc", ())), "msg": str(e.get("msg", "Invalid value")),
                    "type": str(e.get("type", ""))} for e in exc.errors()[:20]]
         return JSONResponse({"detail": detail}, status_code=422)
 
