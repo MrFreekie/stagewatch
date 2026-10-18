@@ -1,5 +1,6 @@
 // Edit cards (its own page, /dashboard-editor?d=<url name>): which cards one dashboard shows, in
-// what order, each card's options and its stage, with a preview of the saved dashboard. It needs
+// what order, each card's options and its stage, with a preview that follows the unsaved changes (posted to the
+// preview frame only; dashboard.js ?preview=1 checks them and never saves). It needs
 // the admin login; without one the page sends you to Admin and back (Admin accepts only the fixed
 // path ?next=/dashboard-editor, so the chosen dashboard waits in sessionStorage). Saving uses the
 // same PUT /api/admin/dashboards as Admin: this dashboard's card fields, and the others with their
@@ -12,7 +13,7 @@
   const PICK_KEY = "sw.dashboard-editor.slug";
   const BASE = ["slug", "title", "layout", "allow_marker", "allow_ack"];
   const SIZES = { tablet: [1280, 800], phone: [375, 812], wall: [1920, 1080] };
-  let admin = null, dash = null, editor = null, dirty = false;
+  let admin = null, dash = null, editor = null, dirty = false, onReadyNow = null;
 
   // The Day / Night choice this browser made on Admin or a dashboard.
   try {
@@ -30,8 +31,8 @@
   function preview(d) {
     const size = SIZES[d.layout] || SIZES.tablet;
     // Shown only: no clicks or keyboard reach it, so nothing can be acknowledged or marked from here.
-    const frame = h("iframe", { class: "de-frame", src: `/d/${encodeURIComponent(d.slug)}`, title: `Preview of ${d.title || d.slug}`,
-      tabindex: "-1", "aria-hidden": "true", width: String(size[0]), height: String(size[1]) });
+    const frame = h("iframe", { class: "de-frame", src: `/d/${encodeURIComponent(d.slug)}?preview=1`, title: `Preview of ${d.title || d.slug}`,
+      tabindex: "-1", "aria-hidden": "true", inert: "", width: String(size[0]), height: String(size[1]) });
     const box = h("div", { class: "de-frame-box" }, frame);
     const fit = () => {
       const w = box.clientWidth || size[0], s = Math.min(1, w / size[0]);
@@ -40,7 +41,18 @@
     };
     window.addEventListener("resize", fit);
     requestAnimationFrame(fit);
-    return { el: box, reload: () => { frame.src = frame.src; } };
+    // The frame says when it has its snapshot; send the draft again then (first load, reconnect).
+    const send = () => {
+      if (!frame.contentWindow) return;
+      try { frame.contentWindow.postMessage({ type: "sw-preview-draft", draft: dirty && editor ? editor.read() : null }, location.origin); } catch (_) { /* ignore */ }
+    };
+    const onReady = (ev) => {
+      if (ev.origin === location.origin && ev.source === frame.contentWindow && ev.data && ev.data.type === "sw-preview-ready") send();
+    };
+    if (onReadyNow) window.removeEventListener("message", onReadyNow);
+    onReadyNow = onReady;
+    window.addEventListener("message", onReady);
+    return { el: box, send, reload: () => { frame.src = frame.src; } };
   }
 
   function render() {
@@ -53,14 +65,15 @@
     pick.value = slug;
     const count = h("span", { class: "muted" });
     const status = h("p", { class: "muted de-status", role: "status" });
+    let view = null;
     const onChange = () => {
-      if (editor) { dirty = true; count.textContent = `${editor.count()} cards ticked`; status.textContent = "Unsaved changes"; }
+      if (editor) { dirty = true; count.textContent = `${editor.count()} cards ticked`; status.textContent = "Unsaved changes"; if (view) view.send(); }
     };
     editor = SW.cardsEditor(dash, onChange, { cards: admin.cards, contactsPinSet: !!(admin.config.contacts && admin.config.contacts.reveal_pin_set) });
     dirty = false;
     count.textContent = `${editor.count()} cards ticked`;
     status.textContent = "";
-    const view = preview(dash);
+    view = preview(dash);
     const save = h("button", { class: "primary touch", onclick: async () => {
       save.disabled = true;
       try {
@@ -99,9 +112,9 @@
           editor.el,
           h("div", { class: "row de-actions" }, status, h("span", { class: "grow" }), undo, save)),
         h("section", { class: "card de-preview" },
-          h("h2", {}, h("span", {}, "Preview"), h("span", { class: "grow" }), h("span", { class: "muted" }, `${dash.layout}, saved version`)),
+          h("h2", {}, h("span", {}, "Preview"), h("span", { class: "grow" }), h("span", { class: "muted" }, `${dash.layout}, follows your changes`)),
           view.el,
-          h("p", { class: "muted hint" }, "The preview shows the dashboard as last saved, at its layout's screen size. Save to see your changes. It is for looking only: taps do nothing here."))));
+          h("p", { class: "muted hint" }, "The preview shows your changes straight away, at the layout's screen size, but only here: nothing is saved and other screens keep the saved version until you press Save. Contact phone numbers and the contacts area show only after Save. If the strip in the preview says "saved version", it could not show these changes. It is for looking only: taps do nothing here."))));
   }
 
   async function start() {
