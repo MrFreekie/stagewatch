@@ -464,8 +464,12 @@ class AdviceService:
                 changes.append(hub.alarms.set_condition(alarm_id, False, 1, "", now))
             elif event == "raise" or (self._drift.is_on(pid) and not p["stale"]):
                 text = drift_message(p["name"], p["drift_ms"], label)
-                changes.append(hub.alarms.set_condition(alarm_id, True, 1, text, now, silent=silent))
                 current = hub.alarms.active.get(alarm_id)
+                if event != "raise" and current is not None:
+                    current.message = text           # the line follows the drift quietly, like a threshold alarm
+                else:
+                    changes.append(hub.alarms.set_condition(alarm_id, True, 1, text, now, silent=silent))
+                    current = hub.alarms.active.get(alarm_id)
                 if current is not None and current.silent != silent:
                     current.silent = silent          # the admin switched between silent and beep
                     changes.append(AlarmChange(current, "change"))
@@ -479,8 +483,10 @@ class AdviceService:
             hub._alarm_changed(changes)
 
     def snapshot(self) -> dict:
-        """The public ``advice`` block: drift paths and air-loss positions (names, distances and
-        numbers; no device ids, addresses or settings)."""
+        """The public ``advice`` block: drift paths and air-loss positions (names, distances,
+        numbers, flags). Besides those it carries the admin's per-path ``current_delay_ms``,
+        ``threshold_ms`` and ``phase_hint_hz`` and the reference marker's ``marker_id``. No device
+        ids, addresses, area names, reference texts or notice settings."""
         if self._last is None:
             try:
                 self._last = self.compute(time.time())

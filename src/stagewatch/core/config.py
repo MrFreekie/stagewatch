@@ -15,6 +15,7 @@ import os
 import re
 import tempfile
 import time
+import unicodedata
 import zoneinfo
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -932,8 +933,12 @@ ADVICE_MAX_POSITIONS = 4
 
 
 def _advice_name(v):
-    """Names are trimmed before the length rule, so "  " is refused."""
-    return v.strip() if isinstance(v, str) else v
+    """Control, format (zero-width, bidi overrides such as U+202E) and line-separator characters are
+    dropped, then the name is trimmed before the length rule, so "  " is refused."""
+    if not isinstance(v, str):
+        return v
+    return "".join(c for c in v if unicodedata.category(c) not in ("Zl", "Zp")
+                   and not unicodedata.category(c).startswith("C")).strip()
 
 
 def _advice_id_from_name(data):

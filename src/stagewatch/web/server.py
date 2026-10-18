@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, AdviceConfig, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
     ContactsSettings, SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
@@ -308,6 +308,25 @@ class BarometerBody(BaseModel):
     hemisphere: Literal["north", "south"] = "north"
     rapid_fall_alarm: StrictBool = False
     rapid_fall_hpa_3h: float = Field(3.6, ge=1.5, le=10, allow_inf_nan=False, strict=True)
+
+
+_STRICT = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+
+class _AdvicePathBody(AdvicePath):
+    """PUT /api/admin/advice: the same rules as the saved path, but no unknown keys. (Loading an
+    old config file still ignores them.)"""
+    model_config = _STRICT
+
+
+class _AdvicePositionBody(AdvicePosition):
+    model_config = _STRICT
+
+
+class AdviceBody(AdviceConfig):
+    model_config = _STRICT
+    paths: list[_AdvicePathBody] = Field(default_factory=list, max_length=ADVICE_MAX_PATHS)
+    positions: list[_AdvicePositionBody] = Field(default_factory=list, max_length=ADVICE_MAX_POSITIONS)
 
 
 class AlarmsBody(BaseModel):
@@ -1660,10 +1679,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     # handler never echoes what was sent. Saving publishes `config`, so the numbers are worked out
     # again from the new settings.
     @app.put("/api/admin/advice", dependencies=admin_deps)
-    async def put_advice(body: AdviceConfig):
-        hub.config.advice = body
+    async def put_advice(body: AdviceBody):
+        hub.config.advice = AdviceConfig.model_validate(body.model_dump())
         hub.save_config()
-        return body
+        return hub.config.advice
 
     # Wall Clock (Ontime). Saving re-checks the source: the config topic reaches the Wall Clock
     # service, which restarts it if the address changed. Read-only toward Ontime.
@@ -2744,7 +2763,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     # ("ctx"), which can include a PIN or key. Return only where and what kind of problem.
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, exc: RequestValidationError):
-        detail = [{"loc": list(e.get("loc", ())), "msg": str(e.get("msg", "Invalid value")),
+        # An unknown key's name is the sender's own text: it ends the location, so it is not echoed.
+        detail = [{"loc": list(e.get("loc", ()))[:-1] + ["(unknown key)"] if e.get("type") == "extra_forbidden"
+                   else list(e.get("loc", ())), "msg": str(e.get("msg", "Invalid value")),
                    "type": str(e.get("type", ""))} for e in exc.errors()[:20]]
         return JSONResponse({"detail": detail}, status_code=422)
 

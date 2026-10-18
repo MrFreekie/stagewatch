@@ -177,6 +177,26 @@ def test_a_drift_notice_raises_after_the_hold_silently_with_one_marker(tmp_path)
     assert [(r["alarm_id"], r["event"], r["level"]) for r in log] == [("advice:drift:tower", "raise", 1)]
 
 
+def test_a_drift_that_wobbles_changes_the_line_quietly(tmp_path):
+    """The line follows the drift (like a threshold alarm) but nothing is logged or pushed for it."""
+    hub, now = drifted_hub(tmp_path)
+    hub.advice.tick(now)
+    hub.advice.tick(now + 10)
+    pushed = []
+    hub.bus.subscribe("alarms", lambda _t, _p: pushed.append(1))
+    lines = set()
+    for k in range(11, 21):
+        air(hub, now - 1 + k / 100, 26.3 if k % 2 else 26.0)           # -1.98 and -1.89 ms: the rounding flips
+        hub.advice.tick(now + k)
+        lines.add(hub.alarms.active["advice:drift:tower"].message)
+    assert lines == {"tower: drifted -2.0 ms since Aligned, check delay (ADVISORY)",
+                     "tower: drifted -1.9 ms since Aligned, check delay (ADVISORY)"}
+    assert pushed == []
+    assert len(hub.recorder.alarm_log()) == 1                          # just the raise
+    hub.config.advice.alarm = "beep"                                   # a real change still goes out
+    hub.advice.tick(now + 30)
+    assert pushed and hub.alarms.sounding
+
 def test_beep_sounds_at_level_one_and_never_higher(tmp_path):
     hub, now = drifted_hub(tmp_path, alarm="beep")
     hub.advice.tick(now)
@@ -358,6 +378,34 @@ def test_a_bad_advice_body_gets_a_422_that_never_echoes_it(client, bad):
     assert r.status_code == 422
     assert SECRETISH not in r.text and "input" not in r.json()["detail"][0]
     assert client.hub.config.advice == AdviceConfig()                           # nothing was saved
+
+
+@pytest.mark.parametrize("bad", [
+    {**GOOD, "surprise": 1},
+    {**GOOD, "paths": [{**GOOD["paths"][0], "surprise": 1}]},
+    {**GOOD, "positions": [{**GOOD["positions"][0], "surprise": 1}]},
+])
+def test_unknown_keys_in_an_advice_body_get_a_422_but_old_files_still_load(client, bad):
+    admin(client)
+    r = client.put("/api/admin/advice", json=bad)
+    assert r.status_code == 422 and "surprise" not in r.text
+    assert client.hub.config.advice == AdviceConfig()
+    from stagewatch.core.config import Config
+    old = Config.model_validate({"advice": bad})                        # a file written by a newer build
+    assert old.advice.paths[0].id == "tower_l"
+
+
+def test_control_and_bidi_characters_are_stripped_from_names(client):
+    admin(client)
+    body = {**GOOD, "paths": [{"id": "a", "name": "Tower\u202e L\n\x07\u200b", "distance_m": 10}],
+            "positions": [{"id": "b", "name": " \u2066Rear\u2029 ", "distance_m": 50}],
+            "drift_reference": "Al\u202eigned"}
+    r = client.put("/api/admin/advice", json=body)
+    assert r.status_code == 200
+    saved = client.hub.config.advice
+    assert (saved.paths[0].name, saved.positions[0].name, saved.drift_reference) == ("Tower L", "Rear", "Aligned")
+    assert client.put("/api/admin/advice", json={**GOOD, "paths": [
+        {"id": "a", "name": "\u202e\u200b", "distance_m": 10}]}).status_code == 422     # nothing left
 
 
 def test_an_oversize_advice_body_is_refused(client):

@@ -7,7 +7,9 @@ Messages (sent at osc_out.rate_hz):
   /stagewatch/alarm      max_level(0-3) sounding(0/1)
 Only with osc_out.include_advice (FOH advice; values, not commands):
   /stagewatch/path/<id>/drift            ms since the reference marker (+ = sound arrives later)
-  /stagewatch/path/<id>/suggested_delay  ms (current delay plus drift)
+  /stagewatch/path/<id>/suggested_delay  ms (current delay plus drift). A number to read and show,
+                                         never to map onto a processor's delay: Stagewatch advises,
+                                         the engineer decides
   /stagewatch/position/<id>/change_db    dB since the reference marker, one float per band in band
                                          order (4k, 8k, 16k or 4k ... 16k), + = more top end lost
 NaN means "not measured" (or unknown, or stale).
