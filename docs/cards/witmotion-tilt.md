@@ -1,6 +1,6 @@
 # Tilt (WitMotion)
 
-The **Tilt** card shows the tilt of each [WitMotion sensor](../integrations/witmotion.md) in large degrees. It is not on any dashboard by default and stays hidden until a sensor has been set up. Your tech adds it from the card picker in [Admin: Dashboards](../admin/dashboards.md).
+The **Tilt** card shows the tilt of each [WitMotion sensor](../integrations/witmotion.md) in large degrees. It is not on any dashboard by default and stays hidden until a sensor has been set up. Your tech sets the sensors up in **Admin → Integrations → WitMotion tilt sensors** (with a **Find sensors** button; see [WitMotion setup](../integrations/witmotion.md#switch-it-on)), then adds the card from the card picker in [Admin: Dashboards](../admin/dashboards.md).
 
 > **A guide, not a safety system.** The card says so on screen. Use it to see whether something has moved and to help set a hang. It never replaces the rigger's own checks.
 

@@ -782,3 +782,287 @@ async def test_no_target_means_an_empty_targets_block_and_no_alarm_is_made(hub):
         assert readout(hub)["targets"] == {} and not [k for k in hub.alarms.active if "witmotion" in k]
     finally:
         await integ.stop()
+
+
+# ----------------------------------------------------------------------------- Admin card: settings, scan, apply with no restart
+from stagewatch.integrations.witmotion import scan as scan_mod
+
+MAC1, MAC2, MAC3 = "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02", "AA:BB:CC:DD:EE:03"
+UUID1 = "0f8fad5b-d9cb-469f-a165-70867728950e"
+
+
+def row(address=MAC1, **kw):
+    return {"address": address, "label": "Stage Right hang", **kw}
+
+
+def sample_scan():
+    """What a listen returns: two sensors, one renamed device and one that is not a WitMotion at all."""
+    return scan_mod.pick_sensors([("WT901BLE67", MAC1, -58), ("Stage Left", MAC3, -40), ("WT901BLE68", MAC2, -71),
+                                  ("JBL Flip", "11:22:33:44:55:66", -30), ("WT901BLE67", MAC1.lower(), -80)])
+
+
+@pytest.fixture
+async def admin(tmp_path):
+    import httpx
+    from stagewatch.web.server import create_app
+    h = Hub(tmp_path)
+    h.config.site.smoothing_tau_s = 0
+    made: list = []
+
+    def factory(**kw):
+        made.append(FakeReader(**kw))
+        return made[-1]
+
+    gate = asyncio.Event()
+
+    async def slow_scan():
+        await gate.wait()
+        return sample_scan()
+
+    integ = WitmotionIntegration(h, reader_factory=factory, scan_fn=slow_scan)
+    h.add_integration(integ)
+    await integ.start()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app(h)), base_url="http://test") as c:
+        assert (await c.post("/api/admin/setup", json={"pin": "4711"})).status_code == 200
+        c.hub, c.integ, c.made, c.gate = h, integ, made, gate
+        yield c
+    await integ.stop()
+    h.recorder.close()
+
+
+def test_addresses_are_checked_and_put_in_one_form():
+    assert scan_mod.normalise_address(" aa:bb:cc:dd:ee:01 ") == MAC1
+    assert scan_mod.normalise_address(UUID1) == UUID1.upper()
+    for bad in ("", "AA:BB:CC:DD:EE", "AA-BB-CC-DD-EE-01", "AA:BB:CC:DD:EE:0G", "AA:BB:CC:DD:EE:01:02", UUID1[:-1], None, 5):
+        assert scan_mod.normalise_address(bad) is None
+
+
+def test_scan_results_keep_only_wt_names_once_each_strongest_first():
+    got = sample_scan()
+    assert [(r["name"], r["address"], r["rssi"]) for r in got] == [("WT901BLE67", MAC1, -58), ("WT901BLE68", MAC2, -71)]
+    assert scan_mod.pick_sensors([("WT1", MAC1, None), ("WT2", MAC2, True), (None, MAC3, -1)]) == [
+        {"name": "WT1", "address": MAC1, "rssi": None}, {"name": "WT2", "address": MAC2, "rssi": None}]   # no signal is None, never a guess
+
+
+async def test_listen_uses_discover_only_and_reports_unavailable_bluetooth():
+    class Adv:
+        def __init__(self, rssi, local_name=None):
+            self.rssi, self.local_name = rssi, local_name
+
+    class Scanner:
+        calls = 0
+
+        @staticmethod
+        async def discover(timeout=None, return_adv=False):
+            Scanner.calls += 1
+            return {MAC1: (FakeDevice("WT901BLE67", MAC1), Adv(-60)), MAC3: (FakeDevice(None, MAC3), Adv(-50, "WT901BLE70")),
+                    "x": (FakeDevice("Other", "x"), Adv(-10))}
+
+    fake = type("B", (), {"BleakScanner": Scanner})
+    got = await scan_mod.listen(0.0, bleak_module=fake)
+    assert [r["address"] for r in got] == [MAC3, MAC1] and Scanner.calls == 1 and not hasattr(fake, "BleakClient")   # it never connects
+
+    class Broken:
+        @staticmethod
+        async def discover(**kw):
+            raise OSError("no adaptor")
+
+    with pytest.raises(scan_mod.ScanUnavailable) as e:
+        await scan_mod.listen(0.0, bleak_module=type("B", (), {"BleakScanner": Broken}))
+    assert "adaptor" not in e.value.message and e.value.message == scan_mod.UNAVAILABLE
+
+
+async def test_settings_need_admin_and_the_same_origin(admin):
+    import httpx
+    body = {"enabled": True, "sensors": [row()]}
+    anon = httpx.AsyncClient(transport=admin._transport, base_url="http://test")
+    assert (await anon.put("/api/admin/witmotion", json=body)).status_code == 401
+    assert (await anon.post("/api/admin/witmotion/scan")).status_code == 401
+    assert (await admin.put("/api/admin/witmotion", json=body, headers={"Origin": "http://evil.example"})).status_code == 403
+    assert (await admin.post("/api/admin/witmotion/scan", headers={"Origin": "http://evil.example"})).status_code == 403
+    assert admin.hub.config.witmotion.enabled is False
+    await anon.aclose()
+
+
+async def test_settings_are_strict_and_never_echo_what_was_sent(admin):
+    secret_label = "do-not-echo-me"
+    bad = [{"enabled": True, "sensors": [row("not-an-address", label=secret_label)]},
+           {"enabled": True, "sensors": [row(MAC1), row(MAC1.lower(), label="Again")]},                   # a duplicate, in any case
+           {"enabled": True, "sensors": [row(MAC1, extra=1)]}, {"enabled": True, "sensors": [row()], "extra": 1},
+           {"enabled": "yes", "sensors": []}, {"enabled": True, "sensors": [row(MAC1 + secret_label)]},
+           {"enabled": True, "sensors": [row(a) for a in (MAC1, MAC2, MAC3, "AA:BB:CC:DD:EE:04", "AA:BB:CC:DD:EE:05")]},   # five
+           {"enabled": True, "sensors": [row(smoothing_s=3)]}, {"enabled": True, "sensors": [row(smoothing_s=True)]},
+           {"enabled": True, "sensors": [row(axis="z")]}, {"enabled": True, "sensors": [row(target_x=181)]},
+           {"enabled": True, "sensors": [row(target_y="2")]}, {"enabled": True, "sensors": [row(on_target_deg=11)]},
+           {"enabled": True, "sensors": [row(on_target_deg=0.5, close_deg=0.2)]}, {"enabled": True, "sensors": [row(label="x" * 61)]},
+           {"enabled": True, "sensors": [row(label="a\x00b")]}, {"enabled": True, "sensors": [{"label": "no address"}]}]
+    for b in bad:
+        r = await admin.put("/api/admin/witmotion", json=b)
+        assert r.status_code == 422, b
+        assert secret_label not in r.text and MAC1 not in r.text and "not-an-address" not in r.text
+    assert admin.hub.config.witmotion.sensors == [] and admin.hub.config.witmotion.enabled is False and admin.made == []
+
+
+async def test_saving_starts_the_sensors_with_no_restart_and_keeps_the_old_fields(admin):
+    admin.hub.config.witmotion.address = MAC3     # the older single-sensor field, from a settings file
+    admin.hub.config.witmotion.axis = "y"
+    assert DEVICE_ID not in admin.hub.devices
+    body = {"enabled": True, "sensors": [row(MAC1.lower(), axis="x", smoothing_s=5, target_x=2.5, on_target_deg=0.3, close_deg=1.5),
+                                          row(UUID1, label="Stage Left", smoothing_s=0)]}
+    r = await admin.put("/api/admin/witmotion", json=body)
+    assert r.status_code == 200 and r.json() == {"ok": True, "changed": True, "applied": True}
+    cfg = admin.hub.config.witmotion
+    assert cfg.enabled and [s.address for s in cfg.sensors] == [MAC1, UUID1.upper()]          # saved in one standard form
+    assert (cfg.sensors[0].axis, cfg.sensors[0].smoothing_s, cfg.sensors[0].target_x, cfg.sensors[0].close_deg) == ("x", 5.0, 2.5, 1.5)
+    assert cfg.axis == "y" and cfg.address == ""     # the old fields are still there; the old address is now in the list or removed
+    await until(lambda: len(admin.made) == 2)
+    assert [d for d in admin.hub.devices if d.startswith("witmotion")] == ["witmotion", "witmotion_2"]
+    assert admin.hub.devices["witmotion"].name == "Stage Right hang" and admin.hub.devices["witmotion_2"].name == "Stage Left"
+    assert admin.made[0].address == MAC1 and f"{DEVICE_ID}.tilt_pitch" not in admin.hub.entities       # axis x only
+    # The same settings again start nothing new and drop nothing.
+    r = await admin.put("/api/admin/witmotion", json=body)
+    assert r.json()["changed"] is False and len(admin.made) == 2
+    # A reload of the saved file gives the same card.
+    from stagewatch.core.config import WitmotionConfig
+    assert WitmotionConfig.model_validate(cfg.model_dump()) == cfg
+
+
+async def test_a_change_touches_only_the_sensor_that_changed_and_a_removal_leaves_no_marker(admin):
+    await admin.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row(MAC1), row(MAC2, label="Two")]})
+    await until(lambda: len(admin.made) == 2)
+    first, second = admin.made
+    second.cb["on_connected"](100.0)
+    first.cb["on_connected"](100.0)
+    r = await admin.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row(MAC1), row(MAC2, label="Two", axis="y")]})
+    assert r.json()["changed"] is True
+    await until(lambda: len(admin.made) == 3)
+    assert admin.integ.sensors[0].reader is first and admin.integ.sensors[1].reader is admin.made[2]    # sensor one was not touched
+    assert f"{DEVICE_ID}_2.tilt_roll" not in admin.hub.entities and f"{DEVICE_ID}_2.tilt_pitch" in admin.hub.entities
+    r = await admin.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row(MAC1)]})
+    assert r.status_code == 200 and "witmotion_2" not in admin.hub.devices and "witmotion" in admin.hub.devices
+    assert markers(admin.hub) == []          # stopping a sensor ourselves is not a lost link: no gap, no marker
+    assert not [a for a in admin.hub.alarms.active if "witmotion" in a]
+
+
+async def test_switching_off_stops_everything_and_switching_on_again_starts_it(admin):
+    await admin.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row()]})
+    await until(lambda: len(admin.made) == 1)
+    await admin.put("/api/admin/witmotion", json={"enabled": False, "sensors": [row()]})
+    assert DEVICE_ID not in admin.hub.devices and admin.integ.info()["active"] is False
+    st = (await admin.get("/api/admin/state")).json()
+    assert st["witmotion"]["sensors"] == [] and st["config"]["witmotion"]["enabled"] is False
+    await admin.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row()]})
+    await until(lambda: DEVICE_ID in admin.hub.devices and len(admin.made) == 2)
+
+
+async def test_a_smoothing_set_in_the_settings_file_is_kept_but_not_a_new_odd_one(admin):
+    admin.hub.config.witmotion.sensors = [WitmotionSensorConfig(address=MAC1, smoothing_s=3)]
+    ok = await admin.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row(MAC1, smoothing_s=3)]})
+    assert ok.status_code == 200 and admin.hub.config.witmotion.sensors[0].smoothing_s == 3
+    assert (await admin.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row(MAC1, smoothing_s=4)]})).status_code == 422
+
+
+async def test_admin_state_shows_each_sensor_but_the_public_data_has_no_address(admin):
+    await admin.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row(MAC1), row(MAC2, label="Two")]})
+    await until(lambda: len(admin.made) == 2)
+    cb = admin.made[0].cb
+    cb["on_connected"](time.time())
+    put3(cb, one(F1), time.time())
+    admin.made[1].cb["on_status"]("not found")
+    st = (await admin.get("/api/admin/state")).json()["witmotion"]
+    one_, two = st["sensors"]
+    assert (one_["index"], one_["connected"], one_["text"]) == (0, True, "Connected") and one_["age_s"] is not None
+    assert (two["index"], two["connected"], two["text"], two["age_s"]) == (1, False, "Sensor not found", None)
+    assert "WT901BLE family" in one_["info_line"] and set(one_) >= {"setup_line", "info_line", "warning"}
+    admin.integ.tick(time.time() + 60)                    # quiet for a minute: a gap and a lost link, not the last numbers
+    st = (await admin.get("/api/admin/state")).json()["witmotion"]
+    assert st["sensors"][0]["connected"] is False and st["sensors"][0]["age_s"] is None and st["sensors"][0]["text"] == "Link lost"
+    # Nothing public carries an address or the admin card's fields.
+    for url in ("/api/snapshot", "/api/info", "/api/dashboard/foh"):
+        text = (await admin.get(url)).text
+        assert "AA:BB" not in text and "aa:bb" not in text and "scanning" not in text
+
+
+async def test_find_sensors_lists_wt_devices_and_marks_the_added_ones_and_waits_for_nothing_else(admin):
+    await admin.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row(MAC2)]})
+    admin.gate.set()
+    r = await admin.post("/api/admin/witmotion/scan")
+    assert r.status_code == 200
+    j = r.json()
+    assert j["ok"] is True and j["seconds"] == scan_mod.SCAN_S
+    assert [(s["name"], s["address"], s["rssi"], s["added"]) for s in j["sensors"]] == [
+        ("WT901BLE67", MAC1, -58, False), ("WT901BLE68", MAC2, -71, True)]
+    assert admin.integ.admin_status()["scanning"] is False
+    assert not any(c for c in admin.made if getattr(c, "connected", False))        # a search never connects
+
+
+async def test_only_one_search_at_a_time(admin):
+    first = asyncio.create_task(admin.post("/api/admin/witmotion/scan"))
+    await until(lambda: admin.integ.admin_status()["scanning"])
+    again = await admin.post("/api/admin/witmotion/scan")
+    assert again.status_code == 409 and "already running" in again.text
+    st = (await admin.get("/api/admin/state")).json()["witmotion"]
+    assert st["scanning"] is True
+    admin.gate.set()
+    assert (await first).status_code == 200
+    await until(lambda: not admin.integ.admin_status()["scanning"])
+    assert (await admin.post("/api/admin/witmotion/scan")).status_code == 200     # free again
+
+
+async def test_find_sensors_says_so_plainly_when_bluetooth_is_unavailable(tmp_path):
+    import httpx
+    from stagewatch.web.server import create_app
+    h = Hub(tmp_path)
+
+    async def broken():
+        raise scan_mod.ScanUnavailable()
+
+    integ = WitmotionIntegration(h, scan_fn=broken)
+    h.add_integration(integ)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app(h)), base_url="http://test") as c:
+        await c.post("/api/admin/setup", json={"pin": "4711"})
+        r = await c.post("/api/admin/witmotion/scan")
+        assert r.status_code == 200 and r.json() == {"ok": False, "message": scan_mod.UNAVAILABLE}
+        assert integ.admin_status()["scanning"] is False                            # and it can be tried again
+    h.recorder.close()
+
+
+async def test_find_sensors_in_emulate_gives_two_simulated_sensors(tmp_path, monkeypatch):
+    import httpx
+    from stagewatch.integrations import witmotion as wm
+    from stagewatch.web.server import create_app
+    monkeypatch.setattr(wm, "EMULATE_SCAN_S", 0.0)
+    h = Hub(tmp_path, emulate=True)
+    integ = WitmotionIntegration(h, emulate=True)
+    h.add_integration(integ)
+    await integ.start()
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app(h)), base_url="http://test") as c:
+            await c.post("/api/admin/setup", json={"pin": "4711"})
+            j = (await c.post("/api/admin/witmotion/scan")).json()
+            assert j["ok"] and j["emulate"] and [s["address"] for s in j["sensors"]] == [MAC1, MAC2]
+            # In emulate the saved list is not what runs (one simulated sensor), and a save changes nothing running.
+            r = await c.put("/api/admin/witmotion", json={"enabled": True, "sensors": [row(MAC3)]})
+            assert r.status_code == 200 and [s.device_id for s in integ.sensors] == [DEVICE_ID]
+    finally:
+        await integ.stop()
+        h.recorder.close()
+
+
+async def test_the_scan_waits_for_the_radio_that_a_reader_is_using(tmp_path, monkeypatch):
+    from stagewatch.integrations import witmotion as wm
+    h = Hub(tmp_path)
+    integ = WitmotionIntegration(h)
+    monkeypatch.setattr(wm, "RADIO_WAIT_S", 0.05)
+    async with integ._scan_lock:                                  # a sensor reader is scanning or connecting
+        with pytest.raises(scan_mod.ScanUnavailable) as e:
+            await integ.find_sensors()
+    assert e.value.message == scan_mod.BUSY and integ.admin_status()["scanning"] is False
+    h.recorder.close()
+
+
+def test_the_admin_card_is_wired_in_the_page_script():
+    from pathlib import Path
+    js = (Path(__file__).resolve().parents[1] / "src" / "stagewatch" / "web" / "static" / "admin.js").read_text(encoding="utf-8")
+    assert "/api/admin/witmotion" in js and "/api/admin/witmotion/scan" in js and "Find sensors" in js
+    assert "set up in the settings file" not in js and "a guide, not a safety system" in js.lower()

@@ -24,7 +24,7 @@
     power: ["Power", "Watts, volts, amps, frequency and energy from Shelly power meters, as the meters report them. Read only. Never part of a site average. Add meters in the Shelly power meters settings. Stays hidden until a meter has been added."],
     documents: ["Plans on file", "The event's safety and risk documents you have shared with this dashboard (Admin → Documents). The wall shows titles only."],
     contacts: ["Onsite contacts", "Key people for this event: job title, name, radio channel and area (Admin → Onsite contacts). Phone numbers only when you allow them in three places: Onsite contacts, this dashboard, and the contact."],
-    witmotion_tilt: ["Tilt (WitMotion)", "Roll and/or pitch from each WitMotion tilt sensor, in degrees, with its battery and the settings it reports. Advisory only: a guide, not a rigging safety system. Set the sensors up in config.yaml. Stays hidden until one is set up."],
+    witmotion_tilt: ["Tilt (WitMotion)", "Roll and/or pitch from each WitMotion tilt sensor, in degrees, with its battery and the settings it reports. Advisory only: a guide, not a rigging safety system. Set the sensors up in Admin (Integrations, WitMotion tilt sensors). Stays hidden until one is set up."],
     pi_host: ["Raspberry Pi", "The health of the Raspberry Pi Stagewatch runs on: temperature, power supply (under-voltage), speed, load, memory, disk and Wi-Fi signal. Hidden unless Stagewatch runs on a Pi."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };

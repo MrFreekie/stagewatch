@@ -516,6 +516,121 @@
       h("p", { class: "muted" }, lines.join(" · ")));
   }
 
+  // ------------------------------------------------------------ witmotion
+  // WitMotion tilt sensors (Bluetooth), set up here as well as in the settings file. Read-only toward the
+  // sensors: Stagewatch listens and asks each one for its battery and settings; it never changes a setting,
+  // pairs, renames or calibrates one. Each sensor is found by its Bluetooth address. The addresses are shown
+  // here and nowhere public. Tilt is a guide, not a safety system: the target bands are display only.
+  let wmFound = null;   // the last "Find sensors" answer, kept until the card is saved
+  function wmStatusNodes(i) {
+    const s = ((admin.witmotion || {}).sensors || []).find((x) => x.index === i);
+    const small = "font-size:12px";
+    const out = [h("div", { class: s && s.connected ? "muted" : "warn-text" }, SW.wmAdmin.statusText(s, true))];
+    if (s && s.warning) out.push(h("div", { class: "warn-text", style: small }, s.warning));
+    if (s && s.setup_line) out.push(h("div", { class: "muted", style: small }, s.setup_line));
+    if (s && s.info_line) out.push(h("div", { class: "muted", style: small }, s.info_line));
+    return out;
+  }
+  function witmotionCard() {
+    const wm = admin.config.witmotion || {}, st = admin.witmotion || {}, wa = SW.wmAdmin;
+    const first = wa.rowsFromConfig(wm);
+    const on = h("input", { type: "checkbox", id: "wm-enabled", checked: !!wm.enabled });
+    const rowsBox = h("div", {});
+    const found = h("div", { id: "wm-found", role: "status" });
+    const msg = h("p", { class: "warn-text", role: "alert" });
+    const rows = [];
+    const addBtn = h("button", { type: "button", class: "touch", id: "wm-add" }, "Add a sensor");
+    const num = (v, label, min, max, step, ph) => h("input", { class: "num touch", type: "number", min, max, step, value: v === null ? "" : v, placeholder: ph || "", "aria-label": label });
+    function addRow(r) {
+      const label = h("input", { class: "touch", maxlength: "60", value: r.label, placeholder: "e.g. Stage Right hang", "aria-label": "Sensor name" });
+      const address = h("input", { class: "touch", maxlength: "64", value: r.address, autocomplete: "off", spellcheck: "false", placeholder: "AA:BB:CC:DD:EE:FF", "aria-label": "Bluetooth address" });
+      const axis = h("select", { class: "touch", "aria-label": "Tilt to watch" },
+        [["both", "Both (X and Y)"], ["x", "X (roll, side to side)"], ["y", "Y (pitch, front to back)"]].map(([v, t]) => h("option", { value: v, selected: v === r.axis }, t)));
+      // A smoothing set in the settings file that is not one of the five stays in the list, so saving here keeps it.
+      const choices = wa.SMOOTHING.includes(r.smoothing_s) ? wa.SMOOTHING : wa.SMOOTHING.concat([r.smoothing_s]).sort((a, b) => a - b);
+      const smoothing = h("select", { class: "touch", "aria-label": "Smoothing" },
+        choices.map((v) => h("option", { value: String(v), selected: v === r.smoothing_s }, v === 0 ? "Off" : `${v} second${v === 1 ? "" : "s"}`)));
+      const tx = num(r.target_x, "Target X in degrees", "-180", "180", "0.1", "none");
+      const ty = num(r.target_y, "Target Y in degrees", "-180", "180", "0.1", "none");
+      const onT = num(r.on_target_deg, "On target within (degrees)", "0", "10", "0.1");
+      const close = num(r.close_deg, "Close within (degrees)", "0", "45", "0.1");
+      const status = r.savedIndex === null ? null : h("div", { class: "wm-status", "data-wm-status": String(r.savedIndex), role: "status" }, ...wmStatusNodes(r.savedIndex));
+      const rm = h("button", { type: "button", class: "touch danger" }, "Remove");
+      const el = h("div", { class: "card-inset wm-sensor" },
+        h("div", { class: "row" }, field("Name (shown on the card)", label), field("Bluetooth address", address), rm),
+        h("div", { class: "row" }, field("Tilt to watch", axis), field("Smoothing", smoothing)),
+        h("div", { class: "row" }, field("Target X (°, optional)", tx), field("Target Y (°, optional)", ty),
+          field("On target within (°)", onT), field("Close within (°)", close)),
+        status);
+      const entry = { el, savedIndex: r.savedIndex, read: () => ({ address: address.value, label: label.value, axis: axis.value, smoothing_s: Number(smoothing.value),
+        target_x: numOrNull(tx), target_y: numOrNull(ty), on_target_deg: numOrNull(onT), close_deg: numOrNull(close), savedIndex: r.savedIndex }) };
+      rm.onclick = () => { rows.splice(rows.indexOf(entry), 1); el.remove(); dirty = true; setAdd(); };
+      rows.push(entry);
+      rowsBox.append(el);
+      setAdd();
+    }
+    function setAdd() { addBtn.disabled = rows.length >= wa.MAX; addBtn.title = addBtn.disabled ? `Up to ${wa.MAX} sensors` : ""; }
+    addBtn.onclick = () => { addRow(wa.blankRow()); dirty = true; };
+    first.rows.forEach(addRow);
+
+    // Find sensors: a short Bluetooth search that only listens. It never connects to or pairs with anything.
+    const showFound = (r) => {
+      if (!r) { found.replaceChildren(); return; }
+      if (!r.ok) { found.replaceChildren(h("p", { class: "warn-text" }, `▲ ${r.message}`)); return; }
+      if (!r.sensors.length) { found.replaceChildren(h("p", { class: "muted" }, `No WitMotion sensors heard in ${r.seconds} seconds. Check the sensor is switched on, charged and close, and that the WitMotion phone app is closed.`)); return; }
+      found.replaceChildren(h("p", { class: "muted" }, `Heard ${plural(r.sensors.length, "sensor")}${r.emulate ? " (simulated in emulate mode)" : ""}:`),
+        ...r.sensors.map((s) => {
+          const have = () => rows.some((x) => wa.address(x.read().address) === s.address);
+          const btn = h("button", { type: "button", class: "touch", "aria-label": `Add ${s.name} (${s.address})` }, "Add");
+          const sync = () => { btn.disabled = !!have() || rows.length >= wa.MAX; btn.textContent = have() ? "Added" : "Add"; };
+          btn.onclick = () => { addRow(wa.blankRow(s.address)); dirty = true; msg.textContent = ""; showFound(r); };
+          sync();
+          return h("div", { class: "row" }, h("strong", {}, s.name), h("span", { class: "muted" }, `${s.address} · ${wa.signalText(s.rssi)}`), btn);
+        }));
+    };
+    if (wmFound) showFound(wmFound);
+    const findBtn = h("button", { type: "button", class: "touch", id: "wm-find" }, "Find sensors");
+    findBtn.onclick = async () => {
+      findBtn.disabled = true; dirty = true;
+      found.replaceChildren(h("p", { class: "muted" }, "Listening for sensors for about 8 seconds…"));
+      try { wmFound = await api("POST", "/api/admin/witmotion/scan"); showFound(wmFound); }
+      catch (err) { found.replaceChildren(h("p", { class: "warn-text" }, `▲ ${err.status === 409 ? "A search for sensors is already running. Wait for it to finish." : err.message}`)); }
+      finally { findBtn.disabled = false; }
+    };
+
+    const save = h("button", { type: "button", class: "primary touch", id: "wm-save" }, "Save");
+    save.onclick = async () => {
+      const list = rows.map((x) => x.read());
+      const bad = wa.check(list);
+      msg.textContent = bad ? `▲ ${bad} Nothing has been changed.` : "";
+      if (bad) return;
+      save.disabled = true;
+      try {
+        const r = await api("PUT", "/api/admin/witmotion", wa.payload(on.checked, list));
+        wmFound = null;
+        toast(r.applied ? "WitMotion saved. The sensors are updated now." : "WitMotion saved. Restart Stagewatch to apply.");
+        await refresh();
+      } catch (err) { msg.textContent = `▲ ${err.message} Nothing has been changed.`; }
+      finally { save.disabled = false; }
+    };
+
+    const running = (st.sensors || []).length;
+    return SW.brandCard("WitMotion tilt sensors", "witmotion-badge.png", "WitMotion",
+      h("p", { class: "muted" }, "Shows roll and pitch from WitMotion tilt sensors over Bluetooth on dashboards that have the Tilt (WitMotion) card (User dashboards → Edit cards). Stagewatch only listens: it asks each sensor for its battery and settings, and never changes a setting, calibrates, renames or pairs with it."),
+      h("p", { class: "notice" }, `${wa.NOTE} It is not a load or array-angle measurement and never replaces the rigger's own checks. Target bands are for display only and never raise an alarm. For an alarm, set a threshold on the tilt reading on the Sensors and nodes tab.`),
+      h("p", { class: "muted hint" }, "Never pair the sensor in the computer's Bluetooth settings: it drops the link. Only one device at a time can connect to a sensor, so close the WitMotion phone app. If the link is lost the readings become gaps, and nothing is filled in afterwards."),
+      admin.emulate ? h("p", { class: "notice" }, "Emulate mode: one simulated sensor runs, whatever is listed here. It loses its link for 20 seconds every 5 minutes, to show how a gap looks. Find sensors shows two made-up sensors.") : null,
+      h("div", { class: "row" }, h("label", { class: "field inline" }, on, " Read the WitMotion sensors")),
+      first.legacy ? h("p", { class: "notice" }, "This sensor is set up the older way, in the settings file. Press Save to move it into this list.") : null,
+      on.checked && !first.rows.length ? h("p", { class: "notice" }, "No sensors are listed, so Stagewatch connects to the first sensor it hears whose name still starts WT901BLE. Use Find sensors and Add to choose one.") : null,
+      rowsBox,
+      h("div", { class: "row" }, addBtn, findBtn, h("span", { class: "muted hint" }, "Up to four sensors. Find sensors listens for about 8 seconds and lists sensors whose name starts WT. A sensor renamed in the WitMotion app will not show: type its address in.")),
+      found,
+      h("p", { class: "muted hint" }, "X is the sensor's roll and Y is its pitch. Which way each points in the room depends on how the sensor is fixed, so tilt it and see which reading moves. Smoothing steadies the reading over that many seconds; alarms act on the smoothed value."),
+      msg,
+      h("div", { class: "row" }, save),
+      h("p", { class: "muted" }, st.running ? `Running ${plural(running, "sensor")}.` : "Not running."));
+  }
   // ------------------------------------------------------------ shelly power meters
   // Shelly power meters for the Power card. Read-only: Stagewatch only asks a meter for its readings and
   // never switches a relay, changes a setting, restarts or resets it. Addresses and MACs are shown here
@@ -1618,6 +1733,10 @@
       // One entry per device: always addable; each has its own add form, and is edited on its own card.
       { key: "shelly", name: "Shelly power meter", badge: "shelly-badge.svg", device: true, form: (prefill, done) => shellyAddForm(done) },
       { key: "esphome", name: "ESPHome node", badge: "", device: true, form: (prefill, done) => adoptForm(prefill || {}, done) },
+      // Bluetooth sensors have no address to type here: they are found and set up on their own card.
+      { key: "witmotion", name: "WitMotion tilt sensors", badge: "witmotion-badge.png", device: true, form: (prefill, done) => h("div", {},
+        h("p", {}, "WitMotion tilt sensors are found over Bluetooth and set up on their own card, with a Find sensors button."),
+        h("button", { type: "button", class: "primary touch", onclick: () => { done(); openCard("witmotion"); } }, "Open the WitMotion card")) },
     ]);
   }
   const connLogo = (p) => !p.badge ? null : h("img", { class: "card-logo", src: `/static/${p.badge}`, alt: "", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } });
@@ -1689,7 +1808,7 @@
   // opens the product's Edit pop-out, or its own card where it has one (each Shelly meter and
   // ESPHome node is changed and removed there). The chip slot keeps its space when there is no chip.
   // The ESPHome nodes: not the site row, services, meters, the Pi itself or the WitMotion sensors (their own tile).
-  const nodeList = () => snap.devices.filter((d) => d.id !== "site" && d.id !== "witmotion" && d.category !== "service" && d.category !== "meter" && d.category !== "host");
+  const nodeList = () => snap.devices.filter((d) => d.id !== "site" && d.integration !== "witmotion" && d.category !== "service" && d.category !== "meter" && d.category !== "host");
   const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
   function integrationTiles() {
     const addr = (p) => (p.emulated ? "Simulated (emulate mode)" : p.host ? `${p.host}${p.port ? `:${p.port}` : ""}` : "Address not set");
@@ -1705,9 +1824,10 @@
     const nodes = nodeList();
     if (nodes.length) tiles.push({ key: "esphome", name: "ESPHome nodes", badge: "", detail: plural(nodes.length, "node"),
       open: () => openCard("nodes"), hint: "Open the ESPHome nodes card on the Sensors and nodes tab" });
-    // WitMotion tilt sensors have no admin card yet: they are set up in the settings file.
-    if (wmSensors || wm.enabled || devOf("witmotion")) tiles.push({ key: "witmotion", name: "WitMotion tilt sensors", badge: "",
-      detail: wmSensors ? `${plural(wmSensors, "sensor")}, set up in the settings file` : "Set up in the settings file", open: null });
+    // WitMotion tilt sensors: set up on their own card (Bluetooth sensors have no address to type in a pop-out).
+    if (wmSensors || wm.enabled || devOf("witmotion")) tiles.push({ key: "witmotion", name: "WitMotion tilt sensors", badge: "witmotion-badge.png",
+      detail: wmSensors ? plural(wmSensors, "sensor") : wm.enabled ? "Switched on, no sensors listed" : "Not switched on",
+      open: () => openCard("witmotion"), hint: "Open the WitMotion tilt sensors card" });
     const tileEl = (t) => {
       const logo = t.badge ? connLogo({ badge: t.badge }) : h("span", { class: "card-logo int-nologo", "aria-hidden": "true" });
       const name = h("strong", { class: "int-name" }, t.name);
@@ -1731,7 +1851,7 @@
     const addTile = h("div", { class: "int-tile int-add" },
       h("button", { type: "button", class: "int-main", onclick: () => connDialog(null) },
         h("span", { class: "card-logo int-nologo int-plus", "aria-hidden": "true" }, "+"), h("strong", { class: "int-name" }, "Add integration"),
-        h("span", { class: "int-detail muted" }, "Ontime, Smaart, GLOBCON, a Shelly meter or an ESPHome node")));
+        h("span", { class: "int-detail muted" }, "Ontime, Smaart, GLOBCON, a Shelly meter, WitMotion tilt sensors or an ESPHome node")));
     return card("Integrations",
       h("p", { class: "muted" }, "Each outside product Stagewatch reads from. Tap a tile to change its address or settings, or to remove it. Removing a product keeps its history. Each product's other settings are on its own card below."),
       h("div", { class: "int-tiles" }, tiles.map(tileEl), found.map(foundTile), addTile));
@@ -2541,8 +2661,9 @@
     },
   };
   CHIP_INPUT.witmotion = () => {
-    const d = devOf("witmotion");
-    return d ? Object.assign(SW.sourceInput.smaart(d, entsOf("witmotion")), { source: "witmotion" }) : null;
+    // Every sensor that is set up: the worst one decides, as for the Shelly meters.
+    const devs = snap.devices.filter((d) => d.integration === "witmotion");
+    return devs.length ? Object.assign(SW.sourceInput.shelly(devs.map((d) => ({ dev: d, ents: entsOf(d.id) }))), { source: "witmotion" }) : null;
   };
   let chips = [];
   function chip(c, key) {
@@ -2668,6 +2789,7 @@
         added.smaart ? chip(foldCard(splCard(), "smaart", false), "smaart") : null,
         added.smaart ? foldCard(splLimitsCard(), "spllimits", false) : null,
         added.globcon ? chip(foldCard(globconCard(), "globcon", false), "globcon") : null,
+        chip(foldCard(witmotionCard(), "witmotion", false), "witmotion"),
         ((admin.shelly || {}).meters || []).length ? chip(foldCard(shellyCard(), "shelly", false), "shelly") : null,
         foldCard(barometerCard(), "barometer", false),
         piHostInfo() ? chip(foldCard(piHostCard(), "pihost", false), "pihost") : null,
@@ -2748,6 +2870,8 @@
           if (found(live.discovered) !== found(admin.discovered) && canRebuild && !document.querySelector("dialog[open]")) { await refresh(); return; }
           admin.wall_clock = live.wall_clock; admin.ontime_timer = live.ontime_timer; admin.ontime_rundown = live.ontime_rundown;
           admin.globcon = live.globcon;
+          admin.witmotion = live.witmotion;
+          document.querySelectorAll("[data-wm-status]").forEach((el) => el.replaceChildren(...wmStatusNodes(Number(el.dataset.wmStatus))));   // text only: nothing typed is lost
           if (ot) ot.replaceChildren(...ontimeStatusLines(admin).map((l) => h("p", {}, l)));
         } catch (err) { if (err.status === 401) throw err; }
       }
