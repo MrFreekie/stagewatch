@@ -48,7 +48,7 @@ def test_battery_and_signal_do_not_touch_site_values(tmp_path):
 def test_sensors_table_has_signal_and_battery_columns():
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     common = (STATIC / "common.js").read_text(encoding="utf-8")
-    assert re.search(r'showSignal \? h\("th", \{ class: "num" \}, "Signal"\)', js)
-    assert re.search(r'showBattery \? h\("th", \{ class: "num" \}, "Battery"\)', js)
+    assert re.search(r'showSignal \? h\("th", \{ class: "num[^"]*" \}, "Signal"\)', js)
+    assert re.search(r'showBattery \? h\("th", \{ class: "num[^"]*" \}, "Battery"\)', js)
     assert "signal_strength: { unit: \"dBm\"" in common and "battery: { unit: \"%\"" in common
     assert 'SW.signalWord = (dbm) => (dbm >= -67 ? "good" : dbm >= -75 ? "fair" : "weak");' in js
