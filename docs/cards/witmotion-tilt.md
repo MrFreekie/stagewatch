@@ -20,7 +20,7 @@ Which way X and Y point in the room depends on how the sensor is fixed. Tilt it 
 
 ## No data
 
-If the link is lost or the sensor goes quiet, the card shows **No data** with no colour. It never shows the last angle as if it were live. When the sensor comes back the smoothing starts again, so the number appears a moment later.
+Each sensor has its own tile, with its own **Online / Offline / Error** button (tap it for what is wrong and what to check). If the link is lost or the sensor goes quiet, the tile goes grey and shows **No data** with no colour. It stays on the card. It never shows the last angle as if it were live. When the sensor comes back the smoothing starts again, so the number appears a moment later.
 
 ## Small print
 

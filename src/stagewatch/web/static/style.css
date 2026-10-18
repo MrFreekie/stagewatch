@@ -1222,6 +1222,9 @@ body.layout-wall .pi-model { display: none; }
 .wm-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .wm-name { font-weight: 700; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-foot { font-size: 12px; margin-top: 4px; }
+.wm-head .ss-btn { min-height: 32px; padding: 2px 6px; }
+.wm-off .wm-axes, .wm-off .wm-name, .wm-off .wm-batt { opacity: .5; }   /* no data: greyed, never hidden; the status stays clear */
+body.layout-wall .wm-off .wm-axes { opacity: .5; }
 /* Battery: a drawn cell filled to the approximate percentage, with the number (and "Low") in words. */
 .wm-batt { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .wm-batt-icon { position: relative; width: 26px; height: 13px; border: 2px solid currentColor; border-radius: 3px; padding: 1px; box-sizing: border-box; }

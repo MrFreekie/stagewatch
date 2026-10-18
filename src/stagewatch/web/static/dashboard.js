@@ -1119,6 +1119,7 @@
   }
 
   // WitMotion tilt sensors (SW.wm, witmotion.js). Advisory; a gap or stale reading is "No data", never the last angle.
+  const wmUi = {};   // device id -> its status indicator
   function renderWitmotion() {
     const card = $("witmotion_tilt-card");
     const sensors = SW.wm.sensorsOf(state.devices);
@@ -1126,12 +1127,19 @@
     card.hidden = false;
     $("wm-title").textContent = SW.wm.title(sensors.length);
     // One compact tile per sensor; the setup small print for all of them sits once, under the tiles.
+    // Each tile has its own Online / Offline / Error indicator (kept per sensor, so an open pop-out survives a redraw),
+    // and goes grey while it has no data. It is never hidden, and never shows an old angle.
     const views = sensors.map((dev) => SW.wm.view(dev, state.entities));
-    const tiles = views.map((v) => h("div", { class: "wm-tile" },
+    const tiles = views.map((v, i) => {
+      const dev = sensors[i];
+      const ui = wmUi[dev.id] || (wmUi[dev.id] = SW.sourceStatusUi("witmotion"));
+      const ents = ["tilt_roll", "tilt_pitch"].map((k) => state.entities[`${dev.id}.${k}`]).filter(Boolean);
+      ui.update(Object.assign(SW.sourceInput.smaart(dev, ents), { source: "witmotion" }), state.now);
+      return h("div", { class: "wm-tile" + (v.live ? "" : " wm-off") },
       h("div", { class: "wm-head" }, h("span", { class: "wm-name", title: v.name }, v.name),
         v.battery ? h("span", { class: "wm-batt" + (v.battery.low ? " wm-batt-low" : ""), title: "Sensor battery (approximate)" },
           h("span", { class: "wm-batt-icon", "aria-hidden": "true" }, h("span", { class: "wm-batt-fill", style: `width:${v.battery.pct}%` })),
-          `${v.battery.low ? "Low " : ""}${v.battery.pct} %`) : null),
+          `${v.battery.low ? "Low " : ""}${v.battery.pct} %`) : null, ui.el),
       h("div", { class: "wm-axes" }, v.axes.map((a) => h("div", { class: "wm-axis" + (a.level ? ` wm-l${a.level}` : "") },
         h("div", { class: "pw-label", title: a.hint }, a.label),
         h("div", { class: "wm-value" + (a.unit ? "" : " wm-nodata") }, a.text, a.unit ? h("span", { class: "unit" }, a.unit) : null),
@@ -1141,7 +1149,9 @@
         a.target ? (a.target.band ? h("div", { class: `wm-band wm-t-${a.target.band}` }, a.target.bandText)
           : h("div", { class: "wm-band wm-hold", "aria-hidden": "true" }, "✓ On target")) : null))),
       h("div", { class: "muted wm-foot" }, v.live ? `${v.linkText} · ${v.smoothing}` : v.linkText),
-      v.warning ? h("p", { class: "wm-warn" }, "▲ " + v.warning) : null));
+      v.warning ? h("p", { class: "wm-warn" }, "▲ " + v.warning) : null);
+    });
+    for (const id of Object.keys(wmUi)) if (!sensors.some((d) => d.id === id)) delete wmUi[id];
     const about = views.filter((v) => v.setup || v.info).map((v) => h("p", { class: "wm-small" },
       h("strong", {}, v.name + ": "), [v.setup, v.info].filter(Boolean).join(" · ")));
     $("wm-body").replaceChildren(h("div", { class: "wm-grid" }, tiles),
