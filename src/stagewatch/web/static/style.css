@@ -1332,3 +1332,19 @@ body.layout-wall [data-card][data-level="alert"] > h2 { background: rgba(255, 13
 body.layout-wall [data-card][data-level="stop"] > h2 { background: rgba(255, 77, 94, .2); background: color-mix(in srgb, var(--stop) 20%, transparent); border-radius: 4px; }
 /* The timer and rundown cards' own 6 px border would double up with the edge on the wall. */
 body.layout-wall #ontime-timer-card[data-level], body.layout-wall #ontime-rundown-card[data-level] { border-left: 1px solid var(--grid); padding-left: 19px; }
+
+/* Admin console (admin.js). A card's how-to text folds under one "Help" line (SW.help), shown
+   above the card's own status line rather than as paragraphs. */
+.card-help { margin-top: 12px; }
+.card-help .card-help, .card-help details { margin-top: 6px; }
+/* Hints read the same size whether they are a paragraph or sit in a row beside a field. */
+#app .hint { font-size: 13px; line-height: 1.4; }
+/* Status and error lines keep one line of space while empty, so a card does not jump when
+   "Saved" or an error appears. */
+#app p[role="status"]:empty::before, #app div[role="status"]:empty::before, #app p[role="alert"]:empty::before { content: "\00a0"; }
+/* The integrations list: the name and description column keeps a readable width. */
+#app td.catalog-name { min-width: 260px; }
+/* Touch screens: every admin control at least 44 px tall, including the small table buttons. */
+@media (pointer: coarse) {
+  #app button, #app select, #app input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
+}

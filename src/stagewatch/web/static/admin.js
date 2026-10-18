@@ -94,8 +94,8 @@
         h("input", { type: "checkbox", checked: b[key], onchange: (e) => opts({ [key]: e.target.checked }) }), ` ${text}`);
       const hasAny = b.light || b.dark;
       box.replaceChildren(...[
-        h("p", { class: "muted hint" }, "Shown beside the title on every dashboard and the wall for this event only. PNG, JPEG or WebP, still image, up to 1 MB and 2048 pixels. Nothing shows until you upload one."),
-        h("p", { class: "muted hint" }, "The file is served exactly as uploaded, to anyone on the show network. Photos can carry hidden details (such as GPS location): export the logo from a graphics program rather than using a camera photo."),
+        SW.help(h("p", { class: "muted hint" }, "Shown beside the title on every dashboard and the wall for this event only. PNG, JPEG or WebP, still image, up to 1 MB and 2048 pixels. Nothing shows until you upload one."),
+          h("p", { class: "muted hint" }, "The file is served exactly as uploaded, to anyone on the show network. Photos can carry hidden details (such as GPS location): export the logo from a graphics program rather than using a camera photo.")),
         slot("light", "Logo for light screens"),
         slot("dark", "Logo for dark screens (optional)"),
         b.light && !b.dark ? h("div", { class: "row" }, field("On dark screens, without a dark file", onDark)) : null,
@@ -214,10 +214,10 @@
       h("div", { class: "row", style: "margin-top:10px" },
         field("Time zone", tz), tzList,
         field("New show day starts at (HH:MM, 24-hour)", rollover)),
-      h("p", { class: "muted hint" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before. Use 03:00 or later for the new day, to stay clear of the hour when the clocks change."),
       h("div", { class: "row", style: "margin-top:10px" },
         field("Warning times (minutes)", warn)),
-      h("p", { class: "muted hint" }, "Add ! after a time to flash the card at that time. Applies to every dashboard. The schedule card goes amber at the first time before an item ends and orange at the later ones. The next item turns amber within the last time."),
+      SW.help(h("p", { class: "muted hint" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before. Use 03:00 or later for the new day, to stay clear of the hour when the clocks change."),
+        h("p", { class: "muted hint" }, "Add ! after a time to flash the card at that time. Applies to every dashboard. The schedule card goes amber at the first time before an item ends and orange at the later ones. The next item turns amber within the last time.")),
       tzNote,
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { class: "primary", onclick: () => save() }, "Save site")));
@@ -231,7 +231,7 @@
     const qnh = h("input", { class: "num touch", inputmode: "decimal", placeholder: "1,013.2", maxlength: 9, autocomplete: "off", "aria-label": "Sea-level pressure in hPa" });
     const out = h("div", { role: "status" });
     const panel = h("div", { class: "card-inset", hidden: true },
-      h("p", { class: "muted hint" }, "Use the pressure at sea level from the Met Office, a weather app or the nearest airport METAR (QNH), taken in the last hour and within about 20 km. This sets an altitude that makes the barometer read that figure; it may differ a little from the surveyed height. If you know your true height and the readings are off, use the pressure offset in the sensor settings instead."),
+      SW.help(h("p", { class: "muted hint" }, "Use the pressure at sea level from the Met Office, a weather app or the nearest airport METAR (QNH), taken in the last hour and within about 20 km. This sets an altitude that makes the barometer read that figure; it may differ a little from the surveyed height. If you know your true height and the readings are off, use the pressure offset in the sensor settings instead.")),
       h("div", { class: "row" }, field("Sea-level pressure (hPa)", qnh),
         h("button", { type: "button", class: "touch", style: "align-self:flex-end", onclick: work }, "Work out altitude"),
         h("button", { type: "button", class: "touch", style: "align-self:flex-end", onclick: () => { panel.hidden = true; out.replaceChildren(); } }, "Cancel")),
@@ -372,10 +372,6 @@
       if (slot.source_listed === false) notes.push(`Smaart is not listing the input "${slot.source || "first input"}" now, so that value shows as not available.`);
     }
     return SW.brandCard("Sound level (Smaart)", "smaart-badge.png", "Smaart",
-      h("p", { class: "muted" }, "Records up to three sound level values from Smaart, exactly as Smaart reports them, and shows them on dashboards that have the Sound level card (User dashboards → Edit cards). Stagewatch only listens: it never changes anything in Smaart, and a value Smaart does not give shows as a dash, never zero."),
-      h("details", {}, h("summary", { class: "muted" }, "What Stagewatch sends to Smaart"),
-        h("p", { class: "muted" }, "Four short fixed messages and nothing else: \"is a password needed?\", \"which inputs are active?\", the password (only to log in), and \"one update a second, please\". It never starts or stops measuring, never reads Smaart's history, and never changes calibration, gain, logging, alarms or the mix. It does no sound-level maths: nothing is averaged, smoothed or rounded."),
-        h("p", { class: "muted" }, "The password goes to Smaart as plain text on the show network (Smaart's API is not encrypted as far as we know), so use a password that you use nowhere else.")),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated Smaart with two inputs and the values SPL A Slow, SPL C Slow, LAeq 1 and LAeq 10, so no Smaart or address is needed. It has no LAeq 15, and now and then flags one reading as overload, to show how \"not available\" looks.")
         : h("p", { class: "notice" }, "Tested live on Smaart Suite 9.6.4; other Smaart versions have not been tested. Turn on Smaart's API under Options → Preferences → API first. The port is normally the one Smaart's SPL web page uses (26000 is the usual example); please confirm it on your Smaart."),
       h("div", { class: "row" }, h("label", { class: "field inline" }, on, " Record sound level"),
@@ -399,7 +395,11 @@
         locations: SW.spl.locObject(locs),
       }), "Sound level saved").then(refresh, () => {}) }, "Save")),
       ...notes.map((n) => h("p", { class: "notice" }, n)),
-      h("p", { class: "muted hint" }, "Normally SPL A Slow, SPL C Slow and an LAeq figure. The LAeq is Smaart's own number; Stagewatch cannot check which period it covers beyond the name Smaart gives it. Stagewatch is not a calibrated compliance record. The Smaart log or report is the record that counts."),
+      SW.help(h("p", { class: "muted" }, "Records up to three sound level values from Smaart, exactly as Smaart reports them, and shows them on dashboards that have the Sound level card (User dashboards → Edit cards). Stagewatch only listens: it never changes anything in Smaart, and a value Smaart does not give shows as a dash, never zero."),
+        h("details", {}, h("summary", { class: "muted" }, "What Stagewatch sends to Smaart"),
+        h("p", { class: "muted" }, "Four short fixed messages and nothing else: \"is a password needed?\", \"which inputs are active?\", the password (only to log in), and \"one update a second, please\". It never starts or stops measuring, never reads Smaart's history, and never changes calibration, gain, logging, alarms or the mix. It does no sound-level maths: nothing is averaged, smoothed or rounded."),
+        h("p", { class: "muted" }, "The password goes to Smaart as plain text on the show network (Smaart's API is not encrypted as far as we know), so use a password that you use nowhere else.")),
+        h("p", { class: "muted hint" }, "Normally SPL A Slow, SPL C Slow and an LAeq figure. The LAeq is Smaart's own number; Stagewatch cannot check which period it covers beyond the name Smaart gives it. Stagewatch is not a calibrated compliance record. The Smaart log or report is the record that counts.")),
       h("p", { class: "muted" }, lines.join(" · ")));
   }
 
@@ -492,7 +492,7 @@
       h("div", { class: "row" }, field("Notes shown on dashboards", notes)),
       h("div", { class: "row" }, field("Entered by (admin only)", enteredBy), field("What changed (on the timeline)", changeNote)),
       h("div", { class: "row" }, save, back),
-      h("p", { class: "muted hint" }, "Over means Smaart's value is above the entered number. A licence limit adds a marker and a silent notice the first time it is passed; guidance shows on the card only. Times are the site's clock on the show day (a time before the day rollover is after midnight). Stagewatch cannot check Smaart's Leq period: tie each limit to the Smaart value whose name matches the licence (for example LAeq 15)."),
+      SW.help(h("p", { class: "muted hint" }, "Over means Smaart's value is above the entered number. A licence limit adds a marker and a silent notice the first time it is passed; guidance shows on the card only. Times are the site's clock on the show day (a time before the day rollover is after midnight). Stagewatch cannot check Smaart's Leq period: tie each limit to the Smaart value whose name matches the licence (for example LAeq 15).")),
       copy,
       h("div", { class: "row" }, field("Warn this many minutes before a limit drops (0 = off)", warn),
         h("label", { class: "field inline" }, mk, " Marker when a limit is first passed"), h("label", { class: "field inline" }, al, " Silent notice while over"), saveSet),
@@ -517,9 +517,9 @@
       if (st.controllers && st.controllers.length) lines.push(`Controller${st.controllers.length === 1 ? "" : "s"} ${st.controllers.join(", ")} in use`);
     }
     return SW.brandCard("DirectOut GLOBCON", "directout-badge.png", "DirectOut",
-      h("p", { class: "muted" }, "Shows live level meters from GLOBCON on dashboards that have the DirectOut GLOBCON card. Stagewatch only listens: it never moves a fader, mutes, solos, changes a layer or runs a function in GLOBCON. Levels are shown exactly as GLOBCON reports them, nothing is recorded, and if GLOBCON goes quiet the card freezes on the last levels and says how old they are."),
-      h("details", {}, h("summary", { class: "muted" }, "What Stagewatch sends to GLOBCON"),
-        h("p", { class: "muted" }, "Only \"are you there?\", \"tell me this\" and \"tell me when it changes\" (and \"stop telling me\"), for controller names, strip labels, the layer and the meter levels. If you save a password, it is sent to log in, and only when GLOBCON asks for one. It is sent as plain text on the show network, so use a password you use nowhere else.")),
+      SW.help(h("p", { class: "muted" }, "Shows live level meters from GLOBCON on dashboards that have the DirectOut GLOBCON card. Stagewatch only listens: it never moves a fader, mutes, solos, changes a layer or runs a function in GLOBCON. Levels are shown exactly as GLOBCON reports them, nothing is recorded, and if GLOBCON goes quiet the card freezes on the last levels and says how old they are."),
+        h("details", {}, h("summary", { class: "muted" }, "What Stagewatch sends to GLOBCON"),
+        h("p", { class: "muted" }, "Only \"are you there?\", \"tell me this\" and \"tell me when it changes\" (and \"stop telling me\"), for controller names, strip labels, the layer and the meter levels. If you save a password, it is sent to log in, and only when GLOBCON asks for one. It is sent as plain text on the show network, so use a password you use nowhere else."))),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated GLOBCON with 16 controllers, so no GLOBCON or address is needed. It drops out for a few seconds every minute and a half, to show how a frozen card looks.")
         : h("p", { class: "notice" }, "Names, layers and labels checked on one real controller (2026-10). Live level meters work. The metering scale for different channel types and password login are not yet tested. Please check the levels against GLOBCON's own screen."),
       admin.emulate ? null : h("div", { class: "row" }, field("GLOBCON computer (127.0.0.1 is this computer)", host), field("Port (9091 unless GLOBCON says otherwise)", port)),
@@ -611,7 +611,6 @@
     if (shellyTest && shellyTest.ok) showResult(shellyTest);
 
     return SW.brandCard("Shelly power meters", "shelly-badge.svg", "Shelly",
-      h("p", { class: "muted" }, "Shows watts, volts, amps, frequency and energy from Shelly power meters on dashboards that have the Power card (User dashboards → Edit cards). Stagewatch only reads: every few seconds it asks each meter for its readings, and that is all it ever sends. It never switches a relay, changes a setting, restarts or resets a meter. Type a meter's rating in amps (for example 16 for a PM Mini, or the breaker it watches) to get a load bar with warnings at 80% and 100%. Voltage and frequency are checked against the UK ranges."),
       h("p", { class: "notice" }, "A Shelly Plug or any Shelly with a relay is read for its power only. Stagewatch never touches the relay, but it cannot stop the Shelly's own button, schedule or app from switching it. For a distro, prefer a meter with no relay, such as the PM Mini."),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: meters are simulated, so any private address (such as 192.0.2.20) will \"find\" a simulated PM Mini. The demo meter stops answering for 40 seconds every 5 minutes, to show how a frozen card looks.")
         : h("p", { class: "notice" }, "Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3. Other Shelly meters are read by what they report, but are not tested. A meter with a password is not supported yet."),
@@ -620,7 +619,8 @@
       h("div", { class: "row" }, field("Meter address (an IP address on your local network)", host), test),
       result,
       h("div", { class: "row" }, field("Name", name), field("Area (optional)", area), field("Reads every (seconds, 2 to 5)", every), save),
-      h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it. Stagewatch recognises a meter by its own hardware address, so if its address changes, type the new one in its row and press Save. Warnings at the breaker rating are planned for a later version. Figures are advisory and do not replace the electrician's inspection and testing."));
+      SW.help(h("p", { class: "muted" }, "Shows watts, volts, amps, frequency and energy from Shelly power meters on dashboards that have the Power card (User dashboards → Edit cards). Stagewatch only reads: every few seconds it asks each meter for its readings, and that is all it ever sends. It never switches a relay, changes a setting, restarts or resets a meter. Type a meter's rating in amps (for example 16 for a PM Mini, or the breaker it watches) to get a load bar with warnings at 80% and 100%. Voltage and frequency are checked against the UK ranges."),
+        h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it. Stagewatch recognises a meter by its own hardware address, so if its address changes, type the new one in its row and press Save. Warnings at the breaker rating are planned for a later version. Figures are advisory and do not replace the electrician's inspection and testing.")));
   }
 
   // ------------------------------------------------------------ alarm notices
@@ -642,13 +642,13 @@
       }), "Alarm notices saved").then(refresh, () => {});
     };
     return card("Alarm notices",
-      h("p", { class: "muted" }, "Keeps the alarm list on dashboards short. Advisory notices only: alert and stop alarms stay until they clear. The sensor list and this page still show what is wrong. 0 means never."),
       h("div", { class: "row" },
         field("Hide acknowledged notices after (minutes, 0 = never)", hide),
         field("Move old notices into \"Older notices\" after (minutes, 0 = never)", fold),
         h("button", { class: "primary touch", style: "align-self:flex-end", onclick: save }, "Save")),
       msg,
-      h("p", { class: "muted hint" }, "An acknowledged notice leaves the list that long after it was acknowledged (up to 1,440 minutes); the sensor list still shows the condition, for example a node marked Missing. A quiet notice (one that never beeps) that has not changed moves into \"Older notices\" (up to 10,080 minutes); it is not removed. A notice that is still beeping stays on the list until someone acknowledges it. If the problem changes or comes back, the notice is shown again straight away."));
+      SW.help(h("p", { class: "muted" }, "Keeps the alarm list on dashboards short. Advisory notices only: alert and stop alarms stay until they clear. The sensor list and this page still show what is wrong. 0 means never."),
+        h("p", { class: "muted hint" }, "An acknowledged notice leaves the list that long after it was acknowledged (up to 1,440 minutes); the sensor list still shows the condition, for example a node marked Missing. A quiet notice (one that never beeps) that has not changed moves into \"Older notices\" (up to 10,080 minutes); it is not removed. A notice that is still beeping stays on the list until someone acknowledges it. If the problem changes or comes back, the notice is shown again straight away.")));
   }
 
   // ------------------------------------------------------------ barometer
@@ -673,7 +673,7 @@
         h("th", { scope: "row" }, r.label), h("td", {}, r.value, r.unit ? " " + r.unit : "")))))),
       h("p", { class: "muted" }, addr ? `Network addresses (admin only): ${addr}` : "Network addresses: not known"),
       (dev.pi && dev.pi.warnings && dev.pi.warnings.length) ? h("p", { class: "pi-warnline" }, dev.pi.warnings.join(" ")) : null,
-      h("p", { class: "muted hint" }, "Warnings show quietly in the dashboard header's messages (they never sound): short of power, slowed down, 80 °C or more, or under 1 GB / 5% disk free. Under-voltage and throttling also add a marker when they start and stop. Tested on a Raspberry Pi 4; other models are not tested."));
+      SW.help(h("p", { class: "muted hint" }, "Warnings show quietly in the dashboard header's messages (they never sound): short of power, slowed down, 80 °C or more, or under 1 GB / 5% disk free. Under-voltage and throttling also add a marker when they start and stop. Tested on a Raspberry Pi 4; other models are not tested.")));
   }
   function barometerCard() {
     const b = admin.config.barometer || {};
@@ -684,14 +684,14 @@
     const demos = admin.emulate ? h("div", { class: "row", style: "margin-top:10px" }, h("span", { class: "muted" }, "Try the card with demo weather (emulate mode only; the dropout starts after 1 minute):"),
       DEMOS.map((d) => h("button", { type: "button", class: "touch", onclick: () => run(() => api("POST", "/api/admin/barometer/demo", { scenario: d[0] }), `${d[1]} started`).then(refresh, () => {}) }, d[1]))) : null;
     return card("Barometer",
-      h("p", { class: "muted" }, "Sea-level pressure, how it has changed over 3 hours and a rough outlook, on dashboards that have the Barometer card (User dashboards → Edit cards). It uses the pressure sensors, the site temperature and the altitude in the Site card. It is a guide from pressure at this site only, not a forecast: it does not replace the Met Office forecast and warnings or your event's weather plan."),
       h("div", { class: "row" }, field("Hemisphere (for the summer and winter months)", hemi),
         field("Silent alarm and marker when pressure falls quickly", alarm),
         field("Falls at least this much in 3 h (hPa)", thr),
         h("button", { class: "primary touch", style: "align-self:flex-end", onclick: () => run(() => api("PUT", "/api/admin/barometer", {
           hemisphere: hemi.value, rapid_fall_alarm: alarm.checked, rapid_fall_hpa_3h: Number(thr.value) || 3.6,
         }), "Barometer saved").then(refresh, () => {}) }, "Save")),
-      h("p", { class: "muted hint" }, "The falling-quickly warning on the card is always on. The silent alarm adds a line to the alarm list and one marker, and never sounds. 3.6 hPa in 3 hours is the Met Office's \"falling quickly\". The sea-level figure uses the measured temperature; it can differ from airport QNH by a hPa or so."),
+      SW.help(h("p", { class: "muted" }, "Sea-level pressure, how it has changed over 3 hours and a rough outlook, on dashboards that have the Barometer card (User dashboards → Edit cards). It uses the pressure sensors, the site temperature and the altitude in the Site card. It is a guide from pressure at this site only, not a forecast: it does not replace the Met Office forecast and warnings or your event's weather plan."),
+        h("p", { class: "muted hint" }, "The falling-quickly warning on the card is always on. The silent alarm adds a line to the alarm list and one marker, and never sounds. 3.6 hPa in 3 hours is the Met Office's \"falling quickly\". The sea-level figure uses the measured temperature; it can differ from airport QNH by a hPa or so.")),
       demos);
   }
 
@@ -906,7 +906,7 @@
     }).filter(Boolean);
 
     const c = card("Calibration & hardware",
-      h("p", { class: "muted" }, "Each offset belongs to the board it was set on, so it follows that board if you re-adopt it or change its address. Offsets are set under Sensors: calibration & averaging. Hardware addresses are only shown here, never on dashboards."),
+      SW.help(h("p", { class: "muted" }, "Each offset belongs to the board it was set on, so it follows that board if you re-adopt it or change its address. Offsets are set under Sensors: calibration & averaging. Hardware addresses are only shown here, never on dashboards.")),
       held.length ? h("div", {}, h("h3", { class: "muted", style: "font-size:13px;margin:10px 0 6px" }, "NEEDS A DECISION"), held) : null,
       h("h3", { class: "muted", style: "font-size:13px;margin:10px 0 6px" }, "SENSORS"),
       rows.length ? h("div", { class: "table-scroll" }, h("table", {},
@@ -1001,7 +1001,7 @@
     load();
 
     const c = card("Device errors",
-      h("p", { class: "muted" }, "How many problems each device had, and when, so you can see which box keeps dropping out. A problem is counted once however long it lasts or however many units report it at the same moment. Imported LA Network Manager logs add their units here. Limit alarms (a stage that is too hot) are not device problems and stay in the alarm log."),
+      SW.help(h("p", { class: "muted" }, "How many problems each device had, and when, so you can see which box keeps dropping out. A problem is counted once however long it lasts or however many units report it at the same moment. Imported LA Network Manager logs add their units here. Limit alarms (a stage that is too hot) are not device problems and stay in the alarm log.")),
       h("div", { class: "row" }, field("Show", showSel), field("How much", scopeSel)),
       box);
     c.id = "device-errors-card";
@@ -1104,14 +1104,14 @@
     loadImports();
 
     return card("Import a log file",
-      h("p", { class: "muted" }, "Read an L-Acoustics Network Manager log after a show, so amplifier faults and power events appear as markers in that show's timeline and report. Stagewatch only reads a copy of the file; it never talks to Network Manager or the amplifiers. Nothing is added until you press Import, and every import can be undone."),
-      h("p", { class: "muted hint" }, "The file is in the L-Acoustics folder inside AppData on the computer that runs Network Manager: LA Network Manager → Log, named Log_ with the date and time."),
       h("div", { class: "row" }, h("label", { class: "field inline" }, "Log file: ", fileInput)),
       h("div", { class: "row" },
         field("Show", showSel),
         field("Time zone of that computer", tz),
         field("Clock offset (seconds)", offset)),
-      h("p", { class: "muted hint" }, "The log has no time zone, so it is read as the time zone above. If the laptop's clock was wrong, put the number of seconds to add (a laptop 5 minutes slow: 300)."),
+      SW.help(h("p", { class: "muted" }, "Read an L-Acoustics Network Manager log after a show, so amplifier faults and power events appear as markers in that show's timeline and report. Stagewatch only reads a copy of the file; it never talks to Network Manager or the amplifiers. Nothing is added until you press Import, and every import can be undone."),
+        h("p", { class: "muted hint" }, "The file is in the L-Acoustics folder inside AppData on the computer that runs Network Manager: LA Network Manager → Log, named Log_ with the date and time."),
+        h("p", { class: "muted hint" }, "The log has no time zone, so it is read as the time zone above. If the laptop's clock was wrong, put the number of seconds to add (a laptop 5 minutes slow: 300).")),
       h("label", { class: "field inline" }, sessionMarkers, " Also add markers for going online or offline and for Acknowledge all"),
       h("label", { class: "field inline" }, loadCheckerMarkers, " Also add markers for entering and leaving Load Checker (it can make inputs unlock)"),
       status, previewBox,
@@ -1353,12 +1353,12 @@
         .concat(mine.length ? mine.map((x) => x.el) : [h("p", { class: "muted hint" }, empty)]);
     };
     return card("Sensors: calibration & averaging",
-      h("p", { class: "muted" }, "Offset is added to every reading (compare against a reference such as a Kestrel). Pressure offsets are in Pa (1 hPa = 100 Pa). Untick to leave a sensor out of the site average, e.g. one in direct sun."),
       h("label", { class: "field inline" }, weigh, " Weight the average by accuracy"),
-      h("p", { class: "muted hint" }, "Off: every sensor in the average counts the same. On: a sensor with a smaller accuracy figure counts for more, but no sensor counts for more than 80 %, so the average still covers the places you put sensors. This only applies to temperature, humidity or pressure when every sensor in that average has an accuracy figure and the figures are all typical or all maximum. Otherwise that one uses equal weights, and the reason is shown here. Share is how much each sensor counts in the average now."),
       notes,
-      h("p", { class: "muted hint" }, "Accuracy is the maker's ± figure from the datasheet, in °C, %RH or hPa. Typical is the usual figure; maximum is the worst case. Presets fill the typical figure from the manufacturer's page: check it against your sensor's datasheet, and change it if you know better."),
-      h("p", { class: "muted hint" }, "After you calibrate a sensor, type the uncertainty you are left with, not the datasheet figure. Sensors calibrated against the same reference share that reference's error, so averaging them does not remove it. Where a sensor sits (sun, lights, heat, its own warmth, airflow) usually matters more than the datasheet. Accuracy is only shown here, not on the dashboards."),
+      SW.help(h("p", { class: "muted" }, "Offset is added to every reading (compare against a reference such as a Kestrel). Pressure offsets are in Pa (1 hPa = 100 Pa). Untick to leave a sensor out of the site average, e.g. one in direct sun."),
+        h("p", { class: "muted hint" }, "Off: every sensor in the average counts the same. On: a sensor with a smaller accuracy figure counts for more, but no sensor counts for more than 80 %, so the average still covers the places you put sensors. This only applies to temperature, humidity or pressure when every sensor in that average has an accuracy figure and the figures are all typical or all maximum. Otherwise that one uses equal weights, and the reason is shown here. Share is how much each sensor counts in the average now."),
+        h("p", { class: "muted hint" }, "Accuracy is the maker's ± figure from the datasheet, in °C, %RH or hPa. Typical is the usual figure; maximum is the worst case. Presets fill the typical figure from the manufacturer's page: check it against your sensor's datasheet, and change it if you know better."),
+        h("p", { class: "muted hint" }, "After you calibrate a sensor, type the uncertainty you are left with, not the datasheet figure. Sensors calibrated against the same reference share that reference's error, so averaging them does not remove it. Where a sensor sits (sun, lights, heat, its own warmth, airflow) usually matters more than the datasheet. Accuracy is only shown here, not on the dashboards.")),
       shown.length ? foldButtons(setAll) : null,
       shown.length ? [...section("Environment", "environment", "None."),
         ...section("Equipment", "equipment", "None. Set a node's Role to Equipment under ESPHome nodes (an amp rack, a power supply). Equipment readings are never averaged.")]
@@ -1405,7 +1405,7 @@
     };
     admin.config.thresholds.forEach(addRow);
     return card("Threshold alarms",
-      h("p", { class: "muted" }, "Values in display units except pressure (Pa). Hysteresis: how far back past the limit before it clears. Hold: seconds the condition must last before alarming. Alert/Stop alarms also drop a marker on the timeline."),
+      SW.help(h("p", { class: "muted" }, "Values in display units except pressure (Pa). Hysteresis: how far back past the limit before it clears. Hold: seconds the condition must last before alarming. Alert/Stop alarms also drop a marker on the timeline.")),
       h("div", { class: "table-scroll" }, h("table", {},
         h("thead", {}, h("tr", {}, ["Entity", "Label", "Above", "Below", "Level", "Hyst.", "Hold s", "On", ""].map((x) => h("th", {}, x)))), tbody)),
       h("div", { class: "row", style: "margin-top:10px" },
@@ -1519,12 +1519,12 @@
     const newer = (d.cards || []).filter((id) => known.indexOf(id) < 0);
     fill(d.cards || (admin.cards && admin.cards.defaults.tablet) || []);
     const el = h("div", { class: "cards-panel" },
-      h("p", { class: "muted hint" }, "Tick the cards this dashboard shows. Use ▲ and ▼ to change the order, top to bottom. With no cards ticked, the screen shows only alarms. Wall Clock is never switched on by default: tick it here if you want it."),
       newer.length ? h("p", { class: "warn-text hint" }, `This dashboard also lists cards from a newer version of Stagewatch (${newer.join(", ")}). This version can't show them, and saving here removes them.`) : null,
       ul,
       h("div", { class: "row", style: "margin-top:10px" },
         field("Stage", stage)),
-      h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black. Half-size cards sit side by side with another half-size card on tablets and wall screens. On a phone every card is full width."));
+      SW.help(h("p", { class: "muted hint" }, "Tick the cards this dashboard shows. Use ▲ and ▼ to change the order, top to bottom. With no cards ticked, the screen shows only alarms. Wall Clock is never switched on by default: tick it here if you want it."),
+        h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black. Half-size cards sit side by side with another half-size card on tablets and wall screens. On a phone every card is full width.")));
     return {
       el,
       read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewBox.checked, show_contact_phones: ctPhones.checked, contacts_area: val(ctArea), card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
@@ -1569,7 +1569,7 @@
     admin.config.dashboards.forEach(addRow);
     const stages = admin.stages || [];
     return card("User dashboards",
-      h("p", { class: "muted" }, "Each dashboard has its own URL (/d/<name>) for tablets, phones and kiosk displays. Users can view without logging in; tick what they may do. Use Edit cards to choose what each one shows."),
+      SW.help(h("p", { class: "muted" }, "Each dashboard has its own URL (/d/<name>) for tablets, phones and kiosk displays. Users can view without logging in; tick what they may do. Use Edit cards to choose what each one shows.")),
       h("datalist", { id: "stage-list" }, stages.map((s) => h("option", { value: s }))),
       h("div", { class: "table-scroll" }, h("table", {},
         h("thead", {}, h("tr", {}, ["URL name", "Title", "Layout", "Add markers", "Ack alarms", "Cards", "", ""].map((x) => h("th", {}, x)))), tbody)),
@@ -1598,7 +1598,7 @@
     const st = admin.actions || {};
     return card("Action targets",
       h("p", { class: "warn-text" }, h("strong", {}, SW.ACTION_WARNING)),
-      h("p", { class: "muted" }, "Where schedule and threshold actions send their OSC messages (UDP). Use a local network address or a name ending in .local. Save the list before sending a test to a new target."),
+      SW.help(h("p", { class: "muted" }, "Where schedule and threshold actions send their OSC messages (UDP). Use a local network address or a name ending in .local. Save the list before sending a test to a new target.")),
       h("p", {}, st.armed ? "● Actions ARMED (switch them off on the Schedule page)" : "○ Actions off. Arm them on the Schedule page when you are ready."),
       h("div", { class: "table-scroll" }, h("table", {},
         h("thead", {}, h("tr", {}, ["Name", "Address", "Port", "On", "", ""].map((x) => h("th", {}, x)))), tbody)),
@@ -1627,8 +1627,8 @@
     const rate = h("input", { class: "num", type: "number", step: "0.5", value: o.rate_hz });
     const info = admin.integrations.find((i) => i.manifest.domain === "osc_out") || {};
     return card("OSC output",
-      h("p", { class: "muted" }, "Sends /stagewatch/avg/env [temp °C, RH %, pressure Pa, c m/s, sensors] and /stagewatch/alarm [level, sounding]."),
-      h("p", { class: "muted" }, "Alarm messages: each threshold alarm change also sends /stagewatch/alarm/event [id, level 0 to 3, raised / acked / cleared, message]."),
+      SW.help(h("p", { class: "muted" }, "Sends /stagewatch/avg/env [temp °C, RH %, pressure Pa, c m/s, sensors] and /stagewatch/alarm [level, sounding]."),
+        h("p", { class: "muted" }, "Alarm messages: each threshold alarm change also sends /stagewatch/alarm/event [id, level 0 to 3, raised / acked / cleared, message].")),
       h("table", {}, h("thead", {}, h("tr", {}, ["Host", "Port", "On", "Alarm messages", ""].map((x) => h("th", {}, x)))), tbody),
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { onclick: () => addRow() }, "Add destination"),
@@ -1669,7 +1669,6 @@
       if (st.version) lines.push(`Ontime version ${st.version}`);
     }
     return card("Wall Clock",
-      h("p", { class: "muted" }, "Shows the time on dashboards that have the Wall Clock card. Choose where the time comes from: this computer, or Ontime. If the source stops, the clock says so. It never switches to another source by itself."),
       h("p", { class: "muted", id: "wallclock-ontime-pointer" }, "Ontime settings are in the Ontime card."),
       h("div", { class: "row" }, field("Time source", source),
         field("Time format", hour12), field("Show the date", showDate),
@@ -1677,7 +1676,8 @@
           source: source.value, ontime_url: w.ontime_url, warn_offset_s: w.warn_offset_s,
           display: { hour12: hour12.value === "12", show_date: showDate.checked, ring: d.ring === "fill" ? "fill" : "sweep" },
         }), "Wall Clock saved").then(refresh, () => {}) }, "Save")),
-      h("p", { class: "muted hint" }, "These apply to every dashboard. The look (plain digits, LED ring or 7-segment) is set for each dashboard under User dashboards → Edit cards. Ring and 7-segment are always red on black."),
+      SW.help(h("p", { class: "muted" }, "Shows the time on dashboards that have the Wall Clock card. Choose where the time comes from: this computer, or Ontime. If the source stops, the clock says so. It never switches to another source by itself."),
+        h("p", { class: "muted hint" }, "These apply to every dashboard. The look (plain digits, LED ring or 7-segment) is set for each dashboard under User dashboards → Edit cards. Ring and 7-segment are always red on black.")),
       h("p", { class: "muted" }, lines.join(" · ")));
   }
   // ------------------------------------------------------------ ontime
@@ -1731,7 +1731,7 @@
     }, "Ontime saved").then(refresh, () => {});
     const heading = (text) => h("h3", { class: "ontime-sub" }, text);
     return SW.brandCard("Ontime", "ontime-badge.png", "Ontime",
-      h("p", { class: "muted" }, "Settings for the three Ontime cards: Wall Clock (when it uses Ontime), Ontime Timer and Ontime Rundown. Stagewatch only listens to Ontime: it never starts, pauses or changes anything in it. Ontime is only contacted while a dashboard has one of these cards."),
+      SW.help(h("p", { class: "muted" }, "Settings for the three Ontime cards: Wall Clock (when it uses Ontime), Ontime Timer and Ontime Rundown. Stagewatch only listens to Ontime: it never starts, pauses or changes anything in it. Ontime is only contacted while a dashboard has one of these cards.")),
       heading("Connection"),
       h("p", { class: "muted" }, "One address serves all three cards. Test it, then click Save."),
       h("div", { class: "row" }, field("Ontime address (Ontime computer's address and port)", url), testBtn),
@@ -1989,7 +1989,7 @@
       const full = r.documents.length >= r.max_docs;
       // replaceChildren prints a null as "null": drop the parts that are not shown.
       box.replaceChildren(...[
-        h("p", { class: "muted hint" }, "Safety and risk plans for this event: PDF, Markdown (.md) or plain text (.txt). PDF up to 10 MB, text up to 256 KB, 20 files per event. Each one is admin-only until you tick a dashboard. Dashboards have no login. Upload only files you trust."),
+        SW.help(h("p", { class: "muted hint" }, "Safety and risk plans for this event: PDF, Markdown (.md) or plain text (.txt). PDF up to 10 MB, text up to 256 KB, 20 files per event. Each one is admin-only until you tick a dashboard. Dashboards have no login. Upload only files you trust.")),
         events.length > 1 ? h("div", { class: "row" }, field("Event", h("select", { onchange: (e) => { docEvent = Number(e.target.value); load(); } },
           events.map((e) => h("option", { value: e.id, selected: e.id === docEvent }, e.name))))) : null,
         rows.length ? h("div", { class: "table-scroll" }, h("table", {},
@@ -2066,7 +2066,7 @@
       const copyFrom = h("select", { class: "touch" }, others.map((e) => h("option", { value: e.id }, e.name)));
       const ename = (events.find((e) => e.id === contactEvent) || {}).name || "this event";
       box.replaceChildren(...[list, ...reminders,
-        h("p", { class: "muted hint" }, "Key people for this event: job title, name, radio and area show on dashboards with the Onsite contacts card. Phone numbers show only when allowed here, on the dashboard (Edit cards) and for the contact. Dashboards have no login. Tell crew their details are on the screens, prefer work or show phones, and clear the list when the event is over."),
+        SW.help(h("p", { class: "muted hint" }, "Key people for this event: job title, name, radio and area show on dashboards with the Onsite contacts card. Phone numbers show only when allowed here, on the dashboard (Edit cards) and for the contact. Dashboards have no login. Tell crew their details are on the screens, prefer work or show phones, and clear the list when the event is over.")),
         events.length > 1 ? h("div", { class: "row" }, field("Event", h("select", { onchange: (e) => { contactEvent = Number(e.target.value); load(); } },
           events.map((e) => h("option", { value: e.id, selected: e.id === contactEvent }, e.name))))) : null,
         r.stale ? h("p", { class: "warn-text" }, `▲ These contacts were last edited ${days} days ago. Clear them if the event is over.`) : null,
@@ -2139,7 +2139,7 @@
       h("div", { class: "table-scroll" }, h("table", {},
         h("thead", {}, h("tr", {}, ["Integration", "Tier", "Direction", "Protocols", "Runtime"].map((x) => h("th", {}, x)))),
         h("tbody", {}, admin.integrations.map((i) => h("tr", {},
-          h("td", {}, h("strong", {}, i.manifest.name), h("div", { class: "muted", style: "font-size:12px" }, i.manifest.description), iotTag(i.manifest.iot_class)),
+          h("td", { class: "catalog-name" }, h("strong", {}, i.manifest.name), h("div", { class: "muted", style: "font-size:12px" }, i.manifest.description), iotTag(i.manifest.iot_class)),
           h("td", {}, i.manifest.tier), h("td", {}, i.manifest.direction), h("td", {}, i.manifest.protocols.join(", ")),
           h("td", { class: "muted" }, Object.entries(i).filter(([k]) => k !== "manifest").map(([k, v]) => `${k}: ${v !== null && typeof v === "object" ? JSON.stringify(v) : v}`).join(" · "))))))));
   }
@@ -2484,7 +2484,7 @@
     const oscErr = ((admin.integrations.find((i) => i.manifest.domain === "osc_out") || {}).last_error);
     app.replaceChildren(...[
       foldButtons(setAllCards, " cards"),
-      h("div", { class: "grid-2" }, foldCard(siteCard(), "site", false, !admin.config.site.timezone), foldCard(eventShowCard(), "event", true)),
+      foldCard(eventShowCard(), "event", true), foldCard(siteCard(), "site", false, !admin.config.site.timezone),
       scheduleCard(),     // summary and a link to /schedule
       foldCard(documentsCard(), "documents", false),
       foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0),
@@ -2493,7 +2493,7 @@
       foldCard(devicesCard(), "nodes", true), foldCard(deviceErrorsCard(), "deviceerrors", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
       foldCard(thresholdsCard(), "thresholds", true), foldCard(alarmNoticesCard(), "notices", true),
       foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
-      h("div", { class: "grid-2" }, foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false)),
+      foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false),
       foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
       foldCard(wallClockCard(), "wallclock", false),
       foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"),

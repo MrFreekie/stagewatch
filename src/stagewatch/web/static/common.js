@@ -1113,6 +1113,11 @@ SW.qrSvg = function (text, size = 176) {
 SW.about = function (...nodes) {
   return SW.h("details", { class: "card-about" }, SW.h("summary", {}, "About these figures"), ...nodes);
 };
+// The same fold for the admin console's how-to text: one closed "Help" line, so admin cards show
+// their settings, not paragraphs.
+SW.help = function (...nodes) {
+  return SW.h("details", { class: "card-about card-help" }, SW.h("summary", {}, "Help"), ...nodes);
+};
 
 // A line inside a card that comes and goes: hidden, but its space is kept (style.css [data-slot]),
 // so cards keep one size while they run. Use instead of `el.hidden = hide` for such lines.
