@@ -24,6 +24,9 @@ Nothing is sent **until you add a destination**. With none, OSC output does noth
 | `/stagewatch/alarm` | Highest active alarm level (0 = none, 1 = advisory, 2 = alert, 3 = stop), sounding (0 or 1) | Always, to every destination that is switched on |
 | `/stagewatch/node/<id>/env` | Temperature in °C, humidity in %, pressure in Pa, for one node | **Only** if **Per-node messages** is ticked. One message for each device Stagewatch knows. `<id>` is the short name Stagewatch gives the device. |
 
+- Optional: tick **FOH advice numbers (values only)** to also send `/stagewatch/path/<id>/drift`,
+  `/stagewatch/path/<id>/suggested_delay` and `/stagewatch/position/<id>/change_db`. They are values,
+  not commands: never map a suggested delay onto a processor. See [FOH advice](../cards/foh-advice.md#send-the-numbers-out-as-osc-optional).
 - **A value that is not measured is sent as NaN** ("not a number"), never as 0. A reading that has
   gone stale is sent as NaN too. Your receiver must cope with NaN.
 - Quiet notices from outside software (Ontime, Smaart, GLOBCON, Shelly) do not count in the alarm
