@@ -649,6 +649,9 @@ class OscOutConfig(_Model):
     destinations: list[OscDestination] = Field(default_factory=list)
     per_node: bool = False
     rate_hz: float = Field(1.0, gt=0, le=20)
+    # Also send the FOH advice numbers (drift, suggested delay, air-loss change). Values only, never
+    # commands. Additive with a default: no config schema bump.
+    include_advice: bool = False
 
 
 class UpdaterConfig(_Model):

@@ -32,6 +32,7 @@ import time
 from dataclasses import dataclass, field
 
 from .. import acoustics
+from .alarms import AlarmChange
 from .config import AdviceConfig, AdvicePath, AdvicePosition
 from .derived import OUTLIER_LIMITS, robust_mean
 from .model import Kind, Marker
@@ -197,6 +198,69 @@ def empty_advice(resolution: str = "octave") -> dict:
     return {"drift_ref": None, "air_ref": None, "resolution": resolution, "paths": [], "positions": []}
 
 
+def drift_message(name: str, drift_ms: float, label: str) -> str:
+    """The advisory line: ``Delay tower L: drifted +1.1 ms since Aligned, check delay (ADVISORY)``."""
+    return f"{name}: drifted {drift_ms:+.1f} ms since {label}, check delay (ADVISORY)"
+
+
+def drift_marker_label(name: str, drift_ms: float) -> str:
+    return f"Drift: {name} {drift_ms:+.1f} ms"
+
+
+class DriftAlarmEvaluator:
+    """When a drift advisory raises and clears, with no hub or clock of its own.
+
+    Raise: the drift is at or past the threshold (either direction) and has stayed there for
+    ``hold_s``. Clear: it falls to 0.8 times the threshold or less, so noise around the threshold
+    cannot flap the notice. A stale reading neither raises nor clears (a pending raise starts again
+    when readings return). No threshold, no drift (no reference marker, no readings), or a path
+    that is deleted or disabled all clear. ``update`` returns ``"raise"``, ``"clear"`` or None.
+    """
+
+    CLEAR_FRACTION = 0.8
+
+    def __init__(self) -> None:
+        self._pending: dict[str, float] = {}
+        self._on: set[str] = set()
+
+    def is_on(self, path_id: str) -> bool:
+        return path_id in self._on
+
+    def tracked(self) -> set[str]:
+        return self._on | self._pending.keys()
+
+    def drop(self, path_id: str) -> str | None:
+        """The path is gone, disabled or has nothing to compare with: clear it if it was raised."""
+        self._pending.pop(path_id, None)
+        if path_id in self._on:
+            self._on.discard(path_id)
+            return "clear"
+        return None
+
+    def update(self, path_id: str, now: float, drift_ms: float | None,
+               threshold_ms: float | None, hold_s: float, stale: bool = False) -> str | None:
+        if threshold_ms is None or _num(drift_ms) is None:
+            return self.drop(path_id)
+        if stale:
+            self._pending.pop(path_id, None)
+            return None
+        size = abs(drift_ms)
+        if path_id in self._on:
+            if size <= self.CLEAR_FRACTION * threshold_ms:
+                self._on.discard(path_id)
+                return "clear"
+            return None
+        if size < threshold_ms:
+            self._pending.pop(path_id, None)
+            return None
+        started = self._pending.setdefault(path_id, now)
+        if now - started >= hold_s:
+            self._pending.pop(path_id, None)
+            self._on.add(path_id)
+            return "raise"
+        return None
+
+
 # ------------------------------------------------------------------ the service
 @dataclass
 class _Ref:
@@ -218,6 +282,7 @@ class AdviceService:
         self._published: dict | None = None
         self._published_at = 0.0
         self._demo_task: asyncio.Task | None = None
+        self._drift = DriftAlarmEvaluator()
         for topic in ("marker", "marker_deleted", "show", "config"):
             hub.bus.subscribe(topic, self._invalidate)
 
@@ -368,12 +433,50 @@ class AdviceService:
             log.exception("FOH advice failed")
             return
         self._last = snap
+        try:
+            self._drift_alarms(snap, now)
+        except Exception:  # noqa: BLE001 - the notices must never stop the hub tick either
+            log.exception("FOH advice notices failed")
         if self._published is None and not snap["paths"] and not snap["positions"]:
             self._published = snap
             return
         if now - self._published_at >= PUBLISH_MIN_S and advice_changed(self._published, snap):
             self._published, self._published_at = snap, now
             self.hub.bus.publish("advice", copy.deepcopy(snap))
+
+    # ----------------------------------------------------------- the drift notices
+    def _drift_alarms(self, snap: dict, now: float) -> None:
+        """Advisory notice ``advice:drift:<path id>``: level 1, silent unless the admin chose
+        ``beep``, never level 2 or 3. The settings can change at any time, so they are read here."""
+        hub = self.hub
+        cfg: AdviceConfig = hub.config.advice
+        silent = cfg.alarm != "beep"
+        label = (snap.get("drift_ref") or {}).get("label") or cfg.drift_reference
+        changes: list[AlarmChange] = []
+        seen = set()
+        for p in snap["paths"]:
+            pid = p["id"]
+            seen.add(pid)
+            threshold = p["threshold_ms"] if cfg.alarm != "off" else None
+            event = self._drift.update(pid, now, p["drift_ms"], threshold, cfg.hold_s, p["stale"])
+            alarm_id = f"advice:drift:{pid}"
+            if event == "clear":
+                changes.append(hub.alarms.set_condition(alarm_id, False, 1, "", now))
+            elif event == "raise" or (self._drift.is_on(pid) and not p["stale"]):
+                text = drift_message(p["name"], p["drift_ms"], label)
+                changes.append(hub.alarms.set_condition(alarm_id, True, 1, text, now, silent=silent))
+                current = hub.alarms.active.get(alarm_id)
+                if current is not None and current.silent != silent:
+                    current.silent = silent          # the admin switched between silent and beep
+                    changes.append(AlarmChange(current, "change"))
+                if event == "raise" and cfg.marker_on_alert:
+                    hub.add_marker(drift_marker_label(p["name"], p["drift_ms"]), "advice")
+        for pid in sorted(self._drift.tracked() - seen):    # deleted or disabled
+            if self._drift.drop(pid) == "clear":
+                changes.append(hub.alarms.set_condition(f"advice:drift:{pid}", False, 1, "", now))
+        changes = [c for c in changes if c is not None]
+        if changes:
+            hub._alarm_changed(changes)
 
     def snapshot(self) -> dict:
         """The public ``advice`` block: drift paths and air-loss positions (names, distances and

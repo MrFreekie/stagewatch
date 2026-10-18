@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, AdviceConfig, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
     ContactsSettings, SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
@@ -1007,6 +1007,9 @@ class LiveFeed:
             # Small on purpose: clients fetch GET /api/schedule?stage= for the list itself.
             self._send_all({"type": "schedule", "show_id": payload.get("show_id"),
                             "revision": payload.get("revision")})
+        elif topic == "advice" and isinstance(payload, dict):
+            # The same public block as snapshot()["advice"]: names, distances and numbers only.
+            self._send_all({**payload, "type": "advice"})
         elif topic == "contacts":
             self._send_all({"type": "contacts_changed"})   # no data: dashboards refetch their own list
         elif topic == "documents":
@@ -1646,7 +1649,19 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     @app.put("/api/admin/osc", dependencies=admin_deps)
     async def put_osc(body: OscOutConfig):
+        if "include_advice" not in body.model_fields_set:   # an older page keeps the FOH advice switch
+            body.include_advice = hub.config.osc_out.include_advice
         hub.config.osc_out = body
+        hub.save_config()
+        return body
+
+    # FOH advice (alignment drift paths, air-loss positions, notice settings). Advice only: nothing
+    # is ever sent to a processor. Bounds and unique ids are checked by the model; the shared 422
+    # handler never echoes what was sent. Saving publishes `config`, so the numbers are worked out
+    # again from the new settings.
+    @app.put("/api/admin/advice", dependencies=admin_deps)
+    async def put_advice(body: AdviceConfig):
+        hub.config.advice = body
         hub.save_config()
         return body
 

@@ -5,7 +5,12 @@ Messages (sent at osc_out.rate_hz):
   /stagewatch/avg/env    temp_c rh_pct pressure_pa c_m_s n_temp_sensors
   /stagewatch/node/<device_id>/env  temp_c rh_pct pressure_pa   (per_node only)
   /stagewatch/alarm      max_level(0-3) sounding(0/1)
-NaN means "not measured".
+Only with osc_out.include_advice (FOH advice; values, not commands):
+  /stagewatch/path/<id>/drift            ms since the reference marker (+ = sound arrives later)
+  /stagewatch/path/<id>/suggested_delay  ms (current delay plus drift)
+  /stagewatch/position/<id>/change_db    dB since the reference marker, one float per band in band
+                                         order (4k, 8k, 16k or 4k ... 16k), + = more top end lost
+NaN means "not measured" (or unknown, or stale).
 """
 
 from __future__ import annotations
@@ -13,15 +18,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 
 from pythonosc.udp_client import SimpleUDPClient
 
+from ..core.config import ADVICE_ID_RE as _ADVICE_ID_PATTERN
 from ..core.model import Kind
 from ..core.plugin import Integration, Manifest
 
 log = logging.getLogger(__name__)
 
 NAN = math.nan
+ADVICE_ID_RE = re.compile(_ADVICE_ID_PATTERN)
 
 MANIFEST = Manifest(
     domain="osc_out",
@@ -37,6 +45,31 @@ MANIFEST = Manifest(
 
 def _num(v: float | None) -> float:
     return NAN if v is None else float(v)
+
+
+def _live(value: float | None, stale: bool) -> float:
+    """A number to send: NaN when unknown, or when the reading behind it has gone stale."""
+    return NAN if value is None or stale else float(value)
+
+
+def advice_messages(advice: dict) -> list[tuple[str, list]]:
+    """The FOH advice numbers as OSC messages (opt-in with ``osc_out.include_advice``). Values, not
+    commands: nothing here asks a receiver to change anything. Addresses use only the slug ids,
+    never a name or a device id. NaN means unknown (no reference marker, no readings, stale)."""
+    msgs: list[tuple[str, list]] = []
+    for p in advice.get("paths", []):
+        if not ADVICE_ID_RE.fullmatch(str(p.get("id", ""))):
+            continue
+        base = f"/stagewatch/path/{p['id']}"
+        msgs.append((f"{base}/drift", [_live(p.get("drift_ms"), p.get("stale", False))]))
+        msgs.append((f"{base}/suggested_delay",
+                     [_live(p.get("suggested_delay_ms"), p.get("stale", False))]))
+    for pos in advice.get("positions", []):
+        if not ADVICE_ID_RE.fullmatch(str(pos.get("id", ""))):
+            continue
+        msgs.append((f"/stagewatch/position/{pos['id']}/change_db",
+                     [_live(b.get("change_db"), pos.get("stale", False)) for b in pos.get("bands", [])]))
+    return msgs
 
 
 class OscOutIntegration(Integration):
@@ -84,6 +117,8 @@ class OscOutIntegration(Integration):
                 msgs.append((f"/stagewatch/node/{device.id}/env",
                              [_num(vals[Kind.TEMPERATURE]), _num(vals[Kind.HUMIDITY]),
                               _num(vals[Kind.PRESSURE])]))
+        if hub.config.osc_out.include_advice:
+            msgs.extend(advice_messages(hub.advice.snapshot()))
         return msgs
 
     def send_once(self) -> None:
