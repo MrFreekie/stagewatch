@@ -1098,6 +1098,12 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         # login, and back, when there isn't one).
         return versioned_page("schedule.html")
 
+    @app.get("/dashboard-editor", include_in_schema=False)
+    async def dashboard_editor_page():
+        # Static page (Edit cards for one dashboard); every API call it makes needs the admin session,
+        # as on /schedule.
+        return versioned_page("dashboard-editor.html")
+
     # -------------------------------------------------------- public API
     @app.get("/api/info")
     async def info(request: Request):

@@ -23,7 +23,9 @@ function eq(got, exp, what) {
 for (const ok of ["?next=/schedule", "next=/schedule", "?next=%2Fschedule", "?a=1&next=/schedule", "?next=/schedule&a=1"]) {
   eq(SW.adminNext(ok), "/schedule", `accepts ${ok}`);
 }
+for (const ok of ["?next=/dashboard-editor", "?next=%2Fdashboard-editor"]) eq(SW.adminNext(ok), "/dashboard-editor", `accepts ${ok}`);
 const bad = [
+  "?next=/dashboard-editor?d=foh", "?next=/dashboard-editor/", "?next=/dashboard-editor%3Fd%3Dfoh", "?next=//evil.example/dashboard-editor",
   "", "?", "?next=", "?next=/", "?next=/admin", "?next=/schedule/", "?next=/schedule/x", "?next=/Schedule",
   "?next=/schedule?x=1", "?next=/schedule%3Fx%3D1", "?next=/schedule%23x", "?next=//evil.example", "?next=//evil.example/schedule",
   "?next=https://evil.example/schedule", "?next=http://evil.example", "?next=%2F%2Fevil.example", "?next=/%2Fevil.example",

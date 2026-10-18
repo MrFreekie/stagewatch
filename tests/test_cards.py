@@ -238,7 +238,7 @@ def test_schedule_card_uses_the_dashboard_stage(client):
 
 
 def test_admin_card_names_cover_every_known_card():
-    js = (STATIC / "admin.js").read_text(encoding="utf-8")
+    js = (STATIC / "cards-editor.js").read_text(encoding="utf-8")
     block = re.search(r"const CARD_INFO = \{(.*?)\n  \};", js, re.S).group(1)
     assert sorted(re.findall(r"^\s{4}([a-z_]+): \[", block, re.M)) == sorted(cards.KNOWN_CARDS)
     assert "Wall Clock is never switched on by default" in js

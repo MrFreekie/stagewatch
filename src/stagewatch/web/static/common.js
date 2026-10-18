@@ -352,10 +352,10 @@ SW.linkButton = function (text, href, primary) {
     style: "display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:44px;padding:6px 16px;border-radius:8px;text-decoration:none;font-weight:600;"
       + (primary ? "background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);" : "background:var(--panel-2);color:inherit;border:1px solid var(--grid);") }, text);
 };
-// Where Admin sends you after logging in. An allow-list of one fixed path: the value of ?next=
-// must equal "/schedule" exactly (after decoding), never any other path or URL, so the login page
-// can't be used to bounce someone to another site.
-SW.ADMIN_NEXT = ["/schedule"];
+// Where Admin sends you after logging in. An allow-list of fixed paths: the value of ?next=
+// must equal "/schedule" or "/dashboard-editor" exactly (after decoding, no query), never any other
+// path or URL, so the login page can't be used to bounce someone to another site.
+SW.ADMIN_NEXT = ["/schedule", "/dashboard-editor"];
 SW.adminNext = function (search) {
   const m = /^(?:\?)?(?:[^&]*&)*?next=([^&]*)/.exec(String(search || ""));
   if (!m) return "";

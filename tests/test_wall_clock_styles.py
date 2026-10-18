@@ -311,7 +311,7 @@ def test_clock_script_uses_only_safe_dom_and_svg_and_no_animation_loop():
 
 
 def test_admin_has_the_source_choice_the_look_options_and_the_per_dashboard_look():
-    js = (STATIC / "admin.js").read_text(encoding="utf-8")
+    js = (STATIC / "admin.js").read_text(encoding="utf-8") + (STATIC / "cards-editor.js").read_text(encoding="utf-8")   # card names: the Edit cards page
     assert 'value: "pc"' in js and "colon_blink" not in js and "show_date" in js and "hour12" in js
     assert "clock_style: clockStyle.value" in js and '"segments"' in js
 

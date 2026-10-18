@@ -378,7 +378,7 @@ def test_equipment_card_round_trips_through_the_dashboards_api(client):
 def test_equipment_card_wiring_and_safe_rendering():
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     html = (STATIC / "dashboard.html").read_text(encoding="utf-8")
-    admin = (STATIC / "admin.js").read_text(encoding="utf-8")
+    admin = (STATIC / "admin.js").read_text(encoding="utf-8") + (STATIC / "cards-editor.js").read_text(encoding="utf-8")   # card names: the Edit cards page
     assert 'data-card="equipment"' in html and "hidden" in html.split('data-card="equipment"')[1].split(">")[0]
     assert re.search(r"equipment:\s*\{\s*el: cardEl\(\"equipment\"\)", js)
     assert re.search(r"equipment:\s*\[\"Equipment\"", admin)

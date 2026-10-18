@@ -133,7 +133,7 @@ def test_layout_css_spans_full_by_default_and_collapses_when_narrow():
 def test_dashboard_js_marks_half_cards_and_admin_has_the_size_control():
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     assert 'setAttribute("data-size", "half")' in js and "SW.cardIsHalf" in js
-    admin = (STATIC / "admin.js").read_text(encoding="utf-8")
+    admin = (STATIC / "cards-editor.js").read_text(encoding="utf-8")
     assert "card_sizes" in admin and "half_capable" in admin and "Half-size cards sit side by side" in admin
     common = (STATIC / "common.js").read_text(encoding="utf-8")
     assert re.search(r'SW\.HALF_CAPABLE = \["wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power", "pi_host"]', common)   # same list as core/cards.py

@@ -11,7 +11,7 @@ dashboard with this card can see what it shows. So:
 
 - A dashboard shows **job title, name, radio and area** only. Phone numbers stay hidden unless you
   allow them in **three** places: Admin → **Onsite contacts** (Allow phone numbers on dashboards),
-  the dashboard's **Edit cards** panel (Show phone numbers), and the contact's own **Show** tick.
+  the dashboard's **Edit cards** page (Show phone numbers), and the contact's own **Show** tick.
 - You can also set a **dashboard PIN for phone numbers**. Screens then show a **Show numbers**
   button and ask for that PIN (6 to 12 digits; Stagewatch refuses the admin PIN here). The numbers hide again after 2 minutes. Five wrong tries lock it for a minute.
 - Tell crew their details are on the screens. Prefer work or show phones. There is no notes field
