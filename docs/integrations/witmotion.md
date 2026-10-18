@@ -1,6 +1,6 @@
 # WitMotion tilt sensor (Bluetooth)
 
-Stagewatch can read a **WitMotion tilt sensor** over Bluetooth and show its roll and pitch, its movement, its battery and its temperature. The readings appear on the [Tilt (WitMotion)](../cards/witmotion-tilt.md) card.
+Stagewatch can read a **WitMotion tilt sensor** over Bluetooth and show its roll and pitch, its movement, its battery and its temperature. The readings appear on the [Inclinometer (WitMotion)](../cards/witmotion-tilt.md) card.
 
 > **A guide, not a safety system.** Tilt is a way to see "has it moved since the marker?" and to help set a hang. It is not a load or array-angle measurement and it never replaces the rigger's own checks or any certified system. Stagewatch only listens to the sensor and asks it for a few figures. It never changes a setting on the sensor, never calibrates it and never renames it.
 
@@ -27,7 +27,7 @@ Only **one device at a time** can be connected to the sensor. Close the WitMotio
 | Acceleration | The peak of each second, in g. Good for "was it knocked?", not for vibration analysis. |
 | Time since last data | In seconds. |
 | Sensor battery | Voltage, plus a percentage that is **approximate** (worked out from the voltage). "Not available for this sensor model" on the WT9011DCL. |
-| Sensor body temperature | The temperature of the sensor's own chip, **not the air**. It is never used for the environment cards or the speed of sound. |
+| Sensor body temperature | The temperature of the sensor's own chip, **not the air**. It is never used for the environment cards or the speed of sound. Admin can also show it on the Equipment card ("Show each sensor's temperature on the Equipment card"). |
 
 All readings are **Equipment**: they never reach a site average. They are stored once a second.
 

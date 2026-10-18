@@ -175,6 +175,7 @@ class Sensor:
         self.hub.set_device_public(self.device_id, {"witmotion": {
             "axis": self.axis, "axis_text": AXIS_TEXT[self.axis], "axis_help": AXIS_HELP,
             "smoothing_s": self.smoothing_s, "battery_note": self._battery_note,
+            "temp_on_equipment": bool(getattr(self.hub.config.witmotion, "temp_on_equipment", False)),
             "targets": {k: v for k, v in self.targets.items() if k in self.specs}, **self.readout()}})
 
     def limits(self) -> dict:
@@ -461,6 +462,8 @@ class WitmotionIntegration(Integration):
             for device_id, (address, label, axis, smoothing, targets) in want.items():
                 if device_id not in have:
                     self.sensors.append(self._add(device_id, address, label, axis, smoothing, targets))
+            for s in self.sensors:
+                s._public()   # a card-only setting (temperature on the Equipment card) may have changed
             order = list(want)
             self.sensors.sort(key=lambda s: order.index(s.device_id))
             self._active = bool(self.sensors)

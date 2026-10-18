@@ -4,6 +4,7 @@
 SW.wm = (function () {
   const wm = {};
   const isNum = (x) => typeof x === "number" && Number.isFinite(x);
+  wm.title = (n) => (n > 1 ? "Inclinometers" : "Inclinometer");
   wm.NOTE = "Tilt is a guide, not a rigging safety system.";
   // Plain words for each limit level (1 = advisory, 2 = alert, 3 = stop), the same ladder as the alarm bar.
   wm.LEVELS = { 0: "Within limit", 1: "▲ ADVISORY", 2: "▲ ALERT", 3: "■ STOP" };
@@ -52,11 +53,14 @@ SW.wm = (function () {
       });
     }
     const age = val("link_age");
+    const pct = val("battery_pct");
     const live = axes.some((a) => a.unit === "°");
     return {
       name: dev.name || "WitMotion tilt sensor",
       linkText: age === null ? "No data from the sensor" : `Last data ${SW.num(age, 1)} s ago`,
       live, axes,
+      // Battery: approximate, worked out from the voltage. Low below 20 %, with the word as well as the colour.
+      battery: pct === null ? null : { pct: Math.max(0, Math.min(100, Math.round(pct))), low: pct < 20 },
       smoothing: isNum(pub.smoothing_s) && pub.smoothing_s > 0 ? `smoothed over ${pub.smoothing_s} s` : "not smoothed",
       setup: typeof pub.setup_line === "string" ? pub.setup_line : "",
       info: typeof pub.info_line === "string" ? pub.info_line : "",

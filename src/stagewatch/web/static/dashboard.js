@@ -1047,7 +1047,10 @@
     const own = new Set(has("witmotion_tilt") ? SW.wm.sensorsOf(state.devices).map((d) => d.id) : []);
     for (const e of Object.values(state.entities)) {
       if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery") continue;
-      if (own.has(e.device_id)) continue;
+      // Inclinometers: only their body temperature, and only when Admin asks for it.
+      const wmPub = (state.devices[e.device_id] || {}).witmotion;
+      if (wmPub && wmPub.temp_on_equipment) { if (e.kind !== "temperature") continue; }
+      else if (own.has(e.device_id)) continue;
       const cat = state.devices[e.device_id] && state.devices[e.device_id].category;
       if (cat === "meter") continue;   // shown on the Power card
       if (cat === "host" && (e.kind !== "temperature" || has("pi_host"))) continue;   // the Raspberry Pi: only its temperature here; the rest is on its own card
@@ -1121,10 +1124,15 @@
     const sensors = SW.wm.sensorsOf(state.devices);
     if (!has("witmotion_tilt") || !sensors.length) { card.hidden = true; return; }
     card.hidden = false;
+    $("wm-title").textContent = SW.wm.title(sensors.length);
     $("wm-body").replaceChildren(...sensors.map((dev) => {
       const v = SW.wm.view(dev, state.entities);
       return h("div", { class: "wm-sensor" },
-        h("div", { class: "wm-head" }, h("span", { class: "wm-name" }, v.name), h("span", { class: "muted wm-link" }, v.linkText)),
+        h("div", { class: "wm-head" }, h("span", { class: "wm-name" }, v.name),
+          v.battery ? h("span", { class: "wm-batt" + (v.battery.low ? " wm-batt-low" : ""), title: "Sensor battery (approximate)" },
+            h("span", { class: "wm-batt-icon", "aria-hidden": "true" }, h("span", { class: "wm-batt-fill", style: `width:${v.battery.pct}%` })),
+            `${v.battery.low ? "Low " : ""}${v.battery.pct} %`) : null,
+          h("span", { class: "muted wm-link" }, v.linkText)),
         h("div", { class: "wm-axes" }, v.axes.map((a) => h("div", { class: "wm-axis" + (a.level ? ` wm-l${a.level}` : "") },
           h("div", { class: "pw-label" }, `${a.label} · ${a.hint}`),
           h("div", { class: "wm-value" + (a.unit ? "" : " wm-nodata") }, a.text, a.unit ? h("span", { class: "unit" }, a.unit) : null),

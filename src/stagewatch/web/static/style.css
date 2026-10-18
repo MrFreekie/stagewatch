@@ -1220,6 +1220,13 @@ body.layout-wall .pi-model { display: none; }
 .wm-sensor + .wm-sensor { margin-top: 14px; border-top: 1px solid var(--grid); padding-top: 12px; }
 .wm-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
 .wm-name { font-weight: 700; font-size: 18px; }
+/* Battery: a drawn cell filled to the approximate percentage, with the number (and "Low") in words. */
+.wm-batt { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.wm-batt-icon { position: relative; width: 26px; height: 13px; border: 2px solid currentColor; border-radius: 3px; padding: 1px; box-sizing: border-box; }
+.wm-batt-icon::after { content: ""; position: absolute; right: -5px; top: 2px; width: 3px; height: 5px; background: currentColor; border-radius: 0 1px 1px 0; }
+.wm-batt-fill { display: block; height: 100%; background: currentColor; border-radius: 1px; }
+.wm-batt-low { color: var(--warn); font-weight: 700; }
+body.layout-wall .wm-batt { font-size: 22px; }
 .wm-axes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 14px; margin-top: 6px; }
 .wm-value { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .wm-value .unit { font-size: 22px; font-weight: 500; color: var(--muted); margin-left: 2px; }

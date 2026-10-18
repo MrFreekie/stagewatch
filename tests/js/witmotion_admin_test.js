@@ -49,7 +49,7 @@ eq(wa.check([1, 2, 3, 4, 5].map((n) => row({ address: `AA:BB:CC:DD:EE:0${n}` }))
 
 // what is sent: only the list, addresses in one form, names trimmed
 const p = wa.payload(true, [row({ address: " aa:bb:cc:dd:ee:01", label: "  Stage Right  ", target_x: 2, savedIndex: 3 })]);
-eq(p, { enabled: true, markers: true, sensors: [{ address: "AA:BB:CC:DD:EE:01", label: "Stage Right", axis: "both", smoothing_s: 2, target_x: 2, target_y: null, on_target_deg: 0.2, close_deg: 1 }] }, "payload");
+eq(p, { enabled: true, markers: true, temp_on_equipment: false, sensors: [{ address: "AA:BB:CC:DD:EE:01", label: "Stage Right", axis: "both", smoothing_s: 2, target_x: 2, target_y: null, on_target_deg: 0.2, close_deg: 1 }] }, "payload");
 eq("savedIndex" in p.sensors[0], false, "the row number is not sent");
 
 // status words: connected, link lost, not running, not saved. A gap is never shown as a number.

@@ -21,6 +21,7 @@ them into a dated release section and tags the commit.
 
 ### Changed
 
+- **Tilt card renamed Inclinometer** (Inclinometers with more than one sensor), with a battery gauge beside each sensor's name: the approximate percentage, and "Low" in amber below 20 %. Admin can also show each sensor's body temperature on the Equipment card (off by default; it is the chip's temperature, not the air).
 - **Tilt card:** it keeps the same size when a sensor shows **No data**, so the dashboard no longer jumps when the link drops.
 
 ### Fixed
