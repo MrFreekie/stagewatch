@@ -62,4 +62,4 @@ def test_wall_shows_it_only_when_not_online_and_nothing_flashes():
 def test_old_header_dot_is_gone():
     assert 'id="conn"' not in read("dashboard.html")
     assert '$("conn")' not in read("dashboard.js")
-    assert not re.search(r"^\.conn\b", read("style.css"), re.M)
+    assert not re.search(r"^\.conn(?![\w-])", read("style.css"), re.M)
