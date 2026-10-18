@@ -35,7 +35,38 @@ If the link is lost, or the sensor goes quiet, every reading becomes a gap (no v
 
 ## Switch it on
 
-There is no Admin page for it yet. Stop Stagewatch, add this to `config.yaml` in the data folder, and start it again:
+Set it up in **Admin**, on the **Integrations** tab, in the **WitMotion tilt sensors** card. (You can also click **Add integration** and choose **WitMotion tilt sensors**, which opens that card.) Nothing needs restarting: press **Save** and Stagewatch starts, changes or stops just the sensors you touched. A sensor you did not change keeps its Bluetooth link.
+
+1. Tick **Read the WitMotion sensors**.
+2. Press **Find sensors** (see below), then press **Add** beside the sensor you want. This fills in its address. Or press **Add a sensor** and type the address yourself.
+3. Give each sensor a **name** and choose its settings (below). You can have up to four sensors.
+4. Press **Save**. Each sensor then shows **Connected** with the age of its last data, or **Link lost**, with the small print described further down.
+
+Switching the tick off and saving stops the sensors. Their history is kept.
+
+### Find sensors
+
+**Find sensors** listens for Bluetooth sensors for about 8 seconds and lists the ones whose own name starts `WT` (such as `WT901BLE67`), with how strong the signal is. It only listens: it never connects to a sensor, never pairs and never changes anything on it. The addresses it finds are shown in Admin only, never on a dashboard.
+
+* Only one search runs at a time. Press it again once the first has finished.
+* A sensor that has been **renamed** in the WitMotion app no longer starts `WT`, so it will not be listed. Type its address into the card by hand.
+* The search shares the computer's Bluetooth with the sensors already running, so it may wait a moment for them.
+* If Bluetooth cannot be used (no adaptor, switched off, or Stagewatch is not allowed to use it) the card says so in plain words. On a Raspberry Pi, see [Raspberry Pi](#raspberry-pi) below.
+* Close the WitMotion phone app first, and keep the sensor switched on and close to the computer.
+* **Add** only fills in the address on the card. Nothing is saved until you press **Save**.
+* In `--emulate` mode it lists two made-up sensors.
+
+### The settings for each sensor
+
+* **Bluetooth address** (`address` in the settings file) is the sensor's Bluetooth address, like `AA:BB:CC:DD:EE:01`. On some computers (Macs) it is a long ID instead. **Stagewatch finds the sensor by this address, not by its name**, so it still works if someone renames the sensor (the sensor's name can be changed in the WitMotion app). Each sensor needs its own address, and Stagewatch will not save two the same.
+* **Name** (`label`) is the name shown in Stagewatch ("Stage Right hang"). It is a Stagewatch setting only, kept apart from the sensor's own name.
+* **Tilt to watch** (`axis`) is `x` (roll, side to side), `y` (pitch, front to back) or `both` (the default). An axis you do not watch is not recorded and cannot be used in a threshold. X and Y are the sensor's own axes. Which way each points in the room depends on how the sensor is fixed, so tilt it and see which reading moves.
+* **Smoothing** (`smoothing_s`) removes noise from the tilt: off, 1, 2 (the default), 5 or 10 seconds. Each reading first goes through a short median of the last five frames, which throws away a single spike, then a moving average over that many seconds. It works in seconds, so it behaves the same whatever rate the sensor sends at. **Thresholds act on the smoothed value.** The unsmoothed values are recorded beside it, labelled "unsmoothed", so the raw history is never changed. After any lost link the smoothing starts again from nothing: nothing is carried across the gap, and no tilt is shown until three new readings have arrived.
+* **Target X, Target Y** (`target_x`, `target_y`, optional) are target angles in degrees for X and Y. **On target within** (`on_target_deg`, default 0.2) and **Close within** (`close_deg`, default 1.0) set the bands: within the first is **On target**, within the second is **Close**, beyond that is **Off target**. "Close" cannot be tighter than "On target". The card shows the target, the difference and a marker, using the smoothed angle. This is display only and **never raises an alarm**. If you want an alarm, set an ordinary [threshold](../admin/sensors-and-alarms.md) on the tilt reading.
+
+### Setting it up in the settings file instead
+
+The Admin card writes the same `sensors` list that you can put in `config.yaml` in the data folder. If you prefer to edit the file, stop Stagewatch, add this, and start it again:
 
 ```yaml
 witmotion:
@@ -51,18 +82,14 @@ witmotion:
       close_deg: 1.0      # "Close" within this many degrees
 ```
 
-* **`address`** is the sensor's Bluetooth address. **Stagewatch finds the sensor by this address, not by its name**, so it still works if someone renames the sensor (the sensor's name can be changed in the WitMotion app). With two or more sensors each one needs its own address (up to four).
-* **`label`** is the name shown in Stagewatch ("Stage Right hang"). It is a Stagewatch setting only, kept apart from the sensor's own name.
-* **`axis`** is the tilt to watch: `x` (roll, side to side), `y` (pitch, front to back) or `both` (the default). An axis you do not watch is not recorded and cannot be used in a threshold. X and Y are the sensor's own axes. Which way each points in the room depends on how the sensor is fixed, so tilt it and see which reading moves.
-* **`smoothing_s`** removes noise from the tilt (default 2 seconds; 0 turns the averaging off). Each reading first goes through a short median of the last five frames, which throws away a single spike, then a moving average over that many seconds. It works in seconds, so it behaves the same whatever rate the sensor sends at. **Thresholds act on the smoothed value.** The unsmoothed values are recorded beside it, labelled "unsmoothed", so the raw history is never changed. After any lost link the smoothing starts again from nothing: nothing is carried across the gap, and no tilt is shown until three new readings have arrived.
-* **`target_x`, `target_y`** (optional) are target angles in degrees for X and Y. **`on_target_deg`** (default 0.2) and **`close_deg`** (default 1.0) set the bands: within the first is **On target**, within the second is **Close**, beyond that is **Off target**. The card shows the target, the difference and a marker, using the smoothed angle. This is display only and **never raises an alarm**. If you want an alarm, set an ordinary [threshold](../admin/sensors-and-alarms.md) on the tilt reading.
+* A settings file from an earlier version may have one sensor set with `address`, `axis` and the other settings directly under `witmotion:`. That still works. The Admin card shows it as one sensor; press **Save** to move it into the list (the older `address` is then cleared, so a sensor you remove stays removed).
+* A smoothing time in the file that is not one of the five (for example 3 seconds) is kept as it is when you save from Admin, but cannot be chosen for a new sensor.
 
 ### Not sure of the address?
 
-Set only `enabled: true` and leave out `sensors`. Stagewatch then connects to the first sensor whose own name still starts `WT901BLE` (the factory name, for example `WT901BLE67`) and writes its name and address to the log. Copy the address into `sensors` as above. This only works while the name has not been changed, and it is a first try, not a way to run two sensors.
+Press **Find sensors**. If you would rather not, set only `enabled: true` and leave out `sensors`. Stagewatch then connects to the first sensor whose own name still starts `WT901BLE` (the factory name, for example `WT901BLE67`) and writes its name and address to the log. Copy the address into the list as above. This only works while the name has not been changed, and it is a first try, not a way to run two sensors.
 
 Try it without a sensor using `--emulate`. You get one simulated sensor that loses its link for 20 seconds every 5 minutes.
-
 ## What the small print means
 
 Each time Stagewatch connects, it asks the sensor how it is set up (the return rate, bandwidth, install direction and axis mode). It only reads. It never changes these. The answers show on the card as small print, for example "2 Hz · 20 Hz bandwidth · horizontal · 6-axis", with the battery and the sensor body temperature on the line below.
@@ -112,3 +139,4 @@ See [Troubleshooting: WitMotion tilt sensor](../troubleshooting.md#witmotion-til
 * Whether the sensor puts its Bluetooth service in its advertisement is not known, so Stagewatch does not scan by service.
 * The battery voltage is read as the raw number divided by 100 (411 means 4.11 V). That is worked out from one sensor, not documented by WitMotion. The percentage is a rough lithium-cell curve.
 * Up to four sensors. More than two or three has not been tried.
+* The Admin card and **Find sensors** have been tried against a simulated Bluetooth scanner and in --emulate only. The real Bluetooth search has not yet been run on a Raspberry Pi or Windows.

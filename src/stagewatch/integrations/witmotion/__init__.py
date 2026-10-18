@@ -31,6 +31,7 @@ from collections import deque
 from ...core.model import Device, Entity, Kind, Status
 from ...core.plugin import Integration, Manifest
 from . import parser
+from . import scan as scan_mod
 from .smoothing import Smoother
 from .emulate import EmulatedReader
 from .reader import WitmotionReader
@@ -43,6 +44,8 @@ TICK_S = 1.0
 SILENCE_LIMIT_S = 15.0  # the reader drops a link silent this long (reader.SILENCE_S)
 STALE_S = 5.0          # no frame this long: the readings are a gap (the link allows ~0.3 s between frames)
 SLOW_VALID_S = 180.0   # battery and temperature are asked for every ~45 s; older than this is a gap
+EMULATE_SCAN_S = 1.5   # the "Find sensors" button in emulate: a short pause, then two made-up sensors
+RADIO_WAIT_S = 25.0    # a search waits this long for a sensor reader that is using the radio
 
 MANIFEST = Manifest(
     domain="witmotion",
@@ -128,6 +131,8 @@ class Sensor:
                  smoothing_s: float = 0.0, targets: dict | None = None) -> None:
         self.hub = hub
         self.device_id = device_id
+        self.spec = (address, label, axis, smoothing_s, targets or {})   # what it was set up with: a settings change compares this
+        self.closed = False                   # stopped by Stagewatch (a settings change), not lost: it says nothing more
         self.address = address
         self.label = label
         self.title = label or "Tilt sensor"
@@ -219,12 +224,16 @@ class Sensor:
 
     # ------------------------------------------------------------------ reader callbacks
     def _on_status(self, text: str) -> None:
+        if self.closed:
+            return
         self.link = text
         if not self._up:
             status = Status.INITIALIZING if text in ("searching", "connecting") and not self._had_loss else Status.MISSING
             self._set_status(status, STATUS_TEXT.get(text, ""))
 
     def _on_connected(self, ts: float) -> None:
+        if self.closed:
+            return
         self._up = True
         self._reset_filters()
         self._setup, self._rate_period_s = {}, None   # read again on every connection: the app may have changed them
@@ -233,6 +242,8 @@ class Sensor:
             self._had_loss = False
 
     def _on_disconnected(self, ts: float) -> None:
+        if self.closed:
+            return   # we closed it ourselves: that is not a lost link, so no gap and no marker
         self._up = False
         self._link_lost(ts)
 
@@ -265,6 +276,8 @@ class Sensor:
         return STALE_S
 
     def _on_frame(self, frame, ts: float) -> None:
+        if self.closed:
+            return
         if isinstance(frame, parser.DataFrame):
             self._last_frame = ts
             self._arrivals.append(ts)
@@ -304,6 +317,8 @@ class Sensor:
     # ------------------------------------------------------------------ once a second
     def tick(self, now: float) -> None:
         """Store this second's readings, or a gap when the data has gone quiet."""
+        if self.closed:
+            return
         fresh = self._last_frame is not None and now - self._last_frame <= self.stale_after()
         if self._up and not fresh and self._last_frame is not None:
             self._link_lost(now)   # connected but silent: the same as a lost link (no stale numbers)
@@ -331,6 +346,8 @@ class Sensor:
             self._public()
 
     def _set_status(self, status: Status, detail: str) -> None:
+        if self.closed:
+            return
         if self._status_sent != (status, detail):
             self._status_sent = (status, detail)
             self.hub.set_device_status(self.device_id, status, detail, silent_alarm=True)   # advisory: a quiet notice only
@@ -339,13 +356,20 @@ class Sensor:
 class WitmotionIntegration(Integration):
     manifest = MANIFEST
 
-    def __init__(self, hub, emulate: bool = False, reader_factory=None) -> None:
+    def __init__(self, hub, emulate: bool = False, reader_factory=None, scan_fn=None) -> None:
         super().__init__(hub, emulate)
         self._factory = reader_factory   # tests: factory(address=..., **callbacks) -> reader
+        self._scan_fn = scan_fn          # tests: async () -> list of found sensors, in place of the Bluetooth search
         self.sensors: list[Sensor] = []
         self._ticker: asyncio.Task | None = None
         self._active = False
-        self._scan_lock: asyncio.Lock | None = None
+        self._scan_lock = asyncio.Lock()   # one scan or connect at a time across all sensors (BlueZ needs it)
+        self._apply_lock = asyncio.Lock()
+        self._apply_task: asyncio.Task | None = None
+        self._dirty = False
+        self._stopped = True
+        self._unsubscribe = None
+        self._scanning = False             # a "Find sensors" search is running (one at a time)
 
     def wanted(self) -> bool:
         cfg = getattr(self.hub.config, "witmotion", None)
@@ -359,37 +383,143 @@ class WitmotionIntegration(Integration):
             return [(s.address, s.label, s.axis, s.smoothing_s, target_bands(s)) for s in cfg.sensors]
         return [(cfg.address, "", cfg.axis, cfg.smoothing_s, target_bands(cfg))]
 
-    async def start(self) -> None:
+    def desired(self) -> dict[str, tuple]:
+        """device id -> how that sensor should be set up now (nothing while switched off)."""
         if not self.wanted():
-            return
-        self._active = True
-        self._scan_lock = asyncio.Lock()   # one scan or connect at a time across all sensors (BlueZ needs it)
+            return {}
         entries = [("", "", "both", 2.0, {"tilt_roll": {"target": 2.0, "on": 0.2, "close": 1.0},
                                          "tilt_pitch": {"target": -2.0, "on": 0.2, "close": 1.0}})] if self.emulate else self.configured()
-        for i, (address, label, axis, smoothing, targets) in enumerate(entries):
-            s = Sensor(self.hub, DEVICE_ID if i == 0 else f"{DEVICE_ID}_{i + 1}", address, label, axis, smoothing, targets)
-            s.register()
-            if self._factory is not None:
-                s.reader = self._factory(address=address, **s.callbacks())
-            elif self.emulate:
-                s.reader = EmulatedReader(**s.callbacks())
-            else:
-                s.reader = WitmotionReader(address, scan_lock=self._scan_lock, **s.callbacks())
-            s.task = asyncio.create_task(self._run_reader(s))
-            self.sensors.append(s)
-        self._ticker = asyncio.create_task(self._tick_loop())
+        return {DEVICE_ID if i == 0 else f"{DEVICE_ID}_{i + 1}": e for i, e in enumerate(entries)}
+
+    # ------------------------------------------------------------------ lifecycle
+    async def start(self) -> None:
+        self._stopped = False
+        self._unsubscribe = self.hub.bus.subscribe("config", self._on_config)   # Admin changes take effect with no restart
+        await self.apply()
 
     async def stop(self) -> None:
-        for t in [s.task for s in self.sensors] + [self._ticker]:
-            if t:
-                t.cancel()
-                try:
-                    await t
-                except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                    pass
-        self._ticker = None
-        self.sensors = []
+        self._stopped = True
+        if self._unsubscribe:
+            self._unsubscribe()
+            self._unsubscribe = None
+        if self._apply_task:
+            self._apply_task.cancel()
+            await asyncio.gather(self._apply_task, return_exceptions=True)
+            self._apply_task = None
+        async with self._apply_lock:
+            await self._cancel([s.task for s in self.sensors] + [self._ticker])
+            self._ticker = None
+            self.sensors = []
 
+    def _on_config(self, _topic: str, _payload) -> None:
+        """A settings save: look again. Coalesced, and harmless when nothing about the sensors changed."""
+        if self._stopped:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._dirty = True
+        if self._apply_task is None or self._apply_task.done():
+            self._apply_task = loop.create_task(self._apply_loop(), name="witmotion-apply")
+
+    async def _apply_loop(self) -> None:
+        while self._dirty and not self._stopped:
+            self._dirty = False
+            await self.apply()
+
+    @staticmethod
+    async def _cancel(tasks) -> None:
+        tasks = [t for t in tasks if t]
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def apply(self) -> None:
+        """Make the running sensors match the saved settings. A sensor whose settings did not change is left
+        running (its link is not dropped); one that changed or was removed is stopped quietly (that is not a
+        lost link, so no gap and no marker) and its device goes; a new one starts. Safe to call at any time."""
+        async with self._apply_lock:
+            if self._stopped:
+                return
+            want = self.desired()
+            gone = [s for s in self.sensors if want.get(s.device_id) != s.spec]
+            for s in gone:
+                s.closed = True   # before the cancel: the reader reports a disconnect as it stops
+            await self._cancel([s.task for s in gone])
+            for s in gone:
+                self.hub.remove_device(s.device_id)
+            self.sensors = [s for s in self.sensors if s not in gone]
+            have = {s.device_id for s in self.sensors}
+            for device_id, (address, label, axis, smoothing, targets) in want.items():
+                if device_id not in have:
+                    self.sensors.append(self._add(device_id, address, label, axis, smoothing, targets))
+            order = list(want)
+            self.sensors.sort(key=lambda s: order.index(s.device_id))
+            self._active = bool(self.sensors)
+            if self.sensors and self._ticker is None:
+                self._ticker = asyncio.create_task(self._tick_loop())
+            elif not self.sensors and self._ticker is not None:
+                await self._cancel([self._ticker])
+                self._ticker = None
+
+    def _add(self, device_id: str, address: str, label: str, axis: str, smoothing: float, targets: dict) -> Sensor:
+        s = Sensor(self.hub, device_id, address, label, axis, smoothing, targets)
+        s.register()
+        if self._factory is not None:
+            s.reader = self._factory(address=address, **s.callbacks())
+        elif self.emulate:
+            s.reader = EmulatedReader(**s.callbacks())
+        else:
+            s.reader = WitmotionReader(address, scan_lock=self._scan_lock, **s.callbacks())
+        s.task = asyncio.create_task(self._run_reader(s))
+        return s
+
+    # ------------------------------------------------------------------ Admin: status and "Find sensors"
+    def admin_status(self) -> dict:
+        """For the Admin card only (it carries no addresses). One entry per running sensor, in order."""
+        now = time.time()
+        rows = []
+        for s in self.sensors:
+            fresh = s._up and s._last_frame is not None and now - s._last_frame <= s.stale_after()
+            if fresh:
+                text = "Connected"
+            elif s._had_loss:
+                text = "Link lost"   # a lost or silent link: the readings are a gap until it is back
+            elif s._up:
+                text = "Connected, waiting for data"
+            else:
+                text = STATUS_TEXT.get(s.link, "Starting")
+            r = s.readout()
+            rows.append({"index": int(s.device_id.rsplit("_", 1)[1]) - 1 if "_" in s.device_id else 0,
+                         "connected": bool(fresh), "text": text,
+                         "age_s": round(now - s._last_frame, 1) if s._last_frame is not None else None,
+                         "setup_line": r["setup_line"], "info_line": r["info_line"], "warning": r.get("warning", "")})
+        return {"running": self._active, "scanning": self._scanning, "sensors": rows}
+
+    async def find_sensors(self) -> list[dict]:
+        """The "Find sensors" button: listen for WitMotion sensors for a few seconds (name starts WT). Listening
+        only: never connects, never pairs. One search at a time (ScanBusy otherwise); ScanUnavailable when
+        Bluetooth cannot be used. Shares the radio with the sensor readers, which also scan and connect."""
+        if self._scanning:
+            raise scan_mod.ScanBusy()
+        self._scanning = True
+        try:
+            if self._scan_fn is not None:
+                return await self._scan_fn()
+            if self.emulate:
+                await asyncio.sleep(EMULATE_SCAN_S)
+                return scan_mod.emulated()
+            try:
+                await asyncio.wait_for(self._scan_lock.acquire(), RADIO_WAIT_S)
+            except asyncio.TimeoutError:
+                raise scan_mod.ScanUnavailable(scan_mod.BUSY) from None
+            try:
+                return await scan_mod.listen()
+            finally:
+                self._scan_lock.release()
+        finally:
+            self._scanning = False
     async def _run_reader(self, s: Sensor) -> None:
         try:
             await s.reader.run()

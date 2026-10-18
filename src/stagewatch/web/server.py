@@ -34,7 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from .. import __version__, acoustics
 from ..core.config import (
     ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
-    ContactsSettings, SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, spl_host_error, spl_password_error,
+    ContactsSettings, SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
 from ..core import calibration_io
@@ -53,6 +53,7 @@ from ..integrations.lanwm import importer as logimport
 from ..integrations.ontime.client import check_connection
 from ..integrations.shelly import TEXT as SHELLY_TEXT, InUse
 from ..integrations.shelly.http import ShellyError
+from ..integrations.witmotion import scan as wm_scan
 from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
 from ..version import build_info
@@ -390,6 +391,31 @@ class GlobconBody(BaseModel):
     port: int = Field(9091, ge=1, le=65535, strict=True)
     password: str = Field("", max_length=PASSWORD_MAX)
     clear_password: StrictBool = False
+
+
+class WitmotionSensorBody(BaseModel):
+    """One sensor in PUT /api/admin/witmotion. Strict: no unknown keys. The address is checked in
+    put_witmotion, which answers in fixed words (a wrong value is never repeated back)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    address: str = Field(max_length=64)
+    label: str = Field("", max_length=60)
+    axis: Literal["both", "x", "y"] = "both"
+    smoothing_s: StrictInt | StrictFloat = Field(2, ge=0, le=10, allow_inf_nan=False)
+    target_x: StrictInt | StrictFloat | None = Field(None, ge=-180, le=180, allow_inf_nan=False)
+    target_y: StrictInt | StrictFloat | None = Field(None, ge=-180, le=180, allow_inf_nan=False)
+    on_target_deg: StrictInt | StrictFloat = Field(0.2, ge=0, le=10, allow_inf_nan=False)
+    close_deg: StrictInt | StrictFloat = Field(1.0, ge=0, le=45, allow_inf_nan=False)
+
+
+class WitmotionBody(BaseModel):
+    """PUT /api/admin/witmotion: the switch and the list of sensors (up to four)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    enabled: StrictBool
+    sensors: list[WitmotionSensorBody] = Field(max_length=4)
 
 
 class ShellyTestBody(BaseModel):
@@ -1264,6 +1290,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         extra = integ.admin_detail() if integ is not None and hasattr(integ, "admin_detail") else {}
         return {"password_set": bool(hub.config.globcon.password), **state, **extra}
 
+    def witmotion_admin() -> dict:
+        integ = hub.integrations.get("witmotion")
+        return integ.admin_status() if integ is not None else {"running": False, "scanning": False, "sensors": []}
+
     @app.get("/api/admin/state", dependencies=[Depends(require_admin)])
     async def admin_state():
         cfg = hub.config.model_dump(mode="json")
@@ -1298,6 +1328,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "ontime_rundown": hub.ontime_rundown.admin_status(),
             # GLOBCON levels card: is it in use and what is running (no addresses, no password).
             "globcon": globcon_admin(),
+            # WitMotion tilt sensors card: how each running sensor is doing (the addresses are in "config", admin only).
+            "witmotion": {"emulate": hub.emulate, **witmotion_admin()},
             # Shelly power meters card: the meters (addresses, MACs and firmware are admin-only), no passwords exist.
             "shelly": shelly_admin(),
             # Sound level card: the values that can be chosen, and what is running (no addresses).
@@ -1751,6 +1783,65 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         log.info("GLOBCON settings saved (password %s)", "set" if password else "not set")
         return {"ok": True, "changed": old != hub.config.globcon, "password_set": bool(password)}
 
+    # WitMotion tilt sensors: the switch and the list of sensors (up to four). Read-only toward the sensors:
+    # nothing here writes to a sensor, pairs, renames or calibrates it. Saving goes through the same config
+    # topic as GLOBCON; the integration then starts, stops or changes just the sensors that changed, with no restart.
+    WITMOTION_SMOOTHING = (0, 1, 2, 5, 10)
+
+    @app.put("/api/admin/witmotion", dependencies=admin_deps)
+    async def put_witmotion(body: WitmotionBody):
+        old = hub.config.witmotion
+        saved_smoothing = {s.smoothing_s for s in old.sensors}   # a value set in the settings file stays as it is
+        rows, seen = [], set()
+        for s in body.sensors:
+            address = wm_scan.normalise_address(s.address)
+            if address is None:
+                raise HTTPException(422, "A sensor address looks like AA:BB:CC:DD:EE:FF. Check each sensor's address.")
+            if address in seen:
+                raise HTTPException(422, "Two sensors have the same address. Each sensor needs its own.")
+            seen.add(address)
+            if s.smoothing_s not in WITMOTION_SMOOTHING and s.smoothing_s not in saved_smoothing:
+                raise HTTPException(422, "Smoothing must be off, 1, 2, 5 or 10 seconds.")
+            if s.close_deg < s.on_target_deg:
+                raise HTTPException(422, "\"Close\" must be at least as wide as \"On target\".")
+            label = " ".join(s.label.split())
+            if any(unicodedata.category(c).startswith("C") for c in label):
+                raise HTTPException(422, "A sensor name cannot contain control characters.")
+            rows.append(WitmotionSensorConfig(address=address, label=label, axis=s.axis, smoothing_s=float(s.smoothing_s),
+                                              target_x=s.target_x, target_y=s.target_y,
+                                              on_target_deg=s.on_target_deg, close_deg=s.close_deg))
+        # The older single-sensor fields keep working for a settings file that uses them. Once the list is saved
+        # here it is the list that counts, so the old address is cleared (or a removed sensor would come back).
+        new = old.model_copy(update={"enabled": body.enabled, "sensors": rows, "address": ""})
+        hub.config.witmotion = new
+        applied = False
+        integ = hub.integrations.get("witmotion")
+        if integ is not None:
+            try:
+                await integ.apply()
+                applied = True
+            except Exception:  # noqa: BLE001 - the settings are saved either way
+                log.exception("Could not apply the WitMotion settings")
+        hub.save_config()
+        log.info("WitMotion settings saved (%s, %d sensor%s)", "on" if new.enabled else "off", len(rows), "" if len(rows) == 1 else "s")
+        return {"ok": True, "changed": old != new, "applied": applied}
+
+    # "Find sensors": a short Bluetooth search (name starts WT). It only listens: it never connects or pairs.
+    # The addresses go to this admin reply only. One search at a time.
+    @app.post("/api/admin/witmotion/scan", dependencies=admin_deps)
+    async def scan_witmotion():
+        integ = hub.integrations.get("witmotion")
+        if integ is None:
+            raise HTTPException(404, "WitMotion integration not loaded")
+        try:
+            found = await integ.find_sensors()
+        except wm_scan.ScanBusy:
+            raise HTTPException(409, "A search for sensors is already running. Wait for it to finish.") from None
+        except wm_scan.ScanUnavailable as exc:
+            return {"ok": False, "message": exc.message}
+        mine = {s.address.upper() for s in hub.config.witmotion.sensors}
+        return {"ok": True, "seconds": wm_scan.SCAN_S, "emulate": hub.emulate,
+                "sensors": [{**f, "added": f["address"] in mine} for f in found]}
     # Shelly power meters. Read-only toward the meters: Stagewatch asks for readings (two GET requests,
     # see integrations/shelly/http.py) and sends nothing else. Addresses must be on a private network.
     shelly_calls: list[float] = []

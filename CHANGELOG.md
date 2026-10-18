@@ -15,6 +15,13 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+
+- **WitMotion: set up in Admin.** The sensors no longer need `config.yaml`. **Admin → Integrations → WitMotion tilt sensors** has a switch and a list of up to four sensors (name, Bluetooth address, axis, smoothing, optional target X and Y, and the On target and Close bands), with each sensor's live state (Connected with the age of its last data, or Link lost) and its setup small print. Saving takes effect at once with no restart: only the sensors you changed are restarted, one you removed leaves no gap or marker behind, and its history is kept. A **Find sensors** button listens for Bluetooth for about 8 seconds and lists sensors whose name starts `WT` with their signal, and **Add** fills in the address. It only listens: it never connects, pairs or changes a sensor. One search at a time. Addresses are shown in Admin only. A `config.yaml` that uses the older single-sensor fields still works (the card shows it as one sensor and Save moves it into the list). Tilt stays a guide, not a safety system, and target bands still never raise an alarm. Tried against a simulated scanner and in emulate only, not on real Bluetooth.
+
+### Fixed
+
+- **A second WitMotion sensor no longer appears in the ESPHome nodes list** on the Admin page.
 ## [0.4.0] - 2026-10-18
 
 ### Added
