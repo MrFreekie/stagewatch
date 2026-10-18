@@ -324,18 +324,18 @@
     // node's own signal and battery go on it.
     const rowFor = (d, mine, health) => {
       const byKind = (k) => mine.find((e) => e.kind === k);
-      const cell = (k) => { const e = byKind(k); return h("td", { class: "num" + (e && e.stale ? " muted" : "") }, e ? fmt(k, e.value) : "", SW.hasOffset(e) ? offsetStar() : null); };
-      const healthCell = (k, warn, text) => {
+      const cell = (k, extra) => { const e = byKind(k); return h("td", { class: "num" + (extra || "") + (e && e.stale ? " muted" : "") }, e ? fmt(k, e.value) : "", SW.hasOffset(e) ? offsetStar() : null); };
+      const healthCell = (k, warn, text) => {   // health columns are left off the wall (class wall-skip)
         const e = health ? byKind(k) : null;
-        if (!e || e.value === null || e.value === undefined) return h("td", { class: "num muted" }, "");
-        const cls = "num" + (e.stale ? " muted" : warn(e.value) ? " warn-text" : "");
+        if (!e || e.value === null || e.value === undefined) return h("td", { class: "num wall-skip muted" }, "");
+        const cls = "num wall-skip" + (e.stale ? " muted" : warn(e.value) ? " warn-text" : "");
         return h("td", { class: cls }, text(e.value));
       };
       const last = Math.max(0, ...mine.filter((e) => !isHealth(e)).map((e) => e.updated || 0));
       return h("tr", {},
         h("td", {}, d.name, d.area ? h("div", { class: "muted", style: "font-size:12px" }, d.area) : null),
         h("td", {}, (() => { const st = SW.deviceStatus(d, state.now); return h("span", { class: `status ${st.cls}`, title: st.title }, st.text); })()),
-        cell("temperature"), cell("humidity"), cell("pressure"),
+        cell("temperature"), cell("humidity"), cell("pressure", " wall-skip"),
         showSignal ? healthCell("signal_strength", (v) => v < -75, (v) => `${fmt("signal_strength", v)} ${SW.signalWord(v)}`) : null,
         showBattery ? healthCell("battery", (v) => v < 20, (v) => (v < 20 ? `${fmt("battery", v)} low` : fmt("battery", v))) : null,
         h("td", { class: "num muted" }, SW.age(last || null, state.now)));
@@ -358,9 +358,9 @@
     $("sensors").replaceChildren(
       h("thead", {}, h("tr", {}, h("th", {}, "Node"), h("th", {}, "Status"),
         h("th", { class: "num" }, "Temp"), h("th", { class: "num" }, "RH"),
-        h("th", { class: "num" }, "Pressure"),
-        showSignal ? h("th", { class: "num" }, "Signal") : null,
-        showBattery ? h("th", { class: "num" }, "Battery") : null,
+        h("th", { class: "num wall-skip" }, "Pressure"),
+        showSignal ? h("th", { class: "num wall-skip" }, "Signal") : null,
+        showBattery ? h("th", { class: "num wall-skip" }, "Battery") : null,
         h("th", { class: "num" }, "Updated"))),
       h("tbody", {}, body.length ? body : h("tr", {}, h("td", { colspan: cols, class: "muted" }, "No sensor nodes yet. An admin can adopt ESPHome nodes."))));
     const foot = SW.offsetFootnote(SW.offsetNotes(devs, ents));

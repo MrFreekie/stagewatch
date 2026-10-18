@@ -1,4 +1,4 @@
-// Node test for the chart's marker tab layout (TimeChart.layoutMarkers), the source -> look
+// Node test for the chart's marker flags (SW.chart.groupFlags, SW.chart.fitText), the source -> look
 // mapping (SW.markerStyle) and the contrast of the marker colour tokens in style.css.
 // Run: node tests/js/marker_layout_test.js   (tests/test_marker_layout.py runs it when node is installed)
 "use strict";
@@ -24,80 +24,43 @@ function eq(got, exp, what) {
 }
 function ok(cond, what) { eq(!!cond, true, what); }
 
-const measure = (l) => 10 * l.length + 20;   // fixed-width "font": 10 px a letter plus 20 px of glyph and padding
+// ---- flags: one row, grouped when they would overlap (SW.chart.groupFlags)
 const W = 1000, GAP = 4;
-const lay = (items, rows = 3) => TimeChart.layoutMarkers(items, measure, W, rows);
-const mk = (x, label, selected) => ({ x, label, selected: !!selected });
-
-// no two full tabs in the same row overlap, and each keeps the 4 px gap
-function overlaps(items, lanes) {
-  const byRow = {};
-  lanes.forEach((l) => { if (!l.compact) (byRow[l.row] = byRow[l.row] || []).push(l); });
-  for (const r of Object.keys(byRow)) {
-    const a = byRow[r].slice().sort((p, q) => p.lx - q.lx);
-    for (let i = 1; i < a.length; i++) if (a[i].lx < a[i - 1].lx + a[i - 1].w + GAP) return true;
-  }
+const gw = (n) => 100;   // "N markers" flag width
+const gf = (xs, ws) => SW.chart.groupFlags(xs, ws, W, { groupWidth: gw });
+function clashes(groups) {
+  for (let i = 1; i < groups.length; i++) if (groups[i].lx < groups[i - 1].lx + groups[i - 1].w + GAP) return true;
   return false;
 }
+const inside = (groups) => groups.every((g) => g.lx >= 0 && g.lx + g.w <= W);
 
-// ---- a lone marker, and a spread-out set, stay in row 0
-eq(lay([mk(100, "Aligned")]), [{ row: 0, lx: 100, w: 90, compact: false, flipped: false }], "single marker");
-let items = [mk(50, "Doors"), mk(300, "Support"), mk(600, "Headline")];
-eq(lay(items).map((l) => l.row), [0, 0, 0], "spread markers share row 0");
+eq(gf([100], [90]), [{ indices: [0], lx: 100, w: 90 }], "lone flag starts at its line");
+eq(gf([50, 300, 600], [90, 90, 90]).map((g) => g.indices), [[0], [1], [2]], "spread flags stay single");
+eq(gf([100, 110, 120], [90, 90, 90]), [{ indices: [0, 1, 2], lx: 100, w: 100 }], "three close flags become one '3 markers' flag");
+eq(gf([300, 100], [90, 90]).map((g) => g.indices), [[1], [0]], "groups come out left to right");
+eq(gf([990], [60]), [{ indices: [0], lx: 930, w: 60 }], "flips left of its line at the right edge");
+eq(gf([10], [2000]), [{ indices: [0], lx: 0, w: 1000 }], "a flag wider than the plot is capped to it");
+eq(gf([960, 990], [60, 60]).length, 1, "two flags at the right edge group, not overlap");
+// a single flag next to a group that grows into it gets merged as well
+eq(gf([100, 105, 195], [90, 20, 20]).length, 1, "a grown group swallows the flag it now reaches");
 
-// ---- crowded markers go to later rows, with no overlaps
-items = [mk(100, "Aligned"), mk(110, "Gain up"), mk(120, "Mics on"), mk(130, "Check")];
-let lanes = lay(items);
-eq(lanes.map((l) => l.row), [0, 1, 2, 3], "four stacked markers: three rows, then compact");
-eq(lanes.map((l) => l.compact), [false, false, false, true], "fourth is compact");
-ok(!overlaps(items, lanes), "no overlaps (crowded)");
-
-items = [];
-for (let i = 0; i < 40; i++) items.push(mk(20 + i * 23, "Mark " + i));
-lanes = lay(items);
-ok(!overlaps(items, lanes), "no overlaps (40 markers)");
-ok(lanes.some((l) => l.compact), "40 markers on 1000 px need compact tabs");
-ok(lanes.every((l) => l.row <= 3), "never more than 3 rows plus the compact row");
-
-// a randomised pass, 500 markers: no overlaps, every marker placed, quick
 let seed = 7;
 const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-items = [];
-for (let i = 0; i < 500; i++) items.push(mk(Math.round(rnd() * W), "M" + Math.floor(rnd() * 1000), i === 250));
-const t0 = Date.now();
-lanes = lay(items);
-ok(Date.now() - t0 < 100, "500 markers lay out quickly");
-ok(!overlaps(items, lanes), "no overlaps (500 markers)");
-ok(lanes.every((l) => l && typeof l.row === "number"), "every marker gets a place");
-eq(lanes[250].row, 0, "selected one of 500 is in row 0");
-eq(lanes[250].compact, false, "selected one of 500 is a full label");
+for (const n of [2, 10, 40, 500]) {
+  const xs = [], ws = [];
+  for (let i = 0; i < n; i++) { xs.push(Math.round(rnd() * W)); ws.push(30 + Math.round(rnd() * 150)); }
+  const t0 = Date.now(), g = gf(xs, ws);
+  ok(Date.now() - t0 < 100, `${n} flags lay out quickly`);
+  ok(!clashes(g), `${n} random flags never overlap`);
+  ok(inside(g), `${n} random flags stay within the plot`);
+  eq(g.reduce((a, x) => a + x.indices.length, 0), n, `${n} random flags: every marker counted once`);
+}
 
-// ---- compact tabs
-lanes = lay([mk(100, "A"), mk(100, "B"), mk(100, "C"), mk(100, "D")]);
-eq(lanes[3], { row: 3, lx: 93, w: 14, compact: true, flipped: false }, "compact tab is 14 px wide, centred on its line");
-eq(lay([mk(2, "A"), mk(2, "B"), mk(2, "C"), mk(2, "D")])[3].lx, 0, "compact tab stays inside the left edge");
-eq(lay([mk(999, "A"), mk(999, "B"), mk(999, "C"), mk(999, "D")])[3].lx, 986, "compact tab stays inside the right edge");
-eq(lay([mk(100, "A"), mk(100, "B")], 1)[1].compact, true, "one row: the second goes compact");
-
-// ---- the selected marker is always a full label in row 1 (index 0)
-items = [mk(100, "Aligned"), mk(105, "Gain up"), mk(110, "Mics on"), mk(115, "Check"), mk(120, "Selected one", true)];
-lanes = lay(items);
-eq(lanes[4].row, 0, "selected marker in row 1");
-eq(lanes[4].compact, false, "selected marker is a full label");
-ok(!overlaps(items, lanes), "no overlaps around the selected marker");
-ok(lanes.slice(0, 4).every((l) => l.row !== 0 || l.lx + l.w + GAP <= lanes[4].lx || l.lx >= lanes[4].lx + lanes[4].w + GAP),
-  "others keep clear of the selected label in row 1");
-items = [mk(100, "A"), mk(100, "B"), mk(100, "C"), mk(100, "D"), mk(100, "Picked", true)];
-lanes = lay(items);
-eq(lanes[4].compact, false, "selected stays full even when everything else is crowded");
-eq(lanes.filter((l) => l.compact).length, 2, "two of the others are displaced to compact tabs");
-
-// ---- right-edge flip
-eq(lay([mk(990, "Late")])[0], { row: 0, lx: 930, w: 60, compact: false, flipped: true }, "flips left of its line near the right edge");
-eq(lay([mk(940, "Late")])[0].flipped, false, "just fits: no flip");
-eq(lay([mk(941, "Late")])[0].flipped, true, "one pixel over: flip");
-lanes = lay([mk(960, "Nearly"), mk(990, "Edge")]);
-ok(!overlaps([], lanes), "flipped label does not overlap its neighbour");
+// ---- flag text fits with an ellipsis
+const m10 = (t) => 10 * t.length;
+eq(SW.chart.fitText("Doors", 100, m10), "Doors", "short text unchanged");
+eq(SW.chart.fitText("Headline on stage", 60, m10), "Headl…", "long text cut with an ellipsis");
+ok(m10(SW.chart.fitText("Headline on stage", 60, m10)) <= 60, "cut text fits");
 
 // ---- source mapping
 const key = (s) => SW.markerStyle(s).key;
