@@ -384,7 +384,7 @@
       locBox,
       h("div", { class: "row" }, refreshBtn, h("span", { class: "muted hint" }, "Re-reads the input and metric names from Smaart"), refreshStatus),
       h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/spl", {
-        enabled: on.checked, host: s.host || "", port: s.port || null,   // the address is set under Connections
+        enabled: on.checked, host: s.host || "", port: s.port || null,   // the address is set on its Integrations tile
         meters: slotRows.filter((r) => r.met.value).map((r) => ({ source: r.src.value, metric: r.met.value })),
         password: "", clear_password: false,
         location: defLoc.value,
@@ -599,7 +599,7 @@
             name: val(name), area: val(area), host: val(host), interval_s: Number(every.value), rating_a: Number(rating.value) || 0, channels: channelsPayload() }), "Saved").then(refresh, () => {}) }, "Save"),
           h("button", { class: "small", title: "Makes two warnings from the rating: a notice at 80% and an alarm at 100%. Your own limits: Stagewatch does not protect or switch anything.",
             onclick: () => run(() => api("POST", `/api/admin/shelly/${encodeURIComponent(m.id)}/warnings`), "Warnings added at 80% and 100% (see Thresholds)").then(refresh, () => {}) }, "Add warnings"),
-          h("button", { class: "small danger", onclick: () => confirm(`Remove ${m.name}? Its history is kept.`) && run(() => api("DELETE", `/api/admin/shelly/${encodeURIComponent(m.id)}`), "Removed").then(refresh, () => {}) }, "Remove"))));
+          h("button", { class: "small danger", onclick: () => confirm(`Remove the Shelly power meter ${m.name}? Stagewatch stops reading it. Its history is kept, and it can be added again.`) && run(() => api("DELETE", `/api/admin/shelly/${encodeURIComponent(m.id)}`), "Removed").then(refresh, () => {}) }, "Remove"))));
       return chRows.length ? [first, h("tr", {}, h("td", { colspan: "8" }, h("div", { class: "muted", style: "font-size:12px" }, "Circuits on this meter: label, which mains line it is on (single-phase meters), and its own rating (blank uses the meter's rating)"), ...chRows.map((r) => r.el)))] : [first];
     });
     const table = h("table", {},
@@ -613,7 +613,7 @@
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: meters are simulated, so any private address (such as 192.0.2.20) will \"find\" a simulated PM Mini. The demo meter stops answering for 40 seconds every 5 minutes, to show how a frozen card looks.")
         : h("p", { class: "notice" }, "Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3. Other Shelly meters are read by what they report, but are not tested. A meter with a password is not supported yet."),
       meters.length ? h("div", { class: "table-scroll" }, table) : h("p", { class: "muted" }, "No power meters yet."),
-      h("p", { class: "muted" }, "To add a meter, use Add integration in the Connections card."),
+      h("p", { class: "muted" }, "To add a meter, use the Add integration tile on the Integrations tab."),
       h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it. Stagewatch recognises a meter by its own hardware address, so if its address changes, type the new one in its row and press Save. Warnings at the breaker rating are planned for a later version. Figures are advisory and do not replace the electrician's inspection and testing."));
   }
 
@@ -772,13 +772,13 @@
           h("td", {}, d.model),
           h("td", {}, h("div", { class: "row" },
             h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/devices/${encodeURIComponent(d.id)}`, { name: val(name), area: val(area), role: role.value, sleep_minutes: sleepMin() }), "Saved").then(refresh) }, "Save"),
-            h("button", { class: "small danger", onclick: () => confirm(`Remove ${d.name}? History is kept.`) && run(() => api("DELETE", `/api/admin/devices/${encodeURIComponent(d.id)}`), "Removed").then(refresh) }, "Remove"))));
+            h("button", { class: "small danger", onclick: () => confirm(`Remove the ESPHome node ${d.name}? Stagewatch stops reading it. Its history is kept, and it can be adopted again.`) && run(() => api("DELETE", `/api/admin/devices/${encodeURIComponent(d.id)}`), "Removed").then(refresh) }, "Remove"))));
       })));
 
     return card("ESPHome nodes",
       h("div", { class: "table-scroll" }, discTable),
       ignoredBlock,
-      h("p", { class: "muted" }, "To add a node by its address, use Add integration in the Connections card."),
+      h("p", { class: "muted" }, "To add a node by its address, use the Add integration tile on the Integrations tab."),
       h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADOPTED"),
       h("div", { class: "table-scroll" }, devices.length ? devTable : h("p", { class: "muted" }, "None yet.")));
   }
@@ -1176,8 +1176,10 @@
   // The one pair of buttons at the top of the page: every card, except those held open by a notice.
   function setAllCards(open) {
     pageFolds = pageFolds.filter((f) => f.d.isConnected);
+    const panel = tabEls[activeTab] && tabEls[activeTab].panel;
     const stores = new Set();
     pageFolds.forEach((f) => {
+      if (panel && !panel.contains(f.d)) return;   // only the cards on the chosen tab
       if (f.force === "soft") { f.d.open = open; return; }   // its toggle handler notes the choice
       if (f.force) return;
       f.d.open = open; f.store.state()[f.key] = open; stores.add(f.store);
@@ -1573,12 +1575,12 @@
     return list.some((st) => st.active && st.status && st.status !== "ok");
   }
   // ------------------------------------------------------------ connections
-  // Where each outside product is. The card lists the products that are set up, each with an Edit
-  // button; "Add integration" picks one that is not. Both open the same pop-out, the same shape for
+  // Where each outside product is. The Integrations tab shows each product that is set up as a tile;
+  // tapping it opens Edit, and the "Add integration" tile picks one that is not. Both open the same pop-out, the same shape for
   // every product: address (IP or host name), port, password where the product has one, Test where
   // Stagewatch can try it, Save. Each Save uses that product's own settings call and keeps its other
   // settings as saved (they stay on its own card).
-  const connText = (host, port, pwSet) => `Address: ${host || "not set"}${port ? `, port ${port}` : ""}${pwSet ? ", password saved" : ""}. Change it under Connections.`;
+  const connText = (host, port, pwSet) => `Address: ${host || "not set"}${port ? `, port ${port}` : ""}${pwSet ? ", password saved" : ""}. Change it on its tile on the Integrations tab.`;
   // Ontime's address is one URL (http://host:port); the pop-out shows it as two boxes and rebuilds it.
   const splitUrl = (u) => {
     const m = /^(https?:\/\/)(\[[^\]]+\]|[^/:]+)(?::(\d+))?(\/.*)?$/i.exec(String(u || "").trim());
@@ -1602,7 +1604,14 @@
           const keep = s.meters ? { meters: s.meters.map((m) => ({ source: m.source || "", metric: m.metric })) } : { slots: s.slots || [] };
           await api("PUT", "/api/admin/spl", Object.assign({ enabled: !!s.enabled || v.adding, host: v.host, port: v.port, password: v.password, clear_password: v.clear }, keep));
           return "Smaart address saved.";
-        } },
+        },
+        // Removing turns the reader off and forgets the address; the chosen values, limits and history stay.
+        remove: { kept: "Stagewatch stops reading sound levels from Smaart. The sound level history, the chosen values and the limits are kept, so adding Smaart again carries on.",
+          run: async () => {
+            const keep = s.meters ? { meters: s.meters.map((m) => ({ source: m.source || "", metric: m.metric })) } : { slots: s.slots || [] };
+            await api("PUT", "/api/admin/spl", Object.assign({ enabled: false, host: "", port: null, clear_password: !!sst.password_set }, keep));
+            return "Smaart removed.";
+          } } },
       { key: "globcon", name: "DirectOut GLOBCON", badge: "directout-badge.png", host: g.host, port: g.port || 9091, dflt: 9091, added: !!(g.host || gst.running), password: { set: !!gst.password_set },
         save: async (v) => { await api("PUT", "/api/admin/globcon", { host: v.host, port: v.port || 9091, password: v.password, clear_password: v.clear }); return "GLOBCON address saved."; } },
     ].map((p) => Object.assign(p, { emulated: admin.emulate && p.key !== "ontime", added: p.added || admin.emulate })).concat([
@@ -1653,14 +1662,21 @@
     const testBtn = h("button", { type: "button", class: "touch", id: "ontime-test" }, "Test");
     testBtn.onclick = () => act(testBtn, (v) => current.test(v), "Testing…")();
     const saveBtn = h("button", { type: "button", class: "primary touch" }, "Save");
+    // Remove (Edit only, and only where the product has a way to be removed): one confirm that
+    // names the product and says what is kept.
+    const removeBtn = pick && pick.remove ? h("button", { type: "button", class: "touch danger" }, "Remove") : null;
+    if (removeBtn) removeBtn.onclick = async () => {
+      if (!confirm(`Remove ${pick.name}? ${pick.remove.kept}`)) return;
+      if (await act(removeBtn, () => pick.remove.run(), "Removing…")()) { toast(status.textContent); close(); refresh(); }
+    };
     saveBtn.onclick = async () => { if (await act(saveBtn, (v) => current.save(v), "Saving…")()) { toast(status.textContent); close(); refresh(); } };
     dlg.append(...[
       h("h3", { id: "conn-dlg-title" }, pick ? h("span", {}, connLogo(pick), pick.device ? ` Add ${pick.name}` : ` Edit ${pick.name}`) : "Add integration"),
-      choices.length ? null : h("p", {}, "Every product Stagewatch can connect to is already added. Use Edit on its row to change it."),
+      choices.length ? null : h("p", {}, "Every product Stagewatch can connect to is already added. Tap its tile to change it."),
       !pick && choices.length ? field("Product", product) : null,
       body,
       status,
-      h("div", { class: "row sw-dlg-actions" }, h("span", { class: "grow" }), h("button", { type: "button", class: "touch", onclick: close }, choices.length ? "Cancel" : "Close"),
+      h("div", { class: "row sw-dlg-actions" }, removeBtn, h("span", { class: "grow" }), h("button", { type: "button", class: "touch", onclick: close }, choices.length ? "Cancel" : "Close"),
         choices.length ? testBtn : null, choices.length ? saveBtn : null)].filter(Boolean));   // append() would print a null
     dlg.addEventListener("cancel", () => dlg.remove());   // Escape
     document.body.append(dlg);
@@ -1668,22 +1684,52 @@
     if (choices.length) fill();
   }
 
-  function connectionsCard() {
-    const list = connProducts();
-    const added = list.filter((p) => !p.device && (p.added || p.emulated));
-    const rows = added.map((p) => h("tr", {},
-      h("td", {}, h("span", { class: "conn-name" }, connLogo(p), h("strong", {}, p.name))),
-      h("td", {}, p.emulated ? h("span", { class: "muted" }, "Simulated (emulate mode)") : `${p.host || "not set"}${p.port ? `:${p.port}` : ""}`),
-      h("td", { class: "muted" }, p.password ? (p.password.set ? "Password saved" : "No password") : "No password needed"),
-      h("td", { class: "conn-edit" }, p.emulated ? null : h("button", { class: "touch", "aria-label": `Edit ${p.name}`, onclick: () => connDialog(p) }, "Edit"))));
-    const canAdd = true;   // a Shelly meter or an ESPHome node can always be added
-    return card("Connections",
-      h("p", { class: "muted" }, "Where each outside product is on the show network: its address, port and password. Add integration also adds a Shelly power meter or an ESPHome node; those are listed and changed on their own cards. Each product's other settings are on its own card."),
-      h("div", { class: "table-scroll" }, h("table", {},
-        h("thead", {}, h("tr", {}, ["Product", "Address and port", "Password", ""].map((x) => h("th", {}, x)))),
-        h("tbody", {}, rows))),
-      h("div", { class: "row conn-actions" }, h("span", { class: "grow" }),
-        h("button", { class: "primary touch", disabled: !canAdd, title: canAdd ? "" : "Every product is already added", onclick: () => connDialog(null) }, "Add integration")));
+  // The Integrations tab's tiles: one equal-sized tile per outside product that is set up, with its
+  // badge, name, status chip and one line of detail, then an "Add integration" tile. Tapping a tile
+  // opens the product's Edit pop-out, or its own card where it has one (each Shelly meter and
+  // ESPHome node is changed and removed there). The chip slot keeps its space when there is no chip.
+  // The ESPHome nodes: not the site row, services, meters, the Pi itself or the WitMotion sensors (their own tile).
+  const nodeList = () => snap.devices.filter((d) => d.id !== "site" && d.id !== "witmotion" && d.category !== "service" && d.category !== "meter" && d.category !== "host");
+  const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  function integrationTiles() {
+    const addr = (p) => (p.emulated ? "Simulated (emulate mode)" : p.host ? `${p.host}${p.port ? `:${p.port}` : ""}` : "Address not set");
+    const meters = (admin.shelly || {}).meters || [];
+    const wm = admin.config.witmotion || {}, wmSensors = (wm.sensors || []).length;
+    const tiles = connProducts().filter((p) => !p.device && (p.added || p.emulated)).map((p) => ({
+      key: p.key, name: p.name, badge: p.badge, detail: addr(p),
+      open: p.emulated ? () => openCard(p.key) : () => connDialog(p),
+      hint: p.emulated ? `Open the ${p.name} card` : (p.remove ? `Edit or remove ${p.name}` : `Edit ${p.name}`),
+    }));
+    if (meters.length) tiles.push({ key: "shelly", name: "Shelly power meters", badge: "shelly-badge.svg", detail: plural(meters.length, "meter"),
+      open: () => openCard("shelly"), hint: "Open the Shelly power meters card" });
+    const nodes = nodeList();
+    if (nodes.length) tiles.push({ key: "esphome", name: "ESPHome nodes", badge: "", detail: plural(nodes.length, "node"),
+      open: () => openCard("nodes"), hint: "Open the ESPHome nodes card on the Sensors and nodes tab" });
+    // WitMotion tilt sensors have no admin card yet: they are set up in the settings file.
+    if (wmSensors || wm.enabled || devOf("witmotion")) tiles.push({ key: "witmotion", name: "WitMotion tilt sensors", badge: "",
+      detail: wmSensors ? `${plural(wmSensors, "sensor")}, set up in the settings file` : "Set up in the settings file", open: null });
+    const tileEl = (t) => {
+      const logo = t.badge ? connLogo({ badge: t.badge }) : h("span", { class: "card-logo int-nologo", "aria-hidden": "true" });
+      const name = h("strong", { class: "int-name" }, t.name);
+      const detail = h("span", { class: "int-detail muted" }, t.detail);
+      const main = t.open ? h("button", { type: "button", class: "int-main", "aria-label": `${t.name}: ${t.detail}. ${t.hint}`, onclick: t.open }, logo, name, detail)
+        : h("div", { class: "int-main" }, logo, name, detail);
+      const slot = h("span", { class: "int-chip" });
+      const input = CHIP_INPUT[t.key] ? CHIP_INPUT[t.key]() : null;
+      if (input) {
+        const ui = SW.sourceStatusUi(input.source);
+        slot.append(ui.el);
+        chips.push({ key: t.key, ui, state: (ui.update(input, snap.now) || {}).state, el: slot });
+      } else SW.slot(slot, true);
+      return h("div", { class: "int-tile" }, main, slot);
+    };
+    const addTile = h("div", { class: "int-tile int-add" },
+      h("button", { type: "button", class: "int-main", onclick: () => connDialog(null) },
+        h("span", { class: "card-logo int-nologo int-plus", "aria-hidden": "true" }, "+"), h("strong", { class: "int-name" }, "Add integration"),
+        h("span", { class: "int-detail muted" }, "Ontime, Smaart, GLOBCON, a Shelly meter or an ESPHome node")));
+    return card("Integrations",
+      h("p", { class: "muted" }, "Each outside product Stagewatch reads from. Tap a tile to change its address or settings, or to remove it. Removing a product keeps its history. Each product's other settings are on its own card below."),
+      h("div", { class: "int-tiles" }, tiles.map(tileEl), addTile));
   }
 
   function ontimeCard() {
@@ -1702,7 +1748,7 @@
     return SW.brandCard("Ontime", "ontime-badge.png", "Ontime",
       h("p", { class: "muted" }, "Settings for the three Ontime cards: Wall Clock (when it uses Ontime), Ontime Timer and Ontime Rundown. Stagewatch only listens to Ontime: it never starts, pauses or changes anything in it. Ontime is only contacted while a dashboard has one of these cards."),
       heading("Connection"),
-      h("p", { class: "muted" }, `One address serves all three cards: ${w.ontime_url}. Change it under Connections.`),
+      h("p", { class: "muted" }, `One address serves all three cards: ${w.ontime_url}. Change it on the Ontime tile on the Integrations tab.`),
       h("div", { id: "ontime-status", class: "muted" }, ontimeStatusLines(admin).map((l) => h("p", {}, l))),
       heading("Wall Clock"),
       h("div", { class: "row" }, field("Warn if more than this many seconds out", warn)),
@@ -2482,12 +2528,16 @@
     },
     esphome() {
       // The adopted nodes, as the ESPHome nodes card lists them.
-      const nodes = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter" && d.category !== "host");
+      const nodes = nodeList();
       if (!nodes.length) return null;
       const has = (...st) => nodes.some((d) => st.indexOf(d.status) >= 0);
       const reported = has("fault", "compromised") ? "error" : has("missing") ? "offline" : has("initializing") ? "waiting" : "ok";
       return { source: "esphome", reported, dataAt: reported === "ok" ? snap.now : null };
     },
+  };
+  CHIP_INPUT.witmotion = () => {
+    const d = devOf("witmotion");
+    return d ? Object.assign(SW.sourceInput.smaart(d, entsOf("witmotion")), { source: "witmotion" }) : null;
   };
   let chips = [];
   function chip(c, key) {
@@ -2500,19 +2550,93 @@
     const logo = h2.querySelector(".card-logo");
     if (!logo && !h2.querySelector(".grow")) h2.append(h("span", { class: "grow" }));
     h2.insertBefore(ui.el, logo || null);
-    ui.update(input, snap.now);
-    chips.push({ key, ui });
+    chips.push({ key, ui, state: (ui.update(input, snap.now) || {}).state, el: c });
     return c;
   }
   function updateChips() {
-    chips.forEach((x) => { const input = CHIP_INPUT[x.key](); if (input) x.ui.update(input, snap.now); });
+    chips.forEach((x) => { const input = CHIP_INPUT[x.key](); if (input) x.state = (x.ui.update(input, snap.now) || {}).state; });
+    markTabs();
   }
 
-  // The page in four groups, most used first. Each has a heading that the menu at the top jumps to.
+  // The page in four tabs, most used first; only the chosen tab's cards are shown. The tab is kept in
+  // the address (#integrations), so a reload or a link lands on it. ARIA tablist: the arrow keys,
+  // Home and End move between tabs. A tab holding a card that is Offline or in Error shows ▲.
   const GROUPS = [["show", "Show day"], ["sensors", "Sensors and nodes"], ["integrations", "Integrations"], ["system", "Setup and system"]];
-  const groupHead = (id, title) => h("h2", { class: "admin-group", id: `group-${id}` }, title);
-  const groupMenu = () => h("nav", { class: "row admin-groups", "aria-label": "Admin sections" },
-    GROUPS.map(([id, title]) => h("a", { class: "touch", href: `#group-${id}` }, title)));
+  const tabIds = GROUPS.map(([id]) => id);
+  let activeTab = tabIds.indexOf(location.hash.slice(1)) >= 0 ? location.hash.slice(1) : "show";
+  let tabEls = {};   // id -> { tab, panel, mark, label }
+  function selectTab(id, focus) {
+    if (!tabEls[id]) return;
+    activeTab = id;
+    Object.entries(tabEls).forEach(([k, t]) => {
+      const on = k === id;
+      t.tab.setAttribute("aria-selected", String(on));
+      t.tab.tabIndex = on ? 0 : -1;
+      if (t.panel) t.panel.hidden = !on;
+    });
+    if (focus) tabEls[id].tab.focus();
+    // On a phone the bar scrolls sideways: bring the chosen tab into view (the bar is its offsetParent).
+    const tab = tabEls[id].tab, bar = tab.parentNode;
+    if (tab.offsetLeft < bar.scrollLeft) bar.scrollLeft = tab.offsetLeft;
+    else if (tab.offsetLeft + tab.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = tab.offsetLeft + tab.offsetWidth - bar.clientWidth;
+    if (location.hash !== `#${id}`) history.replaceState(null, "", `#${id}`);
+  }
+  function tabBar() {
+    tabEls = {};
+    const bar = h("div", { class: "admin-tabs", role: "tablist", "aria-label": "Admin sections" });
+    GROUPS.forEach(([id, title]) => {
+      const mark = h("span", { class: "tab-mark", "aria-hidden": "true", hidden: true }, "▲");
+      const label = h("span", { class: "sr-only" });
+      const tab = h("button", { type: "button", role: "tab", class: "admin-tab", id: `tab-${id}`, "aria-controls": `panel-${id}`,
+        onclick: () => selectTab(id) }, title, mark, label);
+      bar.append(tab);
+      tabEls[id] = { tab, mark, label };
+    });
+    bar.addEventListener("keydown", (ev) => {
+      const i = tabIds.indexOf(activeTab);
+      const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabIds.length - 1 }[ev.key];
+      if (to === undefined) return;
+      ev.preventDefault();
+      selectTab(tabIds[(to + tabIds.length) % tabIds.length], true);
+    });
+    return bar;
+  }
+  const tabPanel = (id, ...cards) => {
+    const panel = h("div", { class: "admin-panel", role: "tabpanel", id: `panel-${id}`, "aria-labelledby": `tab-${id}` }, ...cards.filter(Boolean));
+    tabEls[id].panel = panel;
+    return panel;
+  };
+  function markTabs() {
+    Object.values(tabEls).forEach((t) => {
+      const bad = chips.some((x) => (x.state === "error" || x.state === "offline") && t.panel && t.panel.contains(x.el));
+      if (t.mark.hidden === bad) t.mark.hidden = !bad;
+      t.label.textContent = bad ? " (▲ warning: a card here is Offline or in Error)" : "";
+      t.tab.title = bad ? "A card here is Offline or in Error" : "";
+    });
+  }
+  // Open a card's fold, switching to its tab first, and bring it into view.
+  function openCard(key) {
+    const d = document.getElementById(`card-fold-${key}`);
+    if (!d) return;
+    const panel = d.closest("[role=tabpanel]");
+    if (panel) selectTab(panel.id.slice(6));
+    d.open = true;
+    d.closest(".card").scrollIntoView({ block: "start" });
+    d.querySelector("summary").focus({ preventScroll: true });
+  }
+  // The header sticks too, and its height changes when it wraps on a phone: the tab bar sits under it.
+  const head = document.querySelector("header.top");
+  const headHeight = () => document.documentElement.style.setProperty("--admin-head", `${head ? head.offsetHeight : 0}px`);
+  if (window.ResizeObserver && head) new ResizeObserver(headHeight).observe(head); else window.addEventListener("resize", headHeight);
+  headHeight();
+  // A link to a tab (#sensors) picks it; a link to anything inside a tab (#software) picks that tab first.
+  window.addEventListener("hashchange", () => {
+    const id = location.hash.slice(1);
+    if (tabEls[id]) return selectTab(id);
+    const el = id && document.getElementById(id);
+    const panel = el && el.closest("[role=tabpanel]");
+    if (panel) { selectTab(panel.id.slice(6)); el.scrollIntoView({ block: "start" }); }
+  });
 
   function render() {
     entityIdsRendered = snap.entities.map((e) => e.id).join(",");
@@ -2520,47 +2644,50 @@
     pageFolds = [];
     chips = [];
     // Core daily cards start open, set-up-once cards closed. A card with a notice is held open.
-    // A maker's card shows once it is added under Connections (Add integration).
+    // A maker's card shows once it is added (the Add integration tile).
     const added = Object.fromEntries(connProducts().map((p) => [p.key, p.added]));
     const oscErr = ((admin.integrations.find((i) => i.manifest.domain === "osc_out") || {}).last_error);
-    app.replaceChildren(...[
-      groupMenu(),
+    app.replaceChildren(
+      tabBar(),
       foldButtons(setAllCards, " cards"),
-      groupHead(...GROUPS[0]),
-      foldCard(eventShowCard(), "event", true),
-      scheduleCard(),     // summary and a link to /schedule
-      foldCard(alarmLogCard(), "alarmlog", true),
-      foldCard(alarmNoticesCard(), "notices", true),
-      foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
-      connectCard(),
-      foldCard(documentsCard(), "documents", false),
-      foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0),
-      groupHead(...GROUPS[1]),
-      chip(foldCard(devicesCard(), "nodes", true), "esphome"),
-      foldCard(entitiesCard(), "sensors", true),
-      foldCard(thresholdsCard(), "thresholds", true),
-      foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
-      foldCard(deviceErrorsCard(), "deviceerrors", true),
-      foldCard(logImportCard(), "logimport", false),
-      groupHead(...GROUPS[2]),
-      foldCard(connectionsCard(), "connections", true),
-      added.ontime ? chip(foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"), "ontime") : null,
-      foldCard(wallClockCard(), "wallclock", false),
-      added.smaart ? chip(foldCard(splCard(), "smaart", false), "smaart") : null,
-      added.smaart ? foldCard(splLimitsCard(), "spllimits", false) : null,
-      added.globcon ? chip(foldCard(globconCard(), "globcon", false), "globcon") : null,
-      ((admin.shelly || {}).meters || []).length ? chip(foldCard(shellyCard(), "shelly", false), "shelly") : null,
-      foldCard(barometerCard(), "barometer", false),
-      piHostInfo() ? chip(foldCard(piHostCard(), "pihost", false), "pihost") : null,
-      foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
-      foldCard(oscCard(), "osc", false, !!oscErr),
-      foldCard(catalogCard(), "integrations", false),
-      groupHead(...GROUPS[3]),
-      foldCard(siteCard(), "site", false, !admin.config.site.timezone),
-      foldCard(securityCard(), "security", false),
-      softwareCard(),
-      foldCard(supportCard(), "help", false)].filter(Boolean));
+      tabPanel("show",
+        foldCard(eventShowCard(), "event", true),
+        scheduleCard(),     // summary and a link to /schedule
+        foldCard(alarmLogCard(), "alarmlog", true),
+        foldCard(alarmNoticesCard(), "notices", true),
+        foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
+        connectCard(),
+        foldCard(documentsCard(), "documents", false),
+        foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0)),
+      tabPanel("sensors",
+        chip(foldCard(devicesCard(), "nodes", true), "esphome"),
+        foldCard(entitiesCard(), "sensors", true),
+        foldCard(thresholdsCard(), "thresholds", true),
+        foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
+        foldCard(deviceErrorsCard(), "deviceerrors", true),
+        foldCard(logImportCard(), "logimport", false)),
+      tabPanel("integrations",
+        integrationTiles(),
+        added.ontime ? chip(foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"), "ontime") : null,
+        foldCard(wallClockCard(), "wallclock", false),
+        added.smaart ? chip(foldCard(splCard(), "smaart", false), "smaart") : null,
+        added.smaart ? foldCard(splLimitsCard(), "spllimits", false) : null,
+        added.globcon ? chip(foldCard(globconCard(), "globcon", false), "globcon") : null,
+        ((admin.shelly || {}).meters || []).length ? chip(foldCard(shellyCard(), "shelly", false), "shelly") : null,
+        foldCard(barometerCard(), "barometer", false),
+        piHostInfo() ? chip(foldCard(piHostCard(), "pihost", false), "pihost") : null,
+        foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
+        foldCard(oscCard(), "osc", false, !!oscErr),
+        foldCard(catalogCard(), "integrations", false)),
+      tabPanel("system",
+        foldCard(siteCard(), "site", false, !admin.config.site.timezone),
+        foldCard(securityCard(), "security", false),
+        softwareCard(),
+        foldCard(supportCard(), "help", false)));
+    selectTab(activeTab);
+    markTabs();
   }
+
 
   async function refresh() {
     [admin, snap] = await Promise.all([api("GET", "/api/admin/state"), api("GET", "/api/snapshot"), loadSoftware(),
