@@ -416,6 +416,21 @@ body.layout-wall .tile .foot { font-size: 16px; }
 body.layout-wall .tile .foot.approx { font-size: 18px; }   /* the "approximate" note must be readable from the back */
 body.layout-wall .chart-wrap { height: 42vh; }
 body.layout-wall .only-interactive { display: none; }
+/* Wall: Markers and Sensors as short lists in big type. Markers: time and label, the latest 8;
+   Sensors: node, status, temperature, RH and age (pressure, signal and battery stay on the tablet). */
+body.layout-wall .markers ul { max-height: none; overflow: visible; }
+body.layout-wall .markers li { font-size: 28px; padding: 6px 4px; cursor: default; }
+body.layout-wall .markers li:nth-child(n+9) { display: none; }
+body.layout-wall .markers li .mk { min-width: 32px; height: 32px; line-height: 32px; font-size: 20px; }
+body.layout-wall .markers li .t { min-width: 4.2em; }
+body.layout-wall .markers li .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.layout-wall .markers .mk-btn, body.layout-wall .markers .note-flag, body.layout-wall .markers .hid-tag,
+body.layout-wall .marker-hidden-toggle, body.layout-wall #delta { display: none; }
+body.layout-wall #sensors { font-size: 26px; }
+body.layout-wall #sensors th { font-size: 18px; }
+body.layout-wall #sensors .status { font-size: 22px; padding: 2px 12px; }
+body.layout-wall #sensors td .muted { font-size: 18px !important; }
+body.layout-wall #sensors .wall-skip { display: none; }
 /* Schedule card per layout. Phone: the strip, expanding to the full card on tap. Wall: only the
    NOW / NEXT strip, large enough to read at 5 m (no running order, no setlist). */
 body.layout-phone #schedule-card > h2 { display: none; }
