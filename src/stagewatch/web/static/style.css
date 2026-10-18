@@ -1424,3 +1424,5 @@ header.top .back { display: inline-flex; align-items: center; min-height: 44px; 
 .conn-dialog form.row { flex-direction: column; align-items: stretch; } .conn-dialog form.row > button { align-self: flex-end !important; } .conn-dialog .row .field { flex: 1; } .conn-dialog .row > button { align-self: flex-end; }
 /* A switched-off main button looks switched off, not just faded blue. */
 button.primary:disabled { background: var(--panel-2); color: var(--muted); border-color: var(--grid); opacity: 1; }
+/* Edit cards preview frame (dashboard.js ?preview=1): says plainly whether it shows unsaved changes. */
+.preview-strip { position: sticky; top: 0; z-index: 50; padding: 6px 12px; font-weight: 700; text-align: center; background: var(--warn); color: #000; }

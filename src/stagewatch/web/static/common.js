@@ -1184,3 +1184,45 @@ SW.trendPath = function (points, t0, t1, gapS, w, h) {
   if (run === 1) d += "h1";
   return d;
 };
+
+// Edit cards preview (dashboard-editor.js -> dashboard.js ?preview=1): an unsaved draft of one
+// dashboard's card fields, checked like a saved one. Returns a new dashboard object (the saved one
+// with only the card fields replaced) or null when anything is wrong. Slug, title, layout and the
+// allowed actions always come from the saved dashboard. `known` is the list of card ids this page
+// can draw. Nothing here saves or sends anything.
+SW.PREVIEW_MAX_CARDS = 16;   // core/cards.py MAX_CARDS
+SW.previewDraft = function (draft, saved, known) {
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const isObj = (o) => !!o && typeof o === "object" && !Array.isArray(o);
+  const str = (v, max) => typeof v === "string" && v.length <= max;
+  if (!isObj(draft) || !isObj(saved) || !Array.isArray(known)) return null;
+  const cards = draft.cards;
+  if (!Array.isArray(cards) || cards.length > SW.PREVIEW_MAX_CARDS) return null;
+  for (let i = 0; i < cards.length; i++) {
+    if (typeof cards[i] !== "string" || known.indexOf(cards[i]) < 0 || cards.indexOf(cards[i]) !== i) return null;
+  }
+  const sizes = draft.card_sizes === undefined ? {} : draft.card_sizes;
+  if (!isObj(sizes)) return null;
+  const outSizes = {};
+  for (const k of Object.keys(sizes)) {
+    if (SW.HALF_CAPABLE.indexOf(k) < 0 || (sizes[k] !== "half" && sizes[k] !== "full")) return null;
+    if (sizes[k] === "half") outSizes[k] = "half";
+  }
+  const out = Object.assign({}, saved, { cards: cards.slice(), card_sizes: outSizes });
+  if (own(draft, "stage")) { if (!str(draft.stage, 40)) return null; out.stage = draft.stage; }
+  if (own(draft, "contacts_area")) { if (!str(draft.contacts_area, 40)) return null; out.contacts_area = draft.contacts_area; }
+  if (own(draft, "clock_style")) { if (!str(draft.clock_style, 20)) return null; out.clock_style = draft.clock_style; }
+  for (const k of ["show_dew_point", "show_contact_phones"]) {
+    if (own(draft, k)) { if (typeof draft[k] !== "boolean") return null; out[k] = draft[k]; }
+  }
+  if (own(draft, "globcon")) {
+    const g = draft.globcon;
+    if (!isObj(g)) return null;
+    const c = g.controller, s = g.strips, r = g.range;
+    if (typeof c !== "number" || !Number.isInteger(c) || c < 1 || c > 16) return null;
+    if (s !== 4 && s !== 8) return null;
+    if (r !== undefined && r !== null && ["1-4", "5-8", "1-8", "9-12", "13-16", "9-16", "1-16"].indexOf(r) < 0) return null;
+    out.globcon = { controller: c, strips: s, range: r === undefined ? null : r };
+  }
+  return out;
+};

@@ -7,6 +7,10 @@
   const { h, fmt, fmtDelta } = SW;
   const slug = decodeURIComponent(location.pathname.split("/").pop());
   const $ = (id) => document.getElementById(id);
+  // Edit cards preview (/d/<slug>?preview=1 inside the editor's frame): never marks, acknowledges,
+  // edits or sounds, and draws an unsaved draft the editor posts (checked in onDraft below).
+  const PREVIEW = /[?&]preview=1(&|$)/.test(location.search) && window.parent !== window;
+  let draft = null, savedDash = null;
 
   const SITE_TILES = [
     ["site.temperature", "Temperature"],
@@ -158,9 +162,9 @@
     const lines = active.slice(0, cap).map(line);
     if (active.length > cap) lines.push(h("li", { class: "more" }, `+${active.length - cap} more`));
     $("alarm-list").replaceChildren(...lines, ...(fold ? [fold] : []));
-    const canAck = state.isAdmin || (state.dash && state.dash.allow_ack);
+    const canAck = !PREVIEW && (state.isAdmin || (state.dash && state.dash.allow_ack));
     $("ack").hidden = !(canAck && state.sounding);
-    sounder.set(state.sounding);
+    sounder.set(state.sounding && !PREVIEW);
     renderSound();
     renderMessages();
   }
@@ -292,6 +296,7 @@
   applyTheme(savedTheme);
 
   $("sound-toggle").addEventListener("click", () => {
+    if (PREVIEW) return;
     if (soundWanted() && sounder.enabled) { localSet(SOUND_KEY, "off"); renderSound(); return; }
     localSet(SOUND_KEY, "on");
     sounder.enable();   // this tap is the user gesture the browser needs
@@ -371,7 +376,7 @@
 
   // Notes, Hide and Un-hide: anyone on a dashboard allowed to add markers (any marker), and admins.
   // Deleting stays admin-only.
-  const canEditMarkers = () => !!(state.isAdmin || (state.dash && state.dash.allow_marker));
+  const canEditMarkers = () => !PREVIEW && !!(state.isAdmin || (state.dash && state.dash.allow_marker));
   const findMarker = (id) => state.markers.filter((m) => m.id === id)[0] || null;
 
   function renderMarkers() {
@@ -381,7 +386,7 @@
     }
     if (has("spl_live")) updateSplChart();
     if (!has("markers")) return;
-    const canDelete = state.isAdmin;
+    const canDelete = !PREVIEW && state.isAdmin;
     const canEdit = canEditMarkers();
     const hiddenN = SW.hiddenMarkerCount(state.markers);
     if (!hiddenN) state.showHidden = false;
@@ -1547,6 +1552,7 @@
     renderContacts();
   }
   function askContactsPin() {
+    if (PREVIEW) return;
     const box = $("contacts-body");
     if (!box || box.querySelector(".contact-pin")) return;
     const input = h("input", { type: "password", inputmode: "numeric", autocomplete: "off", maxlength: 12, class: "touch", "aria-label": "Contacts PIN" });
@@ -1757,7 +1763,8 @@
     state.ontimeRundown = msg.ontime_rundown || null; // likewise
     state.globcon = msg.globcon_meters || null;       // likewise
     state.isAdmin = msg.is_admin;
-    state.dash = msg.dashboard;
+    savedDash = msg.dashboard;
+    state.dash = previewDash();
     state.now = msg.now;
     syncClock(msg.now);
     if (!state.dash && !state.isAdmin) { location.href = "/"; return; }
@@ -1768,7 +1775,7 @@
     // Subtitle: Dashboard · Event · Day (the event and day the markers and history belong to).
     const sub = [state.dash ? state.dash.title : "", msg.show.event_name, msg.show.name].filter((x) => x);
     $("show").textContent = sub.join(" · ");
-    $("marker-form").hidden = !(state.isAdmin || (state.dash && state.dash.allow_marker));
+    $("marker-form").hidden = PREVIEW || !(state.isAdmin || (state.dash && state.dash.allow_marker));
     layoutCards();
     renderAlarms();
     for (const id of assignedCards()) CARDS[id].render();
@@ -1782,6 +1789,10 @@
     if (!has("ontime_rundown")) stopOntimeRundown();
     if (!has("globcon_meters")) stopGlobcon();
     syncSchedule();
+    if (PREVIEW && state.isAdmin) {
+      previewStrip();
+      try { window.parent.postMessage({ type: "sw-preview-ready" }, location.origin); } catch (_) { /* ignore */ }
+    }
   }
 
   // "Open on a tablet" footer card: where tablets can reach this dashboard. Only the address and
@@ -1801,6 +1812,39 @@
       box.hidden = false;
     } catch (_) { box.hidden = true; }
   }
+
+  // The draft is used only by an admin's preview frame, only from the parent page on this origin,
+  // and only when it passes the same checks as a saved dashboard. It lives in memory: a reload drops it.
+  function previewDash() {
+    if (!PREVIEW || !draft || !state.isAdmin || !savedDash) return savedDash;
+    return SW.previewDraft(draft, savedDash, Object.keys(CARDS)) || savedDash;
+  }
+  function previewStrip() {
+    let strip = $("preview-strip");
+    if (!strip) {
+      strip = h("div", { id: "preview-strip", class: "preview-strip", role: "status" });
+      document.body.insertBefore(strip, document.body.firstChild);
+    }
+    strip.textContent = state.dash !== savedDash ? "Preview: not saved" : "Preview: saved version";
+  }
+  function onDraft(ev) {
+    if (ev.origin !== location.origin || ev.source !== window.parent) return;
+    const d = ev.data;
+    if (!d || typeof d !== "object" || d.type !== "sw-preview-draft" || !state.isAdmin || !savedDash) return;
+    draft = d.draft === null ? null : (SW.previewDraft(d.draft, savedDash, Object.keys(CARDS)) ? d.draft : null);
+    state.dash = previewDash();
+    previewStrip();
+    layoutCards();
+    renderAlarms();
+    for (const id of assignedCards()) CARDS[id].render();
+    if (!has("schedule")) stopScheduleTimer();
+    if (!has("wall_clock")) stopWallClockTimer();
+    if (!has("ontime_timer")) stopOntimeTimer();
+    if (!has("ontime_rundown")) stopOntimeRundown();
+    if (!has("globcon_meters")) stopGlobcon();
+    syncSchedule();
+  }
+  if (PREVIEW) window.addEventListener("message", onDraft);
 
   function onMessage(msg) {
     switch (msg.type) {
