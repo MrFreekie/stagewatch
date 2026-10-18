@@ -114,7 +114,7 @@
         h("section", { class: "card de-preview" },
           h("h2", {}, h("span", {}, "Preview"), h("span", { class: "grow" }), h("span", { class: "muted" }, `${dash.layout}, follows your changes`)),
           view.el,
-          h("p", { class: "muted hint" }, "The preview shows your changes straight away, at the layout's screen size, but only here: nothing is saved and other screens keep the saved version until you press Save. Contact phone numbers and the contacts area show only after Save. If the strip in the preview says "saved version", it could not show these changes. It is for looking only: taps do nothing here."))));
+          h("p", { class: "muted hint" }, "The preview shows your changes straight away, at the layout's screen size, but only here: nothing is saved and other screens keep the saved version until you press Save. Contact phone numbers and the contacts area show only after Save. If the strip in the preview says ‘saved version’, it could not show these changes. It is for looking only: taps do nothing here."))));
   }
 
   async function start() {
