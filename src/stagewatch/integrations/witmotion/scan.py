@@ -8,6 +8,7 @@ show here: its address can be typed in by hand.) The addresses go to the Admin p
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 
@@ -72,7 +73,9 @@ async def listen(seconds: float = SCAN_S, bleak_module=None) -> list[dict]:
     cannot be used. Listening only: no connection is made."""
     try:
         bleak = bleak_module or import_bleak()
-        heard = await bleak.BleakScanner.discover(timeout=seconds, return_adv=True)
+        # discover() times only the listening; a stuck Bluetooth service could hang the start or stop and
+        # hold the radio lock the sensor readers need, so the whole call has its own limit.
+        heard = await asyncio.wait_for(bleak.BleakScanner.discover(timeout=seconds, return_adv=True), seconds + 7)
     except Exception as exc:   # no adaptor, switched off, no permission, bleak missing: they all read the same here
         log.warning("WitMotion: the Bluetooth search could not run (%s)", type(exc).__name__)
         raise ScanUnavailable() from exc
