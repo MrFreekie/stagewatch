@@ -71,7 +71,37 @@
     return `Outside the formula's tested range (${parts.length ? parts.join(", ") : "0–30 °C"}): figures are approximate`;
   }
 
+  // Trend lines under the tile figures: one shared fetch for every tile, over the History card's
+  // span (1 hour without that card), at most once a minute or when the span changes. The paths are
+  // worked out once per fetch; renders in between reuse them.
+  const TREND_POINTS = 60, TREND_W = 1000, TREND_H = 100;
+  const tileHist = { at: 0, span: null, busy: false, d: {} };
+  const tileSpan = () => (has("chart") ? state.span : 3600);
+  async function loadTileHistory(force) {
+    if (!has("env_tiles") || tileHist.busy) return;
+    const span = tileSpan();
+    if (!force && span === tileHist.span && Date.now() - tileHist.at < 60000) return;
+    tileHist.busy = true; tileHist.at = Date.now(); tileHist.span = span;
+    const ids = SITE_TILES.map(([id]) => id);
+    const t1 = serverNow(), t0 = t1 - spanSeconds(span);
+    let data = {};
+    try {
+      data = await SW.api("GET", `/api/history?entities=${encodeURIComponent(ids.join(","))}&since=${t0}&points=${TREND_POINTS}`) || {};
+    } catch (_) { data = {}; }
+    tileHist.busy = false;
+    const gap = Math.max(60, 3 * (t1 - t0) / TREND_POINTS);
+    tileHist.d = {};
+    for (const id of ids) tileHist.d[id] = SW.trendPath(data[id], t0, t1, gap, TREND_W, TREND_H);
+    renderTiles();
+  }
+  function trendBox(id) {
+    const d = tileHist.d[id];
+    return h("div", { class: "trend", "aria-hidden": "true" }, d ? SW.svg("svg", { viewBox: `0 0 ${TREND_W} ${TREND_H}`, preserveAspectRatio: "none" },
+      SW.svg("path", { d, "vector-effect": "non-scaling-stroke" })) : null);
+  }
+
   function renderTiles() {
+    loadTileHistory(false);
     const tiles = $("tiles");
     tiles.replaceChildren();
     for (const [id, label] of SITE_TILES) {
@@ -92,6 +122,7 @@
       tiles.append(h("div", { class: "tile" + (e.value === null ? " stale" : "") },
         h("div", { class: "label" }, label),
         h("div", { class: "value" }, num, unit.length ? h("span", { class: "unit" }, unit.join(" ")) : null),
+        trendBox(id),
         h("div", { class: "foot" }, foot),
         note ? h("div", { class: "foot approx" }, note) : null));
     }
@@ -455,7 +486,7 @@
     $("series-seg").replaceChildren(...Object.entries(SERIES_MODES).map(([k, m]) =>
       h("button", { class: k === state.mode ? "on" : "", onclick: () => { state.mode = k; localSet("sw.mode", k); renderSegs(); loadHistory(); } }, m.label)));
     $("span-seg").replaceChildren(...SPANS.map(([s, label]) =>
-      h("button", { class: s === state.span ? "on" : "", onclick: () => { state.span = s; localSet("sw.span", String(s)); renderSegs(); loadHistory(); } }, label)));
+      h("button", { class: s === state.span ? "on" : "", onclick: () => { state.span = s; localSet("sw.span", String(s)); renderSegs(); loadHistory(); loadTileHistory(true); } }, label)));
   }
 
   // --------------------------------------------------------------- chart
@@ -1866,7 +1897,7 @@
   setInterval(() => { $("clock").textContent = SW.fmtTime(serverNow(), { seconds: true }); }, 1000);
   // Re-bucket history so long views stay tidy; refresh the sensors' "Updated" ages. Each only
   // does work while its card is on this dashboard.
-  setInterval(() => { if (has("chart")) loadHistory(); }, 60000);
+  setInterval(() => { if (has("chart")) loadHistory(); if (has("env_tiles")) loadTileHistory(false); }, 60000);
   setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
   setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("pi_host")) renderPiHost(); if (has("witmotion_tilt")) renderWitmotion(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
 })();
