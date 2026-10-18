@@ -15,6 +15,8 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-18
+
 ### Added
 
 - **Tilt card: target angle.** Optionally set a target angle per sensor and watched axis (`target_x`, `target_y`, and the bands `on_target_deg` 0.2 and `close_deg` 1.0, in `config.yaml`). The Tilt card then shows the target, the signed difference (for example "+0.6° from target") and a marker with a shape and words: ✓ On target, ◆ Close, ✕ Off target. It uses the smoothed angle, handles the ±180° wrap, and shows nothing coloured on a gap. A guide for setting a hang; it never raises an alarm (alarms still come only from the thresholds you set). No saved-data change.
@@ -696,7 +698,8 @@ The sections below list every change in detail.
 - Version tracking: build info (version, git commit, schema versions) in the API,
   admin UI and logs; config and database schema versions with migration hooks.
 
-[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/MrFreekie/stagewatch/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/MrFreekie/stagewatch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/MrFreekie/stagewatch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MrFreekie/stagewatch/releases/tag/v0.1.0
