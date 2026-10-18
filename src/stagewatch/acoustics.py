@@ -161,6 +161,98 @@ def travel_time_ms(distance_m: float, c_m_s: float) -> float:
     return 1000.0 * distance_m / c_m_s
 
 
+def delay_drift_ms(distance_m: float, c_ref_m_s: float, c_now_m_s: float) -> float:
+    """Change in travel time over ``distance_m`` since the reference, milliseconds.
+
+    Positive means sound now arrives later (cooler air). Add it to the current delay to get
+    the suggested setting.
+    """
+    return 1000.0 * distance_m * (1.0 / c_now_m_s - 1.0 / c_ref_m_s)
+
+
+# Air absorption of sound, ISO 9613-1:1993 (pure tone, dB per metre). The ISO saturation
+# ratio below differs from the Davis vapour pressure used for speed of sound by under 0.1 %.
+ISO_T0_K = 293.15
+ISO_T01_K = 273.16
+ISO_PR_KPA = 101.325
+
+ISO_MIDBAND_HZ = {
+    "4k": 10 ** 3.6, "5k": 10 ** 3.7, "6.3k": 10 ** 3.8, "8k": 10 ** 3.9,
+    "10k": 10 ** 4.0, "12.5k": 10 ** 4.1, "16k": 10 ** 4.2,
+}
+"""Exact base-10 one-third-octave midbands (IEC 61260) for the nominal graphic-EQ labels."""
+AIR_LOSS_OCTAVE_BANDS = ("4k", "8k", "16k")
+AIR_LOSS_THIRD_BANDS = ("4k", "5k", "6.3k", "8k", "10k", "12.5k", "16k")
+
+ISO_H_RANGE_PCT = (0.05, 5.0)
+ISO_TEMP_RANGE_C = (-20.0, 50.0)
+ISO_PRESSURE_MAX_PA = 200_000.0
+
+
+def iso_h_percent(temp_c: float, pressure_pa: float, rh_pct: float) -> float:
+    """Molar concentration of water vapour, percent (ISO 9613-1 equations 1 to 3)."""
+    t = temp_c + 273.15
+    c = -6.8346 * (ISO_T01_K / t) ** 1.261 + 4.6151
+    psat_ratio = 10 ** c
+    pa_ratio = pressure_pa / 1000.0 / ISO_PR_KPA
+    return rh_pct * psat_ratio / pa_ratio
+
+
+def iso9613_alpha_db_per_m(freq_hz: float, temp_c: float, rh_pct: float,
+                           pressure_pa: float = STANDARD_PRESSURE_PA) -> float:
+    """Atmospheric absorption of a pure tone, dB per metre (ISO 9613-1:1993)."""
+    t = temp_c + 273.15
+    pa_ratio = pressure_pa / 1000.0 / ISO_PR_KPA
+    t_ratio = t / ISO_T0_K
+    h = iso_h_percent(temp_c, pressure_pa, rh_pct)
+    fr_o = pa_ratio * (24.0 + 4.04e4 * h * (0.02 + h) / (0.391 + h))
+    fr_n = pa_ratio * t_ratio ** -0.5 * (
+        9.0 + 280.0 * h * math.exp(-4.170 * (t_ratio ** (-1.0 / 3.0) - 1.0)))
+    f2 = freq_hz * freq_hz
+    return 8.686 * f2 * (
+        1.84e-11 / pa_ratio * t_ratio ** 0.5
+        + t_ratio ** -2.5 * (
+            0.01275 * math.exp(-2239.1 / t) / (fr_o + f2 / fr_o)
+            + 0.1068 * math.exp(-3352.0 / t) / (fr_n + f2 / fr_n)))
+
+
+def iso_range_issues(temp_c: float, rh_pct: float, pressure_pa: float) -> list[str]:
+    """Which limits of :func:`iso9613_alpha_db_per_m` the inputs are outside of.
+
+    ``[]`` inside the range, otherwise any of ``"temperature_low"``, ``"temperature_high"``,
+    ``"humidity_low"``, ``"humidity_high"``, ``"pressure_high"``. The value is still usable
+    outside the range; only the standard's accuracy claim is lost.
+    """
+    issues: list[str] = []
+    if temp_c < ISO_TEMP_RANGE_C[0]:
+        issues.append("temperature_low")
+    elif temp_c > ISO_TEMP_RANGE_C[1]:
+        issues.append("temperature_high")
+    h = iso_h_percent(temp_c, pressure_pa, rh_pct)
+    if h < ISO_H_RANGE_PCT[0]:
+        issues.append("humidity_low")
+    elif h > ISO_H_RANGE_PCT[1]:
+        issues.append("humidity_high")
+    if pressure_pa > ISO_PRESSURE_MAX_PA:
+        issues.append("pressure_high")
+    return issues
+
+
+def air_loss_db(band: str, distance_m: float, temp_c: float, rh_pct: float,
+                pressure_pa: float = STANDARD_PRESSURE_PA) -> float:
+    """Loss over ``distance_m`` at an ISO midband (label such as ``"8k"``), dB."""
+    return iso9613_alpha_db_per_m(ISO_MIDBAND_HZ[band], temp_c, rh_pct, pressure_pa) * distance_m
+
+
+def air_loss_change_db(band: str, distance_m: float, ref: tuple[float, float, float],
+                       now: tuple[float, float, float]) -> float:
+    """Extra loss now compared with the reference, dB; positive means more top end lost.
+
+    ``ref`` and ``now`` are ``(temp_c, rh_pct, pressure_pa)``.
+    """
+    return air_loss_db(band, distance_m, *now) - air_loss_db(band, distance_m, *ref)
+
+
 _PRESSURE_TO_PA = {
     "pa": 1.0,
     "hpa": 100.0,
