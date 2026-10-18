@@ -277,11 +277,7 @@
     const max = st.max_slots || 3, inputs = st.inputs || [], metrics = st.metrics || [];
     const defaults = st.default_metrics || {};
     const on = h("input", { type: "checkbox", checked: !!s.enabled });
-    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", value: s.host || "", placeholder: "127.0.0.1" });
-    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: s.port || "", placeholder: "26000" });
     // Smaart's API password: write-only. The saved one is never shown, only whether there is one.
-    const pw = h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: st.password_set ? "Saved" : "None" });
-    const clearPw = h("input", { type: "checkbox" });
     // What is saved: the current form, or the older metric-only form (a slot with no input means
     // "the first input Smaart lists").
     const saved = (s.meters || (s.slots || []).map((k) => ({ source: "", metric: defaults[k] || k }))).slice(0, max);
@@ -379,20 +375,18 @@
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated Smaart with two inputs and the values SPL A Slow, SPL C Slow, LAeq 1 and LAeq 10, so no Smaart or address is needed. It has no LAeq 15, and now and then flags one reading as overload, to show how \"not available\" looks.")
         : h("p", { class: "notice" }, "Tested live on Smaart Suite 9.6.4; other Smaart versions have not been tested. Turn on Smaart's API under Options → Preferences → API first. The port is normally the one Smaart's SPL web page uses (26000 is the usual example); please confirm it on your Smaart."),
       h("div", { class: "row" }, h("label", { class: "field inline" }, on, " Record sound level"),
-        admin.emulate ? null : field("Smaart computer (127.0.0.1 is this computer)", host), admin.emulate ? null : field("Port (26000 unless Smaart says otherwise)", port)),
+        admin.emulate ? null : h("span", { class: "muted" }, connText(s.host, s.port, st.password_set))),
       h("div", { class: "row" }, field("Default location (shown on the card)", defLoc),
         h("span", { class: "muted hint" }, "For example FOH or Stage left. Shown on the dashboard card, for any input without its own location below.")),
       h("div", { class: "row" }, field("Graph range", rangeMode), rangeNums,
         h("span", { class: "muted hint" }, "Automatic fits the graph to what Smaart reports. Custom keeps it fixed, for example 22 to 145 dB.")),
-      admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "Smaart API password: one is saved, type here to replace it" : "Smaart API password (leave empty if Smaart has none)", pw),
-        st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
       ...slotRows.map((r, i) => h("div", { class: "row spl-slot" }, field(`Value ${i + 1}: input`, r.src), field(`Value ${i + 1}: value`, r.met))),
       locBox,
       h("div", { class: "row" }, refreshBtn, h("span", { class: "muted hint" }, "Re-reads the input and metric names from Smaart"), refreshStatus),
       h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/spl", {
-        enabled: on.checked, host: host.value.trim(), port: port.value ? Number(port.value) : null,
+        enabled: on.checked, host: s.host || "", port: s.port || null,   // the address is set under Connections
         meters: slotRows.filter((r) => r.met.value).map((r) => ({ source: r.src.value, metric: r.met.value })),
-        password: pw.value, clear_password: clearPw.checked,
+        password: "", clear_password: false,
         location: defLoc.value,
         chart_range: rangeMode.value,
         ...(rangeMode.value === "custom" ? { chart_min_db: Number(rangeMin.value), chart_max_db: Number(rangeMax.value) } : {}),
@@ -505,10 +499,6 @@
   // asks for names and levels. The controller and strips are chosen per dashboard (Edit cards).
   function globconCard() {
     const g = admin.config.globcon || {}, st = admin.globcon || {};
-    const host = h("input", { class: "touch", maxlength: "253", autocomplete: "off", spellcheck: "false", value: g.host || "", placeholder: "127.0.0.1" });
-    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: g.port || 9091, placeholder: "9091" });
-    const pw = h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: st.password_set ? "Saved" : "None" });
-    const clearPw = h("input", { type: "checkbox" });
     const lines = [];
     if (!st.running) lines.push(st.card_assigned ? "Starting…" : "Not running. It starts when a dashboard has the DirectOut GLOBCON card (User dashboards → Edit cards).");
     else {
@@ -522,12 +512,7 @@
         h("p", { class: "muted" }, "Only \"are you there?\", \"tell me this\" and \"tell me when it changes\" (and \"stop telling me\"), for controller names, strip labels, the layer and the meter levels. If you save a password, it is sent to log in, and only when GLOBCON asks for one. It is sent as plain text on the show network, so use a password you use nowhere else.")),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: a simulated GLOBCON with 16 controllers, so no GLOBCON or address is needed. It drops out for a few seconds every minute and a half, to show how a frozen card looks.")
         : h("p", { class: "notice" }, "Names, layers and labels checked on one real controller (2026-10). Live level meters work. The metering scale for different channel types and password login are not yet tested. Please check the levels against GLOBCON's own screen."),
-      admin.emulate ? null : h("div", { class: "row" }, field("GLOBCON computer (127.0.0.1 is this computer)", host), field("Port (9091 unless GLOBCON says otherwise)", port)),
-      admin.emulate ? null : h("div", { class: "row" }, field(st.password_set ? "GLOBCON password: one is saved, type here to replace it" : "GLOBCON password (leave empty if GLOBCON has none)", pw),
-        st.password_set ? h("label", { class: "field inline" }, clearPw, " Remove the saved password") : h("span", { class: "muted" }, "No password saved")),
-      admin.emulate ? null : h("div", { class: "row" }, h("button", { class: "primary touch", onclick: () => run(() => api("PUT", "/api/admin/globcon", {
-        host: host.value.trim(), port: Number(port.value) || 9091, password: pw.value, clear_password: clearPw.checked,
-      }), "GLOBCON saved").then(refresh, () => {}) }, "Save")),
+      admin.emulate ? null : h("p", { class: "muted" }, connText(g.host, g.port || 9091, st.password_set)),
       h("p", { class: "muted" }, lines.join(" · ")));
   }
 
@@ -535,6 +520,44 @@
   // Shelly power meters for the Power card. Read-only: Stagewatch only asks a meter for its readings and
   // never switches a relay, changes a setting, restarts or resets it. Addresses and MACs are shown here
   // and nowhere public. Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3.
+  // Add a Shelly meter (the Add integration pop-out). onDone runs after the meter is added.
+  function shellyAddForm(onDone) {
+    // Add a meter: type the address, press Test to see what is there, then Save.
+    const host = h("input", { class: "touch", maxlength: "64", autocomplete: "off", spellcheck: "false", placeholder: "e.g. 192.168.1.50", value: shellyTest ? shellyTest.host : "", "aria-label": "Meter address" });
+    const name = h("input", { maxlength: "60", value: "Power meter", "aria-label": "Name for this meter" });
+    const area = h("input", { maxlength: "40", placeholder: "e.g. FOH", "aria-label": "Area" });
+    const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: "3", "aria-label": "Reads every (seconds)" });
+    const result = h("div", { class: "shelly-result", role: "status" });
+    const save = h("button", { class: "primary touch", disabled: true }, "Save meter");
+    const showResult = (r) => {
+      if (!r) { result.replaceChildren(); save.disabled = true; return; }
+      if (!r.ok) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${r.message} Nothing has been changed.`)); save.disabled = true; return; }
+      const lines = [h("p", {}, `Found ${r.model || "a Shelly"}${r.firmware ? `, firmware ${r.firmware}` : ""}. It measures: ${r.components.join(", ") || "power"}.`)];
+      if (r.already_added) lines.push(h("p", { class: "warn-text" }, "▲ This meter has already been added."));
+      lines.push(h("ul", { class: "shelly-readings" }, r.readings.map((x) => h("li", {}, `${x.name}: ${SW.num(x.value, Math.min(3, x.decimals))}${x.unit ? " " + x.unit : ""}`))));
+      lines.push(h("p", { class: "muted" }, "These are live readings from the meter. Nothing has been changed on it."));
+      result.replaceChildren(...lines);
+      save.disabled = !!r.already_added;
+    };
+    const test = h("button", { class: "touch", onclick: async () => {
+      shellyTest = null; showResult(null);
+      result.replaceChildren(h("p", { class: "muted" }, "Asking the meter…"));
+      try {
+        const r = await api("POST", "/api/admin/shelly/test", { host: val(host) });
+        shellyTest = Object.assign({ host: val(host) }, r);
+        showResult(r);
+      } catch (err) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${err.message}`)); }
+    } }, "Test");
+    save.onclick = () => run(() => api("POST", "/api/admin/shelly/add", { host: val(host), name: val(name), area: val(area), interval_s: Number(every.value) }), "Meter added")
+      .then(() => { shellyTest = null; if (onDone) onDone(); return refresh(); }, () => {});
+    if (shellyTest && shellyTest.ok) showResult(shellyTest);
+    return h("div", {},
+      h("div", { class: "row" }, field("Meter address (an IP address on your local network)", host), test),
+      result,
+      field("Name", name), field("Area (optional)", area), field("Reads every (seconds, 2 to 5)", every),
+      h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it."),
+      h("div", { class: "row sw-dlg-actions" }, h("span", { class: "grow" }), save));
+  }
   let shellyTest = null;   // the last Test result for the Add form: {host, ...} (kept across a re-render)
   function shellyCard() {
     const st = admin.shelly || { meters: [] };
@@ -580,46 +603,14 @@
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Rating (amps)"), h("th", {}, "Polls"), h("th", {}, ""))),
       h("tbody", {}, [].concat(...rows)));
 
-    // Add a meter: type the address, press Test to see what is there, then Save.
-    const host = h("input", { class: "touch", maxlength: "64", autocomplete: "off", spellcheck: "false", placeholder: "e.g. 192.168.1.50", value: shellyTest ? shellyTest.host : "", "aria-label": "Meter address" });
-    const name = h("input", { maxlength: "60", value: "Power meter", "aria-label": "Name for this meter" });
-    const area = h("input", { maxlength: "40", placeholder: "e.g. FOH", "aria-label": "Area" });
-    const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: "3", "aria-label": "Reads every (seconds)" });
-    const result = h("div", { class: "shelly-result", role: "status" });
-    const save = h("button", { class: "primary touch", disabled: true }, "Save meter");
-    const showResult = (r) => {
-      if (!r) { result.replaceChildren(); save.disabled = true; return; }
-      if (!r.ok) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${r.message} Nothing has been changed.`)); save.disabled = true; return; }
-      const lines = [h("p", {}, `Found ${r.model || "a Shelly"}${r.firmware ? `, firmware ${r.firmware}` : ""}. It measures: ${r.components.join(", ") || "power"}.`)];
-      if (r.already_added) lines.push(h("p", { class: "warn-text" }, "▲ This meter has already been added."));
-      lines.push(h("ul", { class: "shelly-readings" }, r.readings.map((x) => h("li", {}, `${x.name}: ${SW.num(x.value, Math.min(3, x.decimals))}${x.unit ? " " + x.unit : ""}`))));
-      lines.push(h("p", { class: "muted" }, "These are live readings from the meter. Nothing has been changed on it."));
-      result.replaceChildren(...lines);
-      save.disabled = !!r.already_added;
-    };
-    const test = h("button", { class: "touch", onclick: async () => {
-      shellyTest = null; showResult(null);
-      result.replaceChildren(h("p", { class: "muted" }, "Asking the meter…"));
-      try {
-        const r = await api("POST", "/api/admin/shelly/test", { host: val(host) });
-        shellyTest = Object.assign({ host: val(host) }, r);
-        showResult(r);
-      } catch (err) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${err.message}`)); }
-    } }, "Test");
-    save.onclick = () => run(() => api("POST", "/api/admin/shelly/add", { host: val(host), name: val(name), area: val(area), interval_s: Number(every.value) }), "Meter added")
-      .then(() => { shellyTest = null; return refresh(); }, () => {});
-    if (shellyTest && shellyTest.ok) showResult(shellyTest);
 
     return SW.brandCard("Shelly power meters", "shelly-badge.svg", "Shelly",
       h("p", { class: "muted" }, "Shows watts, volts, amps, frequency and energy from Shelly power meters on dashboards that have the Power card (User dashboards → Edit cards). Stagewatch only reads: every few seconds it asks each meter for its readings, and that is all it ever sends. It never switches a relay, changes a setting, restarts or resets a meter. Type a meter's rating in amps (for example 16 for a PM Mini, or the breaker it watches) to get a load bar with warnings at 80% and 100%. Voltage and frequency are checked against the UK ranges."),
       h("p", { class: "notice" }, "A Shelly Plug or any Shelly with a relay is read for its power only. Stagewatch never touches the relay, but it cannot stop the Shelly's own button, schedule or app from switching it. For a distro, prefer a meter with no relay, such as the PM Mini."),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: meters are simulated, so any private address (such as 192.0.2.20) will \"find\" a simulated PM Mini. The demo meter stops answering for 40 seconds every 5 minutes, to show how a frozen card looks.")
         : h("p", { class: "notice" }, "Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3. Other Shelly meters are read by what they report, but are not tested. A meter with a password is not supported yet."),
-      meters.length ? h("div", { class: "table-scroll" }, table) : h("p", { class: "muted" }, "No power meters yet. Type the meter's IP address below and press Test."),
-      h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADD A METER"),
-      h("div", { class: "row" }, field("Meter address (an IP address on your local network)", host), test),
-      result,
-      h("div", { class: "row" }, field("Name", name), field("Area (optional)", area), field("Reads every (seconds, 2 to 5)", every), save),
+      meters.length ? h("div", { class: "table-scroll" }, table) : h("p", { class: "muted" }, "No power meters yet."),
+      h("p", { class: "muted" }, "To add a meter, use Add integration in the Connections card."),
       h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it. Stagewatch recognises a meter by its own hardware address, so if its address changes, type the new one in its row and press Save. Warnings at the breaker rating are planned for a later version. Figures are advisory and do not replace the electrician's inspection and testing."));
   }
 
@@ -648,7 +639,7 @@
         field("Move old notices into \"Older notices\" after (minutes, 0 = never)", fold),
         h("button", { class: "primary touch", style: "align-self:flex-end", onclick: save }, "Save")),
       msg,
-      h("p", { class: "muted hint" }, "An acknowledged notice leaves the list that long after it was acknowledged (up to 1,440 minutes); the sensor list still shows the condition, for example a node marked Missing. A quiet notice (one that never beeps) that has not changed moves into \"Older notices\" (up to 10,080 minutes); it is not removed. A notice that is still beeping stays on the list until someone acknowledges it. If the problem changes or comes back, the notice is shown again straight away."));
+      SW.help(h("p", { class: "muted hint" }, "An acknowledged notice leaves the list that long after it was acknowledged (up to 1,440 minutes); the sensor list still shows the condition, for example a node marked Missing. A quiet notice (one that never beeps) that has not changed moves into \"Older notices\" (up to 10,080 minutes); it is not removed. A notice that is still beeping stays on the list until someone acknowledges it. If the problem changes or comes back, the notice is shown again straight away.")));
   }
 
   // ------------------------------------------------------------ barometer
@@ -703,7 +694,8 @@
     return sel;
   }
 
-  function adoptForm(prefill = {}) {
+  // Adopt a node (the Add integration pop-out). onDone runs after a successful adopt.
+  function adoptForm(prefill = {}, onDone) {
     const host = h("input", { placeholder: "node-name.local or IP", value: prefill.host || "" });
     const port = h("input", { class: "num", type: "number", value: prefill.port || 6053 });
     const name = h("input", { placeholder: "e.g. Stage L node", value: prefill.friendly_name || "" });
@@ -714,7 +706,7 @@
       ev.preventDefault();
       run(() => api("POST", "/api/admin/esphome/adopt", {
         host: val(host), port: Number(port.value), name: val(name), area: val(area), noise_psk: val(psk), role: role.value,
-      }), "Node adopted").then(refresh);
+      }), "Node adopted").then(() => { if (onDone) onDone(); return refresh(); }, () => {});
     } }, field("Host", host), field("Port", port), field("Name", name), field("Area", area),
     field("Role", role), field("Encryption key", psk), h("button", { class: "primary", type: "submit", style: "align-self:flex-end" }, "Adopt"));
   }
@@ -728,11 +720,7 @@
         h("td", {}, `${d.address}:${d.port}`),
         h("td", {}, d.board, d.encrypted ? h("div", { class: "muted", style: "font-size:12px" }, "encrypted") : null),
         h("td", {}, h("div", { class: "row" },
-          h("button", { class: "small", onclick: (ev) => {
-            const row = ev.target.closest("tr");
-            const formRow = h("tr", {}, h("td", { colspan: 4 }, adoptForm(d)));
-            row.after(formRow);
-          } }, "Adopt…"),
+          h("button", { class: "small", onclick: () => connDialog(connProducts().find((p) => p.key === "esphome"), d) }, "Adopt…"),
           h("button", { class: "small", title: "Hide this node from the list. It is not connected to either way.",
             onclick: () => run(() => api("POST", "/api/admin/esphome/ignore", { key: d.key }), "Node ignored").then(refresh) }, "Ignore")))))))
       : h("p", { class: "muted" }, snap && admin.integrations.some((i) => i.emulate)
@@ -787,8 +775,7 @@
     return card("ESPHome nodes",
       h("div", { class: "table-scroll" }, discTable),
       ignoredBlock,
-      h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADD BY HOST / IP"),
-      adoptForm(),
+      h("p", { class: "muted" }, "To add a node by its address, use Add integration in the Connections card."),
       h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "ADOPTED"),
       h("div", { class: "table-scroll" }, devices.length ? devTable : h("p", { class: "muted" }, "None yet.")));
   }
@@ -1357,8 +1344,8 @@
       h("label", { class: "field inline" }, weigh, " Weight the average by accuracy"),
       h("p", { class: "muted hint" }, "Off: every sensor in the average counts the same. On: a sensor with a smaller accuracy figure counts for more, but no sensor counts for more than 80 %, so the average still covers the places you put sensors. This only applies to temperature, humidity or pressure when every sensor in that average has an accuracy figure and the figures are all typical or all maximum. Otherwise that one uses equal weights, and the reason is shown here. Share is how much each sensor counts in the average now."),
       notes,
-      h("p", { class: "muted hint" }, "Accuracy is the maker's ± figure from the datasheet, in °C, %RH or hPa. Typical is the usual figure; maximum is the worst case. Presets fill the typical figure from the manufacturer's page: check it against your sensor's datasheet, and change it if you know better."),
-      h("p", { class: "muted hint" }, "After you calibrate a sensor, type the uncertainty you are left with, not the datasheet figure. Sensors calibrated against the same reference share that reference's error, so averaging them does not remove it. Where a sensor sits (sun, lights, heat, its own warmth, airflow) usually matters more than the datasheet. Accuracy is only shown here, not on the dashboards."),
+      SW.help(h("p", { class: "muted hint" }, "Accuracy is the maker's ± figure from the datasheet, in °C, %RH or hPa. Typical is the usual figure; maximum is the worst case. Presets fill the typical figure from the manufacturer's page: check it against your sensor's datasheet, and change it if you know better."),
+        h("p", { class: "muted hint" }, "After you calibrate a sensor, type the uncertainty you are left with, not the datasheet figure. Sensors calibrated against the same reference share that reference's error, so averaging them does not remove it. Where a sensor sits (sun, lights, heat, its own warmth, airflow) usually matters more than the datasheet. Accuracy is only shown here, not on the dashboards.")),
       shown.length ? foldButtons(setAll) : null,
       shown.length ? [...section("Environment", "environment", "None."),
         ...section("Equipment", "equipment", "None. Set a node's Role to Equipment under ESPHome nodes (an amp rack, a power supply). Equipment readings are never averaged.")]
@@ -1414,125 +1401,11 @@
           [...tbody.children].filter((tr) => tr._read).map((tr, i) => tr._read(i))), "Thresholds saved").then(refresh) }, "Save thresholds")));
   }
 
-  // Card names and one-line hints for the "Edit cards" panel (ids: core/cards.py).
-  const CARD_INFO = {
-    env_tiles: ["Site readings", "Tiles for temperature, humidity, pressure, speed of sound and dew point."],
-    schedule: ["Schedule", "What is on now and next, and the running order. Stays hidden until the show has a schedule."],
-    chart: ["History chart", "Readings over time, with markers."],
-    markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
-    sensors: ["Sensor nodes", "Each sensor node, whether it is working, and its latest readings."],
-    wall_clock: ["Wall Clock", "The time of day, as plain digits, an LED ring or 7-segment digits. Choose the source in the Wall Clock settings."],
-    ontime_timer: ["Ontime Timer", "The countdown Ontime is running, with the event title. Read from Ontime; set its address in the Ontime card."],
-    ontime_rundown: ["Ontime Rundown", "The running event, whether Ontime is ahead or behind, the planned and expected end and the list of events with their times. Read from Ontime; set its address in the Ontime card. Event titles and notes are shown on the dashboard, and follow the Ontime card setting \"Show the event title on dashboards\"."],
-    equipment: ["Equipment", "Readings from Equipment sensors (amp racks, power supplies), by node. Never part of the site average. Stays hidden until a sensor has the Equipment role."],
-    barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
-    spl_limits: ["Sound level limits", "Every limit in force now with its weighting (dB(A), dB(C)), whether it is over, and the next changes. Public wording only. Stays hidden on phones and walls until limits are entered (Sound level limits)."],
-    spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
-    globcon_meters: ["DirectOut GLOBCON", "Live level meters for a group of channels (for example 1 to 8 or 9 to 16) of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Pick the controller and channels here; set the GLOBCON address in the GLOBCON settings."],
-    power: ["Power", "Watts, volts, amps, frequency and energy from Shelly power meters, as the meters report them. Read only. Never part of a site average. Add meters in the Shelly power meters settings. Stays hidden until a meter has been added."],
-    documents: ["Plans on file", "The event's safety and risk documents you have shared with this dashboard (Admin → Documents). The wall shows titles only."],
-    contacts: ["Onsite contacts", "Key people for this event: job title, name, radio channel and area (Admin → Onsite contacts). Phone numbers only when you allow them in three places: Onsite contacts, this dashboard, and the contact."],
-    witmotion_tilt: ["Tilt (WitMotion)", "Roll and/or pitch from each WitMotion tilt sensor, in degrees, with its battery and the settings it reports. Advisory only: a guide, not a rigging safety system. Set the sensors up in config.yaml. Stays hidden until one is set up."],
-    pi_host: ["Raspberry Pi", "The health of the Raspberry Pi Stagewatch runs on: temperature, power supply (under-voltage), speed, load, memory, disk and Wi-Fi signal. Hidden unless Stagewatch runs on a Pi."],
-    connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
-  };
-  const openCardPanels = new Set();   // slugs whose "Edit cards" panel stays open across a refresh
-
-  // The "Edit cards" panel for one dashboard: which cards it shows, in what order, and its stage.
-  // Returns {el, read(), setDefaults(layout), count()}.
-  function cardsEditor(d, onChange) {
-    const known = (admin.cards && admin.cards.known) || Object.keys(CARD_INFO);
-    const halfOk = (admin.cards && admin.cards.half_capable) || [];
-    const sizes = Object.assign({}, d.card_sizes || {});   // card id -> "full" | "half"
-    let items = [];
-    const ul = h("ul", { class: "card-picker" });
-    const fill = (list) => {
-      const on = list.filter((id, i) => known.indexOf(id) >= 0 && list.indexOf(id) === i);
-      items = on.map((id) => ({ id, on: true })).concat(known.filter((id) => on.indexOf(id) < 0).map((id) => ({ id, on: false })));
-      draw();
-    };
-    const move = (i, dir) => {
-      const j = i + dir;
-      if (j < 0 || j >= items.length) return;
-      const t = items[i]; items[i] = items[j]; items[j] = t;
-      draw();
-      // keep the keyboard on the card that moved
-      const btn = ul.children[j] && ul.children[j].querySelector(dir < 0 ? ".card-up" : ".card-down");
-      if (btn && !btn.disabled) btn.focus();
-    };
-    const draw = () => {
-      ul.replaceChildren(...items.map((it, i) => {
-        const info = CARD_INFO[it.id] || [it.id, ""];
-        const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; if (lookField) lookField.style.display = box.checked ? "" : "none"; onChange(); } });
-        const lookField = it.id === "wall_clock" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Wall Clock look"), clockStyle)
-          : it.id === "env_tiles" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Show dew point"), dewBox) : null;
-        const sizeSel = halfOk.indexOf(it.id) < 0 ? null : h("select", { class: "touch", "aria-label": `${info[0]} size`, onchange: () => { sizes[it.id] = sizeSel.value; onChange(); } }, h("option", { value: "full" }, "Full"), h("option", { value: "half" }, "Half"));
-        if (sizeSel) sizeSel.value = sizes[it.id] === "half" ? "half" : "full";
-        const gcField = it.id !== "globcon_meters" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
-          h("label", { class: "field" }, h("span", {}, "GLOBCON controller"), gcCtrl),
-          h("label", { class: "field" }, h("span", {}, "Channels shown"), gcStrips));
-        if (gcField) box.addEventListener("change", () => { gcField.style.display = box.checked ? "" : "none"; });
-        const ctField = it.id !== "contacts" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
-          h("label", { class: "field" }, h("span", {}, "Only this area (empty = all)"), ctArea),
-          h("label", { class: "check" }, ctPhones, " Show phone numbers"), ctWarn);
-        if (ctField) box.addEventListener("change", () => { ctField.style.display = box.checked ? "" : "none"; });
-        const sizeField = sizeSel ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", { title: "Phones always use the full width" }, "Card width"), sizeSel) : null;
-        if (sizeField) box.addEventListener("change", () => { sizeField.style.display = box.checked ? "" : "none"; });
-        return h("li", {},
-          h("label", { class: "card-pick" }, box, h("span", {}, h("strong", {}, info[0]), info[1] ? h("span", { class: "muted" }, info[1]) : null)),
-          lookField,
-          gcField,
-          ctField,
-          sizeField,
-          h("button", { type: "button", class: "card-up", "aria-label": `Move ${info[0]} up`, title: "Move up", disabled: i === 0, onclick: () => move(i, -1) }, "▲"),
-          h("button", { type: "button", class: "card-down", "aria-label": `Move ${info[0]} down`, title: "Move down", disabled: i === items.length - 1, onclick: () => move(i, 1) }, "▼"));
-      }));
-      onChange();
-    };
-    // GLOBCON levels card: which controller (1 to 16) and which channels this screen shows.
-    const gcSaved = d.globcon || {};
-    const gcCtrl = h("select", { class: "touch", "aria-label": "GLOBCON controller" }, Array.from({ length: 16 }, (_, i) => h("option", { value: String(i + 1) }, `Controller ${i + 1}`)));
-    gcCtrl.value = String(gcSaved.controller >= 1 && gcSaved.controller <= 16 ? gcSaved.controller : 1);
-    // Channels are the strip numbers on the controller's current layer. A dashboard saved before the groups existed
-    // (no range) keeps its "first 4 / 8 with a level" choice as two extra options, shown only while it is in use.
-    const gcGroups = [["1-4", "Channels 1 to 4"], ["5-8", "Channels 5 to 8"], ["1-8", "Channels 1 to 8"], ["9-12", "Channels 9 to 12"], ["13-16", "Channels 13 to 16"], ["9-16", "Channels 9 to 16"], ["1-16", "Channels 1 to 16"]];
-    const gcOld = !gcSaved.range;
-    const gcStrips = h("select", { class: "touch", "aria-label": "GLOBCON channels shown" },
-      gcOld ? h("option", { value: "old-4" }, "First 4 channels with a level (older setting)") : null,
-      gcOld ? h("option", { value: "old-8" }, "First 8 channels with a level (older setting)") : null,
-      ...gcGroups.map(([v, t]) => h("option", { value: v }, t)));
-    gcStrips.value = gcOld ? (gcSaved.strips === 4 ? "old-4" : "old-8") : gcSaved.range;
-    const gcRead = () => (gcStrips.value.indexOf("old-") === 0 ? { controller: Number(gcCtrl.value), strips: Number(gcStrips.value.slice(4)), range: null } : { controller: Number(gcCtrl.value), strips: 8, range: gcStrips.value });
-    gcCtrl.addEventListener("change", onChange);
-    gcStrips.addEventListener("change", onChange);
-    // Onsite contacts card: phone numbers on this screen (also needs the switch in Onsite contacts and the contact's own tick).
-    const ctArea = h("input", { class: "touch", value: d.contacts_area || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off", oninput: () => onChange() });
-    const ctWarn = h("p", { class: "warn-text hint" });
-    const ctWarnFill = () => ctWarn.replaceChildren(ctPhones.checked ? `▲ Dashboards have no login: anyone on the show network who opens /d/${d.slug || "…"} can see these numbers${admin.config.contacts && admin.config.contacts.reveal_pin_set ? " after typing the contacts PIN" : ""}.` : "");
-    const ctPhones = h("input", { type: "checkbox", checked: !!d.show_contact_phones, onchange: () => { ctWarnFill(); onChange(); } });
-    ctWarnFill();
-    const stage = h("input", { class: "touch", value: d.stage || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off" });
-    const clockStyle = h("select", { class: "touch" }, h("option", { value: "digits" }, "Plain digits"), h("option", { value: "ring" }, "LED ring"), h("option", { value: "segments" }, "7-segment digits"));
-    clockStyle.value = ["ring", "segments"].indexOf(d.clock_style) >= 0 ? d.clock_style : "digits";
-    const dewBox = h("input", { type: "checkbox", checked: d.show_dew_point !== false, onchange: () => onChange() });
-    // Ids from a newer Stagewatch (kept in the settings after a downgrade) can't be saved by this one.
-    const newer = (d.cards || []).filter((id) => known.indexOf(id) < 0);
-    fill(d.cards || (admin.cards && admin.cards.defaults.tablet) || []);
-    const el = h("div", { class: "cards-panel" },
-      h("p", { class: "muted hint" }, "Tick the cards this dashboard shows. Use ▲ and ▼ to change the order, top to bottom. With no cards ticked, the screen shows only alarms. Wall Clock is never switched on by default: tick it here if you want it."),
-      newer.length ? h("p", { class: "warn-text hint" }, `This dashboard also lists cards from a newer version of Stagewatch (${newer.join(", ")}). This version can't show them, and saving here removes them.`) : null,
-      ul,
-      h("div", { class: "row", style: "margin-top:10px" },
-        field("Stage", stage)),
-      h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black. Half-size cards sit side by side with another half-size card on tablets and wall screens. On a phone every card is full width."));
-    return {
-      el,
-      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewBox.checked, show_contact_phones: ctPhones.checked, contacts_area: val(ctArea), card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
-      setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
-      count: () => items.filter((it) => it.on).length,
-    };
-  }
-
+  // The dashboards table. Which cards each one shows is chosen on its own page (Edit cards,
+  // /dashboard-editor), so this card keeps one size. A save here sends no card fields, and the
+  // server keeps each dashboard's cards; a renamed dashboard sends its saved ones, so it keeps
+  // them under the new name. A new dashboard gets its layout's default cards from the server.
+  const CARD_FIELDS = ["cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point", "show_contact_phones", "contacts_area"];
   function dashboardsCard() {
     const tbody = h("tbody");
     const addRow = (d = {}) => {
@@ -1544,33 +1417,22 @@
       const mk = h("input", { type: "checkbox", checked: d.allow_marker !== false });
       const ack = h("input", { type: "checkbox", checked: !!d.allow_ack });
       const link = d.slug ? h("a", { href: `/d/${d.slug}`, target: "_blank" }, "open") : "";
-      const editBtn = h("button", { type: "button", class: "touch", "aria-expanded": "false" });
-      const panelRow = h("tr", { class: "cards-panel-row", hidden: true });
-      let editor = null;
-      const label = () => { if (editor) editBtn.textContent = `Edit cards (${editor.count()})`; };
-      editor = cardsEditor(isNew ? { cards: (admin.cards && admin.cards.defaults.tablet) || [] } : d, label);
-      label();
-      panelRow.append(h("td", { colspan: 8 }, editor.el));
-      const setOpen = (open) => {
-        panelRow.hidden = !open;
-        editBtn.setAttribute("aria-expanded", open ? "true" : "false");
-        if (d.slug) { if (open) openCardPanels.add(d.slug); else openCardPanels.delete(d.slug); }
-      };
-      editBtn.onclick = () => setOpen(panelRow.hidden);
-      // A new dashboard starts with its layout's cards; changing its layout picks that layout's set.
-      if (isNew) layout.onchange = () => editor.setDefaults(layout.value);
+      const edit = isNew ? h("span", { class: "muted" }, "Save first")
+        : SW.linkButton(`Edit cards (${(d.cards || []).length})`, `/dashboard-editor?d=${encodeURIComponent(d.slug)}`);
       const tr = h("tr", {}, h("td", {}, slug), h("td", {}, title), h("td", {}, layout), h("td", {}, mk), h("td", {}, ack),
-        h("td", {}, editBtn), h("td", {}, link),
-        h("td", {}, h("button", { class: "small danger", onclick: () => { tr.remove(); panelRow.remove(); } }, "✕")));
-      tr._read = () => Object.assign({ slug: val(slug), title: val(title), layout: layout.value, allow_marker: mk.checked, allow_ack: ack.checked }, editor.read());
-      tbody.append(tr, panelRow);
-      setOpen(isNew || openCardPanels.has(d.slug));
+        h("td", {}, edit), h("td", {}, link),
+        h("td", {}, h("button", { class: "small danger", onclick: () => tr.remove() }, "✕")));
+      tr._read = () => {
+        const out = { slug: val(slug), title: val(title), layout: layout.value, allow_marker: mk.checked, allow_ack: ack.checked };
+        if (!isNew && out.slug !== d.slug) CARD_FIELDS.forEach((k) => { if (d[k] !== undefined) out[k] = d[k]; });
+        return out;
+      };
+      tbody.append(tr);
     };
     admin.config.dashboards.forEach(addRow);
-    const stages = admin.stages || [];
     return card("User dashboards",
-      h("p", { class: "muted" }, "Each dashboard has its own URL (/d/<name>) for tablets, phones and kiosk displays. Users can view without logging in; tick what they may do. Use Edit cards to choose what each one shows."),
-      h("datalist", { id: "stage-list" }, stages.map((s) => h("option", { value: s }))),
+      h("p", { class: "muted" }, "Each dashboard has its own URL (/d/<name>) for tablets, phones and kiosk displays. Users can view without logging in; tick what they may do. Edit cards opens a page where you choose what each one shows, with a preview."),
+      h("datalist", { id: "stage-list" }, (admin.stages || []).map((s) => h("option", { value: s }))),   // also the Onsite contacts areas
       h("div", { class: "table-scroll" }, h("table", {},
         h("thead", {}, h("tr", {}, ["URL name", "Title", "Layout", "Add markers", "Ack alarms", "Cards", "", ""].map((x) => h("th", {}, x)))), tbody)),
       h("div", { class: "row", style: "margin-top:10px" },
@@ -1627,8 +1489,8 @@
     const rate = h("input", { class: "num", type: "number", step: "0.5", value: o.rate_hz });
     const info = admin.integrations.find((i) => i.manifest.domain === "osc_out") || {};
     return card("OSC output",
-      h("p", { class: "muted" }, "Sends /stagewatch/avg/env [temp °C, RH %, pressure Pa, c m/s, sensors] and /stagewatch/alarm [level, sounding]."),
-      h("p", { class: "muted" }, "Alarm messages: each threshold alarm change also sends /stagewatch/alarm/event [id, level 0 to 3, raised / acked / cleared, message]."),
+      SW.help(h("p", { class: "muted" }, "Sends /stagewatch/avg/env [temp °C, RH %, pressure Pa, c m/s, sensors] and /stagewatch/alarm [level, sounding]."),
+        h("p", { class: "muted" }, "Alarm messages: each threshold alarm change also sends /stagewatch/alarm/event [id, level 0 to 3, raised / acked / cleared, message].")),
       h("table", {}, h("thead", {}, h("tr", {}, ["Host", "Port", "On", "Alarm messages", ""].map((x) => h("th", {}, x)))), tbody),
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { onclick: () => addRow() }, "Add destination"),
@@ -1707,25 +1569,129 @@
     if (adm.config.wall_clock.source === "ontime") list.push(adm.wall_clock || {});
     return list.some((st) => st.active && st.status && st.status !== "ok");
   }
+  // ------------------------------------------------------------ connections
+  // Where each outside product is. The card lists the products that are set up, each with an Edit
+  // button; "Add integration" picks one that is not. Both open the same pop-out, the same shape for
+  // every product: address (IP or host name), port, password where the product has one, Test where
+  // Stagewatch can try it, Save. Each Save uses that product's own settings call and keeps its other
+  // settings as saved (they stay on its own card).
+  const connText = (host, port, pwSet) => `Address: ${host || "not set"}${port ? `, port ${port}` : ""}${pwSet ? ", password saved" : ""}. Change it under Connections.`;
+  // Ontime's address is one URL (http://host:port); the pop-out shows it as two boxes and rebuilds it.
+  const splitUrl = (u) => {
+    const m = /^(https?:\/\/)(\[[^\]]+\]|[^/:]+)(?::(\d+))?(\/.*)?$/i.exec(String(u || "").trim());
+    return m ? { scheme: m[1], host: m[2], port: m[3] || "", path: m[4] || "" } : { scheme: "http://", host: "", port: "", path: "" };
+  };
+  // One entry per product: what is saved now, and how to test and save an address.
+  function connProducts() {
+    const w = admin.config.wall_clock, ot = splitUrl(w.ontime_url);
+    const otUrl = (v) => `${ot.scheme}${v.host}${v.port ? `:${v.port}` : ""}${ot.path}`;
+    const s = admin.config.spl || {}, sst = admin.spl || {};
+    const g = admin.config.globcon || {}, gst = admin.globcon || {};
+    return [
+      // Ontime counts as added once its address is changed from the default or any card uses it.
+      { key: "ontime", name: "Ontime", badge: "ontime-badge.png", host: ot.host, port: ot.port, dflt: 4001, password: null,
+        added: w.ontime_url !== "http://127.0.0.1:4001" || w.source === "ontime" || [admin.ontime_timer, admin.ontime_rundown].some((x) => x && (x.active || x.card_assigned)),
+        test: async (v) => { const r = await api("POST", "/api/admin/wall-clock/test", { ontime_url: otUrl(v) }); return r.ok ? `Ontime ${r.version} answered.` : r.message; },
+        save: async (v) => { await api("PUT", "/api/admin/wall-clock", { source: w.source, ontime_url: otUrl(v), warn_offset_s: w.warn_offset_s, display: w.display }); return "Ontime address saved."; } },
+      { key: "smaart", name: "Smaart", badge: "smaart-badge.png", host: s.host, port: s.port, dflt: 26000, added: !!(s.host || s.enabled), password: { set: !!sst.password_set },
+        save: async (v) => {
+          // The values chosen on the Sound level card are sent back as saved; the server keeps the rest.
+          const keep = s.meters ? { meters: s.meters.map((m) => ({ source: m.source || "", metric: m.metric })) } : { slots: s.slots || [] };
+          await api("PUT", "/api/admin/spl", Object.assign({ enabled: !!s.enabled || v.adding, host: v.host, port: v.port, password: v.password, clear_password: v.clear }, keep));
+          return "Smaart address saved.";
+        } },
+      { key: "globcon", name: "DirectOut GLOBCON", badge: "directout-badge.png", host: g.host, port: g.port || 9091, dflt: 9091, added: !!(g.host || gst.running), password: { set: !!gst.password_set },
+        save: async (v) => { await api("PUT", "/api/admin/globcon", { host: v.host, port: v.port || 9091, password: v.password, clear_password: v.clear }); return "GLOBCON address saved."; } },
+    ].map((p) => Object.assign(p, { emulated: admin.emulate && p.key !== "ontime", added: p.added || admin.emulate })).concat([
+      // One entry per device: always addable; each has its own add form, and is edited on its own card.
+      { key: "shelly", name: "Shelly power meter", badge: "shelly-badge.svg", device: true, form: (prefill, done) => shellyAddForm(done) },
+      { key: "esphome", name: "ESPHome node", badge: "stagewatch-badge.png", device: true, form: (prefill, done) => adoptForm(prefill || {}, done) },
+    ]);
+  }
+  const connLogo = (p) => h("img", { class: "card-logo", src: `/static/${p.badge}`, alt: "", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } });
+
+  // The pop-out. `pick` is the product to edit, or null for Add (then a product list comes first).
+  function connDialog(pick, prefill) {
+    const all = connProducts();
+    const choices = pick ? [pick] : all.filter((p) => p.device || (!p.added && !p.emulated));
+    const dlg = h("dialog", { class: "sw-dialog conn-dialog", "aria-labelledby": "conn-dlg-title" });
+    const close = () => { dlg.close(); dlg.remove(); };
+    const status = h("p", { class: "muted conn-status", role: "status" });
+    const body = h("div", {});
+    const product = h("select", { class: "touch", "aria-label": "Product", onchange: () => fill() }, choices.map((p) => h("option", { value: p.key }, p.name)));
+    let read = null, current = null;
+    function fill() {
+      current = choices.find((p) => p.key === product.value) || choices[0];
+      status.textContent = "";
+      if (current.form) {   // a device: its own form, with its own Test and Save
+        body.replaceChildren(current.form(prefill, close));
+        testBtn.hidden = true; saveBtn.hidden = true;
+        return;
+      }
+      saveBtn.hidden = false;
+      const host = h("input", { class: "touch", id: current.key === "ontime" ? "ontime-address" : null, maxlength: "253", autocomplete: "off", spellcheck: "false", value: current.host || "", placeholder: "192.168.1.20 or name.local" });
+      const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: current.port || "", placeholder: String(current.dflt) });
+      const pw = current.password ? h("input", { class: "touch", type: "password", maxlength: "128", autocomplete: "new-password", placeholder: current.password.set ? "Saved" : "None" }) : null;
+      const clearPw = current.password && current.password.set ? h("input", { type: "checkbox" }) : null;
+      read = () => ({ host: val(host), port: port.value ? Number(port.value) : null, password: pw ? pw.value : "", clear: clearPw ? clearPw.checked : false, adding: !pick });
+      body.replaceChildren(
+        field("Address (IP or host name)", host),
+        field(`Port (usually ${current.dflt})`, port),
+        pw ? field("Password (empty keeps the saved one)", pw) : h("p", { class: "muted" }, `${current.name} has no password.`),
+        clearPw ? h("label", { class: "check" }, clearPw, " Remove the saved password") : "");
+      testBtn.hidden = !current.test;
+      (pick ? host : product).focus();
+    }
+    const act = (btn, fn, busy) => async () => {
+      btn.disabled = true; status.textContent = busy;
+      try { status.textContent = await fn(read()); return true; } catch (err) { status.textContent = err.message; return false; }
+      finally { btn.disabled = false; }
+    };
+    const testBtn = h("button", { type: "button", class: "touch", id: "ontime-test" }, "Test");
+    testBtn.onclick = () => act(testBtn, (v) => current.test(v), "Testing…")();
+    const saveBtn = h("button", { type: "button", class: "primary touch" }, "Save");
+    saveBtn.onclick = async () => { if (await act(saveBtn, (v) => current.save(v), "Saving…")()) { toast(status.textContent); close(); refresh(); } };
+    dlg.append(...[
+      h("h3", { id: "conn-dlg-title" }, pick ? h("span", {}, connLogo(pick), pick.device ? ` Add ${pick.name}` : ` Edit ${pick.name}`) : "Add integration"),
+      choices.length ? null : h("p", {}, "Every product Stagewatch can connect to is already added. Use Edit on its row to change it."),
+      !pick && choices.length ? field("Product", product) : null,
+      body,
+      status,
+      h("div", { class: "row sw-dlg-actions" }, h("span", { class: "grow" }), h("button", { type: "button", class: "touch", onclick: close }, choices.length ? "Cancel" : "Close"),
+        choices.length ? testBtn : null, choices.length ? saveBtn : null)].filter(Boolean));   // append() would print a null
+    dlg.addEventListener("cancel", () => dlg.remove());   // Escape
+    document.body.append(dlg);
+    dlg.showModal();
+    if (choices.length) fill();
+  }
+
+  function connectionsCard() {
+    const list = connProducts();
+    const added = list.filter((p) => !p.device && (p.added || p.emulated));
+    const rows = added.map((p) => h("tr", {},
+      h("td", {}, h("span", { class: "conn-name" }, connLogo(p), h("strong", {}, p.name))),
+      h("td", {}, p.emulated ? h("span", { class: "muted" }, "Simulated (emulate mode)") : `${p.host || "not set"}${p.port ? `:${p.port}` : ""}`),
+      h("td", { class: "muted" }, p.password ? (p.password.set ? "Password saved" : "No password") : "No password needed"),
+      h("td", { class: "conn-edit" }, p.emulated ? null : h("button", { class: "touch", "aria-label": `Edit ${p.name}`, onclick: () => connDialog(p) }, "Edit"))));
+    const canAdd = true;   // a Shelly meter or an ESPHome node can always be added
+    return card("Connections",
+      h("p", { class: "muted" }, "Where each outside product is on the show network: its address, port and password. Add integration also adds a Shelly power meter or an ESPHome node; those are listed and changed on their own cards. Each product's other settings are on its own card."),
+      h("div", { class: "table-scroll" }, h("table", {},
+        h("thead", {}, h("tr", {}, ["Product", "Address and port", "Password", ""].map((x) => h("th", {}, x)))),
+        h("tbody", {}, rows))),
+      h("div", { class: "row conn-actions" }, h("span", { class: "grow" }),
+        h("button", { class: "primary touch", disabled: !canAdd, title: canAdd ? "" : "Every product is already added", onclick: () => connDialog(null) }, "Add integration")));
+  }
+
   function ontimeCard() {
     const w = admin.config.wall_clock, t = admin.config.ontime_timer || { show_title: true };
-    const url = h("input", { id: "ontime-address", value: w.ontime_url, placeholder: "http://127.0.0.1:4001", autocomplete: "off", spellcheck: "false", style: "min-width:260px" });
     const warn = h("input", { id: "ontime-warn", class: "num", type: "number", step: "0.5", min: "1", max: "60", value: w.warn_offset_s });
     const title = h("input", { id: "ontime-show-title", type: "checkbox", checked: t.show_title !== false });
-    const result = h("p", { class: "muted", role: "status", id: "ontime-test-result" });
-    const testBtn = h("button", { id: "ontime-test", style: "align-self:flex-end", onclick: async (ev) => {
-      const btn = ev.target; btn.disabled = true; result.textContent = "Testing…";
-      try {
-        const r = await api("POST", "/api/admin/wall-clock/test", { ontime_url: val(url) });
-        result.textContent = r.ok ? `Ontime ${r.version} answered.` : r.message;
-      } catch (err) { result.textContent = err.message; }
-      finally { btn.disabled = false; }
-    } }, "Test connection");
-    // One Save: the address and clock warning limit go to the Wall Clock settings, the title switch to
-    // the Ontime Timer settings. The clock's own source and look are kept as they are saved.
+    // One Save: the clock warning limit goes to the Wall Clock settings, the title switch to the Ontime
+    // Timer settings. The address (Connections), the clock's own source and its look are kept as saved.
     const save = () => run(async () => {
       await api("PUT", "/api/admin/wall-clock", {
-        source: w.source, ontime_url: val(url), warn_offset_s: Number(warn.value) || 2, display: w.display,
+        source: w.source, ontime_url: w.ontime_url, warn_offset_s: Number(warn.value) || 2, display: w.display,
       });
       return api("PUT", "/api/admin/ontime-timer", { show_title: title.checked });
     }, "Ontime saved").then(refresh, () => {});
@@ -1733,9 +1699,7 @@
     return SW.brandCard("Ontime", "ontime-badge.png", "Ontime",
       h("p", { class: "muted" }, "Settings for the three Ontime cards: Wall Clock (when it uses Ontime), Ontime Timer and Ontime Rundown. Stagewatch only listens to Ontime: it never starts, pauses or changes anything in it. Ontime is only contacted while a dashboard has one of these cards."),
       heading("Connection"),
-      h("p", { class: "muted" }, "One address serves all three cards. Test it, then click Save."),
-      h("div", { class: "row" }, field("Ontime address (Ontime computer's address and port)", url), testBtn),
-      result,
+      h("p", { class: "muted" }, `One address serves all three cards: ${w.ontime_url}. Change it under Connections.`),
       h("div", { id: "ontime-status", class: "muted" }, ontimeStatusLines(admin).map((l) => h("p", {}, l))),
       heading("Wall Clock"),
       h("div", { class: "row" }, field("Warn if more than this many seconds out", warn)),
@@ -2139,7 +2103,7 @@
       h("div", { class: "table-scroll" }, h("table", {},
         h("thead", {}, h("tr", {}, ["Integration", "Tier", "Direction", "Protocols", "Runtime"].map((x) => h("th", {}, x)))),
         h("tbody", {}, admin.integrations.map((i) => h("tr", {},
-          h("td", {}, h("strong", {}, i.manifest.name), h("div", { class: "muted", style: "font-size:12px" }, i.manifest.description), iotTag(i.manifest.iot_class)),
+          h("td", { class: "catalog-name" }, h("strong", {}, i.manifest.name), h("div", { class: "muted", style: "font-size:12px" }, i.manifest.description), iotTag(i.manifest.iot_class)),
           h("td", {}, i.manifest.tier), h("td", {}, i.manifest.direction), h("td", {}, i.manifest.protocols.join(", ")),
           h("td", { class: "muted" }, Object.entries(i).filter(([k]) => k !== "manifest").map(([k, v]) => `${k}: ${v !== null && typeof v === "object" ? JSON.stringify(v) : v}`).join(" · "))))))));
   }
@@ -2476,37 +2440,123 @@
       h("div", { class: "row" }, btn), status, helpLinks());
   }
 
+  // ------------------------------------------------------------ card status chips
+  // The Online / Offline / Error chip (SW.sourceStatusUi) in the header of each integration card
+  // that is in use, just before the maker's badge. Built from data this page already has (admin
+  // state and the snapshot). An input is null when the integration is off or not set up, and the
+  // card then shows no chip. Where the admin state has no data time, a source the server reports
+  // as working counts as fresh at the snapshot time.
+  const devOf = (id) => snap.devices.find((d) => d.id === id);
+  const entsOf = (id) => snap.entities.filter((e) => e.device_id === id);
+  const CHIP_INPUT = {
+    smaart() {
+      if (!(admin.config.spl || {}).enabled) return null;
+      const ents = SW.spl.entities(snap.entities);
+      return SW.sourceInput.smaart(ents.length ? devOf(ents[0].device_id) : null, ents);
+    },
+    shelly() {
+      const meters = (admin.shelly || {}).meters || [];
+      return meters.length ? SW.sourceInput.shelly(meters.map((m) => ({ dev: devOf(m.id), ents: entsOf(m.id) }))) : null;
+    },
+    pihost() {
+      return piHostInfo() ? Object.assign(SW.sourceInput.smaart(devOf("pi_host"), entsOf("pi_host")), { source: "pihost" }) : null;
+    },
+    globcon() {
+      const st = admin.globcon || {};
+      if (!st.running && !st.card_assigned) return null;
+      const reported = !st.running ? "waiting" : st.status === "ok" ? "ok"
+        : ["error", "locked", "waiting"].indexOf(st.status) >= 0 ? st.status : "offline";
+      return { source: "globcon", reported, dataAt: reported === "ok" ? snap.now : null };
+    },
+    ontime() {
+      const used = [admin.ontime_timer, admin.ontime_rundown, admin.config.wall_clock.source === "ontime" ? admin.wall_clock : null]
+        .filter((x) => x && (x.active || x.card_assigned));
+      if (!used.length) return null;
+      const reported = used.some((x) => x.active && x.status === "error") ? "error"
+        : used.every((x) => x.active && x.status === "ok") ? "ok" : used.some((x) => !x.active) ? "waiting" : "offline";
+      const stamps = used.map((x) => x.last_message).filter((t) => typeof t === "number");
+      return { source: "ontime", reported, dataAt: reported === "ok" ? (stamps.length ? Math.max(...stamps) : snap.now) : null };
+    },
+    esphome() {
+      // The adopted nodes, as the ESPHome nodes card lists them.
+      const nodes = snap.devices.filter((d) => d.id !== "site" && d.category !== "service" && d.category !== "meter" && d.category !== "host");
+      if (!nodes.length) return null;
+      const has = (...st) => nodes.some((d) => st.indexOf(d.status) >= 0);
+      const reported = has("fault", "compromised") ? "error" : has("missing") ? "offline" : has("initializing") ? "waiting" : "ok";
+      return { source: "esphome", reported, dataAt: reported === "ok" ? snap.now : null };
+    },
+  };
+  let chips = [];
+  function chip(c, key) {
+    const input = CHIP_INPUT[key]();
+    if (!input) return c;
+    const ui = SW.sourceStatusUi(input.source);
+    // In a folded card the header is a <summary>: a click on the chip opens its pop-out only.
+    ui.el.addEventListener("click", (ev) => ev.preventDefault());
+    const h2 = c.querySelector("h2");
+    const logo = h2.querySelector(".card-logo");
+    if (!logo && !h2.querySelector(".grow")) h2.append(h("span", { class: "grow" }));
+    h2.insertBefore(ui.el, logo || null);
+    ui.update(input, snap.now);
+    chips.push({ key, ui });
+    return c;
+  }
+  function updateChips() {
+    chips.forEach((x) => { const input = CHIP_INPUT[x.key](); if (input) x.ui.update(input, snap.now); });
+  }
+
+  // The page in four groups, most used first. Each has a heading that the menu at the top jumps to.
+  const GROUPS = [["show", "Show day"], ["sensors", "Sensors and nodes"], ["integrations", "Integrations"], ["system", "Setup and system"]];
+  const groupHead = (id, title) => h("h2", { class: "admin-group", id: `group-${id}` }, title);
+  const groupMenu = () => h("nav", { class: "row admin-groups", "aria-label": "Admin sections" },
+    GROUPS.map(([id, title]) => h("a", { class: "touch", href: `#group-${id}` }, title)));
+
   function render() {
     entityIdsRendered = snap.entities.map((e) => e.id).join(",");
     dirty = false;   // everything on screen now matches saved state
     pageFolds = [];
+    chips = [];
     // Core daily cards start open, set-up-once cards closed. A card with a notice is held open.
+    // A maker's card shows once it is added under Connections (Add integration).
+    const added = Object.fromEntries(connProducts().map((p) => [p.key, p.added]));
     const oscErr = ((admin.integrations.find((i) => i.manifest.domain === "osc_out") || {}).last_error);
     app.replaceChildren(...[
+      groupMenu(),
       foldButtons(setAllCards, " cards"),
-      h("div", { class: "grid-2" }, foldCard(siteCard(), "site", false, !admin.config.site.timezone), foldCard(eventShowCard(), "event", true)),
+      groupHead(...GROUPS[0]),
+      foldCard(eventShowCard(), "event", true),
       scheduleCard(),     // summary and a link to /schedule
+      foldCard(alarmLogCard(), "alarmlog", true),
+      foldCard(alarmNoticesCard(), "notices", true),
+      foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
+      connectCard(),
       foldCard(documentsCard(), "documents", false),
       foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0),
-      connectCard(),
-      softwareCard(),
-      foldCard(devicesCard(), "nodes", true), foldCard(deviceErrorsCard(), "deviceerrors", true), foldCard(entitiesCard(), "sensors", true), foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
-      foldCard(thresholdsCard(), "thresholds", true), foldCard(alarmNoticesCard(), "notices", true),
-      foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel
-      h("div", { class: "grid-2" }, foldCard(oscCard(), "osc", false, !!oscErr), foldCard(securityCard(), "security", false)),
-      foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
-      foldCard(wallClockCard(), "wallclock", false),
-      foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"),
-      foldCard(barometerCard(), "barometer", false),
-      foldCard(splCard(), "smaart", false),
-      foldCard(splLimitsCard(), "spllimits", false),
-      foldCard(globconCard(), "globcon", false),
-      foldCard(shellyCard(), "shelly", false),
-      piHostInfo() ? foldCard(piHostCard(), "pihost", false) : null,
-      foldCard(alarmLogCard(), "alarmlog", true),
+      groupHead(...GROUPS[1]),
+      chip(foldCard(devicesCard(), "nodes", true), "esphome"),
+      foldCard(entitiesCard(), "sensors", true),
+      foldCard(thresholdsCard(), "thresholds", true),
+      foldCard(calibrationCard(), "calibration", false, hasHeldNode()),
+      foldCard(deviceErrorsCard(), "deviceerrors", true),
       foldCard(logImportCard(), "logimport", false),
-      foldCard(supportCard(), "help", false),
-      foldCard(catalogCard(), "integrations", false)].filter(Boolean));
+      groupHead(...GROUPS[2]),
+      foldCard(connectionsCard(), "connections", true),
+      added.ontime ? chip(foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft"), "ontime") : null,
+      foldCard(wallClockCard(), "wallclock", false),
+      added.smaart ? chip(foldCard(splCard(), "smaart", false), "smaart") : null,
+      added.smaart ? foldCard(splLimitsCard(), "spllimits", false) : null,
+      added.globcon ? chip(foldCard(globconCard(), "globcon", false), "globcon") : null,
+      ((admin.shelly || {}).meters || []).length ? chip(foldCard(shellyCard(), "shelly", false), "shelly") : null,
+      foldCard(barometerCard(), "barometer", false),
+      piHostInfo() ? chip(foldCard(piHostCard(), "pihost", false), "pihost") : null,
+      foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
+      foldCard(oscCard(), "osc", false, !!oscErr),
+      foldCard(catalogCard(), "integrations", false),
+      groupHead(...GROUPS[3]),
+      foldCard(siteCard(), "site", false, !admin.config.site.timezone),
+      foldCard(securityCard(), "security", false),
+      softwareCard(),
+      foldCard(supportCard(), "help", false)].filter(Boolean));
   }
 
   async function refresh() {
@@ -2564,14 +2614,17 @@
       }
       rerenderScheduleSummary();
       // Ontime connection status, refreshed in place (text only, so nothing typed is lost).
+      // The header chips follow the same live state.
       const ot = document.getElementById("ontime-status");
-      if (ot) {
+      if (ot || chips.length) {
         try {
           const live = await api("GET", "/api/admin/state");
           admin.wall_clock = live.wall_clock; admin.ontime_timer = live.ontime_timer; admin.ontime_rundown = live.ontime_rundown;
-          ot.replaceChildren(...ontimeStatusLines(admin).map((l) => h("p", {}, l)));
+          admin.globcon = live.globcon;
+          if (ot) ot.replaceChildren(...ontimeStatusLines(admin).map((l) => h("p", {}, l)));
         } catch (err) { if (err.status === 401) throw err; }
       }
+      updateChips();
       // The Sound level drop-downs follow Smaart's lists (a renamed or new input) without a rebuild.
       if (pollN % 3 === 1 && admin.spl && admin.spl.running) await pullSplLists();
       // Software status changes on its own (history entry once a new build is confirmed healthy,

@@ -903,7 +903,7 @@ def test_the_card_has_one_section_a_registry_entry_and_an_admin_name():
     assert html.count('data-card="spl_live"') == 1 and "/static/spl.js" in html
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     assert "spl_live:" in js
-    admin_js = (STATIC / "admin.js").read_text(encoding="utf-8")
+    admin_js = (STATIC / "admin.js").read_text(encoding="utf-8") + (STATIC / "cards-editor.js").read_text(encoding="utf-8")   # card names: the Edit cards page
     assert "spl_live:" in admin_js and "splCard()" in admin_js
 
 

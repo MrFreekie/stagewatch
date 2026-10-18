@@ -39,7 +39,7 @@ Every request is a plain read. Stagewatch never sends a command, and it never fo
 | What | When |
 |---|---|
 | A listening connection to `/ws` on the Ontime address | While a dashboard has a card that needs Ontime. Stagewatch sends **no data** down it. Only the connection's own keep-alive goes back. |
-| `GET /api/version` | When it connects, and when you click **Test connection** |
+| `GET /api/version` | When it connects, and when you click **Test** in Connections |
 | `GET /api/poll` | Once a second, **only** while the listening connection is not working, until Stagewatch can try it again |
 | `GET /data/rundowns/current` | **Only** while a dashboard has the Ontime Rundown card: when it connects, when the running event or the number of events changes, and at least once a minute. Never more often than every 5 seconds. |
 
@@ -54,20 +54,19 @@ dashboard, Stagewatch does not contact Ontime at all.
 1. Make sure Ontime is running.
 2. Find the address and port of the computer that runs Ontime. If Ontime runs on the same computer
    as Stagewatch, use `127.0.0.1`. See [IP address](../glossary.md) in the glossary.
-3. Open **Admin** and find the **Ontime** card. It is closed at first. Click its heading to open it.
-4. Under **Connection**, type the address in **Ontime address (Ontime computer's address and
-   port)**. Write it as `http://` then the address, a colon and the port, for example
-   `http://192.168.1.50:4001`. It starts as `http://127.0.0.1:4001`. Check the port against your
-   Ontime. Stagewatch accepts plain `http://` only, with nothing after the port.
-5. Click **Test connection**.
-6. Click **Save**.
+3. Open **Admin**. Under **Integrations**, in the **Connections** card, click **Add integration**
+   and choose **Ontime**. (Already listed? Click **Edit** on its row instead.)
+4. Type the address in **Address (IP or host name)**, for example `192.168.1.50`, and the port in
+   **Port** (usually 4001). It starts as `127.0.0.1` and `4001`. Check the port against your Ontime.
+5. Click **Test**.
+6. Click **Save**. The **Ontime** card now shows in Admin, for the title and clock settings.
 7. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Ontime Timer** or **Ontime
    Rundown**, and click **Save dashboards**. See [Dashboards](../admin/dashboards.md).
 
 If you want the **Wall Clock** card to follow Ontime, also set its **Time source** to **Ontime** in
 the **Wall Clock** card in Admin. Stagewatch never switches the time source by itself.
 
-**What you'll see:** after **Test connection**, `Ontime 4.14.0 answered.` (with your version number).
+**What you'll see:** after **Test**, `Ontime 4.14.0 answered.` (with your version number).
 Once a card is on a dashboard, the lines under **Connection** change from "not running" to
 `connected, last message 14:02:11, Ontime version 4.14.0`.
 
@@ -105,7 +104,7 @@ belongs to the Ontime project. It is shown only for that reason. See the [notice
 
 ## How to check it worked
 
-1. In Admin, open the **Ontime** card and click **Test connection**.
+1. In Admin, in **Connections**, click **Edit** on Ontime, then **Test**.
 2. Add the **Ontime Timer** or **Ontime Rundown** card to a dashboard, then open that dashboard.
 
 **What you'll see:** the card shows Ontime's countdown or position, and a small green `●` **Online**
@@ -122,7 +121,7 @@ bar. It never makes a sound. See [Alarm bar and notices](../cards/alarm-bar.md).
 | `Ontime did not answer in time.` | Something is there but is slow. Check Ontime is running and not overloaded, then try again. |
 | `Something answered, but not like Ontime.` | The address is right but something else is using that port. Check the port in Ontime. |
 | `The address must look like http://host:4001` | The address is not in the form Stagewatch accepts. Use `http://`, the address, a colon and the port. |
-| `A test is already running. Wait a few seconds and try again.` | Click **Test connection** once and wait. |
+| `A test is already running. Wait a few seconds and try again.` | Click **Test** once and wait. |
 | The card says **Offline** or `OFFLINE` | Stagewatch cannot hear Ontime. Check Ontime is running. Tap the small status mark beside the logo for details. |
 | The card says **Stale** | Nothing has arrived for a few seconds. The figures are old and struck through. Do not trust them. |
 | The card says `CAN'T READ` (Rundown) | Ontime sent something Stagewatch could not read. The last good figures stay, struck through, until a readable update arrives. |

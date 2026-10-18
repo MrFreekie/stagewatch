@@ -1332,3 +1332,58 @@ body.layout-wall [data-card][data-level="alert"] > h2 { background: rgba(255, 13
 body.layout-wall [data-card][data-level="stop"] > h2 { background: rgba(255, 77, 94, .2); background: color-mix(in srgb, var(--stop) 20%, transparent); border-radius: 4px; }
 /* The timer and rundown cards' own 6 px border would double up with the edge on the wall. */
 body.layout-wall #ontime-timer-card[data-level], body.layout-wall #ontime-rundown-card[data-level] { border-left: 1px solid var(--grid); padding-left: 19px; }
+
+/* Admin console (admin.js). Setup text stays visible; only long reference detail folds under one
+   "More detail" line (SW.help). */
+.card-help { margin-top: 12px; }
+.card-help .card-help, .card-help details { margin-top: 6px; }
+/* Hints read the same size whether they are a paragraph or sit in a row beside a field. */
+#app .hint { font-size: 13px; line-height: 1.4; }
+/* Status and error lines keep one line of space while empty, so a card does not jump when
+   "Saved" or an error appears. */
+#app p[role="status"]:empty::before, #app div[role="status"]:empty::before, #app p[role="alert"]:empty::before { content: "\00a0"; }
+/* The integrations list: the name and description column keeps a readable width. */
+#app td.catalog-name { min-width: 260px; }
+/* Touch screens: every admin control at least 44 px tall, including the small table buttons. */
+@media (pointer: coarse) {
+  #app button, #app select, #app input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
+}
+/* Admin groups: a heading per group (Show day, Sensors and nodes, Integrations, Setup and system) and
+   a menu of the groups at the top, so a card is easy to find on the long page. */
+.admin-group { margin: 18px 0 -4px; font-size: 20px; font-weight: 700; padding-bottom: 6px; border-bottom: 2px solid var(--grid); scroll-margin-top: 8px; }
+.admin-groups a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--grid);
+  border-radius: 999px; background: var(--panel); color: inherit; text-decoration: none; font-weight: 600; }
+/* A card header's status chip keeps one width (Online, Offline or Error), so the header never moves. */
+#app .card h2 .ss-btn { min-width: 104px; }
+/* Edit cards page (dashboard-editor.js): the card list beside a preview of the saved dashboard on wide
+   screens, one column on a phone. The action bar keeps its status line's space. */
+.de-page { max-width: none; }
+.de-grid { display: grid; gap: 16px; grid-template-columns: 1fr; align-items: start; }
+@media (min-width: 1100px) { .de-grid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } .de-preview { position: sticky; top: 8px; } }
+.de-actions { margin-top: 12px; }
+.de-status { margin: 0; min-height: 1.4em; }
+.de-frame-box { position: relative; overflow: hidden; border: 1px solid var(--grid); border-radius: 8px; background: var(--bg); }
+.de-frame { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; pointer-events: none; }
+header.top .back { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
+/* On the Edit cards page each card is one row: tick, name and purpose, then ▲ ▼ at the right; a ticked
+   card's own options sit underneath, full width, so the name never gets squeezed. */
+.de-cards .card-picker li { display: grid; grid-template-columns: minmax(0, 1fr) 48px 48px; column-gap: 8px; row-gap: 6px; align-items: center; padding: 8px 0; }
+.de-cards .card-picker li .card-pick { grid-column: 1; grid-row: 1; }
+.de-cards .card-picker li .card-up { grid-column: 2; grid-row: 1; }
+.de-cards .card-picker li .card-down { grid-column: 3; grid-row: 1; }
+.de-cards .card-picker li > .card-look { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; padding-left: 36px; }
+.de-cards .card-picker li > label.card-look { flex-direction: column; align-items: flex-start; }
+.de-cards .card-up, .de-cards .card-down { min-width: 44px; min-height: 44px; }
+.de-cards .cards-panel { background: none; padding: 0; }
+/* Connections (admin.js connectionsCard): one row per product, and one pop-out to add or edit, the
+   same boxes for every product (address, port, password). */
+.conn-name { display: inline-flex; align-items: center; gap: 8px; }
+.conn-edit { text-align: right; }
+.conn-actions { margin-top: 10px; }
+.conn-dialog { width: min(440px, 92vw); }
+.conn-dialog .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.conn-dialog .field input, .conn-dialog .field select { width: 100%; box-sizing: border-box; min-height: 44px; }
+.conn-dialog h3 .card-logo { vertical-align: middle; }
+.conn-status { min-height: 1.4em; margin: 8px 0 0; }
+.conn-actions .grow, .conn-dialog .grow { flex: 1; }
+.conn-dialog form.row { flex-direction: column; align-items: stretch; } .conn-dialog form.row > button { align-self: flex-end !important; } .conn-dialog .row .field { flex: 1; } .conn-dialog .row > button { align-self: flex-end; }

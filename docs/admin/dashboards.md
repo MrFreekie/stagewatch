@@ -73,17 +73,20 @@ You cannot remove them all. There must be at least one, and every URL name must 
 Each dashboard shows a set of [cards](../cards/README.md). You choose which ones, and in what
 order.
 
-1. In **User dashboards**, click **Edit cards** on the dashboard's row. A list of every card opens
-   under the row.
+1. In **User dashboards**, click **Edit cards** on the dashboard's row. The Edit cards page opens,
+   with the list of every card on the left and a preview of the dashboard on the right (under the
+   list on a phone). A new dashboard needs **Save dashboards** first.
 2. Tick the cards you want. Untick the ones you do not.
 3. Use **▲** and **▼** beside a card to move it up or down. The top of the list is the top of the
    screen.
 4. For a card that offers it, choose how it looks (see below).
 5. Optional: type a **Stage**, for example **Main stage**.
-6. Click **Save dashboards**.
+6. Click **Save** at the bottom of the list.
 
-**What you'll see:** `Dashboards saved`. Screens that are open on this dashboard reload by
-themselves within a few seconds and show the new cards.
+**What you'll see:** `Saved. The preview shows the saved dashboard.` The preview reloads, and
+screens that are open on this dashboard reload by themselves within a few seconds and show the new
+cards. To edit another dashboard, pick it at the top of the page. **Back to Admin** returns to
+Admin; if you have unsaved changes, the browser asks first.
 
 ### The card list
 

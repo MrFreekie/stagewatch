@@ -229,12 +229,16 @@ def test_all_ontime_controls_live_in_the_one_ontime_card():
     admin = (STATIC / "admin.js").read_text(encoding="utf-8")
     ontime = admin[admin.index("  function ontimeCard() {"):admin.index("  // ------------------------------------------------------- event & show")]
     wall = admin[admin.index("  function wallClockCard() {"):admin.index("  // ------------------------------------------------------------ ontime")]
-    for needle in ('id: "ontime-address"', 'id: "ontime-test"', 'id: "ontime-warn"', 'id: "ontime-show-title"',
-                   '"/api/admin/wall-clock/test"', '"/api/admin/wall-clock"', '"/api/admin/ontime-timer"',
+    for needle in ('id: "ontime-warn"', 'id: "ontime-show-title"', '"/api/admin/wall-clock"', '"/api/admin/ontime-timer"',
                    'heading("Connection")', 'heading("Wall Clock")', 'heading("Ontime Timer")', 'heading("Ontime Rundown")'):
         assert needle in ontime, needle
+    # The address, port and Test live in the Connections pop-out (the same boxes for every maker).
+    conn = admin[admin.index("  // ------------------------------------------------------------ connections"):admin.index("  function ontimeCard() {")]
+    for needle in ('"ontime-address"', 'id: "ontime-test"', '"/api/admin/wall-clock/test"', '"/api/admin/wall-clock"', "Add integration"):
+        assert needle in conn, needle
     for gone in ("Ontime address", "Test connection", "Warn if more than", "wall-clock/test", "Show the event title"):
         assert gone not in wall, gone
     assert "Ontime settings are in the Ontime card." in wall and "Time source" in wall
     assert "function ontimeTimerCard" not in admin
     assert 'foldCard(ontimeCard(), "ontime", false, ontimeHasError(admin) && "soft")' in admin
+    assert 'foldCard(connectionsCard(), "connections", true)' in admin

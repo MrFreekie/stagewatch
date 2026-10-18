@@ -81,7 +81,7 @@ Look at the **first dot** at the top right of the screen. If it is **green**, th
 your Wi-Fi. The **second dot** is the Stagewatch connection. It stays **amber** until you
 adopt the node ([hub Step 7](README.md#step-7-add-the-node-in-stagewatch)). That is normal.
 
-After adopting, the second dot turns **green**. The IP address for **Add by host / IP** is
+After adopting, the second dot turns **green**. The IP address for adding it by address (**Add integration** → **ESPHome node**) is
 at the bottom of the screen.
 
 ---

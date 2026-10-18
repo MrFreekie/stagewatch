@@ -189,6 +189,8 @@ SW.SOURCES = {
     error: "Tell the system admin." },
   pihost: { name: "The Raspberry Pi", offline: "Stagewatch cannot read the Pi's own figures. Tell the system admin.",
     error: "Tell the system admin." },
+  esphome: { name: "The ESPHome nodes", offline: "Check the nodes are powered and on the show Wi-Fi, and their addresses in Admin → ESPHome nodes.",
+    error: "Check the node's status in Admin → ESPHome nodes, then tell the system admin." },
   shelly: { name: "Shelly", offline: "Check the meters are powered and on the same network, and their addresses in Admin → Shelly power meters.",
     error: "Check the meter settings in Admin → Shelly power meters, then tell the system admin." },
 };
@@ -350,10 +352,10 @@ SW.linkButton = function (text, href, primary) {
     style: "display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:44px;padding:6px 16px;border-radius:8px;text-decoration:none;font-weight:600;"
       + (primary ? "background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);" : "background:var(--panel-2);color:inherit;border:1px solid var(--grid);") }, text);
 };
-// Where Admin sends you after logging in. An allow-list of one fixed path: the value of ?next=
-// must equal "/schedule" exactly (after decoding), never any other path or URL, so the login page
-// can't be used to bounce someone to another site.
-SW.ADMIN_NEXT = ["/schedule"];
+// Where Admin sends you after logging in. An allow-list of fixed paths: the value of ?next=
+// must equal "/schedule" or "/dashboard-editor" exactly (after decoding, no query), never any other
+// path or URL, so the login page can't be used to bounce someone to another site.
+SW.ADMIN_NEXT = ["/schedule", "/dashboard-editor"];
 SW.adminNext = function (search) {
   const m = /^(?:\?)?(?:[^&]*&)*?next=([^&]*)/.exec(String(search || ""));
   if (!m) return "";
@@ -1112,6 +1114,11 @@ SW.qrSvg = function (text, size = 176) {
 // "About these figures" line, so the card shows titles and figures, not paragraphs.
 SW.about = function (...nodes) {
   return SW.h("details", { class: "card-about" }, SW.h("summary", {}, "About these figures"), ...nodes);
+};
+// The same fold for the admin console: one closed "More detail" line for long reference detail
+// (message formats, datasheet notes). Setup explanations stay visible on admin cards.
+SW.help = function (...nodes) {
+  return SW.h("details", { class: "card-about card-help" }, SW.h("summary", {}, "More detail"), ...nodes);
 };
 
 // A line inside a card that comes and goes: hidden, but its space is kept (style.css [data-slot]),

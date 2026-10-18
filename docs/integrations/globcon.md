@@ -51,16 +51,16 @@ use a password you use nowhere else.
 ## Set up
 
 1. Make sure GLOBCON is running.
-2. Open **Admin** and find the **DirectOut GLOBCON** card. It is closed at first. Click its heading
-   to open it.
-3. Check **GLOBCON computer (127.0.0.1 is this computer)**. It starts as `127.0.0.1`. If GLOBCON
-   runs on another computer, type that computer's address on your network.
-4. Check **Port (9091 unless GLOBCON says otherwise)**. 9091 is where GLOBCON's remote controller
-   page was on the machine we looked at. If you can open GLOBCON's remote controller page in a
-   browser, the address in the browser's address bar shows the computer and the port.
-5. If a controller needs a password, type it in **GLOBCON password (leave empty if GLOBCON has
-   none)**. The saved password is never shown again. Tick **Remove the saved password** to delete it.
-6. Click **Save**.
+2. Open **Admin**. Under **Integrations**, in the **Connections** card, click **Add integration**
+   and choose **DirectOut GLOBCON**. (Already added? Click **Edit** on its row instead.)
+3. Type the GLOBCON computer in **Address (IP or host name)**: `127.0.0.1` if GLOBCON runs on this
+   computer, otherwise that computer's address on your network.
+4. Check the **Port** (usually 9091). 9091 is where GLOBCON's remote controller page was on the
+   machine we looked at. If you can open that page in a browser, the address bar shows the computer
+   and the port.
+5. If a controller needs a password, type it in **Password**. The saved password is never shown
+   again. Tick **Remove the saved password** to delete it.
+6. Click **Save**. The **DirectOut GLOBCON** card now shows in Admin, with its status.
 7. Under **User dashboards**, click **Edit cards** on a dashboard and tick **DirectOut GLOBCON**.
 8. Next to the card, choose the **GLOBCON controller** (1 to 16) and **Channels shown**, then click
    **Save dashboards**. See [Dashboards](../admin/dashboards.md#globcon-controller-and-channels).
