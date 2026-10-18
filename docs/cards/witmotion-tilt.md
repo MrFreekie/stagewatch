@@ -12,6 +12,7 @@ For each sensor:
 
 - the sensor's **label** (for example "Stage Right hang"), a **battery gauge** with the approximate percentage ("Low" below 20 %, in amber), and how old its last data is. There is no gauge on the WT9011DCL, whose battery cannot be read;
 - under the gauge, a rough **time left** ("about 5 h left (estimate)") once the battery has been read for half an hour and is clearly running down, or **Charging** when its voltage clearly rises. It is worked out from the voltage over the last hour, starts again after a lost link and never raises an alarm. A lithium battery holds its voltage in the middle of its charge, so the estimate reads long there and gets better as the battery runs down;
+- under each angle, a small **trend line** of the last 30 minutes (the recorded, smoothed tilt). A lost link leaves a break in the line. Anything under 1° of movement stays nearly flat, so sensor noise does not look like movement;
 - beside each axis, the sensor's **datasheet accuracy** ("± 0.1°") if your tech has entered it;
 - **X (roll), side to side** and/or **Y (pitch), front to back**, in degrees to one decimal place, using the smoothed value. Your tech chooses which axes to watch;
 - if your tech set a **target angle**: the target, the difference ("+0.6° from target") and a marker, with a shape and words as well as colour: **✓ On target**, **◆ Close** or **✕ Off target**;

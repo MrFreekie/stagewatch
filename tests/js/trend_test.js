@@ -24,6 +24,9 @@ eq(SW.trendPath([[0, 0], [10, 10], [50, 0], [60, 10]], 0, 100, 30, 100, 10), "M0
 eq(SW.trendPath([[0, 0], [10, null], [20, 10], [30, 0]], 0, 100, 30, 100, 10), "M0.0 9.0h1M20.0 1.0L30.0 9.0", "null breaks, lone point dash");
 // Flat values sit in the middle; points outside the span are dropped.
 eq(SW.trendPath([[-5, 3], [0, 3], [100, 3]], 0, 100, 200, 100, 10), "M0.0 5.0L100.0 5.0", "flat line centred, old point dropped");
+// A minimum range keeps a small wobble small (the tilt tiles use 1 degree).
+eq(SW.trendPath([[0, 0], [100, 0.1]], 0, 100, 200, 100, 10), "M0.0 9.0L100.0 1.0", "without a minimum a wobble fills the box");
+eq(SW.trendPath([[0, 0], [100, 0.1]], 0, 100, 200, 100, 10, 1), "M0.0 5.4L100.0 4.6", "with a 1-unit minimum it stays small");
 
 console.log(`${count - fails}/${count} passed`);
 process.exit(fails ? 1 : 0);

@@ -1120,6 +1120,25 @@
 
   // WitMotion tilt sensors (SW.wm, witmotion.js). Advisory; a gap or stale reading is "No data", never the last angle.
   const wmUi = {};   // device id -> its status indicator
+  // Tilt trend under each angle: the recorded smoothed tilt over the last 30 minutes, fetched at most every
+  // 30 s. A gap breaks the line (nothing is joined across it). At least 1° of range is drawn full height,
+  // so sensor noise stays a flat line. A guide to "has it moved?", not a measurement.
+  const WM_TREND_S = 1800, WM_TREND_POINTS = 90, WM_TREND_MIN_DEG = 1;
+  const wmHist = { at: 0, busy: false, d: {} };
+  async function loadWmHistory(ids) {
+    if (wmHist.busy || !ids.length || Date.now() - wmHist.at < 30000) return;
+    wmHist.busy = true; wmHist.at = Date.now();
+    const t1 = serverNow(), t0 = t1 - WM_TREND_S;
+    let data = {};
+    try {
+      data = await SW.api("GET", `/api/history?entities=${encodeURIComponent(ids.join(","))}&since=${t0}&points=${WM_TREND_POINTS}`) || {};
+    } catch (_) { data = {}; }
+    wmHist.busy = false;
+    const gap = Math.max(60, 3 * WM_TREND_S / WM_TREND_POINTS);
+    wmHist.d = {};
+    for (const id of ids) wmHist.d[id] = SW.trendPath(data[id], t0, t1, gap, TREND_W, TREND_H, WM_TREND_MIN_DEG);
+    renderWitmotion();
+  }
   function renderWitmotion() {
     const card = $("witmotion_tilt-card");
     const sensors = SW.wm.sensorsOf(state.devices);
@@ -1130,6 +1149,7 @@
     // Each tile has its own Online / Offline / Error indicator (kept per sensor, so an open pop-out survives a redraw),
     // and goes grey while it has no data. It is never hidden, and never shows an old angle.
     const views = sensors.map((dev) => SW.wm.view(dev, state.entities));
+    loadWmHistory(sensors.flatMap((d) => views[sensors.indexOf(d)].axes.map((a) => `${d.id}.${a.key}`)));
     const tiles = views.map((v, i) => {
       const dev = sensors[i];
       const ui = wmUi[dev.id] || (wmUi[dev.id] = SW.sourceStatusUi("witmotion"));
@@ -1144,6 +1164,9 @@
       h("div", { class: "wm-axes" }, v.axes.map((a) => h("div", { class: "wm-axis" + (a.level ? ` wm-l${a.level}` : "") },
         h("div", { class: "pw-label", title: a.hint }, a.label, v.accuracy ? h("span", { class: "wm-acc", title: "Datasheet accuracy" }, " " + v.accuracy) : null),
         h("div", { class: "wm-value" + (a.unit ? "" : " wm-nodata") }, a.text, a.unit ? h("span", { class: "unit" }, a.unit) : null),
+        h("div", { class: "trend wm-spark", "aria-hidden": "true", title: "Last 30 minutes" }, wmHist.d[`${dev.id}.${a.key}`]
+          ? SW.svg("svg", { viewBox: `0 0 ${TREND_W} ${TREND_H}`, preserveAspectRatio: "none" },
+            SW.svg("path", { d: wmHist.d[`${dev.id}.${a.key}`], "vector-effect": "non-scaling-stroke" })) : null),
         a.levelText ? h("div", { class: "wm-limit" }, a.levelText) : null,
         a.target ? h("div", { class: "wm-target muted" }, a.target.band ? `${a.target.targetText} · ${a.target.diffText}` : a.target.targetText) : null,
         // With no data the band keeps its space (hidden), so the tile does not change size.

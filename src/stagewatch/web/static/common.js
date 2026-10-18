@@ -1164,11 +1164,13 @@ SW.applyBranding = function (info, flag) {
 // Trend line for a figure tile: the SVG path "d" for points [[ts, value], ...] across [t0, t1]
 // in a w x h box. A gap longer than gapS (or a null value) breaks the line: missing data stays a
 // gap, never joined. A lone point is a short dash. "" when there is nothing to draw.
-SW.trendPath = function (points, t0, t1, gapS, w, h) {
+// minSpan (optional): the smallest value range drawn full height, so a tiny wobble does not fill the box.
+SW.trendPath = function (points, t0, t1, gapS, w, h, minSpan) {
   const pts = (points || []).filter((p) => p && p[0] >= t0 && p[0] <= t1);
   const vals = pts.map((p) => p[1]).filter((v) => typeof v === "number" && isFinite(v));
   if (!vals.length || !(t1 > t0)) return "";
   let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (minSpan > 0 && hi - lo < minSpan) { const mid = (hi + lo) / 2; lo = mid - minSpan / 2; hi = mid + minSpan / 2; }
   if (hi - lo < 1e-9) { lo -= 1; hi += 1; }   // a flat line sits in the middle
   const pad = h * 0.1;
   const x = (t) => ((t - t0) / (t1 - t0) * w).toFixed(1);
