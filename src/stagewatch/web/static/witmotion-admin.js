@@ -45,8 +45,8 @@ SW.wmAdmin = (function () {
     }
     return "";
   };
-  wa.payload = function (enabled, rows) {
-    return { enabled: !!enabled, sensors: rows.map((r) => ({
+  wa.payload = function (enabled, rows, markers) {
+    return { enabled: !!enabled, markers: markers !== false, sensors: rows.map((r) => ({
       address: wa.address(r.address), label: String(r.label || "").trim(), axis: r.axis,
       smoothing_s: r.smoothing_s, target_x: r.target_x, target_y: r.target_y, on_target_deg: r.on_target_deg, close_deg: r.close_deg })) };
   };

@@ -1223,7 +1223,8 @@ body.layout-wall .pi-model { display: none; }
 .wm-axes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 14px; margin-top: 6px; }
 .wm-value { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .wm-value .unit { font-size: 22px; font-weight: 500; color: var(--muted); margin-left: 2px; }
-.wm-nodata { font-size: 26px; color: var(--muted); font-weight: 600; }
+.wm-nodata { font-size: 26px; line-height: 48.4px; color: var(--muted); font-weight: 600; }   /* same height as a number */
+.wm-hold { visibility: hidden; }   /* keeps the space of a line that has no data */
 .wm-limit { font-weight: 700; font-size: 14px; }
 .wm-l1 .wm-value, .wm-l1 .wm-limit { color: var(--warn); }
 .wm-l2 .wm-value, .wm-l2 .wm-limit { color: var(--alert); }
@@ -1237,10 +1238,11 @@ body.layout-wall .pi-model { display: none; }
 body.layout-wall .wm-target { font-size: 28px; }
 body.layout-wall .wm-band { font-size: 32px; padding: 4px 16px; }
 body.layout-phone .wm-value { font-size: 34px; }
+body.layout-phone .wm-nodata { line-height: 37.4px; }
 body.layout-wall .wm-name { font-size: 34px; }
 body.layout-wall .wm-value { font-size: 88px; }
 body.layout-wall .wm-value .unit { font-size: 44px; }
-body.layout-wall .wm-nodata { font-size: 48px; }
+body.layout-wall .wm-nodata { font-size: 48px; line-height: 96.8px; }
 body.layout-wall .wm-limit { font-size: 28px; }
 body.layout-wall .pw-label { font-size: 18px; }
 body.layout-wall .wm-small, body.layout-wall .wm-smooth { display: none; }

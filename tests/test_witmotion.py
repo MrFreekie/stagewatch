@@ -414,6 +414,22 @@ async def test_a_silent_connected_link_becomes_a_gap(hub):
         await integ.stop()
 
 
+async def test_link_markers_can_be_switched_off_but_the_gap_stays(hub):
+    hub.config.witmotion.markers = False
+    integ, holder = await make(hub)
+    try:
+        cb = holder["r"].cb
+        cb["on_connected"](100.0)
+        put3(cb, one(F1), 100.0)
+        integ.tick(101.0)
+        cb["on_disconnected"](110.0)
+        assert val(hub, "tilt_roll") is None                # still a gap
+        cb["on_connected"](150.0)
+        assert markers(hub) == []                           # but no "link lost" or "back" markers
+    finally:
+        await integ.stop()
+
+
 async def test_old_battery_and_temperature_become_a_gap(hub):
     integ, holder = await make(hub)
     try:

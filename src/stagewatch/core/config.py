@@ -468,6 +468,7 @@ class WitmotionConfig(_Model):
     ``sensors`` lists each one by address. With none listed, ``address`` (or, if empty too, the first
     sensor whose factory name starts WT901BLE) is used for a single sensor."""
     enabled: bool = False
+    markers: bool = True   # "link lost" / "back" markers; off for a fragile link. The gap is recorded either way
     address: str = Field("", max_length=64)
     axis: Literal["both", "x", "y"] = "both"        # for the single sensor used when ``sensors`` is empty
     smoothing_s: float = Field(2.0, ge=0, le=10)

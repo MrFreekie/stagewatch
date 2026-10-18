@@ -415,6 +415,7 @@ class WitmotionBody(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     enabled: StrictBool
+    markers: StrictBool = True   # "link lost" / "back" markers
     sensors: list[WitmotionSensorBody] = Field(max_length=4)
 
 
@@ -1812,7 +1813,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                                               on_target_deg=s.on_target_deg, close_deg=s.close_deg))
         # The older single-sensor fields keep working for a settings file that uses them. Once the list is saved
         # here it is the list that counts, so the old address is cleared (or a removed sensor would come back).
-        new = old.model_copy(update={"enabled": body.enabled, "sensors": rows, "address": ""})
+        new = old.model_copy(update={"enabled": body.enabled, "markers": body.markers, "sensors": rows, "address": ""})
         hub.config.witmotion = new
         applied = False
         integ = hub.integrations.get("witmotion")

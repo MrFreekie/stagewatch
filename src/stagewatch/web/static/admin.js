@@ -535,6 +535,7 @@
     const wm = admin.config.witmotion || {}, st = admin.witmotion || {}, wa = SW.wmAdmin;
     const first = wa.rowsFromConfig(wm);
     const on = h("input", { type: "checkbox", id: "wm-enabled", checked: !!wm.enabled });
+    const marks = h("input", { type: "checkbox", id: "wm-markers", checked: wm.markers !== false });
     const rowsBox = h("div", {});
     const found = h("div", { id: "wm-found", role: "status" });
     const msg = h("p", { class: "warn-text", role: "alert" });
@@ -606,7 +607,7 @@
       if (bad) return;
       save.disabled = true;
       try {
-        const r = await api("PUT", "/api/admin/witmotion", wa.payload(on.checked, list));
+        const r = await api("PUT", "/api/admin/witmotion", wa.payload(on.checked, list, marks.checked));
         wmFound = null;
         toast(r.applied ? "WitMotion saved. The sensors are updated now." : "WitMotion saved. Restart Stagewatch to apply.");
         await refresh();
@@ -621,6 +622,8 @@
       h("p", { class: "muted hint" }, "Never pair the sensor in the computer's Bluetooth settings: it drops the link. Only one device at a time can connect to a sensor, so close the WitMotion phone app. If the link is lost the readings become gaps, and nothing is filled in afterwards."),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: one simulated sensor runs, whatever is listed here. It loses its link for 20 seconds every 5 minutes, to show how a gap looks. Find sensors shows two made-up sensors.") : null,
       h("div", { class: "row" }, h("label", { class: "field inline" }, on, " Read the WitMotion sensors")),
+      h("div", { class: "row" }, h("label", { class: "field inline" }, marks, " Add a marker when a sensor's link is lost and when it is back")),
+      h("p", { class: "muted" }, "Untick this if the Bluetooth link drops often and the markers clutter the timeline. A lost link still shows as a gap in the readings."),
       first.legacy ? h("p", { class: "notice" }, "This sensor is set up the older way, in the settings file. Press Save to move it into this list.") : null,
       on.checked && !first.rows.length ? h("p", { class: "notice" }, "No sensors are listed, so Stagewatch connects to the first sensor it hears whose name still starts WT901BLE. Use Find sensors and Add to choose one.") : null,
       rowsBox,

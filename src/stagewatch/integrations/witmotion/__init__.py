@@ -238,7 +238,8 @@ class Sensor:
         self._reset_filters()
         self._setup, self._rate_period_s = {}, None   # read again on every connection: the app may have changed them
         if self._had_loss:
-            self.hub.add_marker(f"{self.title} back (readings missed while it was away are not filled in)", MARKER_SOURCE, ts)
+            if self._markers_on():
+                self.hub.add_marker(f"{self.title} back (readings missed while it was away are not filled in)", MARKER_SOURCE, ts)
             self._had_loss = False
 
     def _on_disconnected(self, ts: float) -> None:
@@ -258,8 +259,14 @@ class Sensor:
         self._peak_g = self._last_frame = None
         if not self._had_loss:
             self._had_loss = True
-            self.hub.add_marker(f"{self.title} link lost", MARKER_SOURCE, ts)
+            if self._markers_on():
+                self.hub.add_marker(f"{self.title} link lost", MARKER_SOURCE, ts)
         self._set_status(Status.MISSING, "Link lost")
+
+    def _markers_on(self) -> bool:
+        """Admin can turn the link markers off for a fragile link; the readings still become gaps."""
+        cfg = getattr(self.hub.config, "witmotion", None)
+        return cfg is None or cfg.markers
 
     def _reset_filters(self) -> None:
         """After any gap or reconnect the filters start empty: nothing is carried across."""
