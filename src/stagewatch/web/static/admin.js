@@ -556,6 +556,7 @@
       const ty = num(r.target_y, "Target Y in degrees", "-180", "180", "0.1", "none");
       const onT = num(r.on_target_deg, "On target within (degrees)", "0", "10", "0.1");
       const close = num(r.close_deg, "Close within (degrees)", "0", "45", "0.1");
+      const acc = num(r.accuracy_deg, "Accuracy in degrees", "0.01", "10", "0.01", "none");
       const status = r.savedIndex === null ? null : h("div", { class: "wm-status", "data-wm-status": String(r.savedIndex), role: "status" }, ...wmStatusNodes(r.savedIndex));
       const rm = h("button", { type: "button", class: "touch danger" }, "Remove");
       const el = h("div", { class: "card-inset wm-sensor" },
@@ -563,9 +564,11 @@
         h("div", { class: "row" }, field("Tilt to watch", axis), field("Smoothing", smoothing)),
         h("div", { class: "row" }, field("Target X (°, optional)", tx), field("Target Y (°, optional)", ty),
           field("On target within (°)", onT), field("Close within (°)", close)),
+        h("div", { class: "row" }, field("Accuracy ± (°, optional)", acc)),
+        h("p", { class: "muted" }, "From the sensor's datasheet, shown on the tile as \"± 0.1°\". WT901BLECL: 0.05° still, 0.1° moving. WT9011DCL: 0.2°."),
         status);
       const entry = { el, savedIndex: r.savedIndex, read: () => ({ address: address.value, label: label.value, axis: axis.value, smoothing_s: Number(smoothing.value),
-        target_x: numOrNull(tx), target_y: numOrNull(ty), on_target_deg: numOrNull(onT), close_deg: numOrNull(close), savedIndex: r.savedIndex }) };
+        target_x: numOrNull(tx), target_y: numOrNull(ty), on_target_deg: numOrNull(onT), close_deg: numOrNull(close), accuracy_deg: numOrNull(acc), savedIndex: r.savedIndex }) };
       rm.onclick = () => { rows.splice(rows.indexOf(entry), 1); el.remove(); dirty = true; setAdd(); };
       rows.push(entry);
       rowsBox.append(el);

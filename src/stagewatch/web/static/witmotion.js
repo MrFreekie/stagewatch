@@ -4,6 +4,16 @@
 SW.wm = (function () {
   const wm = {};
   const isNum = (x) => typeof x === "number" && Number.isFinite(x);
+  // The rough battery estimate in words: "Charging", "about 5 h left", "about 40 min left". Empty until there is enough data.
+  wm.trendText = function (t) {
+    if (!t) return "";
+    if (t.state === "charging") return "Charging";
+    if (t.state !== "discharging" || !isNum(t.hours_left)) return "";
+    const h = t.hours_left;
+    if (h >= 48) return "more than 48 h left (estimate)";
+    if (h < 1) return `about ${Math.max(10, Math.round(h * 6) * 10)} min left (estimate)`;
+    return `about ${SW.num(Math.round(h * 2) / 2, h < 10 ? 1 : 0)} h left (estimate)`;
+  };
   wm.title = (n) => (n > 1 ? "Inclinometers" : "Inclinometer");
   wm.NOTE = "Tilt is a guide, not a rigging safety system.";
   // Plain words for each limit level (1 = advisory, 2 = alert, 3 = stop), the same ladder as the alarm bar.
@@ -60,7 +70,8 @@ SW.wm = (function () {
       linkText: age === null ? "No data from the sensor" : `Last data ${SW.num(age, 1)} s ago`,
       live, axes,
       // Battery: approximate, worked out from the voltage. Low below 20 %, with the word as well as the colour.
-      battery: pct === null ? null : { pct: Math.max(0, Math.min(100, Math.round(pct))), low: pct < 20 },
+      battery: pct === null ? null : { pct: Math.max(0, Math.min(100, Math.round(pct))), low: pct < 20, trend: wm.trendText(pub.battery_trend) },
+      accuracy: isNum(pub.accuracy_deg) && pub.accuracy_deg > 0 ? `± ${SW.num(pub.accuracy_deg, pub.accuracy_deg < 0.1 ? 2 : 1)}°` : "",
       smoothing: isNum(pub.smoothing_s) && pub.smoothing_s > 0 ? `smoothed over ${pub.smoothing_s} s` : "not smoothed",
       setup: typeof pub.setup_line === "string" ? pub.setup_line : "",
       info: typeof pub.info_line === "string" ? pub.info_line : "",

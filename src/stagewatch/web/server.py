@@ -407,6 +407,7 @@ class WitmotionSensorBody(BaseModel):
     target_y: StrictInt | StrictFloat | None = Field(None, ge=-180, le=180, allow_inf_nan=False)
     on_target_deg: StrictInt | StrictFloat = Field(0.2, ge=0, le=10, allow_inf_nan=False)
     close_deg: StrictInt | StrictFloat = Field(1.0, ge=0, le=45, allow_inf_nan=False)
+    accuracy_deg: StrictInt | StrictFloat | None = Field(None, ge=0.01, le=10, allow_inf_nan=False)
 
 
 class WitmotionBody(BaseModel):
@@ -1811,7 +1812,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 raise HTTPException(422, "A sensor name cannot contain control characters.")
             rows.append(WitmotionSensorConfig(address=address, label=label, axis=s.axis, smoothing_s=float(s.smoothing_s),
                                               target_x=s.target_x, target_y=s.target_y,
-                                              on_target_deg=s.on_target_deg, close_deg=s.close_deg))
+                                              on_target_deg=s.on_target_deg, close_deg=s.close_deg,
+                                              accuracy_deg=s.accuracy_deg))
         # The older single-sensor fields keep working for a settings file that uses them. Once the list is saved
         # here it is the list that counts, so the old address is cleared (or a removed sensor would come back).
         new = old.model_copy(update={"enabled": body.enabled, "markers": body.markers, "temp_on_equipment": body.temp_on_equipment, "sensors": rows, "address": ""})

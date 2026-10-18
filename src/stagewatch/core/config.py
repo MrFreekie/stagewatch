@@ -454,6 +454,7 @@ class WitmotionSensorConfig(_Model):
     target_y: Optional[float] = Field(None, ge=-180, le=180)   # ... and for Y (pitch)
     on_target_deg: float = Field(0.2, ge=0, le=10)             # "on target" within this many degrees
     close_deg: float = Field(1.0, ge=0, le=45)                 # "close" within this many (display only, never an alarm)
+    accuracy_deg: Optional[float] = Field(None, ge=0.01, le=10)   # datasheet tilt accuracy, shown as "± x°" (display only)
 
     @model_validator(mode="after")
     def _bands_in_order(self):

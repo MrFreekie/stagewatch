@@ -15,12 +15,13 @@ SW.wmAdmin = (function () {
     const t = String(text || "").trim().toUpperCase();
     return MAC.test(t) || UUID.test(t) ? t : "";
   };
-  const blank = () => ({ address: "", label: "", axis: "both", smoothing_s: 2, target_x: null, target_y: null, on_target_deg: 0.2, close_deg: 1, savedIndex: null });
+  const blank = () => ({ address: "", label: "", axis: "both", smoothing_s: 2, target_x: null, target_y: null, on_target_deg: 0.2, close_deg: 1, accuracy_deg: null, savedIndex: null });
   wa.blankRow = function (address) { return Object.assign(blank(), { address: address || "" }); };
   const fromSensor = (s, i) => Object.assign(blank(), {
     address: s.address || "", label: s.label || "", axis: s.axis || "both", smoothing_s: isNum(s.smoothing_s) ? s.smoothing_s : 2,
     target_x: isNum(s.target_x) ? s.target_x : null, target_y: isNum(s.target_y) ? s.target_y : null,
-    on_target_deg: isNum(s.on_target_deg) ? s.on_target_deg : 0.2, close_deg: isNum(s.close_deg) ? s.close_deg : 1, savedIndex: i });
+    on_target_deg: isNum(s.on_target_deg) ? s.on_target_deg : 0.2, close_deg: isNum(s.close_deg) ? s.close_deg : 1,
+    accuracy_deg: isNum(s.accuracy_deg) ? s.accuracy_deg : null, savedIndex: i });
   // The rows to show for the saved settings. A settings file that still uses the older single-sensor fields
   // gives one row, so saving here moves it into the list. { rows, legacy } (legacy: that row came from the old fields).
   wa.rowsFromConfig = function (wm) {
@@ -41,6 +42,7 @@ SW.wmAdmin = (function () {
       if (isNum(r.target_x) && Math.abs(r.target_x) > 180 || isNum(r.target_y) && Math.abs(r.target_y) > 180) return "A target angle is between -180 and 180 degrees.";
       if (!isNum(r.on_target_deg) || r.on_target_deg < 0 || r.on_target_deg > 10) return "\"On target\" is between 0 and 10 degrees.";
       if (!isNum(r.close_deg) || r.close_deg < 0 || r.close_deg > 45) return "\"Close\" is between 0 and 45 degrees.";
+      if (isNum(r.accuracy_deg) && (r.accuracy_deg < 0.01 || r.accuracy_deg > 10)) return "Accuracy is between 0.01 and 10 degrees, or left empty.";
       if (r.close_deg < r.on_target_deg) return "\"Close\" must be at least as wide as \"On target\".";
     }
     return "";
@@ -48,7 +50,8 @@ SW.wmAdmin = (function () {
   wa.payload = function (enabled, rows, markers, tempOnEquipment) {
     return { enabled: !!enabled, markers: markers !== false, temp_on_equipment: !!tempOnEquipment, sensors: rows.map((r) => ({
       address: wa.address(r.address), label: String(r.label || "").trim(), axis: r.axis,
-      smoothing_s: r.smoothing_s, target_x: r.target_x, target_y: r.target_y, on_target_deg: r.on_target_deg, close_deg: r.close_deg })) };
+      smoothing_s: r.smoothing_s, target_x: r.target_x, target_y: r.target_y, on_target_deg: r.on_target_deg, close_deg: r.close_deg,
+      accuracy_deg: isNum(r.accuracy_deg) ? r.accuracy_deg : null })) };
   };
   // One line of live status for a row. `st` is the server's entry for the saved sensor, or null.
   wa.statusText = function (st, saved) {

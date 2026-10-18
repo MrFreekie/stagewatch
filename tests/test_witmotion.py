@@ -911,7 +911,9 @@ async def test_settings_are_strict_and_never_echo_what_was_sent(admin):
            {"enabled": True, "sensors": [row(axis="z")]}, {"enabled": True, "sensors": [row(target_x=181)]},
            {"enabled": True, "sensors": [row(target_y="2")]}, {"enabled": True, "sensors": [row(on_target_deg=11)]},
            {"enabled": True, "sensors": [row(on_target_deg=0.5, close_deg=0.2)]}, {"enabled": True, "sensors": [row(label="x" * 61)]},
-           {"enabled": True, "sensors": [row(label="a\x00b")]}, {"enabled": True, "sensors": [{"label": "no address"}]}]
+           {"enabled": True, "sensors": [row(label="a\x00b")]}, {"enabled": True, "sensors": [{"label": "no address"}]},
+           {"enabled": True, "sensors": [row(accuracy_deg=0)]}, {"enabled": True, "sensors": [row(accuracy_deg=11)]},
+           {"enabled": True, "markers": "no", "sensors": []}, {"enabled": True, "temp_on_equipment": 1, "sensors": []}]
     for b in bad:
         r = await admin.put("/api/admin/witmotion", json=b)
         assert r.status_code == 422, b
@@ -923,13 +925,16 @@ async def test_saving_starts_the_sensors_with_no_restart_and_keeps_the_old_field
     admin.hub.config.witmotion.address = MAC3     # the older single-sensor field, from a settings file
     admin.hub.config.witmotion.axis = "y"
     assert DEVICE_ID not in admin.hub.devices
-    body = {"enabled": True, "sensors": [row(MAC1.lower(), axis="x", smoothing_s=5, target_x=2.5, on_target_deg=0.3, close_deg=1.5),
+    body = {"enabled": True, "sensors": [row(MAC1.lower(), axis="x", smoothing_s=5, target_x=2.5, on_target_deg=0.3, close_deg=1.5, accuracy_deg=0.1),
                                           row(UUID1, label="Stage Left", smoothing_s=0)]}
     r = await admin.put("/api/admin/witmotion", json=body)
     assert r.status_code == 200 and r.json() == {"ok": True, "changed": True, "applied": True}
     cfg = admin.hub.config.witmotion
     assert cfg.enabled and [s.address for s in cfg.sensors] == [MAC1, UUID1.upper()]          # saved in one standard form
     assert (cfg.sensors[0].axis, cfg.sensors[0].smoothing_s, cfg.sensors[0].target_x, cfg.sensors[0].close_deg) == ("x", 5.0, 2.5, 1.5)
+    assert cfg.sensors[0].accuracy_deg == 0.1 and cfg.sensors[1].accuracy_deg is None
+    await until(lambda: "witmotion" in admin.hub.devices)
+    assert admin.hub.devices["witmotion"].public["witmotion"]["accuracy_deg"] == 0.1
     assert cfg.axis == "y" and cfg.address == ""     # the old fields are still there; the old address is now in the list or removed
     await until(lambda: len(admin.made) == 2)
     assert [d for d in admin.hub.devices if d.startswith("witmotion")] == ["witmotion", "witmotion_2"]

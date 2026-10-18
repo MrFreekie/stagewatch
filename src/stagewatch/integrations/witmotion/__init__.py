@@ -31,6 +31,7 @@ from collections import deque
 from ...core.model import Device, Entity, Kind, Status
 from ...core.plugin import Integration, Manifest
 from . import parser
+from .battery import BatteryTrend
 from . import scan as scan_mod
 from .smoothing import Smoother
 from .emulate import EmulatedReader
@@ -148,6 +149,7 @@ class Sensor:
         self._setup: dict[str, str] = {}
         self._rate_period_s: float | None = None
         self._battery_v: float | None = None
+        self._trend = BatteryTrend()          # rough time left / charging, from this connection's voltages only
         self._body_c: float | None = None
         self._readout_sent: dict | None = None
         self.reader = None
@@ -176,7 +178,16 @@ class Sensor:
             "axis": self.axis, "axis_text": AXIS_TEXT[self.axis], "axis_help": AXIS_HELP,
             "smoothing_s": self.smoothing_s, "battery_note": self._battery_note,
             "temp_on_equipment": bool(getattr(self.hub.config.witmotion, "temp_on_equipment", False)),
+            "accuracy_deg": self._accuracy(), "battery_trend": self._trend.view(),
             "targets": {k: v for k, v in self.targets.items() if k in self.specs}, **self.readout()}})
+
+    def _accuracy(self) -> float | None:
+        """The datasheet accuracy Admin typed for this sensor (found by its address), or None."""
+        cfg = getattr(self.hub.config, "witmotion", None)
+        for s in (cfg.sensors if cfg else []):
+            if self.address and s.address.upper() == self.address.upper():
+                return s.accuracy_deg
+        return None
 
     def limits(self) -> dict:
         """For each tilt reading that has an enabled threshold: the level of its alarm now (0 = within limit,
@@ -255,6 +266,7 @@ class Sensor:
             self._put(key, None, ts)
         self._slow.clear()
         self._battery_v = self._body_c = None
+        self._trend.reset()   # nothing carried across a lost link
         self._setup, self._rate_period_s = {}, None
         self._reset_filters()
         self._peak_g = self._last_frame = None
@@ -309,6 +321,7 @@ class Sensor:
                 if note != self._battery_note:
                     self._battery_note = note
                     self._public()
+                self._trend.add(ts, v)
                 self._slow_value("battery_volts", v, ts)
                 self._slow_value("battery_pct", parser.battery_percent_approx(v), ts)
             elif frame.reg in (parser.REG_MAG_ANGLE_TEMP, parser.REG_TEMPERATURE):
@@ -349,8 +362,9 @@ class Sensor:
                     self._body_c = None
                 elif key == "battery_volts":
                     self._battery_v = None
-        if self.readout() != self._readout_sent:
-            self._readout_sent = self.readout()
+                    self._trend.reset()
+        if {**self.readout(), "trend": self._trend.view()} != self._readout_sent:
+            self._readout_sent = {**self.readout(), "trend": self._trend.view()}
             self._public()
 
     def _set_status(self, status: Status, detail: str) -> None:

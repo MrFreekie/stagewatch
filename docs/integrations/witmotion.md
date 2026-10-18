@@ -26,7 +26,7 @@ Only **one device at a time** can be connected to the sensor. Close the WitMotio
 | Tilt X (roll) and Y (pitch) | In degrees, as the sensor reports them, smoothed (see below). Roll wraps at ±180°. |
 | Acceleration | The peak of each second, in g. Good for "was it knocked?", not for vibration analysis. |
 | Time since last data | In seconds. |
-| Sensor battery | Voltage, plus a percentage that is **approximate** (worked out from the voltage). "Not available for this sensor model" on the WT9011DCL. |
+| Sensor battery | Voltage, plus a percentage that is **approximate** (worked out from the voltage). "Not available for this sensor model" on the WT9011DCL. The card also shows a rough time left, or Charging (see the [card](../cards/witmotion-tilt.md)). |
 | Sensor body temperature | The temperature of the sensor's own chip, **not the air**. It is never used for the environment cards or the speed of sound. Admin can also show it on the Equipment card ("Show each sensor's temperature on the Equipment card"). |
 
 All readings are **Equipment**: they never reach a site average. They are stored once a second.
@@ -63,6 +63,7 @@ Switching the tick off and saving stops the sensors. Their history is kept.
 * **Tilt to watch** (`axis`) is `x` (roll, side to side), `y` (pitch, front to back) or `both` (the default). An axis you do not watch is not recorded and cannot be used in a threshold. X and Y are the sensor's own axes. Which way each points in the room depends on how the sensor is fixed, so tilt it and see which reading moves.
 * **Smoothing** (`smoothing_s`) removes noise from the tilt: off, 1, 2 (the default), 5 or 10 seconds. Each reading first goes through a short median of the last five frames, which throws away a single spike, then a moving average over that many seconds. It works in seconds, so it behaves the same whatever rate the sensor sends at. **Thresholds act on the smoothed value.** The unsmoothed values are recorded beside it, labelled "unsmoothed", so the raw history is never changed. After any lost link the smoothing starts again from nothing: nothing is carried across the gap, and no tilt is shown until three new readings have arrived.
 * **Target X, Target Y** (`target_x`, `target_y`, optional) are target angles in degrees for X and Y. **On target within** (`on_target_deg`, default 0.2) and **Close within** (`close_deg`, default 1.0) set the bands: within the first is **On target**, within the second is **Close**, beyond that is **Off target**. "Close" cannot be tighter than "On target". The card shows the target, the difference and a marker, using the smoothed angle. This is display only and **never raises an alarm**. If you want an alarm, set an ordinary [threshold](../admin/sensors-and-alarms.md) on the tilt reading.
+* **Accuracy ±** (`accuracy_deg`, optional) is the tilt accuracy from the sensor's datasheet, shown beside each axis as "± 0.1°". It is for information only. WitMotion gives 0.05° (still) and 0.1° (moving) for the WT901BLECL, and 0.2° for the WT9011DCL.
 
 ### Setting it up in the settings file instead
 
@@ -80,6 +81,7 @@ witmotion:
       target_y: -2.0      # optional target angle for Y (pitch)
       on_target_deg: 0.2  # "On target" within this many degrees
       close_deg: 1.0      # "Close" within this many degrees
+      accuracy_deg: 0.1   # optional datasheet accuracy, shown as "± 0.1°"
 ```
 
 * A settings file from an earlier version may have one sensor set with `address`, `axis` and the other settings directly under `witmotion:`. That still works. The Admin card shows it as one sensor; press **Save** to move it into the list (the older `address` is then cleared, so a sensor you remove stays removed).
