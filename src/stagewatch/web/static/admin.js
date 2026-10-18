@@ -529,15 +529,17 @@
     const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: "3", "aria-label": "Reads every (seconds)" });
     const result = h("div", { class: "shelly-result", role: "status" });
     const save = h("button", { class: "primary touch", disabled: true }, "Save meter");
+    const saveHint = h("span", { class: "muted" }, "Press Test first: Save works once the meter answers.");
+    const setSave = (off) => { save.disabled = off; SW.slot(saveHint, !off); };
     const showResult = (r) => {
-      if (!r) { result.replaceChildren(); save.disabled = true; return; }
-      if (!r.ok) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${r.message} Nothing has been changed.`)); save.disabled = true; return; }
+      if (!r) { result.replaceChildren(); setSave(true); return; }
+      if (!r.ok) { result.replaceChildren(h("p", { class: "warn-text" }, `▲ ${r.message} Nothing has been changed.`)); setSave(true); return; }
       const lines = [h("p", {}, `Found ${r.model || "a Shelly"}${r.firmware ? `, firmware ${r.firmware}` : ""}. It measures: ${r.components.join(", ") || "power"}.`)];
       if (r.already_added) lines.push(h("p", { class: "warn-text" }, "▲ This meter has already been added."));
       lines.push(h("ul", { class: "shelly-readings" }, r.readings.map((x) => h("li", {}, `${x.name}: ${SW.num(x.value, Math.min(3, x.decimals))}${x.unit ? " " + x.unit : ""}`))));
       lines.push(h("p", { class: "muted" }, "These are live readings from the meter. Nothing has been changed on it."));
       result.replaceChildren(...lines);
-      save.disabled = !!r.already_added;
+      setSave(!!r.already_added);
     };
     const test = h("button", { class: "touch", onclick: async () => {
       shellyTest = null; showResult(null);
@@ -550,13 +552,14 @@
     } }, "Test");
     save.onclick = () => run(() => api("POST", "/api/admin/shelly/add", { host: val(host), name: val(name), area: val(area), interval_s: Number(every.value) }), "Meter added")
       .then(() => { shellyTest = null; if (onDone) onDone(); return refresh(); }, () => {});
+    setSave(true);
     if (shellyTest && shellyTest.ok) showResult(shellyTest);
     return h("div", {},
       h("div", { class: "row" }, field("Meter address (an IP address on your local network)", host), test),
       result,
       field("Name", name), field("Area (optional)", area), field("Reads every (seconds, 2 to 5)", every),
       h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it."),
-      h("div", { class: "row sw-dlg-actions" }, h("span", { class: "grow" }), save));
+      h("div", { class: "row sw-dlg-actions" }, saveHint, h("span", { class: "grow" }), save));
   }
   let shellyTest = null;   // the last Test result for the Add form: {host, ...} (kept across a re-render)
   function shellyCard() {

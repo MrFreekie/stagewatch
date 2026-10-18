@@ -1387,3 +1387,5 @@ header.top .back { display: inline-flex; align-items: center; min-height: 44px; 
 .conn-status { min-height: 1.4em; margin: 8px 0 0; }
 .conn-actions .grow, .conn-dialog .grow { flex: 1; }
 .conn-dialog form.row { flex-direction: column; align-items: stretch; } .conn-dialog form.row > button { align-self: flex-end !important; } .conn-dialog .row .field { flex: 1; } .conn-dialog .row > button { align-self: flex-end; }
+/* A switched-off main button looks switched off, not just faded blue. */
+button.primary:disabled { background: var(--panel-2); color: var(--muted); border-color: var(--grid); opacity: 1; }
