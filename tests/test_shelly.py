@@ -1336,7 +1336,7 @@ def test_emulate_seed_ticks_the_two_gen1_channels():
     cfg = Config()
     assert seed_emulate_shelly(cfg) is True
     em = next(d for d in cfg.shelly_devices if d.id == "em_sim")
-    assert [(c.key, c.in_total) for c in em.channels] == [("em0", True), ("em1", True)]
+    assert [(c.key, c.in_total) for c in em.channels] == [("gen1em_0", True), ("gen1em_1", True)]
 
 
 def em_status():

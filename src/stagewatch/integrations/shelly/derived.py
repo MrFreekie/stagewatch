@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import logging
 
-from ...core import sitetime
+from ...core import power_tree, sitetime
 from ...core.model import UNITS, Device, Entity, Kind, Status
-from . import calc
+from . import calc, treecalc
 
 log = logging.getLogger(__name__)
 
@@ -34,10 +34,11 @@ class DerivedPower:
 
     # ------------------------------------------------------------------ plumbing
     def _put(self, eid: str, name: str, kind: Kind, unit: str, dec: int, value, ts: float, device_id: str,
-             labels: dict, day: dict | None = None) -> None:
-        """Register (once) and record one calculated entity. An unchanged value is re-recorded every 10 s."""
+             labels: dict, day: dict | None = None, keep_empty: bool = False) -> None:
+        """Register (once) and record one calculated entity. An unchanged value is re-recorded every 10 s.
+        ``keep_empty`` registers it even with no value, for figures whose reason for being empty is shown."""
         if eid not in self.hub.entities:
-            if value is None:
+            if value is None and not keep_empty:
                 return
             self.hub.register_entity(Entity(eid, device_id, name, kind, unit, dec, labels={**labels, "derived": "1"},
                                             locked_equipment=True))
@@ -112,6 +113,53 @@ class DerivedPower:
                       u["pct"] if u else None, ts, cfg.id,
                       {"channel": "calc", "field": "unbalance", "calculated": "NEMA MG 1 current unbalance"}, u)
         self.site_polled(ts)
+        self.tree_polled(ts)
+
+    # ------------------------------------------------------------------ the power tree
+    def _ensure_site(self) -> None:
+        if SITE_ID not in self.hub.devices:
+            dev = Device(SITE_ID, SITE_NAME, "shelly", "Stagewatch", "", "", Status.OK, category="meter", role="equipment")
+            dev.public = {"derived": True}
+            self.hub.register_device(dev)
+
+    def _node_power(self, cfg, node: power_tree.Node, ts: float) -> float | None:
+        """A tree node's live watts: a meter's total, or one circuit's power. None when not reading."""
+        if node.kind == "meter":
+            return self._live(f"{node.ref[2:]}.meter_power_load", ts)
+        if node.kind == "circuit":
+            dev_id, _, key = node.ref[2:].partition(":")
+            dev = next((d for d in cfg.shelly_devices if d.id == dev_id), None)
+            return None if dev is None else self._circuit(dev, key, "power", ts)
+        return None
+
+    def tree_polled(self, ts: float) -> None:
+        """The power tree figures (treecalc.py): the gap at each node, the monitored load of each supply, the
+        unassigned group and the site total. Only when the tree is in use (any role or upstream is set)."""
+        cfg = self.hub.config
+        nodes = power_tree.build_nodes(cfg)
+        if not any(n.role or n.upstream for n in nodes):
+            return
+        tn = [treecalc.TNode(n.ref, n.role, n.kind, n.upstream, self._node_power(cfg, n, ts)) for n in nodes]
+        names = {n.ref: power_tree.display_name(n.role, n.unit_no) or n.label or "Node" for n in nodes}
+        self._ensure_site()
+        slug = lambda ref: ref.replace(":", "_")   # noqa: E731
+        for ref, g in treecalc.gaps(tn).items():
+            ups = next(n.role for n in nodes if n.ref == ref) == "ups"
+            what = "loss and charging" if ups else "unmonitored load"
+            self._put(f"{SITE_ID}.treegap_{slug(ref)}", f"{names[ref]} {what} (calculated)", Kind.POWER, "W", 1, g.watts, ts, SITE_ID,
+                      {"field": "tree_gap", "calculated": "node power minus the power of what it feeds", "ref": ref},
+                      {"ref": ref, "state": g.state, "node_w": g.node_w, "children_w": g.children_w, "children": g.children,
+                       "reason": g.reason, "ups": ups}, keep_empty=True)
+        r = treecalc.rollup(tn)
+        def total(eid: str, name: str, t: treecalc.Total | None, ref: str) -> None:
+            if t is not None:
+                self._put(f"{SITE_ID}.{eid}", name, Kind.POWER, "W", 1, t.watts, ts, SITE_ID,
+                          {"field": "tree_total", "calculated": "monitored load only", "ref": ref},
+                          {"ref": ref, "complete": t.complete, "unmonitored": t.unmonitored}, keep_empty=True)
+        for ref, t in r.sources.items():
+            total(f"treesrc_{slug(ref)}", f"{names[ref]} monitored load (calculated)", t, ref)
+        total("tree_unassigned", "Unassigned monitored load (calculated)", r.unassigned, "")
+        total("tree_site", "Site monitored load (calculated)", r.site, "")
 
     # ------------------------------------------------------------------ the site
     def _live(self, eid: str, ts: float) -> float | None:

@@ -1450,6 +1450,64 @@ header.top .back { display: inline-flex; align-items: center; min-height: 44px; 
 button.primary:disabled { background: var(--panel-2); color: var(--muted); border-color: var(--grid); opacity: 1; }
 /* Edit cards preview frame (dashboard.js ?preview=1): says plainly whether it shows unsaved changes. */
 .preview-strip { position: sticky; top: 0; z-index: 50; padding: 6px 12px; font-weight: 700; text-align: center; background: var(--warn); color: #000; }
+/* ---- Power tree card (power-tree.js). Bars reuse the Power card's .pw-track / .pw-fill / .pw-l-high / .pw-l-over. */
+.pt-empty { margin: 8px 0; font-size: 18px; }
+.pt-summary { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 12px; }
+.pt-tile { background: var(--panel-2); border: 1px solid var(--grid); border-radius: var(--radius); padding: 8px 12px; min-width: 0; }
+.pt-tile.pt-incomplete { border-style: dashed; border-color: var(--warn); }
+.pt-tilev { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.pt-tilev .unit, .pt-power .unit { font-size: .5em; font-weight: 400; color: var(--muted); }
+.pt-tilesub { font-size: 13px; min-height: 18px; }
+.pt-group { margin-bottom: 14px; }
+.pt-group h3 { margin: 4px 0; font-size: 18px; }
+.pt-tree, .pt-kids { list-style: none; margin: 0; padding: 0; }
+.pt-kids { margin-left: 20px; padding-left: 8px; border-left: 2px solid var(--grid); }
+.pt-row { display: flex; align-items: flex-start; gap: 4px; padding: 4px 0; }
+.pt-row.pt-dim .pt-main { opacity: .6; }
+.pt-toggle { flex: 0 0 44px; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--text); font-size: 22px; cursor: pointer; border-radius: 8px; }
+.pt-toggle.pt-leaf { flex-basis: 12px; width: 12px; cursor: default; }
+.pt-main { flex: 1; min-width: 0; padding-top: 6px; }
+.pt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.pt-id { font-weight: 700; font-size: 20px; letter-spacing: .02em; }
+.pt-name { font-size: 18px; overflow-wrap: anywhere; }
+.pt-state { font-size: 13px; font-weight: 700; letter-spacing: .04em; }
+.pt-state.pt-hide { display: none; }
+.pt-state.pt-unmon { color: var(--muted); border: 1px solid var(--grid); border-radius: 6px; padding: 0 6px; }
+.pt-state.pt-warn { color: var(--warn); }
+.pt-figs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 2px; }
+.pt-power { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 110px; }
+.pt-bar { flex: 1 1 200px; max-width: 340px; min-width: 0; }
+.pt-figs[hidden], .pt-bar[hidden], .pt-amps[hidden], .pt-rating[hidden], .pt-ups[hidden], .pt-gap[hidden] { display: none; }
+.pt-bar .pw-gword { display: block; margin: 2px 0 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+.pt-bar .pw-fill { background: var(--ok); }
+.pt-amps, .pt-rating, .pt-ups { font-size: 14px; font-variant-numeric: tabular-nums; }
+.pt-gap { font-size: 15px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.pt-gaphead { font-weight: 600; }
+.pt-gap-warn .pt-gaphead { color: var(--warn); }
+.pt-gap-check { color: var(--alert); }
+.pt-gap-check .pt-gaphead { font-weight: 700; }
+.pt-ups-note { font-size: 13px; margin: 6px 0 0; }
+.pt-unassigned { border-top: 1px dashed var(--grid); padding-top: 8px; }
+body.layout-phone .pt-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+body.layout-phone .pt-tilev { font-size: 26px; }
+body.layout-phone .pt-kids { margin-left: 10px; padding-left: 4px; }
+body.layout-phone .pt-power { font-size: 26px; min-width: 0; }
+body.layout-phone .pt-bar { flex-basis: 100%; max-width: none; }
+body.layout-wall .pt-summary { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+body.layout-wall .pt-tilev { font-size: 50px; }
+body.layout-wall .pt-tilesub, body.layout-wall .pt-ups-note { font-size: 22px; }
+body.layout-wall .pt-id { font-size: 32px; }
+body.layout-wall .pt-name { font-size: 28px; }
+body.layout-wall .pt-state { font-size: 22px; }
+body.layout-wall .pt-power { font-size: 50px; min-width: 200px; }
+body.layout-wall .pt-bar { flex-basis: 320px; max-width: 520px; }
+body.layout-wall .pt-bar .pw-gword { font-size: 22px; }
+body.layout-wall .pt-gap { font-size: 26px; }
+body.layout-wall .pt-kids { margin-left: 32px; }
+body.layout-wall .pt-amps, body.layout-wall .pt-rating, body.layout-wall .pt-ups { display: none; }
+body.layout-wall .pt-toggle { display: none; }
+body.layout-wall .pt-empty { font-size: 32px; }
+
 /* ---- FOH advice cards (advice.js): Alignment drift and HF air loss. Advice only; neutral colours,
    a symbol and words with every state, ▲ CHECK in --warn and never red. ---- */
 .adv-head { margin: 0 0 8px; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

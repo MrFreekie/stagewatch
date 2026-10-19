@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from ...core import power_tree, sitetime
-from ...core.config import SHELLY_MAX_METERS, ShellyChannelConfig, ShellyDeviceConfig, Threshold
+from ...core.config import SHELLY_MAX_METERS, PowerPointConfig, ShellyChannelConfig, ShellyDeviceConfig, Threshold
 from ...core.model import UNITS, Device, Entity, Kind, Status, slugify
 from ...core.plugin import Integration, Manifest
 from ..smaart.client import is_local_address
@@ -176,27 +176,36 @@ def seed_emulate_shelly(config) -> bool:
         return False
     config.shelly_devices = [
         ShellyDeviceConfig(id="mic_rack_sim", host=DEMO_HOST, mac=emulated_mac(DEMO_HOST),
-                           name=DEMO_NAME, area="Stage L", rating_a=16,
+                           name=DEMO_NAME, area="Stage L", rating_a=16, role="equipment", unit_no=1, upstream="p:stage_left",
                            channels=[ShellyChannelConfig(key="pm1_0", label="Mic rack", phase="L1", in_total=True)]),
         ShellyDeviceConfig(id="amp_rack_sim", host=DEMO4_HOST, mac=emulated_mac(DEMO4_HOST),
-                           name=DEMO4_NAME, area="Stage R", rating_a=16,
+                           name=DEMO4_NAME, area="Stage R", rating_a=16, role="equipment", unit_no=2, upstream="p:stage_left",
                            channels=[ShellyChannelConfig(key="pm1_0", phase="L2")]),
         ShellyDeviceConfig(id="lighting_sim", host=DEMO5_HOST, mac=emulated_mac(DEMO5_HOST),
-                           name=DEMO5_NAME, area="Truss", rating_a=16,
+                           name=DEMO5_NAME, area="Truss", rating_a=16, role="equipment", unit_no=3, upstream="c:em_sim:gen1em_0",
                            channels=[ShellyChannelConfig(key="pm1_0", phase="L3")]),
         ShellyDeviceConfig(id="distro_sim", host=DEMO3_HOST, mac=emulated_mac(DEMO3_HOST),
-                           name=DEMO3_NAME, area="Dock", rating_a=32),
+                           name=DEMO3_NAME, area="Dock", rating_a=32, role="isu", unit_no=1, upstream="p:gen_foh"),
         ShellyDeviceConfig(id="em_sim", host=DEMO1_HOST, mac=emulated_mac(DEMO1_HOST),
-                           name=DEMO1_NAME, area="FOH", rating_a=16, combined_bar=True,
-                           channels=[ShellyChannelConfig(key="em0", label="FOH L1", phase="L1", rating_a=10, in_total=True),
-                                     ShellyChannelConfig(key="em1", label="FOH L2", phase="L2", rating_a=10, in_total=True)]),
+                           name=DEMO1_NAME, area="FOH", rating_a=16, combined_bar=True, role="isu", unit_no=2, upstream="p:gen_tower",
+                           channels=[ShellyChannelConfig(key="gen1em_0", label="FOH L1", phase="L1", rating_a=10, in_total=True,
+                                                         role="ups", unit_no=1, upstream="m:em_sim"),
+                                     ShellyChannelConfig(key="gen1em_1", label="FOH L2", phase="L2", rating_a=10, in_total=True,
+                                                         role="equipment", unit_no=4, upstream="m:em_sim")]),
+    ]
+    # Two independent supplies (a main generator and a delay-tower generator), unmetered points, and a UPS.
+    config.power_points = [
+        PowerPointConfig(id="gen_foh", name="Main generator", role="source", unit_no=1, rating_kva=60),
+        PowerPointConfig(id="gen_tower", name="Delay tower generator", role="source", unit_no=2, rating_kva=20),
+        PowerPointConfig(id="stage_left", name="Stage left distribution", role="cdu", unit_no=1, upstream="m:distro_sim"),
+        PowerPointConfig(id="video_wall", name="Video wall", role="equipment", unit_no=5, upstream="p:stage_left"),
     ]
     # Short demand window and a generator size, so the calculated figures appear within minutes in emulate mode.
     config.power_site.demand_window_min = 5
     config.power_site.gen_size_kva = 20.0
     for d in config.dashboards:
         if d.slug == "wall":
-            d.cards = [*d.cards[:1], CARD_ID, *d.cards[1:]]
+            d.cards = [*d.cards[:1], CARD_ID, "power_tree", *d.cards[1:]]
     return True
 
 

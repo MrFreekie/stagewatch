@@ -1102,6 +1102,30 @@
     renderPowerHist(view);
   }
 
+  // Power tree (SW.ptree, power-tree.js). The shape comes from /api/power-tree (names, roles, upstream links,
+  // ratings: nothing private) and is fetched on load and every 30 s; the numbers are the dashboard's own
+  // entities, including the ones the server calculates. The card stays visible with an empty-state note
+  // pointing to Admin until a tree is set up.
+  const ptUi = { ui: null, data: null, loading: false, at: 0 };
+  async function loadPowerTree() {
+    if (!has("power_tree") || ptUi.loading) return;
+    ptUi.loading = true;
+    ptUi.at = Date.now();
+    try { ptUi.data = await SW.api("GET", "/api/power-tree"); } catch (_) { /* keep what is on screen */ } finally { ptUi.loading = false; }
+    renderPowerTree();
+  }
+  function renderPowerTree() {
+    const card = $("power-tree-card");
+    if (!has("power_tree")) { card.hidden = true; return; }
+    card.hidden = false;
+    if (!ptUi.data) { if (Date.now() - ptUi.at > 5000) loadPowerTree(); return; }
+    if (!ptUi.ui) ptUi.ui = SW.ptree.build($("power-tree-body"));
+    ptUi.ui.update(ptUi.data, state.entities, state.devices, state.now);
+    if (!ptUi.status && SW.ptree.inUse(ptUi.data)) ptUi.status = addCardStatus(card, "shelly");
+    if (ptUi.status) ptUi.status.update(SW.sourceInput.shelly(Object.keys(state.devices || {}).map((k) => state.devices[k])
+      .filter((d) => d && d.category === "meter" && !d.derived).map((d) => ({ dev: d, ents: Object.values(state.entities).filter((e) => e.device_id === d.id) }))), state.now);
+  }
+
   // This Raspberry Pi: the health of the computer Stagewatch runs on (SW.pi, pihost.js). Read only;
   // no addresses here (those are admin only). Warnings also go to the header's messages.
   const piUi = { status: null };
@@ -1733,6 +1757,8 @@
     globcon_meters: { el: cardEl("globcon_meters"), wide: true, render: renderGlobcon, empty: () => !state.globcon },
     // Power meters (Shelly). Hidden while no meter has been added (renderPower keeps it in step).
     power: { el: cardEl("power"), wide: true, render: renderPower, empty: () => !Object.keys(state.devices).some((k) => state.devices[k].category === "meter") },
+    // Power tree. Shows its own empty note until a tree is set up (renderPowerTree keeps it in step).
+    power_tree: { el: cardEl("power_tree"), wide: true, render: () => { if (!ptUi.data) loadPowerTree(); renderPowerTree(); } },
     // This Raspberry Pi. Hidden unless the server runs on a Pi (renderPiHost keeps it in step).
     pi_host: { el: cardEl("pi_host"), render: renderPiHost, empty: () => !state.devices.pi_host },
     witmotion_tilt: { el: cardEl("witmotion_tilt"), render: renderWitmotion, empty: () => !SW.wm.sensorsOf(state.devices).length },
@@ -1799,7 +1825,7 @@
   // classes each card already sets (style.css draws the edge on the wall layout only). Kept in
   // step by a class observer, so cards that tick on their own timers need no extra call.
   const LEVEL_STOP = ".pw-l-over, .wm-l3";
-  const LEVEL_ALERT = ".lvl-alert:not(.baro-tend):not(.next):not(.next *), .rd-lvl-alert, .ot-over, .lim-over, .wm-l2";
+  const LEVEL_ALERT = ".lvl-alert:not(.baro-tend):not(.next):not(.next *), .rd-lvl-alert, .ot-over, .lim-over, .wm-l2, .pt-gap-check";
   function markLevels() {
     for (const card of $("main").querySelectorAll("[data-card]")) {
       const hit = (sel) => card.matches(sel) || !!card.querySelector(sel);
@@ -1980,6 +2006,7 @@
         if (has("barometer")) renderBarometer();
         if (has("equipment")) renderEquipment();
         if (has("power")) renderPower();
+        if (has("power_tree")) renderPowerTree();
         if (has("witmotion_tilt")) renderWitmotion();
         if (has("spl_live")) { splOnStates(msg.entities); renderSpl(); }
         if (has("chart")) updateChartSeries();
@@ -1990,6 +2017,7 @@
         if (has("sensors")) renderSensors();
         if (has("equipment")) renderEquipment();
         if (has("power")) renderPower();
+        if (has("power_tree")) renderPowerTree();
         if (has("pi_host")) renderPiHost();
         if (has("witmotion_tilt")) renderWitmotion();
         if (has("spl_live")) renderSpl();
@@ -2060,5 +2088,5 @@
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); if (has("env_tiles")) loadTileHistory(false); }, 60000);
   setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("pi_host")) renderPiHost(); if (has("witmotion_tilt")) renderWitmotion(); if (has("alignment_drift")) renderDrift(); if (has("hf_air_loss")) renderAir(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("power_tree")) { renderPowerTree(); if (Date.now() - ptUi.at > 30000) loadPowerTree(); } if (has("pi_host")) renderPiHost(); if (has("witmotion_tilt")) renderWitmotion(); if (has("alignment_drift")) renderDrift(); if (has("hf_air_loss")) renderAir(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
 })();
