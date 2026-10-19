@@ -45,6 +45,7 @@ class Reading:
     decimals: int
     value: float | None
     cumulative: bool = False  # a running total (energy): never averaged, shown as received
+    calculated: str = ""      # "" = the meter's own reading; else how Stagewatch worked it out (see _apparent)
 
 
 def num(value: object) -> float | None:
@@ -53,6 +54,22 @@ def num(value: object) -> float | None:
         return None
     out = float(value)
     return out if math.isfinite(out) else None
+
+
+PF_MIN = 0.1   # below this power factor, watts / PF is meaningless (tiny divisor): no figure
+
+
+def _apparent(ch: str, volts: float | None, amps: float | None, watts: float | None, pf: float | None,
+              dec: int = 1) -> Reading:
+    """Apparent power (VA) for a meter that does not report it: volts x amps when both are present, else
+    watts / power factor when the meter sends a power factor of at least PF_MIN, else None (no figure,
+    never assumed). Labelled as calculated so it is never shown as the meter's own reading. Both inputs
+    come from the same reading of the meter, so they are as fresh as each other."""
+    if volts is not None and amps is not None:
+        return Reading(f"{ch}_apparent", ch, "", "apparent", Kind.APPARENT_POWER, dec, volts * abs(amps), calculated="volts x amps")
+    if watts is not None and pf is not None and abs(pf) >= PF_MIN:
+        return Reading(f"{ch}_apparent", ch, "", "apparent", Kind.APPARENT_POWER, dec, abs(watts) / abs(pf), calculated="watts / power factor")
+    return Reading(f"{ch}_apparent", ch, "", "apparent", Kind.APPARENT_POWER, dec, None, calculated="volts x amps")
 
 
 def _get(d: object, *path: str) -> object:
@@ -79,15 +96,17 @@ def _pm1(status: dict, n: int) -> list[Reading]:
     comp = status[f"pm1:{n}"]
     ch = f"pm1_{n}"
     r = lambda field, kind, dec, value, cum=False: Reading(f"{ch}_{field}", ch, "", field, kind, dec, num(value), cum)  # noqa: E731
+    # Apparent power: the meter's own when it sends one (the PM1 documentation spells it "aprtpower", with no
+    # underscore); the PM Mini Gen3 does not, so it is calculated. Which one is decided by the key, so it is stable.
+    apparent = (r("apparent", Kind.APPARENT_POWER, 1, comp.get("aprtpower")) if "aprtpower" in comp
+                else _apparent(ch, num(comp.get("voltage")), num(comp.get("current")), num(comp.get("apower")), num(comp.get("pf"))))
     return [
         r("voltage", Kind.VOLTAGE, 1, comp.get("voltage")),
         r("current", Kind.CURRENT, 3, comp.get("current")),
         r("power", Kind.POWER, 1, comp.get("apower")),
         r("freq", Kind.FREQUENCY, 1, comp.get("freq")),
         r("energy", Kind.ENERGY, 1, _get(comp, "aenergy", "total"), True),
-        # Optional: the PM Mini Gen3 does not send these; shown only when a meter does (the PM1
-        # documentation spells apparent power "aprtpower", with no underscore).
-        r("apparent", Kind.APPARENT_POWER, 1, comp.get("aprtpower")),
+        apparent,
         r("pf", Kind.POWER_FACTOR, 2, comp.get("pf")),
     ]
 
@@ -96,11 +115,13 @@ def _em1(status: dict, n: int) -> list[Reading]:
     comp = status[f"em1:{n}"]
     ch = f"em1_{n}"
     r = lambda field, kind, dec, value: Reading(f"{ch}_{field}", ch, "", field, kind, dec, num(value))  # noqa: E731
+    apparent = (r("apparent", Kind.APPARENT_POWER, 1, comp.get("aprt_power")) if "aprt_power" in comp
+                else _apparent(ch, num(comp.get("voltage")), num(comp.get("current")), num(comp.get("act_power")), num(comp.get("pf"))))
     return [
         r("voltage", Kind.VOLTAGE, 1, comp.get("voltage")),
         r("current", Kind.CURRENT, 3, comp.get("current")),
         r("power", Kind.POWER, 1, comp.get("act_power")),
-        r("apparent", Kind.APPARENT_POWER, 1, comp.get("aprt_power")),
+        apparent,
         r("pf", Kind.POWER_FACTOR, 2, comp.get("pf")),
         r("freq", Kind.FREQUENCY, 1, comp.get("freq")),
     ]
@@ -159,6 +180,7 @@ def _switch(status: dict, n: int) -> list[Reading]:
         r("freq", Kind.FREQUENCY, 1, comp.get("freq")),
         r("energy", Kind.ENERGY, 1, _get(comp, "aenergy", "total"), True),
         r("pf", Kind.POWER_FACTOR, 2, comp.get("pf")),
+        _apparent(ch, num(comp.get("voltage")), num(comp.get("current")), num(comp.get("apower")), num(comp.get("pf"))),
         # The meter's own internal temperature: about the device, never the air.
         r("device_temp", Kind.TEMPERATURE, 1, _get(comp, "temperature", "tC")),
     ]
@@ -189,6 +211,7 @@ def _gen1em(status: dict, n: int) -> list[Reading]:
         r("power", Kind.POWER, 1, "power"),
         r("reactive", Kind.REACTIVE_POWER, 1, "reactive"),
         r("pf", Kind.POWER_FACTOR, 2, "pf"),
+        _apparent(ch, None, None, num(comp.get("power")) if ok else None, num(comp.get("pf")) if ok else None),   # no current: watts / PF
         r("energy", Kind.ENERGY, 1, "total", True),
         r("energy_ret", Kind.ENERGY, 1, "total_returned", True),
     ]
@@ -222,7 +245,7 @@ _GROUP_WORDS = {"a": "Line 1 (Brown)", "b": "Line 2 (Black)", "c": "Line 3 (Grey
 def display_name(reading: Reading, channels_of_kind: int) -> str:
     """A short crew-readable name, e.g. "Power", "Channel 2 power", "Phase A current", "Total power".
     Channel numbers start at 1 (the meter itself counts from 0)."""
-    word = _FIELD_WORDS.get(reading.field, reading.field)
+    word = _FIELD_WORDS.get(reading.field, reading.field) + (" (calculated)" if reading.calculated else "")
     m = re.search(r"_(\d+)$", reading.channel)
     chan = f"Channel {int(m.group(1)) + 1}" if (m and channels_of_kind > 1) else ""
     group = _GROUP_WORDS.get(reading.group, "")

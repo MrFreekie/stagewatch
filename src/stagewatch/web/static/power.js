@@ -42,6 +42,15 @@ SW.pw = (function () {
     return SW.num(e.value, Math.max(0, Math.min(3, e.decimals || 0)));
   };
 
+  // Apparent power: VA below 1,000, kVA from 1,000 VA. A value is shown as given; "—" with no value.
+  pw.fmtVA = function (v) {
+    if (!isNum(v)) return { text: "—", unit: "VA" };
+    if (Math.abs(v) < 1000) return { text: SW.num(v, 1), unit: "VA" };
+    return { text: SW.num(v / 1000, 2), unit: "kVA" };
+  };
+  // Words for a reading that Stagewatch worked out itself (labels.calculated says how): never passed off as the meter's own.
+  pw.calcWord = (e) => (e && e.labels && e.labels.calculated ? " (calculated)" : "");
+
   // The meter's running total: Wh below 1,000, kWh above. "—" with no value.
   pw.fmtEnergy = function (wh) {
     if (!isNum(wh)) return { text: "—", unit: "" };
@@ -158,7 +167,7 @@ SW.pw = (function () {
   };
 
   // ---- history chart: one measurement of one meter over time (one line per phase on a 3-phase meter).
-  pw.METRICS = [["power", "Power"], ["current", "Current"], ["voltage", "Voltage"], ["voltage_ll", "Line-to-line"], ["freq", "Frequency"], ["thd_v", "Voltage THD"], ["thd_i", "Current THD"]];
+  pw.METRICS = [["power", "Power"], ["apparent", "Apparent power"], ["current", "Current"], ["voltage", "Voltage"], ["voltage_ll", "Line-to-line"], ["freq", "Frequency"], ["thd_v", "Voltage THD"], ["thd_i", "Current THD"]];
   pw.POINTS = 500;
   // ---- what the chart can show. A "scope" is a short string chosen in the chart's select box:
   //   "all"                          every circuit of every meter, as separate lines
@@ -207,7 +216,7 @@ SW.pw = (function () {
       const t = pw.channelTitle({ id: l.channel, cfg: (d.channels || {})[l.channel] || null }, many);
       if (t) parts.push(t);
       if (pw.GROUP_WORD[g]) parts.push(pw.GROUP_WORD[g]);
-      return { id: e.id, label: parts.join(" · ") || pw.FIELD_WORD[field], unit: e.unit || "", decimals: e.decimals || 0,
+      return { id: e.id, label: (parts.join(" · ") || pw.FIELD_WORD[field]) + pw.calcWord(e), unit: e.unit || "", decimals: e.decimals || 0,
         device: e.device_id, channel: l.channel, group: g, order: pw.GROUP_ORDER.indexOf(g), name: d.name || e.device_id };
     });
     return out.sort((a, b) => a.name.localeCompare(b.name) || a.channel.localeCompare(b.channel) || a.order - b.order);
@@ -274,12 +283,14 @@ SW.pw = (function () {
         const name = [m.name, pw.channelTitle(ch, many)].filter(Boolean).join(" · ");
         if (["a", "b", "c"].some((k) => ch.groups[k])) {
           const rows = ["a", "b", "c", "total"].filter((k) => ch.groups[k] && ch.groups[k].power)
-            .map((k) => { const ok = live(m, ch.groups[k].power); return { label: pw.GROUP_WORD[k], ok, watts: ok ? ch.groups[k].power.value : null }; });
+            .map((k) => { const ok = live(m, ch.groups[k].power), ap = ch.groups[k].apparent, vok = live(m, ap);
+              return { label: pw.GROUP_WORD[k], ok, watts: ok ? ch.groups[k].power.value : null, va: vok ? ap.value : null, vaCalc: pw.calcWord(ap) !== "" }; });
           three.push({ name, rows });
         } else if (ch.groups[""] && ch.groups[""].power) {
           const e = ch.groups[""].power, cfg = (d.channels || {})[ch.id] || {};
           const ok = live(m, e);
-          single[single[cfg.phase] ? cfg.phase : ""].push({ name, ok, watts: ok ? e.value : null });
+          const ap = ch.groups[""].apparent, vok = live(m, ap);
+          single[single[cfg.phase] ? cfg.phase : ""].push({ name, ok, watts: ok ? e.value : null, vaOk: vok, va: vok ? ap.value : null, vaCalc: pw.calcWord(ap) !== "" });
           anySingle = true;
         }
         for (const sg of pw.SERIES_GROUPS) for (const g of sg.groups) for (const f of sg.fields) {
@@ -290,7 +301,10 @@ SW.pw = (function () {
     }
     const sum = (items) => {
       const missing = items.filter((x) => !x.ok).map((x) => x.name);
-      return { count: items.length, missing, watts: missing.length || !items.length ? null : items.reduce((s, x) => s + x.watts, 0) };
+      // VA is added the same way (a plain sum of the VA figures: it can overstate the true total when the loads are not in step).
+      const vaMissing = items.filter((x) => !x.vaOk).map((x) => x.name);
+      return { count: items.length, missing, watts: missing.length || !items.length ? null : items.reduce((s, x) => s + x.watts, 0),
+        vaMissing, va: vaMissing.length || !items.length ? null : items.reduce((s, x) => s + x.va, 0), vaCalc: items.some((x) => x.vaCalc) };
     };
     const rows = ["L1", "L2", "L3", ""].filter((k) => single[k].length).map((k) => ({ label: k ? pw.PHASE_WORD[k] : "Line not set", ...sum(single[k]) }));
     return { three, single: anySingle ? { rows, overall: sum([].concat(single.L1, single.L2, single.L3, single[""])) } : null, extra };
@@ -300,17 +314,22 @@ SW.pw = (function () {
   pw.renderTotals = function (host, t) {
     const h = SW.h;
     const num0 = (w) => (w === null ? "—" : `${SW.num(w, 0)} W`);
-    const state = (x) => (x.watts === null ? (x.missing && x.missing.length ? `INCOMPLETE: not reading ${x.missing.join(", ")}` : "No reading") : "");
+    const vaText = (v) => { if (v === null) return "—"; const f = pw.fmtVA(v); return `${f.text} ${f.unit}`; };
+    const why = (x) => [x.watts === null && x.missing && x.missing.length ? `watts: not reading ${x.missing.join(", ")}` : "",
+      x.va === null && x.vaMissing && x.vaMissing.length ? `VA: not available for ${x.vaMissing.join(", ")}` : ""].filter(Boolean);
+    const state = (x) => (why(x).length ? "▲ INCOMPLETE: " + why(x).join("; ") : (x.watts === null && x.va === null ? "▲ No reading" : ""));
+    const head = (vaWord) => h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", { class: "num" }, "Power (W)"), h("th", { class: "num" }, vaWord), h("th", {}, "")));
     const sections = [];
     for (const m of t.three) {
-      sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, m.name + " (the meter's own readings)"),
-        h("tbody", {}, m.rows.map((r) => h("tr", {}, h("th", { scope: "row" }, r.label), h("td", { class: "num" }, num0(r.watts)), h("td", { class: "pw-incomplete" }, r.ok ? "" : "▲ NO READING"))))));
+      const calc = m.rows.some((r) => r.vaCalc);
+      sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, m.name + " (the meter's own readings)"), head("Apparent power" + (calc ? " (calculated)" : "")),
+        h("tbody", {}, m.rows.map((r) => h("tr", {}, h("th", { scope: "row" }, r.label), h("td", { class: "num" }, num0(r.watts)), h("td", { class: "num" }, vaText(r.va)), h("td", { class: "pw-incomplete" }, r.ok ? "" : "▲ NO READING"))))));
     }
     if (t.single) {
       const all = t.single.overall;
-      sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, "Single-phase circuits, by line"),
-        h("tbody", {}, t.single.rows.map((r) => h("tr", {}, h("th", { scope: "row" }, r.label), h("td", { class: "num" }, num0(r.watts)), h("td", { class: "pw-incomplete" }, state(r) ? "▲ " + state(r) : ""))),
-          h("tr", { class: "pw-grandtotal" }, h("th", { scope: "row" }, "Total, all lines"), h("td", { class: "num" }, num0(all.watts)), h("td", { class: "pw-incomplete" }, state(all) ? "▲ " + state(all) : "")))));
+      const row = (label, x, cls) => h("tr", { class: cls || "" }, h("th", { scope: "row" }, label), h("td", { class: "num" }, num0(x.watts)), h("td", { class: "num" }, vaText(x.va)), h("td", { class: "pw-incomplete" }, state(x)));
+      sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, "Single-phase circuits, by line"), head("Sum of VA" + (all.vaCalc ? " (some calculated)" : "")),
+        h("tbody", {}, t.single.rows.map((r) => row(r.label, r)), row("Total, all lines", all, "pw-grandtotal"))));
     }
     if (t.extra.length) {
       sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, t.extra[0].group + " (current, not added up)"),
@@ -478,8 +497,8 @@ SW.pw = (function () {
           grid = h("div", { class: "pw-grid" });
           for (const f of ["power", "voltage", "current", "freq", "reactive", "apparent", "pf", "device_temp"]) {
             if (!g[f]) continue;
-            const c = cell(pw.FIELD_WORD[f], pw.UNIT[f]);
-            r.fields.push({ entity: g[f].id, val: c.val, el: c.el });
+            const c = cell(pw.FIELD_WORD[f] + pw.calcWord(g[f]), pw.UNIT[f]);
+            r.fields.push({ entity: g[f].id, val: c.val, el: c.el, va: f === "apparent" ? c.unit : null });
             grid.append(c.el);
           }
           body.append(grid);
@@ -493,13 +512,13 @@ SW.pw = (function () {
             const tds = colsAll.map((f) => {
               const e = ch.groups[k][f];
               const td = h("td", { class: "num" });
-              if (e) r.fields.push({ entity: e.id, val: td, el: td, plain: true });
+              if (e) r.fields.push({ entity: e.id, val: td, el: td, plain: true, vaTable: f === "apparent" });
               return td;
             });
             rows.push(h("tr", {}, h("th", { scope: "row" }, pw.GROUP_WORD[k] || ""), ...tds));
           }
           body.append(h("div", { class: "table-scroll" }, h("table", { class: "pw-table" },
-            h("thead", {}, h("tr", {}, h("th", {}, ""), ...colsAll.map((f) => h("th", { class: "num" }, `${pw.FIELD_WORD[f]}${pw.UNIT[f] ? " (" + pw.UNIT[f] + ")" : ""}`)))),
+            h("thead", {}, h("tr", {}, h("th", {}, ""), ...colsAll.map((f) => h("th", { class: "num" }, `${pw.FIELD_WORD[f]}${pw.UNIT[f] && f !== "apparent" ? " (" + pw.UNIT[f] + ")" : ""}`)))),
             h("tbody", {}, rows))));
         }
         for (const x of ch.energy) {
@@ -644,7 +663,9 @@ SW.pw = (function () {
           r.root.className = `pw-meter pw-s-${m.state}`;
           for (const f of r.fields) {
             const e = entities[f.entity];
-            f.val.textContent = pw.fmt(e);
+            if (f.va) { const t = pw.fmtVA(e && e.value); f.val.textContent = t.text; f.va.textContent = t.unit; }
+            else if (f.vaTable) { const t = pw.fmtVA(e && e.value); f.val.textContent = isNum(e && e.value) ? `${t.text} ${t.unit}` : "—"; }
+            else f.val.textContent = pw.fmt(e);
           }
           for (const gg of r.gauges) {
             const e = entities[gg.entity];

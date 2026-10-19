@@ -209,5 +209,27 @@ eq(SW.sourceInput.shelly([]).reported, "waiting", "no meters: waiting");
   eq([t.single.rows[1].watts, t.single.rows[2].watts], [null, null], "a meter not answering gives no figure");
 }
 
+// apparent power: VA below 1,000, kVA from 1,000; summed only when every circuit has it; calculated is said
+{
+  eq([SW.pw.fmtVA(999.9), SW.pw.fmtVA(1000), SW.pw.fmtVA(1234.5), SW.pw.fmtVA(null)].map((x) => x.text + " " + x.unit), ["999.9 VA", "1.00 kVA", "1.23 kVA", "— VA"], "VA and kVA");
+  eq(SW.pw.calcWord({ labels: { calculated: "volts x amps" } }) + "|" + SW.pw.calcWord({ labels: {} }), " (calculated)|", "calculated is named");
+  const ap = (id, ch, v, calc, g) => ({ id, device_id: "m", kind: "apparent_power", unit: "VA", decimals: 1, value: v, labels: Object.assign({ channel: ch, field: "apparent", group: g || "" }, calc ? { calculated: "volts x amps" } : {}) });
+  const ents = { a: ap("a", "switch_0", 460, true), b: ap("b", "switch_1", 690, true), r: ap("r", "em0", 900, false, "a") };
+  eq(SW.pw.seriesFor(ents, null, "d:m", "apparent").map((l) => l.label), ["Line 1 (Brown)", "Channel 1 (calculated)", "Channel 2 (calculated)"], "calculated lines say so, the meter's own do not");
+  eq(SW.pw.METRICS.map((m) => m[0]).slice(0, 3), ["power", "apparent", "current"], "apparent power is a graph kind");
+  const P = (v, stale) => ({ value: v, stale: !!stale, unit: "W" });
+  const A = (v, stale) => ({ value: v, stale: !!stale, unit: "VA", labels: { calculated: "volts x amps" } });
+  const ch = (id, groups) => ({ id, groups, cfg: null });
+  const devs = { m: { channels: { switch_0: { phase: "L1" }, switch_1: { phase: "L1" } } } };
+  const meters = [{ id: "m", name: "Rack", state: "live", channels: [ch("switch_0", { "": { power: P(100), apparent: A(460) } }), ch("switch_1", { "": { power: P(150), apparent: A(690) } })] }];
+  let t = SW.pw.phaseTotals(devs, meters).single;
+  eq([t.rows[0].watts, t.rows[0].va, t.overall.va, t.overall.vaCalc], [250, 1150, 1150, true], "460 + 690 VA = 1,150 VA (sum of VA)");
+  meters[0].channels[1].groups[""].apparent = A(690, true);   // stale
+  t = SW.pw.phaseTotals(devs, meters).single;
+  eq([t.rows[0].watts, t.rows[0].va, t.rows[0].vaMissing], [250, null, ["Rack · Channel 2"]], "a stale VA makes only the VA incomplete");
+  delete meters[0].channels[1].groups[""].apparent;
+  eq(SW.pw.phaseTotals(devs, meters).single.overall.va, null, "no VA at all for a circuit: no sum");
+}
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power_day_test: all passed");

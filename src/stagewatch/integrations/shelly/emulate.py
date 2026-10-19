@@ -5,7 +5,7 @@ the poller, the common reading layer, entities, status, gaps and the "meter back
 
 The simulated meter measures a small rack of gear: a steady base load with slow swings and a short
 spike now and then. Its energy counter adds up the simulated power, so the kWh figure is consistent.
-Like a real PM Mini Gen3 it sends no apparent power and no power factor.
+Like a real PM Mini Gen3 it sends no apparent power and no power factor (Stagewatch calculates apparent power as volts x amps; the Gen1 EM below sends a power factor but no current, so it uses watts / PF).
 
 Fault path: for 40 seconds out of every 5 minutes it does not answer (as if its Wi-Fi dropped), so the
 card can be seen frozen with its age, and the "meter back" marker appears when it returns.

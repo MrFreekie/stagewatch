@@ -67,8 +67,10 @@ def test_real_pm_mini_gen3_status_gives_five_readings_and_no_optional_ones():
     assert got["pm1_0_power"].value == 0.0 and got["pm1_0_power"].kind == Kind.POWER
     assert got["pm1_0_freq"].value == 50.0 and got["pm1_0_freq"].kind == Kind.FREQUENCY
     assert got["pm1_0_energy"].value == 15662.781 and got["pm1_0_energy"].cumulative is True
-    assert got["pm1_0_apparent"].value is None and got["pm1_0_pf"].value is None
-    assert sum(1 for r in got.values() if r.value is not None) == 5
+    assert got["pm1_0_pf"].value is None
+    # it sends no apparent power, so one is calculated: 244.8 V x 0.000 A = 0.0 VA, labelled as calculated
+    assert got["pm1_0_apparent"].value == 0.0 and got["pm1_0_apparent"].calculated == "volts x amps"
+    assert sum(1 for r in got.values() if r.value is not None) == 6
 
 
 def test_pm1_optional_fields_appear_when_the_meter_sends_them():
@@ -519,7 +521,8 @@ async def test_real_pm_mini_status_makes_equipment_entities_in_canonical_units(h
     assert snap["rack.pm1_0_voltage"]["unit"] == "V" and snap["rack.pm1_0_voltage"]["value"] == 244.8
     assert snap["rack.pm1_0_energy"]["unit"] == "Wh" and snap["rack.pm1_0_energy"]["value"] == 15662.781
     assert snap["rack.pm1_0_freq"]["unit"] == "Hz"
-    assert "rack.pm1_0_apparent" not in snap and "rack.pm1_0_pf" not in snap    # this meter sends neither
+    assert "rack.pm1_0_pf" not in snap    # this meter sends no power factor
+    assert snap["rack.pm1_0_apparent"]["labels"]["calculated"] == "volts x amps" and snap["rack.pm1_0_apparent"]["value"] == 0.0
     assert all(snap[k]["role"] == "equipment" for k in snap if k.startswith("rack."))
     assert hub.devices["rack"].status == Status.OK and hub.devices["rack"].category == "meter"
     assert snap["rack.pm1_0_power"]["labels"] == {"channel": "pm1_0", "field": "power"}
@@ -699,7 +702,7 @@ async def test_test_shows_model_firmware_components_and_live_readings(hub):
     out = await integ.test("192.0.2.77")
     assert (out["model"], out["firmware"], out["mac"], out["components"]) == ("MiniPMG3", "2.1.0-beta2", MAC, ["Power meter"])
     names = {r["name"]: (r["value"], r["unit"]) for r in out["readings"]}
-    assert names == {"Voltage": (244.8, "V"), "Current": (0.0, "A"), "Power": (0.0, "W"), "Frequency": (50.0, "Hz"), "Energy": (15662.781, "Wh")}
+    assert names == {"Voltage": (244.8, "V"), "Current": (0.0, "A"), "Power": (0.0, "W"), "Frequency": (50.0, "Hz"), "Energy": (15662.781, "Wh"), "Apparent power (calculated)": (0.0, "VA")}
     assert out["already_added"] == "rack"
 
 
@@ -918,7 +921,7 @@ def test_every_shelly_route_needs_admin_and_the_same_origin(client):
 
 def test_test_returns_fixed_text_and_never_the_address_or_meter_text(client):
     ok = client.post("/api/admin/shelly/test", json={"host": "192.0.2.60"}).json()
-    assert ok["ok"] is True and ok["model"] == "MiniPMG3" and ok["components"] == ["Power meter"] and len(ok["readings"]) == 5
+    assert ok["ok"] is True and ok["model"] == "MiniPMG3" and ok["components"] == ["Power meter"] and len(ok["readings"]) == 6
     r = client.post("/api/admin/shelly/test", json={"host": "8.8.8.8"})
     assert r.json() == {"ok": False, "category": "not_local", "message": r.json()["message"]} and "8.8.8.8" not in r.text
     client.fetch.fail = "needs_password"
@@ -1433,3 +1436,39 @@ def test_a_fresh_emulate_config_gets_single_phase_three_phase_and_gen1_meters():
     cfg = Config()
     assert seed_emulate_shelly(cfg) is True
     assert [d.id for d in cfg.shelly_devices] == ["mic_rack_sim", "distro_sim", "em_sim"]
+
+
+# ===================================================================== calculated apparent power
+def _sw(**kw):
+    return {"switch:0": {"apower": kw.pop("apower", 230.0), **kw}}
+
+
+def test_switch_apparent_power_is_volts_times_amps_and_labelled_calculated():
+    got = by_id(rd.readings_from_status(_sw(voltage=230.0, current=2.0, pf=0.5)))
+    assert got["switch_0_apparent"].value == 460.0           # 230 V x 2 A, even with a power factor present
+    assert got["switch_0_apparent"].calculated == "volts x amps" and got["switch_0_apparent"].kind == Kind.APPARENT_POWER
+    assert rd.display_name(got["switch_0_apparent"], 1) == "Apparent power (calculated)"
+
+
+def test_apparent_power_falls_back_to_watts_over_power_factor_never_near_zero():
+    got = by_id(rd.readings_from_status(_sw(apower=-180.0, voltage=None, current=None, pf=0.9)))
+    assert got["switch_0_apparent"].value == 200.0 and got["switch_0_apparent"].calculated == "watts / power factor"
+    for pf in (0.0, 0.05, None):
+        assert by_id(rd.readings_from_status(_sw(voltage=230.0, current=None, pf=pf)))["switch_0_apparent"].value is None
+    assert by_id(rd.readings_from_status(_sw(apower=230.0, voltage=None, current=1.0, pf=0.1)))["switch_0_apparent"].value == 2300.0   # 230 W / 0.1: PF at the limit still works
+
+
+def test_apparent_power_is_none_when_nothing_to_work_it_from():
+    assert by_id(rd.readings_from_status(_sw(voltage=None, current=None)))["switch_0_apparent"].value is None
+
+
+def test_gen1_em_apparent_power_is_watts_over_power_factor_and_invalid_channel_gives_none():
+    st = {"gen1em:0": {"is_valid": True, "power": 450.0, "pf": 0.9, "voltage": 230.0}, "gen1em:1": {"is_valid": False, "power": 450.0, "pf": 0.9}}
+    got = by_id(rd.readings_from_status(st))
+    assert got["gen1em_0_apparent"].value == 500.0 and got["gen1em_0_apparent"].calculated == "watts / power factor"
+    assert got["gen1em_1_apparent"].value is None
+
+
+def test_meters_own_apparent_power_is_kept_and_not_marked_calculated():
+    got = by_id(rd.readings_from_status(fx("docs-pm1-getstatus.json")))
+    assert got["pm1_0_apparent"].value == 288.0 and got["pm1_0_apparent"].calculated == ""

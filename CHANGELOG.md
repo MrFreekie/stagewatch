@@ -17,6 +17,8 @@ them into a dated release section and tags the commit.
 
 ### Added
 
+- **Power card: apparent power for every meter.** Meters that do not report apparent power (a 2PM, 1PM, Plug, PM Mini, first-generation EM) now show it as volts times amps, or watts divided by power factor when there is no current, marked "(calculated)". It shows as VA, or kVA from 1,000 VA, is a new chart choice beside Power and Current, and appears in Totals as a **sum of VA** per line (a dash and a note if any circuit has no figure). No input, no figure: nothing is assumed.
+
 - **Power card: graph by circuit, all on one graph, and Totals.** The chart's box can now show one circuit or phase of a meter (a switch of a 2PM, an EM channel, phase A, B or C), **All on one graph** (every circuit as its own line, with a key and different dash styles as well as colours, one kind of measurement at a time), or **Totals**: each line's watts, with single-phase circuits added up by their Line 1, 2 or 3 and a total for all lines. A line with a circuit that is not reading says INCOMPLETE instead of showing a part-total. Ready for neutral and earth-leakage currents to join later. Read-only; the choice is kept in the browser only.
 
 - **Power card: combined load bar.** For a Shelly meter with two or more single-phase circuits (a 2PM with two 10 A outputs on a 16 A feed, or an EM with two channels), a new **Combined load bar** tickbox in Admin adds one extra bar to the Power card: the amps of all the circuits together against the meter's rating, with the usual warnings at 80% and 100%. If any circuit is not reading it says Unavailable rather than showing a part-total. Not offered for three-phase meters. Off by default; read-only toward the meters. The simulated Shelly EM shows it.

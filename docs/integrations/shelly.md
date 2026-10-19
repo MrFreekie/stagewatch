@@ -37,7 +37,7 @@ the [notices](README.md#notices).
   site's day rollover). Energy used is the meter's total now minus its total at the first reading of the
   day. Stagewatch never fills in time it was not reading: the card lists those times instead. See the
   [Power card](../cards/power.md#this-show-day).
-- **Apparent power and power factor** show only when a meter sends them.
+- **Apparent power** shows the meter's own figure when it sends one. Otherwise Stagewatch calculates it (volts times amps, or watts divided by power factor for a first-generation EM) and marks it "(calculated)". **Power factor** shows only when a meter sends it.
 
 ### Which Shelly meters
 

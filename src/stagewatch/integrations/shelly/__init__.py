@@ -294,6 +294,8 @@ class ShellyIntegration(Integration):
         labels = {"channel": r.channel, "field": r.field}
         if r.group:
             labels["group"] = r.group
+        if r.calculated:
+            labels["calculated"] = r.calculated   # worked out by Stagewatch, not the meter's own reading
         self.hub.register_entity(Entity(
             eid, m.cfg.id, rd.display_name(r, channels), r.kind, UNITS.get(r.kind, ""), r.decimals,
             hw_key=f"mac:{m.cfg.mac}/{r.object_id}", labels=labels, locked_equipment=True))

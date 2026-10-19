@@ -15,7 +15,7 @@ The card has one block for each meter. The block shows:
 - **Voltage** (V), **Current** (A) and **Frequency** (Hz).
 - **Energy**: the meter's own running total, shown as Wh below 1,000 and kWh above. It only counts up from when the meter's counter started. It is not an average, and it is not a level.
 - **This show day**: the energy used, the highest power and highest current (each with the time), and the lowest and highest voltage (with times). See below.
-- **Apparent power** (VA), **Power factor** and the meter's own temperature, but only when the meter reports them. Many do not, and then they are left out.
+- **Apparent power**, **Power factor** and the meter's own temperature, when available. Apparent power shows in VA, or in kVA from 1,000 VA. If the meter does not report it, Stagewatch works it out as volts times amps (or watts divided by power factor when there is no current) and marks it **(calculated)**. If an input is missing or old it shows a dash. Power factor is shown only when the meter reports it.
 
 A meter that measures three phases shows a small table with a row for each phase, and a total where the meter gives one. A missing value is a dash, never 0.
 
@@ -88,6 +88,8 @@ Rows that a meter does not send are left out. No supported meter sends these yet
 The voltage and frequency warnings put a quiet notice in the alarm bar. It never makes a sound, and it clears itself when the reading is back inside with a little margin. All of this is advisory. Stagewatch only reads, and the rating is simply the number you typed in. Colour is never the only signal: the words are always shown.
 
 ## Totals
+
+**Apparent power** is a chart choice beside Power and Current. In Totals it is added up per line as a **sum of VA** only when every circuit has it; adding VA this way can read higher than the true total when the loads are not in step.
 
 Choose **Totals** in the chart's box to see the watts of each line now. A three-phase meter shows its own Line 1, Line 2, Line 3 and total. Single-phase circuits are added up by the line you set for each circuit in Admin (Line 1, 2 or 3, or "Line not set"), with a total for all lines. If any circuit in a line is not reading, that line says INCOMPLETE and names what is missing, instead of showing a part-total. Neutral current is listed as it is, never added up.
 
