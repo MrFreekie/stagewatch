@@ -33,6 +33,7 @@ from ...core.model import UNITS, Device, Entity, Status, slugify
 from ...core.plugin import Integration, Manifest
 from ..smaart.client import is_local_address
 from . import dayfigures as df
+from .derived import SITE_ID, DerivedPower
 from . import readings as rd
 from .emulate import DEMO1_HOST, DEMO1_NAME, DEMO3_HOST, DEMO3_NAME, DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac
 from .http import Fetch, ShellyError, get_json
@@ -171,7 +172,8 @@ def seed_emulate_shelly(config) -> bool:
         return False
     config.shelly_devices = [
         ShellyDeviceConfig(id="mic_rack_sim", host=DEMO_HOST, mac=emulated_mac(DEMO_HOST),
-                           name=DEMO_NAME, area="Stage L", rating_a=16),
+                           name=DEMO_NAME, area="Stage L", rating_a=16,
+                           channels=[ShellyChannelConfig(key="pm1_0", label="Mic rack", phase="L3", in_total=True)]),
         ShellyDeviceConfig(id="distro_sim", host=DEMO3_HOST, mac=emulated_mac(DEMO3_HOST),
                            name=DEMO3_NAME, area="Dock", rating_a=32),
         ShellyDeviceConfig(id="em_sim", host=DEMO1_HOST, mac=emulated_mac(DEMO1_HOST),
@@ -179,6 +181,9 @@ def seed_emulate_shelly(config) -> bool:
                            channels=[ShellyChannelConfig(key="em0", label="FOH L1", phase="L1", rating_a=10, in_total=True),
                                      ShellyChannelConfig(key="em1", label="FOH L2", phase="L2", rating_a=10, in_total=True)]),
     ]
+    # Short demand window and a generator size, so the calculated figures appear within minutes in emulate mode.
+    config.power_site.demand_window_min = 5
+    config.power_site.gen_size_kva = 20.0
     for d in config.dashboards:
         if d.slug == "wall":
             d.cards = [*d.cards[:1], CARD_ID, *d.cards[1:]]
@@ -198,6 +203,7 @@ class ShellyIntegration(Integration):
         self._meters: dict[str, _Meter] = {}          # by MAC
         self._lock = asyncio.Lock()
         self._started = False
+        self._derived = DerivedPower(self)    # calculated figures: demand, unbalance, site total, generator
 
     # ------------------------------------------------------------- lifecycle
     async def start(self) -> None:
@@ -289,6 +295,10 @@ class ShellyIntegration(Integration):
         if was_gap and dev is not None:
             # Only a gap seen live gets a marker, made now: nothing is filled in for the time between.
             self.hub.add_marker(f"{dev.name}: meter back", "shelly")
+        try:
+            self._derived.meter_polled(m, found, ts)
+        except Exception:  # noqa: BLE001 - a calculated figure must never stop the readings
+            log.exception("Shelly %s: could not work out the calculated figures", cfg.id)
 
     def _register(self, m: _Meter, r: rd.Reading, eid: str, channels: int) -> None:
         labels = {"channel": r.channel, "field": r.field}
@@ -419,7 +429,7 @@ class ShellyIntegration(Integration):
             if self._by_mac(info.mac) is not None:
                 raise InUse("That meter has already been added")
             device_id = slugify(name)
-            if device_id == "site" or device_id in self.hub.devices:
+            if device_id in ("site", SITE_ID) or device_id in self.hub.devices:
                 raise InUse("That name is already in use. Choose another")
             cfg = ShellyDeviceConfig(id=device_id, host=validate_host(host), mac=info.mac, name=name.strip(),
                                      area=area.strip(), poll_interval_s=interval_s)
@@ -518,7 +528,7 @@ class ShellyIntegration(Integration):
         """The circuits Stagewatch has seen on a meter, with what the admin typed about each."""
         seen: dict[str, bool] = {}
         for e in self.hub.entities.values():
-            key = e.labels.get("channel") if e.device_id == cfg.id else None
+            key = e.labels.get("channel") if e.device_id == cfg.id and not e.labels.get("derived") else None
             if key:
                 seen[key] = seen.get(key, False) or e.labels.get("group", "") in ("a", "b", "c")
         out = []

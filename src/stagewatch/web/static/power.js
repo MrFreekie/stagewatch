@@ -33,8 +33,8 @@ SW.pw = (function () {
     const parts = [cfg.label || (many && m ? `Channel ${+m[1] + 1}` : ""), pw.PHASE_WORD[cfg.phase] || ""].filter(Boolean);
     return parts.join(" · ");
   };
-  pw.FIELD_WORD = { voltage_ll: "Line-to-line voltage", reactive: "Reactive power", thd_v: "Voltage THD", thd_i: "Current THD", voltage: "Voltage", current: "Current", power: "Power", apparent: "Apparent power", pf: "Power factor", freq: "Frequency", device_temp: "Meter temperature" };
-  pw.UNIT = { voltage_ll: "V", reactive: "var", thd_v: "%", thd_i: "%", voltage: "V", current: "A", power: "W", apparent: "VA", pf: "", freq: "Hz", device_temp: "°C" };
+  pw.FIELD_WORD = { voltage_ll: "Line-to-line voltage", reactive: "Reactive power", thd_v: "Voltage THD", thd_i: "Current THD", unbalance: "Phase unbalance", demand: "Average demand", demand_va: "Average demand (VA)", voltage: "Voltage", current: "Current", power: "Power", apparent: "Apparent power", pf: "Power factor", freq: "Frequency", device_temp: "Meter temperature" };
+  pw.UNIT = { voltage_ll: "V", reactive: "var", thd_v: "%", thd_i: "%", unbalance: "%", demand: "W", demand_va: "VA", voltage: "V", current: "A", power: "W", apparent: "VA", pf: "", freq: "Hz", device_temp: "°C" };
 
   // Power and energy are shown with a comma for thousands and a full stop for decimals.
   pw.fmt = function (e) {
@@ -47,6 +47,18 @@ SW.pw = (function () {
     if (!isNum(v)) return { text: "—", unit: "VA" };
     if (Math.abs(v) < 1000) return { text: SW.num(v, 1), unit: "VA" };
     return { text: SW.num(v / 1000, 2), unit: "kVA" };
+  };
+  // Reactive power: var below 1,000, kVAr from 1,000 var. "—" with no value.
+  pw.fmtVar = function (v) {
+    if (!isNum(v)) return { text: "—", unit: "var" };
+    if (Math.abs(v) < 1000) return { text: SW.num(v, 1), unit: "var" };
+    return { text: SW.num(v / 1000, 2), unit: "kVAr" };
+  };
+  // Real power for demand figures: W below 1,000, kW from 1,000 W.
+  pw.fmtW = function (v) {
+    if (!isNum(v)) return { text: "—", unit: "W" };
+    if (Math.abs(v) < 1000) return { text: SW.num(v, 0), unit: "W" };
+    return { text: SW.num(v / 1000, 2), unit: "kW" };
   };
   // Words for a reading that Stagewatch worked out itself (labels.calculated says how): never passed off as the meter's own.
   pw.calcWord = (e) => (e && e.labels && e.labels.calculated ? " (calculated)" : "");
@@ -123,12 +135,15 @@ SW.pw = (function () {
     return { pct, bar: Math.max(0, Math.min(100, pct)), level, word, text: `${SW.num(amps, 2)} A of ${SW.num(rating, 0)} A (${SW.num(pct, 0)}%)` };
   };
 
-  // Phase imbalance, estimated from the three phase currents: the biggest difference from the average,
-  // as a percentage of the average. Only when all three are real numbers and the average is above 0.
+  // Phase imbalance (NEMA MG 1 current unbalance), from the three phase currents: the biggest difference of
+  // any line from the average of the three, as a percentage of the average. Only when all three are real
+  // numbers and the average is at least UNBALANCE_FLOOR_A (so noise at near-zero load shows nothing).
+  // Keep the floor in step with calc.UNBALANCE_FLOOR_A on the server.
+  pw.UNBALANCE_FLOOR_A = 1.0;
   pw.imbalance = function (a, b, c) {
     if (![a, b, c].every(isNum)) return null;
     const avg = (a + b + c) / 3;
-    if (!(avg > 0)) return null;
+    if (!(avg >= pw.UNBALANCE_FLOOR_A)) return null;
     return 100 * Math.max(Math.abs(a - avg), Math.abs(b - avg), Math.abs(c - avg)) / avg;
   };
 
@@ -167,7 +182,7 @@ SW.pw = (function () {
   };
 
   // ---- history chart: one measurement of one meter over time (one line per phase on a 3-phase meter).
-  pw.METRICS = [["power", "Power"], ["apparent", "Apparent power"], ["current", "Current"], ["voltage", "Voltage"], ["voltage_ll", "Line-to-line"], ["freq", "Frequency"], ["thd_v", "Voltage THD"], ["thd_i", "Current THD"]];
+  pw.METRICS = [["power", "Power"], ["apparent", "Apparent power"], ["current", "Current"], ["voltage", "Voltage"], ["voltage_ll", "Line-to-line"], ["freq", "Frequency"], ["thd_v", "Voltage THD"], ["thd_i", "Current THD"], ["reactive", "Reactive power"], ["unbalance", "Phase unbalance"], ["demand", "Average demand (W)"], ["demand_va", "Average demand (VA)"]];
   pw.POINTS = 500;
   // ---- what the chart can show. A "scope" is a short string chosen in the chart's select box:
   //   "all"                          every circuit of every meter, as separate lines
@@ -272,7 +287,7 @@ SW.pw = (function () {
   // added up, then the overall total. If any circuit in a group is not reading (meter not answering, reading
   // old, or never received) that group is INCOMPLETE: no figure, the missing circuits listed. Nothing is
   // filled in. Neutral and earth currents (SERIES_GROUPS) are listed one row per reading and never added up.
-  pw.phaseTotals = function (devices, meters) {
+  pw.phaseTotals = function (devices, meters, entities) {
     const live = (m, e) => !!m && m.state === "live" && !!e && isNum(e.value) && !e.stale;
     const three = [], single = { L1: [], L2: [], L3: [], "": [] }, extra = [];
     let anySingle = false;
@@ -307,7 +322,16 @@ SW.pw = (function () {
         vaMissing, va: vaMissing.length || !items.length ? null : items.reduce((s, x) => s + x.va, 0), vaCalc: items.some((x) => x.vaCalc) };
     };
     const rows = ["L1", "L2", "L3", ""].filter((k) => single[k].length).map((k) => ({ label: k ? pw.PHASE_WORD[k] : "Line not set", ...sum(single[k]) }));
-    return { three, single: anySingle ? { rows, overall: sum([].concat(single.L1, single.L2, single.L3, single[""])) } : null, extra };
+    // Phase unbalance (calculated on the server): the site's circuits set to lines, and each three-phase meter.
+    const unb = [];
+    for (const e of Object.keys(entities || {}).map((k) => entities[k])) {
+      if (!e.labels || e.labels.field !== "unbalance") continue;
+      const dev = (devices || {})[e.device_id] || {};
+      const u = pw.unbText(e);
+      unb.push({ label: e.device_id === pw.SITE_ID ? "Circuits set to Line 1, 2 and 3" : (dev.name || e.device_id), value: u.text, shares: u.shares });
+    }
+    unb.sort((a, b) => a.label.localeCompare(b.label));
+    return { three, single: anySingle ? { rows, overall: sum([].concat(single.L1, single.L2, single.L3, single[""])) } : null, extra, unb };
   };
 
   // Builds the Totals table into host (replaces its contents only when the text would change).
@@ -335,6 +359,10 @@ SW.pw = (function () {
       sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, t.extra[0].group + " (current, not added up)"),
         h("tbody", {}, t.extra.map((r) => h("tr", {}, h("th", { scope: "row" }, r.label), h("td", { class: "num" }, r.value === null ? "—" : `${SW.num(r.value, Math.min(3, r.decimals))} ${r.unit}`), h("td", { class: "pw-incomplete" }, r.ok ? "" : "▲ NO READING"))))));
     }
+    if (t.unb && t.unb.length) {
+      sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, "Phase unbalance (calculated, advisory)"),
+        h("tbody", {}, t.unb.map((r) => h("tr", {}, h("th", { scope: "row" }, r.label), h("td", { class: "num" }, r.value), h("td", { class: "pw-incomplete" }, r.shares))))));
+    }
     if (!sections.length) sections.push(h("p", { class: "muted" }, "No power readings yet."));
     const sig = JSON.stringify(t);
     if (host.dataset.sig === sig) return;
@@ -350,7 +378,7 @@ SW.pw = (function () {
     if (field === "voltage") return { fixed: [pw.SWING.voltage.low, pw.SWING.voltage.high], def: null };
     if (field === "voltage_ll") return { fixed: [pw.SWING.voltage_ll.low, pw.SWING.voltage_ll.high], def: null };
     if (field === "freq") return { fixed: [49, 51], def: null };
-    if (field === "power" || field === "current" || field === "apparent") return { fixed: null, def: [0, 1e-6] };
+    if (field === "power" || field === "current" || field === "apparent" || field === "demand" || field === "demand_va") return { fixed: null, def: [0, 1e-6] };
     return { fixed: null, def: null };
   };
   pw.gapSeconds = (bucketS) => Math.max(60, 3 * bucketS);
@@ -395,7 +423,7 @@ SW.pw = (function () {
   // One meter's readings, grouped. entities is the snapshot's entity map (id -> entity), device the
   // public device. Returns null when the device has no readings at all.
   pw.meterView = function (device, ents, now) {
-    const mine = ents.filter((e) => e.device_id === device.id && e.labels && e.labels.channel);
+    const mine = ents.filter((e) => e.device_id === device.id && e.labels && e.labels.channel && !e.labels.derived);
     const status = device.status || "";
     const newest = Math.max(0, ...mine.map((e) => e.updated || 0));
     const anyStale = mine.length > 0 && mine.some((e) => e.stale);
@@ -422,19 +450,21 @@ SW.pw = (function () {
     const combinedIds = [];
     for (const ch of list) if (ch.groups[""] && ch.groups[""].current) combinedIds.push(ch.groups[""].current.id);
     const combined = !!device.combined_bar && isNum(device.rating_a) && device.rating_a > 0 && combinedIds.length >= 2;
-    return { combined, combinedIds, id: device.id, entities: Object.fromEntries(mine.map((e) => [e.id, e])), rating: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "" };
+    return { combined, combinedIds, id: device.id, entities: Object.fromEntries(mine.map((e) => [e.id, e])), rating: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "",
+      demandIds: ["demand", "demand_va"].map((f) => { const e = ents.find((x) => x.device_id === device.id && x.labels && x.labels.derived && x.labels.field === f); return e ? e.id : ""; }) };
   };
 
   pw.view = function (entities, devices, now) {
     const ents = Object.keys(entities || {}).map((k) => entities[k]);
     const meters = Object.keys(devices || {}).map((k) => devices[k])
-      .filter((d) => d && d.category === "meter")
+      .filter((d) => d && d.category === "meter" && !d.derived)
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
       .map((d) => pw.meterView(d, ents, now));
     // The key changes only when the set of meters or readings changes, so the DOM is rebuilt rarely.
     const key = meters.map((m) => m.id + "@" + (m.rating || 0) + (m.combined ? "C" + m.combinedIds.length : "") + ":" + m.channels.map((c) => c.id + "~" + (c.rating || 0) + (c.cfg ? (c.cfg.label || "") + (c.cfg.phase || "") : "") + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
     const total = pw.totalView(devices, meters);
-    return { meters, total, key: (total ? "T" + total.parts.length + ";" : "") + key };
+    const site = pw.siteView(entities);
+    return { meters, total, site, key: (site ? "S" + site.key + ";" : "") + (total ? "T" + total.parts.length + ";" : "") + key + meters.map((m) => m.demandIds.join("+")).join(",") };
   };
 
   // ---- site total: the watts of every circuit ticked "Include in site total" in Admin, added together.
@@ -462,6 +492,52 @@ SW.pw = (function () {
     if (!parts.length) return null;
     const missing = parts.filter((p) => !p.ok).map((p) => p.name);
     return { parts, missing, watts: missing.length ? null : parts.reduce((s, p) => s + p.watts, 0) };
+  };
+
+  // ---- calculated figures: demand, load factor, phase unbalance and the generator suggestion. They are
+  // worked out on the server (integrations/shelly/calc.py and derived.py), recorded with history, and shown
+  // here as plain numbers. All are advisory and labelled "calculated". A missing figure is a dash, never 0.
+  pw.SITE_ID = "power_site";
+  // The site's calculated entities (null when no circuit is ticked or given a line): { w, va, gen, unb, key }.
+  pw.siteView = function (entities) {
+    const g = (k) => (entities || {})[pw.SITE_ID + "." + k] || null;
+    const o = { w: g("site_power_demand"), va: g("site_apparent_demand"), gen: g("generator"), unb: g("unbalance") };
+    if (!o.w && !o.va && !o.gen && !o.unb) return null;
+    o.key = ["w", "va", "gen", "unb"].map((k) => (o[k] ? k : "")).join("");
+    return o;
+  };
+  // One demand figure as words: the average now, the day's peak and the load factor, or a dash.
+  pw.demandText = function (e, isVA) {
+    const d = e && e.day;
+    if (!d) return "—";
+    const f = isVA ? pw.fmtVA : pw.fmtW, s = (v) => { const t = f(v); return `${t.text} ${t.unit}`; };
+    const parts = [isNum(e.value) && !e.stale ? `${d.window_min} min average ${s(e.value)}` : `no ${d.window_min} min average yet`];
+    if (isNum(d.peak)) parts.push(`peak ${s(d.peak)} at ${hhmm(d.peak_at)}`);
+    if (isNum(d.load_factor)) parts.push(`load factor ${SW.num(100 * d.load_factor, 0)}%`);
+    return parts.join(", ") + (d.incomplete || d.peak_incomplete ? ". ▲ INCOMPLETE: readings were missing inside the window, so this covers only the time read." : "");
+  };
+  // Phase unbalance as { text, shares }: "—" with the reason when it cannot be worked out.
+  pw.unbText = function (e) {
+    if (!e || !isNum(e.value) || e.stale) return { text: "—", shares: "Needs every line reading, and at least 1 A on average." };
+    const sh = e.day && Array.isArray(e.day.shares) ? e.day.shares : null;
+    return { text: `${SW.num(e.value, 1)}%`, shares: sh ? "Share of the load: " + sh.map((x, i) => `Line ${i + 1} ${SW.num(x, 0)}%`).join(", ") : "" };
+  };
+  pw.GEN_NOTE = "This is a suggestion from the demand Stagewatch measured, nothing more. It leaves out loads that are not metered, starting surges, harmonics and anything added later. Ask a qualified person to size the generator.";
+  // The generator suggestion: { head (kVA text), lines, level: "none"|"ok"|"limit"|"over" }.
+  pw.genView = function (e, windowMin) {
+    const d = e && e.day;
+    if (!d || !isNum(d.min_kva)) return { head: "—", lines: [`Needs a full ${windowMin || 15} minutes of site readings first.`], level: "none" };
+    const lines = [`Peak demand ${SW.num(d.peak_kva, 1)} kVA, kept to ${SW.num(d.loading_pct, 0)}% loading: at least ${SW.num(d.min_kva, 1)} kVA.`,
+      `About ${SW.num(d.min_kw, 1)} kW at a generator power factor of ${SW.num(d.pf, 2)}.`,
+      d.next_kva ? `Next standard size up: ${d.next_kva} kVA.` : "Larger than the standard sizes listed: ask your supplier."];
+    let level = "ok";
+    if (isNum(d.loaded_pct)) {
+      level = d.state || "ok";
+      const word = level === "over" ? " OVER 100%" : level === "limit" ? ` AT YOUR ${SW.num(d.loading_pct, 0)}% LIMIT` : "";
+      lines.push(`Loaded to ${SW.num(d.loaded_pct, 0)}% of ${SW.num(d.size_kva, 0)} kVA at the day's peak${isNum(d.now_pct) ? ` (${SW.num(d.now_pct, 0)}% now)` : ""}.${word}`);
+    }
+    if (d.peak_incomplete) lines.push("▲ Readings were missing inside the peak window, so the real peak may be higher.");
+    return { head: SW.num(d.min_kva, 1), lines, level };
   };
 
   // ------------------------------------------------------------------ DOM
@@ -498,7 +574,7 @@ SW.pw = (function () {
           for (const f of ["power", "voltage", "current", "freq", "reactive", "apparent", "pf", "device_temp"]) {
             if (!g[f]) continue;
             const c = cell(pw.FIELD_WORD[f] + pw.calcWord(g[f]), pw.UNIT[f]);
-            r.fields.push({ entity: g[f].id, val: c.val, el: c.el, va: f === "apparent" ? c.unit : null });
+            r.fields.push({ entity: g[f].id, val: c.val, el: c.el, va: f === "apparent" ? c.unit : null, vr: f === "reactive" ? c.unit : null });
             grid.append(c.el);
           }
           body.append(grid);
@@ -512,13 +588,13 @@ SW.pw = (function () {
             const tds = colsAll.map((f) => {
               const e = ch.groups[k][f];
               const td = h("td", { class: "num" });
-              if (e) r.fields.push({ entity: e.id, val: td, el: td, plain: true, vaTable: f === "apparent" });
+              if (e) r.fields.push({ entity: e.id, val: td, el: td, plain: true, vaTable: f === "apparent", vrTable: f === "reactive" });
               return td;
             });
             rows.push(h("tr", {}, h("th", { scope: "row" }, pw.GROUP_WORD[k] || ""), ...tds));
           }
           body.append(h("div", { class: "table-scroll" }, h("table", { class: "pw-table" },
-            h("thead", {}, h("tr", {}, h("th", {}, ""), ...colsAll.map((f) => h("th", { class: "num" }, `${pw.FIELD_WORD[f]}${pw.UNIT[f] && f !== "apparent" ? " (" + pw.UNIT[f] + ")" : ""}`)))),
+            h("thead", {}, h("tr", {}, h("th", {}, ""), ...colsAll.map((f) => h("th", { class: "num" }, `${pw.FIELD_WORD[f]}${pw.UNIT[f] && f !== "apparent" && f !== "reactive" ? " (" + pw.UNIT[f] + ")" : ""}`)))),
             h("tbody", {}, rows))));
         }
         for (const x of ch.energy) {
@@ -602,7 +678,7 @@ SW.pw = (function () {
       const ph = m.channels.find((c) => c.groups.a && c.groups.b && c.groups.c && c.groups.a.current && c.groups.b.current && c.groups.c.current);
       if (ph) {
         const val = h("span", { class: "pw-num" });
-        dayBody.append(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, "Phase imbalance"), " ", val, h("span", { class: "pw-sub muted" }, " (estimated from the three phase currents)")));
+        dayBody.append(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, "Phase unbalance (calculated)"), " ", val, h("span", { class: "pw-sub muted" }, " (biggest difference from the average line current; needs at least 1 A)")));
         r.imb = { ids: [ph.groups.a.current.id, ph.groups.b.current.id, ph.groups.c.current.id], val };
       }
       r.neu = null;
@@ -612,6 +688,13 @@ SW.pw = (function () {
         dayBody.append(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, "Neutral current"), " ", val, word, h("span", { class: "pw-sub muted" }, " of the biggest line current (advisory)")));
         r.neu = { ids: [nph.groups.n.current.id, nph.groups.a.current.id, nph.groups.b.current.id, nph.groups.c.current.id], val, word };
       }
+      r.demand = [];
+      [["Demand, watts (calculated)", false], ["Demand, volt-amps (calculated)", true]].forEach(([word, isVA], i) => {
+        if (!m.demandIds[i]) return;
+        const val = h("span", { class: "pw-num" });
+        dayBody.append(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, word), " ", val));
+        r.demand.push({ entity: m.demandIds[i], val, isVA });
+      });
       r.maxes = pw.meterMaxRows(Object.values(m.entities || {}), m.id).map((x) => {
         const val = h("span", { class: "pw-num" });
         dayBody.append(h("div", { class: "pw-dayrow pw-metermax" }, h("span", { class: "pw-label" }, "Meter's own maximum: " + x.label), " ", val, h("span", { class: "pw-sub muted" }, " (kept by the meter since its last reset)")));
@@ -635,13 +718,39 @@ SW.pw = (function () {
       return { val: t.val, unit: t.unit, note, sub, root: h("div", { class: "pw-meter pw-total" }, h("div", { class: "pw-grid" }, t.el), note, sub) };
     }
 
+    // Calculated site figures: demand, load factor, generator suggestion and phase unbalance. One headline row
+    // in the same cell format as the rest; the detail folds away.
+    function buildSite(s) {
+      const r = { s };
+      const cells = [];
+      const add = (key, label, unit) => { const c = cell(label, unit); r[key] = c; cells.push(c.el); };
+      if (s.w) { add("avg", "Site average demand (calculated)", "W"); add("peak", "Peak demand today", "W"); add("lf", "Load factor today", "%"); }
+      if (s.gen) add("gen", "Suggested generator, at least (calculated)", "kVA");
+      if (s.unb) add("unb", "Site phase unbalance (calculated)", "%");
+      const body = h("div", { class: "pw-day" });
+      r.rows = {};
+      const row = (key, label) => { const v = h("span", { class: "pw-num" }); r.rows[key] = v; body.append(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, label), " ", v)); };
+      if (s.w) row("w", "Demand, watts");
+      if (s.va) row("va", "Demand, volt-amps");
+      if (s.unb) { row("unb", "Phase unbalance"); r.shares = h("div", { class: "pw-dayrow muted" }); body.append(r.shares); }
+      r.genLines = s.gen ? h("div", { class: "pw-dayrow" }) : null;
+      if (s.gen) body.append(r.genLines, h("p", { class: "pw-note muted" }, pw.GEN_NOTE));
+      body.append(h("p", { class: "pw-note muted" }, "Demand is the average over a rolling window (set in Admin), counted only over the time Stagewatch was reading. Load factor is the day's average divided by the peak. Phase unbalance uses the NEMA MG 1 current definition: the biggest difference of any line from the average of the three, as a percentage of that average."));
+      const fold = h("details", { class: "pw-dayfold" }, h("summary", {}, "Site figures in detail"), body);
+      fold.open = !!pw.dayFoldOpen[pw.SITE_ID];
+      fold.addEventListener("toggle", () => { pw.dayFoldOpen[pw.SITE_ID] = fold.open; });
+      r.root = h("div", { class: "pw-meter pw-total" }, h("div", { class: "pw-grid" }, ...cells), fold);
+      return r;
+    }
+
     return {
       update(view, entities) {
         if (view.key !== ui.key) {
           ui.key = view.key;
           ui.meters = {};
           ui.total = view.total ? buildTotal() : null;
-          host.replaceChildren(...(ui.total ? [ui.total.root] : []), ...view.meters.map((m) => { const r = buildMeter(m); ui.meters[m.id] = r; return r.root; }));
+          ui.site = view.site ? buildSite(view.site) : null;
+          host.replaceChildren(...(ui.total ? [ui.total.root] : []), ...(ui.site ? [ui.site.root] : []), ...view.meters.map((m) => { const r = buildMeter(m); ui.meters[m.id] = r; return r.root; }));
         }
         if (ui.total && view.total) {
           const t = view.total, n = t.parts.length;
@@ -650,6 +759,31 @@ SW.pw = (function () {
           ui.total.note.textContent = t.watts === null ? `INCOMPLETE: not reading ${t.missing.join(", ")}. No total is shown until every ticked circuit is reading.` : "";
           SW.slot(ui.total.note, t.watts !== null);
           ui.total.sub.textContent = `Adds the watts of ${n} ticked circuit${n === 1 ? "" : "s"}: ${t.parts.map((p) => p.name).join(", ")}.`;
+        }
+        if (ui.site) {
+          const r = ui.site, s = view.site;
+          const put = (c, t) => { c.val.textContent = t.text; c.unit.textContent = t.unit; };
+          const dw = s.w && entities[s.w.id], dv = s.va && entities[s.va.id];
+          if (r.avg) {
+            const d = dw && dw.day;
+            put(r.avg, dw && isNum(dw.value) && !dw.stale ? pw.fmtW(dw.value) : { text: "—", unit: "W" });
+            put(r.peak, d && isNum(d.peak) ? pw.fmtW(d.peak) : { text: "—", unit: "W" });
+            put(r.lf, { text: d && isNum(d.load_factor) ? SW.num(100 * d.load_factor, 0) : "—", unit: "%" });
+          }
+          if (r.rows.w) r.rows.w.textContent = pw.demandText(dw, false);
+          if (r.rows.va) r.rows.va.textContent = pw.demandText(dv, true);
+          const win = dw && dw.day ? dw.day.window_min : dv && dv.day ? dv.day.window_min : 15;
+          if (s.gen) {
+            const gv = pw.genView(entities[s.gen.id], win);
+            put(r.gen, { text: gv.head, unit: "kVA" });
+            r.genLines.replaceChildren(...gv.lines.map((t) => h("div", {}, t)));
+            r.genLines.className = `pw-dayrow pw-l-${gv.level}`;
+          }
+          if (s.unb) {
+            const u = pw.unbText(entities[s.unb.id]);
+            put(r.unb, { text: u.text === "—" ? "—" : u.text.replace("%", ""), unit: "%" });
+            r.rows.unb.textContent = u.text; r.shares.textContent = u.shares;
+          }
         }
         for (const m of view.meters) {
           const r = ui.meters[m.id];
@@ -664,6 +798,8 @@ SW.pw = (function () {
           for (const f of r.fields) {
             const e = entities[f.entity];
             if (f.va) { const t = pw.fmtVA(e && e.value); f.val.textContent = t.text; f.va.textContent = t.unit; }
+            else if (f.vr) { const t = pw.fmtVar(e && e.value); f.val.textContent = t.text; f.vr.textContent = t.unit; }
+            else if (f.vrTable) { const t = pw.fmtVar(e && e.value); f.val.textContent = isNum(e && e.value) ? `${t.text} ${t.unit}` : "—"; }
             else if (f.vaTable) { const t = pw.fmtVA(e && e.value); f.val.textContent = isNum(e && e.value) ? `${t.text} ${t.unit}` : "—"; }
             else f.val.textContent = pw.fmt(e);
           }
@@ -718,6 +854,7 @@ SW.pw = (function () {
             r.neu.val.textContent = v === null ? "—" : `${SW.num(v.pct, 0)}%`;
             r.neu.word.textContent = v && v.high ? " HIGH" : "";
           }
+          for (const x of r.demand) x.val.textContent = pw.demandText(entities[x.entity], x.isVA);
           for (const x of r.maxes) {
             const e = entities[x.entity];
             x.val.textContent = e && isNum(e.value) ? `${SW.num(e.value, Math.max(0, Math.min(3, e.decimals || 0)))} ${e.unit || ""}`.trim() : "—";

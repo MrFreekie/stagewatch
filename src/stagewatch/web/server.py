@@ -34,7 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from .. import __version__, acoustics
 from ..core.config import (
     ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
-    ContactsSettings, SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error,
+    ContactsSettings, PowerSiteConfig, SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
 from ..core import calibration_io
@@ -479,6 +479,16 @@ class ShellyChannelBody(BaseModel):
         if _has_hidden_chars(v):
             raise ValueError("Use plain text")
         return v
+
+
+class PowerSiteBody(BaseModel):
+    """PUT /api/admin/power-site: the demand window and the generator suggestion settings. Ranges match calc.py."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    demand_window_min: Literal[5, 15, 30] = 15
+    gen_loading_pct: float = Field(80.0, ge=50, le=100, allow_inf_nan=False)
+    gen_power_factor: float = Field(0.8, ge=0.5, le=1.0, allow_inf_nan=False)
+    gen_size_kva: float | None = Field(None, ge=0, le=5000, allow_inf_nan=False)   # 0 or empty = none
 
 
 class ShellyPatchBody(BaseModel):
@@ -1936,6 +1946,15 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(404, "No such meter")
         except ValueError as e:
             raise HTTPException(409, str(e))
+
+    @app.put("/api/admin/power-site", dependencies=admin_deps)
+    async def put_power_site(body: PowerSiteBody):
+        """Demand window and generator suggestion settings for the Power card (advisory figures only)."""
+        hub.config.power_site = PowerSiteConfig(
+            demand_window_min=body.demand_window_min, gen_loading_pct=body.gen_loading_pct,
+            gen_power_factor=body.gen_power_factor, gen_size_kva=body.gen_size_kva or None)
+        hub.save_config()
+        return {"ok": True}
 
     @app.delete("/api/admin/shelly/{device_id}", dependencies=admin_deps)
     async def shelly_delete(device_id: str):

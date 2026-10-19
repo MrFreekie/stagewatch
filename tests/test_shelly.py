@@ -70,7 +70,9 @@ def test_real_pm_mini_gen3_status_gives_five_readings_and_no_optional_ones():
     assert got["pm1_0_pf"].value is None
     # it sends no apparent power, so one is calculated: 244.8 V x 0.000 A = 0.0 VA, labelled as calculated
     assert got["pm1_0_apparent"].value == 0.0 and got["pm1_0_apparent"].calculated == "volts x amps"
-    assert sum(1 for r in got.values() if r.value is not None) == 6
+    # and a calculated reactive power from 0 VA and 0 W = 0 var, so seven readings in all
+    assert got["pm1_0_reactive"].value == 0.0 and got["pm1_0_reactive"].calculated
+    assert sum(1 for r in got.values() if r.value is not None) == 7
 
 
 def test_pm1_optional_fields_appear_when_the_meter_sends_them():
@@ -702,7 +704,7 @@ async def test_test_shows_model_firmware_components_and_live_readings(hub):
     out = await integ.test("192.0.2.77")
     assert (out["model"], out["firmware"], out["mac"], out["components"]) == ("MiniPMG3", "2.1.0-beta2", MAC, ["Power meter"])
     names = {r["name"]: (r["value"], r["unit"]) for r in out["readings"]}
-    assert names == {"Voltage": (244.8, "V"), "Current": (0.0, "A"), "Power": (0.0, "W"), "Frequency": (50.0, "Hz"), "Energy": (15662.781, "Wh"), "Apparent power (calculated)": (0.0, "VA")}
+    assert names == {"Voltage": (244.8, "V"), "Current": (0.0, "A"), "Power": (0.0, "W"), "Frequency": (50.0, "Hz"), "Energy": (15662.781, "Wh"), "Apparent power (calculated)": (0.0, "VA"), "Reactive power (calculated)": (0.0, "var")}
     assert out["already_added"] == "rack"
 
 
@@ -921,7 +923,7 @@ def test_every_shelly_route_needs_admin_and_the_same_origin(client):
 
 def test_test_returns_fixed_text_and_never_the_address_or_meter_text(client):
     ok = client.post("/api/admin/shelly/test", json={"host": "192.0.2.60"}).json()
-    assert ok["ok"] is True and ok["model"] == "MiniPMG3" and ok["components"] == ["Power meter"] and len(ok["readings"]) == 6
+    assert ok["ok"] is True and ok["model"] == "MiniPMG3" and ok["components"] == ["Power meter"] and len(ok["readings"]) == 7
     r = client.post("/api/admin/shelly/test", json={"host": "8.8.8.8"})
     assert r.json() == {"ok": False, "category": "not_local", "message": r.json()["message"]} and "8.8.8.8" not in r.text
     client.fetch.fail = "needs_password"

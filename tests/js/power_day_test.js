@@ -231,5 +231,34 @@ eq(SW.sourceInput.shelly([]).reported, "waiting", "no meters: waiting");
   eq(SW.pw.phaseTotals(devs, meters).single.overall.va, null, "no VA at all for a circuit: no sum");
 }
 
+// Calculated figures: unbalance floor, demand wording, generator wording, kVAr, site view.
+{
+  eq(SW.pw.imbalance(10, 10, 10), 0, "balanced = 0 %");
+  eq(SW.pw.imbalance(12, 10, 8), 20, "12/10/8 A: mean 10, biggest deviation 2 = 20 %");
+  eq(SW.pw.imbalance(0.5, 0.4, 0.3), null, "mean under 1 A: no figure");
+  eq([SW.pw.fmtVar(600), SW.pw.fmtVar(1500), SW.pw.fmtVar(null)], [{ text: "600.0", unit: "var" }, { text: "1.50", unit: "kVAr" }, { text: "—", unit: "var" }], "var and kVAr");
+  eq([SW.pw.fmtW(950), SW.pw.fmtW(12345)], [{ text: "950", unit: "W" }, { text: "12.35", unit: "kW" }], "W and kW");
+  const T0 = Date.UTC(2026, 9, 14, 21, 14) / 1000;
+  const dem = (extra) => ({ value: 12000, stale: false, day: Object.assign({ window_min: 15, peak: 14100, peak_at: T0, load_factor: 0.78, incomplete: false, peak_incomplete: false }, extra) });
+  eq(SW.pw.demandText(dem(), false), "15 min average 12.00 kW, peak 14.10 kW at 21:14, load factor 78%", "demand in kW");
+  eq(SW.pw.demandText(dem({ incomplete: true }), false).includes("INCOMPLETE"), true, "a gap marks the demand incomplete");
+  eq(SW.pw.demandText({ value: null, day: null }, false), "—", "no figures: a dash");
+  const g = (extra) => ({ day: Object.assign({ peak_kva: 41, loading_pct: 80, min_kva: 51.25, min_kw: 41, pf: 0.8, next_kva: 60 }, extra) });
+  let v = SW.pw.genView(g(), 15);
+  eq([v.head, v.level, v.lines.length], ["51.3", "ok", 3], "suggestion: 51.25 kVA, next 60, no headroom line without a size");
+  v = SW.pw.genView(g({ size_kva: 50, loaded_pct: 82, now_pct: 40, state: "limit" }), 15);
+  eq([v.level, v.lines[3]], ["limit", "Loaded to 82% of 50 kVA at the day's peak (40% now). AT YOUR 80% LIMIT"], "warning at the loading limit");
+  eq(SW.pw.genView(g({ size_kva: 40, loaded_pct: 102.5, state: "over" }), 15).lines[3].endsWith("OVER 100%"), true, "warning over 100 %");
+  eq(SW.pw.genView(null, 15).head, "—", "no peak yet: a dash");
+  eq(SW.pw.GEN_NOTE.includes("qualified person"), true, "the suggestion says a qualified person sizes it");
+  eq(SW.pw.unbText({ value: 20, stale: false, day: { shares: [40, 33.3, 26.7] } }), { text: "20.0%", shares: "Share of the load: Line 1 40%, Line 2 33%, Line 3 27%" }, "unbalance with shares");
+  eq(SW.pw.unbText({ value: null }).text, "—", "unbalance unavailable");
+  // the calculated pseudo-device is not a meter card, and its entities reach the graph and the site block
+  const ents = { "power_site.unbalance": { id: "power_site.unbalance", device_id: "power_site", unit: "%", decimals: 1, value: 20, labels: { channel: "calc", field: "unbalance", derived: "1" } } };
+  const vw = SW.pw.view(ents, { power_site: { id: "power_site", name: "Site power (calculated)", category: "meter", derived: true } }, 100);
+  eq([vw.meters.length, vw.site.key], [0, "unb"], "no meter card for the pseudo-device; the site block is there");
+  eq(SW.pw.seriesFor(ents, { power_site: { name: "Site power (calculated)" } }, "all", "unbalance").length, 1, "unbalance is a graph kind");
+}
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power_day_test: all passed");
