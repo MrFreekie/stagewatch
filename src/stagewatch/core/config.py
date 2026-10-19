@@ -264,6 +264,8 @@ class PowerPointConfig(_TreeFields):
     a typed figure for it (admin-only for now). Additive: no schema bump."""
     id: str
     name: str = Field("", max_length=60)
+    # For a point the amp rating IS the breaker or fuse (a point has no device limit): shown as
+    # "Breaker or fuse rating (A)" in Admin. The name rating_a is kept so saved files stay as they are.
     rating_a: float | None = Field(None, gt=0, le=5000, allow_inf_nan=False)
     rating_kva: float | None = Field(None, gt=0, le=10000, allow_inf_nan=False)
     ups_type: str = "unknown"
@@ -290,7 +292,10 @@ class ShellyChannelConfig(_TreeFields):
     key: str = Field(max_length=24, pattern=r"^[a-z0-9_]+$")
     label: str = Field("", max_length=40)
     phase: Literal["", "L1", "L2", "L3"] = ""
-    rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)
+    rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)    # the DEVICE LIMIT: what this circuit of the meter can carry
+    # The breaker or fuse that protects the circuit, if the admin knows it. Additive, none = unknown:
+    # no schema bump; an older build ignores it. The lower of this and rating_a is the effective limit.
+    breaker_a: float | None = Field(None, gt=0, le=1000, allow_inf_nan=False)
     # "Include in site total": the Power card adds the watts of every ticked circuit (across meters) into
     # one total. Additive with a default of off: no schema bump; an older build ignores it.
     in_total: bool = False
@@ -317,9 +322,12 @@ class ShellyDeviceConfig(_TreeFields):
     name: str = Field("", max_length=60)
     area: str = Field("", max_length=40)
     poll_interval_s: float = Field(SHELLY_POLL_DEFAULT_S, ge=SHELLY_POLL_MIN_S, le=SHELLY_POLL_MAX_S)
-    # The rating (amps) of the meter or of the breaker/circuit it watches, typed in by the admin. Shown
-    # on the Power card as a load bar with warnings at 80 % and 100 %. None = no bar. Advisory only.
+    # The DEVICE LIMIT (amps): what the meter itself can carry. Shown on the Power card as a load bar with
+    # warnings at 80 % and 100 % (against the lower of this and breaker_a). None = no bar. Advisory only.
     rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)
+    # The breaker or fuse that protects the meter's supply, if known. Additive, none = unknown: no schema
+    # bump; an older build ignores it (and drops it on its next save).
+    breaker_a: float | None = Field(None, gt=0, le=1000, allow_inf_nan=False)
     # "Combined load bar": for a meter with two or more single-phase circuits, one extra bar on the Power
     # card for the SUM of their currents against rating_a (the whole meter or its supply breaker). The
     # circuits keep their own bars. Never applied to three-phase meters. Additive, default off: no schema

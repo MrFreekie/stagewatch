@@ -10,6 +10,16 @@ SW.ptAdmin = (function () {
     if (!r) return "";
     return Number.isInteger(no) && no >= 1 && no <= 99 ? r.abbr + String(no).padStart(2, "0") : r.abbr;
   };
+  // What an Upstream option reads: "FDU01 · Stage left racks". A unit with a role but no number yet reads
+  // "FDU (no number) · name" and one with no role "name (no role)", so it is clear why the prefix is missing.
+  // `no` is the number as typed (a whole number 1 to 99) or null.
+  pa.optionLabel = function (roles, role, no, name) {
+    const nm = String(name || "").trim();
+    const r = roles.find((x) => x.key === role);
+    if (!r) return (nm || "Unnamed") + " (no role)";
+    const d = pa.display(roles, role, no);
+    return [d === r.abbr ? `${r.abbr} (no number)` : d, nm].filter(Boolean).join(" · ");
+  };
   // Everything below `ref` (what is fed from it, however far down), so it is never offered as its own upstream.
   pa.descendants = function (nodes, ref) {
     const out = new Set(), todo = [ref];

@@ -471,6 +471,7 @@ class ShellyChannelBody(BaseModel):
     label: str = Field("", max_length=40)
     phase: Literal["", "L1", "L2", "L3"] = ""
     rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)
+    breaker_a: float | None = Field(None, ge=0, le=1000, allow_inf_nan=False)    # 0 or empty = unknown
     in_total: bool = False
 
     @field_validator("label")
@@ -610,7 +611,8 @@ class ShellyPatchBody(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=60)
     area: str | None = Field(None, max_length=40)
     interval_s: float | None = Field(None, ge=2.0, le=5.0, allow_inf_nan=False)
-    rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)   # 0 clears the rating
+    rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)   # 0 clears the device limit
+    breaker_a: float | None = Field(None, ge=0, le=1000, allow_inf_nan=False)    # 0 clears the breaker rating
     channels: list[ShellyChannelBody] | None = Field(None, max_length=16)
     combined_bar: bool | None = None
     host: str | None = Field(None, min_length=1, max_length=64)
@@ -2043,7 +2045,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         try:
             await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host, body.rating_a,
                                        None if body.channels is None else [c.model_dump() for c in body.channels],
-                                       body.combined_bar)
+                                       body.combined_bar, body.breaker_a)
         except LookupError:
             raise HTTPException(404, "No such power meter") from None
         except ShellyError as exc:

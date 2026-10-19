@@ -109,11 +109,11 @@ this is optional, and none of it changes the meter.
 
 1. Type a **Label** for each circuit, for example `Amp rack 3`.
 2. On a single-phase circuit, choose which line it is on: **Line 1 (Brown)**, **Line 2 (Black)** or **Line 3 (Grey)**. This is only a label you type. Check the real line at the distro.
-3. Type a **Rating (amps)** for the meter, and for any circuit that has a lower limit of its own.
+3. Type the **Device limit (A)** for the meter (what the meter itself can carry), and the **Breaker or fuse rating (A)** if you know it. Do the same for any circuit that has limits of its own. The load bar uses the lower of the two.
 4. Tick **Include in site total** on each circuit whose watts should go into the one **Site total power** figure on the Power card.
-5. If a meter has two or more single-phase circuits on one supply, tick **Combined load bar** to add one bar for their amps together against the meter's rating.
+5. If a meter has two or more single-phase circuits on one supply, tick **Combined load bar** to add one bar for their amps together against the meter's lower limit.
 6. Click **Save** on that meter's row.
-7. Click **Add warnings** to make a notice at 80 % of the rating and an alarm at 100 %. Nothing is made until you click it.
+7. Click **Add warnings** to make a notice at 80 % of the rating and an alarm at 100 % of that lower limit. Nothing is made until you click it.
 
 **What you'll see:** the Power card shows the labels, the lines and the load bars. How each figure is worked out is on the [Power card](../cards/power.md) page. A circuit that is not reading never counts as zero in a total.
 

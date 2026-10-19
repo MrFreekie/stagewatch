@@ -37,11 +37,11 @@ A new show day starts all of this afresh. If Stagewatch is restarted during a sh
 
 ## Lines, labels and ratings for each circuit
 
-In Admin, each meter lists its circuits. For each one you can type a **label** (for example "Amp rack 3"), set a **rating** that overrides the meter's own, and, on a single-phase meter, say which **line** it is on.
+In Admin, each meter lists its circuits. For each one you can type a **label** (for example "Amp rack 3"), set a **device limit** and a **breaker or fuse rating** that override the meter's own, and, on a single-phase meter, say which **line** it is on.
 
 - A three-phase meter shows its lines as **Line 1 (Brown)**, **Line 2 (Black)** and **Line 3 (Grey)**, and the neutral as **Neutral (Blue)**. The meter's A, B and C are shown as Line 1, 2 and 3.
 - A single-phase meter you have assigned to a line shows that line beside its label, for example "Amp rack 3 · Line 2 (Black)".
-- The load bar and the **Add warnings** button use the circuit's own rating, or the meter's rating when the circuit has none.
+- The load bar and the **Add warnings** button use the circuit's own limit, or the meter's when the circuit has none. See [Device limit and breaker](#device-limit-and-breaker).
 
 These are only labels you typed. Stagewatch cannot check which line a circuit is really on. Always check at the distro.
 
@@ -56,9 +56,9 @@ To add the power of several circuits into one figure, for example one circuit on
 
 ## Combined load bar
 
-Some meters have two circuits that share one supply, for example a Shelly 2PM with two 10 A outputs on a 16 A feed. Each circuit can be fine while the two together are too much. In Admin, type the **rating of the whole supply** (16 in that example), give each circuit its own rating, and tick **Combined load bar**. The card then shows one extra bar, **Combined load**, for the amps of the circuits added together against the meter's rating, with the same amber at 80% and red at 100%. The circuits keep their own bars.
+Some meters have two circuits that share one supply, for example a Shelly 2PM with two 10 A outputs on a 16 A feed. Each circuit can be fine while the two together are too much. In Admin, type the **device limit of the whole supply** (16 in that example), give each circuit its own device limit, and tick **Combined load bar**. The card then shows one extra bar, **Combined load**, for the amps of the circuits added together against the meter's rating, with the same amber at 80% and red at 100%. The circuits keep their own bars.
 
-- The tickbox only appears for a meter with two or more single-phase circuits, and it needs a meter rating.
+- The tickbox only appears for a meter with two or more single-phase circuits, and it needs a device limit or a breaker rating on the meter.
 - If any circuit is not reading, or its reading is old, the bar says **Unavailable** rather than showing a part-total.
 - A three-phase meter has no combined bar: each phase is its own circuit with its own limit, and the meter already shows its total power.
 - This adds up amps against a limit. It is separate from **Site total power**, which adds up watts across circuits you choose.
@@ -77,11 +77,18 @@ Rows that a meter does not send are left out. No supported meter sends these yet
 
 ## Load bar and UK limits
 
-- **Load bar.** In Admin, give the meter a **rating in amps** (a Shelly PM Mini Gen3 is 16 A; use the breaker's rating if that is lower). The card then shows how loaded the circuit is, for example "1.80 A of 16 A (11%)". The bar is green below 80%, amber from 80% (HIGH LOAD) and red from 100% (OVER RATING). A mark on the bar shows today's highest current. Without a rating there is no bar.
+- **Load bar.** In Admin, give the meter a **device limit** in amps (a Shelly PM Mini Gen3 is 16 A) and, if you know it, the **breaker or fuse rating**. The card then shows how loaded the circuit is, for example "1.8 A of 16 A (11%)". The bar is green below 80%, amber from 80% (HIGH LOAD) and red from 100% (OVER BREAKER or OVER DEVICE LIMIT). A mark on the bar shows today's highest current. Without a rating there is no bar.
 - **Voltage swing meter.** A bar from 195 to 265 V with the UK range shaded: 216.2 to 253.0 V (230 V +10% / -6%). A marker shows the live voltage and a paler band shows today's lowest to highest. Outside the range it says LOW or HIGH in red. A supply under 180 V (110 V site power) is not judged.
 - **Frequency swing meter.** A bar from 49.0 to 51.0 Hz. Green inside 49.8 to 50.2 Hz, amber (CLOSE TO LOW/HIGH LIMIT) between that and 49.5 or 50.5 Hz, red (LOW or HIGH) outside 49.5 to 50.5 Hz. Today's lowest and highest frequency are shown too. A supply that is not near 50 Hz (below 40 or above 55 Hz) is not judged.
 
-**Add warnings.** After saving a rating, press **Add warnings** on the meter in Admin. It makes two ordinary thresholds you can see and edit under Thresholds: a level 1 notice at 80% of the rating and a level 2 alarm at 100%, each held for 5 seconds. Nothing is made until you press it, and pressing it again replaces only the ones it made. They are your own limits: Stagewatch does not protect or switch anything.
+### Device limit and breaker
+
+- **Device limit (A)** is what the meter or relay itself can carry. **Breaker or fuse rating (A)** is the protective device in front of the circuit. Both are typed in by you, and either can be left blank (blank means unknown).
+- The bar and the warnings use the **lower** of the two. A line under the bar says which one limits, for example "Breaker 13 A · device limit 16 A · limited by breaker". With only one number set, that one is used.
+- If the breaker is bigger than the device limit, the card adds a quiet note: "The breaker is bigger than this device can carry." The meter or relay is then the weak point, and the breaker will not protect it. This is only advice and never stops you saving.
+- Stagewatch does not check that a breaker covers everything fed from it. Boards are usually sized with diversity, so that check would raise false alarms.
+
+**Add warnings.** After saving a limit, press **Add warnings** on the meter in Admin. It makes two ordinary thresholds you can see and edit under Thresholds: a level 1 notice at 80% of the lower limit and a level 2 alarm at 100%, each held for 5 seconds. Nothing is made until you press it, and pressing it again replaces only the ones it made. They are your own limits: Stagewatch does not protect or switch anything.
 
 **Phase imbalance.** A three-phase meter shows an estimate: the biggest difference of any phase current from the average, as a percentage of the average. It is a display only and is not recorded.
 

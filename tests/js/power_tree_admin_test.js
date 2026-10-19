@@ -45,5 +45,17 @@ eq(PA.slug("FOH generator 1", new Set()), "foh_generator_1", "slug");
 eq(PA.slug("FOH generator 1", new Set(["foh_generator_1"])), "foh_generator_1_2", "slug taken");
 eq(PA.slug("", new Set()), "point", "slug empty");
 
+// Upstream option labels: the prefix shows as soon as role and number are set, and says why when it cannot
+eq(PA.optionLabel(roles, "fdu", 1, "Stage left racks"), "FDU01 · Stage left racks", "prefix and name");
+eq(PA.optionLabel(roles, "fdu", null, "Stage left racks"), "FDU (no number) · Stage left racks", "role but no number");
+eq(PA.optionLabel(roles, "", null, "Stage left racks"), "Stage left racks (no role)", "no role");
+eq(PA.optionLabel(roles, "", null, ""), "Unnamed (no role)", "no role, no name");
+eq(PA.optionLabel(roles, "isu", 2, ""), "ISU02", "prefix alone");
+// live: the same node read again after the admin picks a role and types a number
+const live = { role: "", no: null };
+eq(PA.optionLabel(roles, live.role, live.no, "Racks"), "Racks (no role)", "before");
+live.role = "fdu"; eq(PA.optionLabel(roles, live.role, live.no, "Racks"), "FDU (no number) · Racks", "role picked");
+live.no = 1; eq(PA.optionLabel(roles, live.role, live.no, "Racks"), "FDU01 · Racks", "number typed");
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("ok");

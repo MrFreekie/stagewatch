@@ -1228,3 +1228,29 @@ SW.previewDraft = function (draft, saved, known) {
   }
   return out;
 };
+
+// ---- breaker and device limit (used by the Power card, the Power tree card and Admin) --------------------
+// One number format for amps: a reading to one decimal place, a rating whole when it is whole (16 A, 6.3 A).
+SW.fmtReading = (a) => SW.num(a, 1);
+SW.fmtRating = (a) => SW.num(a, Number.isInteger(a) ? 0 : 1);
+// The amps a load is judged against: the LOWER of the breaker or fuse and the device limit when both are
+// set, the one that is set when only one is, none when neither. { amps, by: "breaker"|"device"|"", weak }
+// where weak means the breaker is bigger than the device can carry. A tie counts as the breaker. Kept equal
+// to core/power_tree.py effective_limit (a test checks it). Advisory only.
+SW.limit = function (breaker, device) {
+  const ok = (v) => typeof v === "number" && isFinite(v) && v > 0;
+  const b = ok(breaker) ? breaker : null, d = ok(device) ? device : null;
+  if (b !== null && (d === null || b <= d)) return { amps: b, by: "breaker", weak: false };
+  if (d !== null) return { amps: d, by: "device", weak: b !== null };
+  return { amps: null, by: "", weak: false };
+};
+// "Breaker 16 A · device limit 10 A · limited by device" (only the numbers that are set).
+SW.limitText = function (breaker, device) {
+  const l = SW.limit(breaker, device);
+  if (l.amps === null) return "";
+  const hasB = breaker > 0, hasD = device > 0;
+  if (hasB && !hasD) return `Breaker ${SW.fmtRating(breaker)} A`;
+  if (hasD && !hasB) return `Device limit ${SW.fmtRating(device)} A`;
+  return `Breaker ${SW.fmtRating(breaker)} A · device limit ${SW.fmtRating(device)} A · limited by ${l.by}`;
+};
+SW.WEAK_NOTE = "The breaker is bigger than this device can carry. The device is the weak point.";

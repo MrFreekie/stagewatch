@@ -289,6 +289,26 @@ def delete_point(cfg, point_id: str, children: str | None) -> None:
     cfg.power_points.remove(point)
 
 
+# --------------------------------------------------------------------------- limits
+def effective_limit(breaker_a, device_a) -> tuple[float | None, str]:
+    """The amps a load is judged against: the LOWER of the breaker or fuse and the device limit when both
+    are set, the one that is set when only one is, none when neither. Returns (amps, "breaker" | "device"
+    | ""): which of the two is limiting. A tie counts as the breaker (the breaker trips first in practice).
+    Advisory only; the same rule is in static/power.js (SW.pw.limit), kept equal by a test."""
+    b = breaker_a if isinstance(breaker_a, (int, float)) and breaker_a > 0 else None
+    d = device_a if isinstance(device_a, (int, float)) and device_a > 0 else None
+    if b is not None and (d is None or b <= d):
+        return float(b), "breaker"
+    if d is not None:
+        return float(d), "device"
+    return None, ""
+
+
+def breaker_over_device(breaker_a, device_a) -> bool:
+    """True when the breaker is bigger than the device can carry: the meter or relay is the weak point."""
+    return bool(breaker_a and device_a and breaker_a > device_a)
+
+
 # --------------------------------------------------------------------------- what the screens get
 def public_structure(cfg) -> dict:
     """The tree for dashboards: names, roles, display names, upstream links and ratings. No addresses, no
@@ -303,7 +323,7 @@ def public_structure(cfg) -> dict:
             "ref": ref, "kind": _kind(ref), "name": _label(cfg, ref, obj), "role": obj.role,
             "role_label": role_label(obj.role), "display": display_name(obj.role, obj.unit_no),
             "unit_no": obj.unit_no, "upstream": obj.upstream if obj.upstream in holders else "",
-            "rating_a": getattr(obj, "rating_a", None), "rating_kva": getattr(obj, "rating_kva", None),
+            "rating_a": getattr(obj, "rating_a", None), "breaker_a": getattr(obj, "breaker_a", None), "rating_kva": getattr(obj, "rating_kva", None),
             "ups_type": getattr(obj, "ups_type", None) if obj.role == "ups" else None,
         })
     return {"nodes": nodes}

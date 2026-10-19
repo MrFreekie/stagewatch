@@ -785,7 +785,7 @@ def test_config_round_trip_and_mac_is_normalised(tmp_path):
     again = ConfigStore(tmp_path / "config.yaml").load()
     assert again.shelly_devices == [ShellyDeviceConfig(id="mic_rack", host="192.0.2.50", mac=MAC, name="Mic rack", area="FOH", poll_interval_s=2.5)]
     raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
-    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "combined_bar", "channels", "role", "unit_no", "upstream"}   # no password field exists
+    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "breaker_a", "combined_bar", "channels", "role", "unit_no", "upstream"}   # no password field exists
 
 
 def test_interval_outside_two_to_five_seconds_is_brought_into_range():
@@ -1058,7 +1058,7 @@ def test_admin_has_the_foldable_card_and_the_plain_words():
     js = (STATIC / "admin.js").read_text(encoding="utf-8")
     assert 'foldCard(shellyCard(), "shelly", false)' in js
     assert "/api/admin/shelly/test" in js and "/api/admin/shelly/add" in js
-    assert "never switches a relay" in js and "password is not supported yet" in js and "Warnings at the breaker rating are planned" in js
+    assert "never switches a relay" in js and "password is not supported yet" in js and "use the lower of the two" in js
     assert "category !== \"meter\"" in js
 
 
@@ -1351,7 +1351,7 @@ async def test_each_circuit_can_have_a_label_a_line_and_its_own_rating_and_they_
     pub = hub.devices["rack"].to_dict()
     assert pub["channels"] == {"pm1_0": {"label": "Amp rack 3", "phase": "L2", "rating_a": 10.0}} and pub["rating_a"] == 16.0
     assert integ.admin_status()["meters"][0]["channels"] == [
-        {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0, "in_total": False,
+        {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0, "breaker_a": None, "in_total": False,
          "role": "", "unit_no": None, "upstream": ""}]
     await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "label": "", "phase": "", "rating_a": 0}])
     assert cfg.channels == [] and "channels" not in hub.devices["rack"].to_dict()      # nothing typed: nothing kept
@@ -1487,3 +1487,74 @@ def test_gen1_em_apparent_power_is_watts_over_power_factor_and_invalid_channel_g
 def test_meters_own_apparent_power_is_kept_and_not_marked_calculated():
     got = by_id(rd.readings_from_status(fx("docs-pm1-getstatus.json")))
     assert got["pm1_0_apparent"].value == 288.0 and got["pm1_0_apparent"].calculated == ""
+
+
+# ================================================================================ breaker and device limit
+from stagewatch.core import power_tree as _pt                       # noqa: E402
+from stagewatch.integrations.shelly import channel_rating, public_extra   # noqa: E402
+
+
+@pytest.mark.parametrize("breaker,device,expected", [
+    (13, 16, (13.0, "breaker")), (63, 32, (32.0, "device")), (16, 16, (16.0, "breaker")),
+    (None, 16, (16.0, "device")), (20, None, (20.0, "breaker")), (None, None, (None, "")), (0, 16, (16.0, "device"))])
+def test_effective_limit_is_the_lower_of_breaker_and_device_limit(breaker, device, expected):
+    """The same cases are in tests/js/power_tree_test.js (SW.limit): the two must agree."""
+    assert _pt.effective_limit(breaker, device) == expected
+
+
+def test_breaker_bigger_than_the_device_limit_is_flagged_but_never_blocked():
+    assert _pt.breaker_over_device(63, 32) and not _pt.breaker_over_device(13, 16) and not _pt.breaker_over_device(None, 16)
+    cfg = ShellyDeviceConfig(id="x", host=HOST, mac=MAC, rating_a=10, breaker_a=16)       # accepted as typed
+    assert cfg.breaker_a == 16
+
+
+def test_a_circuit_uses_its_own_numbers_else_the_meters_and_the_lower_wins():
+    cfg = ShellyDeviceConfig(id="x", host=HOST, mac=MAC, rating_a=16, breaker_a=13,
+                             channels=[ShellyChannelConfig(key="a_0", rating_a=10), ShellyChannelConfig(key="a_1", breaker_a=6)])
+    assert channel_rating(cfg, "a_0") == 10.0       # own device limit 10 < meter's breaker 13
+    assert channel_rating(cfg, "a_1") == 6.0        # own breaker 6
+    assert channel_rating(cfg, "a_2") == 13.0       # the meter's: breaker 13 < device 16
+    assert channel_rating(ShellyDeviceConfig(id="y", host=HOST, mac=MAC), "a_0") is None
+
+
+def test_old_release_config_loads_with_no_breaker_and_a_saved_breaker_survives_a_round_trip(tmp_path):
+    """No schema bump: a file from the last release has no breaker_a (unknown), and one that has it is kept.
+    An older build ignores the key."""
+    fixture = Path(__file__).parent / "fixtures" / "v2" / "config.yaml"
+    path = tmp_path / "config.yaml"
+    path.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+    store = ConfigStore(path)
+    cfg = store.load()
+    assert cfg.shelly_devices and all(d.breaker_a is None and all(c.breaker_a is None for c in d.channels) for d in cfg.shelly_devices)
+    cfg.shelly_devices[0].breaker_a = 16.0
+    cfg.shelly_devices[0].channels[0].breaker_a = 10.0
+    store.save()
+    again = ConfigStore(path).load()
+    assert again.shelly_devices[0].breaker_a == 16.0 and again.shelly_devices[0].channels[0].breaker_a == 10.0
+    # an older build (the models without the field) reads the file and ignores the key
+    OldDevice = create_model("OldDevice", __base__=_Model, **{k: (f.annotation, f) for k, f in ShellyDeviceConfig.model_fields.items() if k != "breaker_a"})
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))["shelly_devices"][0]
+    assert not hasattr(OldDevice.model_validate(raw), "breaker_a")
+
+
+async def test_the_breaker_can_be_set_and_cleared_and_is_public_and_saved(hub):
+    integ, cfg = await make(hub)
+    await integ.update("rack", None, None, None, None, 16.0, [{"key": "pm1_0", "label": "", "phase": "", "rating_a": 0, "breaker_a": 10.0}], None, 13.0)
+    assert cfg.breaker_a == 13.0 and cfg.channels[0].breaker_a == 10.0
+    pub = public_extra(cfg)
+    assert pub["breaker_a"] == 13.0 and pub["channels"]["pm1_0"]["breaker_a"] == 10.0
+    assert hub.devices["rack"].to_dict()["breaker_a"] == 13.0
+    assert integ.admin_status()["meters"][0]["breaker_a"] == 13.0
+    await integ.update("rack", None, None, None, None, None, None, None, 0.0)
+    assert cfg.breaker_a is None and "breaker_a" not in hub.devices["rack"].to_dict()
+    with pytest.raises(ValueError):
+        ShellyDeviceConfig(id="x", host=HOST, mac=MAC, breaker_a=-1)
+
+
+async def test_warnings_are_made_from_the_lower_limit(hub):
+    integ, cfg = await make(hub)
+    cfg.rating_a, cfg.breaker_a = 16.0, 13.0
+    feed(integ, fx("pmmini-gen3-getstatus.json"), 1000.0)
+    integ.apply_warnings("rack")
+    th = {t.id: t for t in hub.config.thresholds if t.id.startswith("shelly_rack_")}
+    assert sorted(round(t.above, 2) for t in th.values()) == [10.4, 13.0]
