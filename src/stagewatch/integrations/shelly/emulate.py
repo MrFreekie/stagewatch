@@ -28,6 +28,9 @@ DEMO3_HOST = "192.0.2.11"       # a simulated three-phase meter (a Pro 3EM shape
 DEMO3_NAME = "Distro (sim)"
 DEMO1_HOST = "192.0.2.12"        # a simulated first-generation Shelly EM (two channels, one relay)
 DEMO1_NAME = "FOH power (sim, Gen1)"
+DEMO4_HOST, DEMO4_NAME = "192.0.2.13", "Amp rack (sim)"        # two more PM Minis, loaded differently, so the
+DEMO5_HOST, DEMO5_NAME = "192.0.2.14", "Lighting rack (sim)"   # calculated neutral has something to show
+_LOAD_SCALE = {DEMO4_HOST: 1.7, DEMO5_HOST: 0.6}
 CYCLE_S = 300.0
 OUTAGE_START_S = 240.0
 OUTAGE_S = 40.0
@@ -71,7 +74,7 @@ class EmulatedMeter:
 
     def power_w(self, now: float) -> float:
         t = now - self._t0
-        base = 205.0 + 35.0 * math.sin(t / 90.0) + 8.0 * math.sin(t / 7.0)
+        base = (205.0 + 35.0 * math.sin(t / 90.0) + 8.0 * math.sin(t / 7.0)) * _LOAD_SCALE.get(self.host, 1.0)
         spike = 140.0 if int(t) % 45 in (0, 1) else 0.0     # a short surge every 45 seconds
         return round(base + spike, 1)
 

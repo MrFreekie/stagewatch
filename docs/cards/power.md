@@ -93,6 +93,19 @@ The voltage and frequency warnings put a quiet notice in the alarm bar. It never
 
 Choose **Totals** in the chart's box to see the watts of each line now. A three-phase meter shows its own Line 1, Line 2, Line 3 and total. Single-phase circuits are added up by the line you set for each circuit in Admin (Line 1, 2 or 3, or "Line not set"), with a total for all lines. If any circuit in a line is not reading, that line says INCOMPLETE and names what is missing, instead of showing a part-total. Neutral current is listed as it is, never added up.
 
+## Calculated neutral current
+
+When you put single-phase circuits on Line 1, Line 2 and Line 3 in Admin, the Power card adds a **Calculated neutral** meter showing **Neutral current (calculated)**: the current that must be returning in the neutral because the three lines are not loaded equally. It is worked out, never measured, and it is labelled that way everywhere, including the graph (choose **Neutral and earth**) and the history.
+
+- **Each line needs at least one circuit, and every circuit must be reading.** If a line has no circuit, or any circuit is not answering or its reading is old, there is no figure (a dash) and the card says why. Stagewatch never works it out from two lines, and never shows a missing line as zero.
+- **Which method is used is stated on the card.** The better one uses each circuit's power factor and the direction of its reactive power; it is used only when every circuit gives both. The usual meters (PM Mini, 1PM, 2PM) do not, so the card shows an **estimate (assumes equal power factor)**, which is right only when all three lines have much the same power factor. With very different power factors it can be well out (for example 10, 6 and 8 A read 3.5 A by the estimate, but 5.1 A when the real power factors are 0.87 lagging, 1.0 and 0.94 leading).
+- **Fundamental frequency only.** Switch-mode power supplies and LED drivers send third-harmonic current that adds up in the neutral instead of cancelling, so a real neutral can carry more than the calculation says, even with the lines balanced.
+- **Meters are read at slightly different moments**, so a short-lived unbalance can be an artefact.
+- **Loads on circuits that are not metered are not included.**
+- **Three-phase meters are left out.** A meter that measures its own neutral (a Pro 3EM) shows that measured value instead.
+
+Treat it as a guide for balancing a distro, not as a measurement. Stagewatch only reads.
+
 ## History chart
 
 Under the meters is a chart of one measurement over time: **Power**, **Current**, **Voltage** or **Frequency**, for the last **15m**, **1h** or the whole **Show**. A three-phase meter gets one line per phase, and lines also differ by dash style, not just colour. The box above the chart chooses what it shows: **All on one graph** (every circuit of every meter as separate lines, each named in the key, up to nine at once), **Totals**, one meter, or just one circuit or phase of a meter (for example one switch of a 2PM, one channel of an EM, or phase 2 of a three-phase meter). Only one kind of measurement is drawn at a time, so watts and amps never share a scale. Your choice is kept on this device only. The chart draws what was recorded. When Stagewatch was not reading the meter, the line breaks. Nothing is joined up or filled in. Short surges between two readings can be missed. On a wall screen the controls are hidden and the chart shows the saved choice.

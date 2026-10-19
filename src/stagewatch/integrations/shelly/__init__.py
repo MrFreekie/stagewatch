@@ -29,12 +29,14 @@ from typing import Callable
 
 from ...core import sitetime
 from ...core.config import SHELLY_MAX_METERS, ShellyChannelConfig, ShellyDeviceConfig, Threshold
-from ...core.model import UNITS, Device, Entity, Status, slugify
+from ...core.model import UNITS, Device, Entity, Kind, Status, slugify
 from ...core.plugin import Integration, Manifest
 from ..smaart.client import is_local_address
 from . import dayfigures as df
+from . import neutral as nt
 from . import readings as rd
-from .emulate import DEMO1_HOST, DEMO1_NAME, DEMO3_HOST, DEMO3_NAME, DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac
+from .emulate import (DEMO1_HOST, DEMO1_NAME, DEMO3_HOST, DEMO3_NAME, DEMO4_HOST, DEMO4_NAME, DEMO5_HOST, DEMO5_NAME,
+                      DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac)
 from .http import Fetch, ShellyError, get_json
 from .transport import DeviceInfo, HttpPollTransport, Target, Transport, identify, read_status
 
@@ -51,6 +53,8 @@ LOAD_HIGH_PCT, LOAD_OVER_PCT = 80.0, 100.0
 UK_F_LOW, UK_F_HIGH, UK_F_NEAR_LOW, UK_F_NEAR_HIGH, F_JUDGED = 49.5, 50.5, 49.8, 50.2, (40.0, 55.0)
 SW_NUM = lambda v: f"{v:.2f}".rstrip("0").rstrip(".")  # noqa: E731
 HEARTBEAT_S = 10.0          # an unchanged value is re-recorded at most this often
+NEUTRAL_ID = "shelly_neutral"      # the one calculated-neutral "meter" (see _update_neutral)
+NEUTRAL_ENTITY = f"{NEUTRAL_ID}.neutral_current"
 FAILURES_BEFORE_MISSING = 3  # missed polls in a row before the meter counts as not answering
 
 MANIFEST = Manifest(
@@ -171,7 +175,14 @@ def seed_emulate_shelly(config) -> bool:
         return False
     config.shelly_devices = [
         ShellyDeviceConfig(id="mic_rack_sim", host=DEMO_HOST, mac=emulated_mac(DEMO_HOST),
-                           name=DEMO_NAME, area="Stage L", rating_a=16),
+                           name=DEMO_NAME, area="Stage L", rating_a=16,
+                           channels=[ShellyChannelConfig(key="pm1_0", phase="L1")]),
+        ShellyDeviceConfig(id="amp_rack_sim", host=DEMO4_HOST, mac=emulated_mac(DEMO4_HOST),
+                           name=DEMO4_NAME, area="Stage R", rating_a=16,
+                           channels=[ShellyChannelConfig(key="pm1_0", phase="L2")]),
+        ShellyDeviceConfig(id="lighting_sim", host=DEMO5_HOST, mac=emulated_mac(DEMO5_HOST),
+                           name=DEMO5_NAME, area="Truss", rating_a=16,
+                           channels=[ShellyChannelConfig(key="pm1_0", phase="L3")]),
         ShellyDeviceConfig(id="distro_sim", host=DEMO3_HOST, mac=emulated_mac(DEMO3_HOST),
                            name=DEMO3_NAME, area="Dock", rating_a=32),
         ShellyDeviceConfig(id="em_sim", host=DEMO1_HOST, mac=emulated_mac(DEMO1_HOST),
@@ -198,6 +209,7 @@ class ShellyIntegration(Integration):
         self._meters: dict[str, _Meter] = {}          # by MAC
         self._lock = asyncio.Lock()
         self._started = False
+        self._neutral_last: tuple[float | None, float] | None = None
 
     # ------------------------------------------------------------- lifecycle
     async def start(self) -> None:
@@ -205,6 +217,7 @@ class ShellyIntegration(Integration):
         self._started = True
         for cfg in list(self.hub.config.shelly_devices):
             self._attach(cfg)
+        self._update_neutral(self._clock())
 
     async def stop(self) -> None:
         self._started = False
@@ -261,6 +274,7 @@ class ShellyIntegration(Integration):
                      if m.last_ok else "No reply yet")
             self.hub.set_device_status(did, Status.MISSING, since, silent_alarm=True)
         log.info("Shelly %s: poll failed (%s, %d in a row)", did, category, failures)
+        self._update_neutral(self._clock())
 
     # ------------------------------------------------------------------ readings
     def _apply_status(self, m: _Meter, status: dict, ts: float) -> None:
@@ -289,6 +303,7 @@ class ShellyIntegration(Integration):
         if was_gap and dev is not None:
             # Only a gap seen live gets a marker, made now: nothing is filled in for the time between.
             self.hub.add_marker(f"{dev.name}: meter back", "shelly")
+        self._update_neutral(ts)
 
     def _register(self, m: _Meter, r: rd.Reading, eid: str, channels: int) -> None:
         labels = {"channel": r.channel, "field": r.field}
@@ -377,6 +392,67 @@ class ShellyIntegration(Integration):
         if prev is None or prev[0] != r.value or ts - prev[1] >= beat:
             self.hub.update_state(eid, r.value, ts)
             m.last[r.object_id] = (r.value, ts)
+
+    # ------------------------------------------------------- calculated neutral current
+    def _fresh(self, eid: str, now: float) -> float | None:
+        """An entity's value if it has one and it is not old; else None (never a stale or assumed number)."""
+        e = self.hub.entities.get(eid)
+        if e is None or e.value is None or e.is_stale(now, self.hub.stale_after_for(e)):
+            return None
+        return e.value
+
+    def _neutral_circuits(self, now: float) -> list[nt.Circuit]:
+        """Every single-phase circuit the admin put on a line, with its readings as of now. A circuit of a
+        three-phase meter is left out: that meter has its own phases and (Pro 3EM) its own measured neutral."""
+        out = []
+        for cfg in self.hub.config.shelly_devices:
+            for ch in cfg.channels:
+                if ch.phase not in nt.LINES:
+                    continue
+                if any(e.device_id == cfg.id and e.labels.get("channel") == ch.key and e.labels.get("group") in ("a", "b", "c")
+                       for e in self.hub.entities.values()):
+                    continue
+                base = f"{cfg.id}.{ch.key}_"
+                out.append(nt.Circuit(ch.phase, self._fresh(base + "current", now), self._fresh(base + "power", now),
+                                      self._fresh(base + "pf", now), self._fresh(base + "reactive", now)))
+        return out
+
+    def _update_neutral(self, ts: float) -> None:
+        """Work out the neutral current implied by the circuits on L1, L2 and L3 (see neutral.py) and record it
+        like any other reading, as "Neutral current (calculated)". Calculated, never measured. With no
+        circuit on a line, or any circuit not reading, there is no figure (None): nothing is assumed or filled in.
+        Does nothing at all until the admin has put a circuit on a line."""
+        try:
+            circuits = self._neutral_circuits(self._clock())   # age is judged against now, whatever the reading's own time
+            if not circuits:
+                if NEUTRAL_ID in self.hub.devices:
+                    self.hub.remove_device(NEUTRAL_ID)
+                self._neutral_last = None
+                return
+            result = nt.neutral_current(circuits)
+            if NEUTRAL_ID not in self.hub.devices:
+                dev = Device(NEUTRAL_ID, "Calculated neutral", MANIFEST.domain, "Stagewatch", "", "",
+                             Status.OK, category="meter", role="equipment")
+                self.hub.register_device(dev)
+                self.hub.set_device_status(NEUTRAL_ID, Status.OK, "Calculated from the line currents")
+            note = (f"Calculated from the line currents, not measured: {result.method}." if result.amps is not None
+                    else f"No figure: {result.reason}.")
+            self.hub.set_device_public(NEUTRAL_ID, {"calc_note": note})
+            method = result.method or nt.METHOD_PHASORS
+            ent = self.hub.entities.get(NEUTRAL_ENTITY)
+            if ent is None or (result.method and ent.labels.get("calculated") != method):
+                self.hub.register_entity(Entity(
+                    NEUTRAL_ENTITY, NEUTRAL_ID, "Neutral current (calculated)", Kind.CURRENT, UNITS.get(Kind.CURRENT, "A"), 2,
+                    labels={"channel": "neutral_calc", "field": "current", "group": "n", "calculated": method},
+                    locked_equipment=True))
+            value = result.amps
+            prev = self._neutral_last
+            beat = min(HEARTBEAT_S, self.hub.config.site.stale_after_s / 2)
+            if prev is None or prev[0] != value or ts - prev[1] >= beat:
+                self.hub.update_state(NEUTRAL_ENTITY, value, ts)
+                self._neutral_last = (value, ts)
+        except Exception:  # noqa: BLE001 - a calculation problem must never stop the meters
+            log.exception("Shelly: could not work out the neutral current")
 
     # -------------------------------------------------------------------- admin
     async def _identify(self, host: str) -> tuple[DeviceInfo, dict]:
@@ -469,6 +545,7 @@ class ShellyIntegration(Integration):
                 self.hub.register_device(self._device(cfg, m.info if m else None, dev.status))
             self.hub.set_device_public(cfg.id, public_extra(cfg))
             self._transport.add(Target(cfg.mac, cfg.host, cfg.poll_interval_s))
+            self._update_neutral(self._clock())
 
     def apply_warnings(self, device_id: str) -> int:
         """Admin button "Add warnings at 80 % and 100 %": for each circuit's current reading, two ordinary
@@ -513,6 +590,7 @@ class ShellyIntegration(Integration):
             self.hub.config.shelly_devices.remove(cfg)
             self.hub.save_config()
             self.hub.remove_device(cfg.id)      # its history stays
+            self._update_neutral(self._clock())
 
     def _admin_channels(self, cfg: ShellyDeviceConfig) -> list[dict]:
         """The circuits Stagewatch has seen on a meter, with what the admin typed about each."""

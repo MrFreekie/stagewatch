@@ -49,7 +49,8 @@ SW.pw = (function () {
     return { text: SW.num(v / 1000, 2), unit: "kVA" };
   };
   // Words for a reading that Stagewatch worked out itself (labels.calculated says how): never passed off as the meter's own.
-  pw.calcWord = (e) => (e && e.labels && e.labels.calculated ? " (calculated)" : "");
+  // The calculated neutral current says when it is only an estimate (it assumed the same power factor on every line).
+  pw.calcWord = (e) => (e && e.labels && e.labels.calculated ? (/^estimate/.test(e.labels.calculated) ? " (calculated estimate, assumes equal power factor)" : " (calculated)") : "");
 
   // The meter's running total: Wh below 1,000, kWh above. "—" with no value.
   pw.fmtEnergy = function (wh) {
@@ -404,6 +405,7 @@ SW.pw = (function () {
     else if (status === "missing") { state = "frozen"; badge = "▲ NO READING"; note = `Not answering. Showing the last readings, ${ageText(newest, now)}.`; }
     else if (status === "fault" || status === "compromised") { state = "frozen"; badge = "▲ PROBLEM"; note = (device.status_detail || "Cannot read this meter") + (newest ? `. Last readings ${ageText(newest, now)}.` : "."); }
     else if (anyStale) { state = "frozen"; badge = "▲ OLD"; note = `Readings are old (${ageText(newest, now)}).`; }
+    if (state === "live" && device.calc_note) note = device.calc_note;   // the calculated neutral: how it was worked out, or why there is no figure
     const channels = {};
     for (const e of mine) {
       const c = e.labels.channel;
