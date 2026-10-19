@@ -12,7 +12,18 @@ SW.ptree = (function () {
   const RANK = { source: 0, isu: 1, cdu: 2, fdu: 3, equipment: 4, ups: 5, other: 6 };
   const LINE_WORD = { a: "L1", b: "L2", c: "L3" };
 
-  t.slug = (ref) => String(ref).replace(/:/g, "_");
+  // The same entity-id piece the server makes (treecalc.node_slug): the reference with ":" as "_", then its CRC-32.
+  let CRC = null;
+  const crc32 = function (str) {
+    if (!CRC) {
+      CRC = [];
+      for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); CRC[n] = c >>> 0; }
+    }
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < str.length; i++) c = CRC[(c ^ str.charCodeAt(i)) & 255] ^ (c >>> 8);
+    return ((c ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, "0");
+  };
+  t.slug = (ref) => `${String(ref).replace(/:/g, "_")}_${crc32(String(ref))}`;
 
   // ---- the forest -------------------------------------------------------------------------------------
   // structure = { nodes: [...] } from /api/power-tree. Returns { roots, loose }: each root is a supply with
@@ -45,34 +56,38 @@ SW.ptree = (function () {
     const p = String(ref).split(":");
     return { kind: p[0], dev: p[1] || "", key: p.slice(2).join(":") };
   };
-  // Live current per line from the node's meter entities. { lines: [{label, a}], total, max, ok } where ok is
-  // false when any needed current is missing or old (then there is no bar: never a partial figure).
-  t.amps = function (node, entities) {
-    const r = parseRef(node.ref);
-    const list = Object.keys(entities || {}).map((k) => entities[k]).filter((e) => e && e.device_id === r.dev && e.labels
+  // Live current per line from the node's meter entities (devEnts: that device's entities). Amps of different
+  // lines are never added: a three-phase meter gives L1, L2 and L3; single-phase circuits are grouped by the line
+  // they were set to in Admin (circuits with no line set are one group). { lines: [{label, a}], max, ok } where ok
+  // is false when any needed current is missing or old (then there is no bar: never a partial figure).
+  t.amps = function (node, devEnts, devices) {
+    const r = parseRef(node.ref), chans = ((devices || {})[r.dev] || {}).channels || {};
+    const list = (devEnts || []).filter((e) => e && e.device_id === r.dev && e.labels
       && e.labels.field === "current" && e.labels.channel && !e.labels.derived && (r.kind === "m" || e.labels.channel === r.key));
-    const per = {}, bad = { v: false };
+    const per = {}, order = [];
+    let bad = false;
     for (const e of list) {
       const g = e.labels.group || "";
       if (g !== "" && !LINE_WORD[g]) continue;     // neutral, total, average: not a line
+      const k = g !== "" ? LINE_WORD[g] : ((chans[e.labels.channel] || {}).phase || "");
       const live = isNum(e.value) && !e.stale;
-      if (!live) bad.v = true;
-      per[g] = (per[g] || 0) + (live ? e.value : 0);
+      if (!live) bad = true;
+      if (!(k in per)) { per[k] = 0; order.push(k); }
+      per[k] += live ? e.value : 0;
     }
-    const three = ["a", "b", "c"].filter((g) => g in per);
-    const lines = three.length ? three.map((g) => ({ label: LINE_WORD[g], a: per[g] })) : ("" in per ? [{ label: "", a: per[""] }] : []);
-    const ok = lines.length > 0 && !bad.v;
-    return { lines, ok, max: ok ? Math.max(...lines.map((l) => l.a)) : null, sum: ok ? lines.reduce((s, l) => s + l.a, 0) : null,
-      three: three.length > 0 };
+    order.sort();
+    const lines = order.map((k) => ({ label: k, a: per[k] }));
+    const ok = lines.length > 0 && !bad;
+    return { lines, ok, max: ok ? Math.max(...lines.map((l) => l.a)) : null };
   };
 
   // { state: "unmetered" | "waiting" | "none" | "old" | "ok", w, updated, amps }
-  t.reading = function (node, entities, devices, now) {
+  t.reading = function (node, entities, devices, now, byDev) {
     if (node.kind === "point") return { state: "unmetered", w: null, updated: null, amps: null };
     const r = parseRef(node.ref), dev = (devices || {})[r.dev];
     const ids = r.kind === "m" ? [`${r.dev}.meter_power_load`] : [`${r.dev}.${r.key}_power`, `${r.dev}.${r.key}_total_power`];
     const e = ids.map((id) => (entities || {})[id]).find(Boolean);
-    const out = { state: "waiting", w: null, updated: e ? e.updated : null, amps: t.amps(node, entities) };
+    const out = { state: "waiting", w: null, updated: e ? e.updated : null, amps: t.amps(node, byDev ? byDev[r.dev] : Object.keys(entities || {}).map((k) => entities[k]), devices) };
     const st = dev ? dev.status || "" : "";
     if (!dev || st === "missing" || st === "fault" || st === "compromised") return { ...out, state: "none" };
     if (!e || st === "initializing") return out;
@@ -82,21 +97,23 @@ SW.ptree = (function () {
   };
 
   // ---- the server's calculated figures ----------------------------------------------------------------
-  // Gap at a node: { state: "ok" | "incomplete" | "mismatch" | "waiting", watts, reason, ups, nodeW, childrenW }.
+  // Gap at a node: { state: "ok" | "incomplete" | "mismatch" | "battery" | "waiting", watts, reason, ups, nodeW, childrenW, efficiency }.
   t.gap = function (ref, entities) {
     const e = (entities || {})[`${SITE}.treegap_${t.slug(ref)}`];
     const d = (e && e.day) || null;
     if (!e || !d) return { state: "waiting", watts: null, reason: "", ups: false };
     if (e.stale) return { state: "incomplete", watts: null, reason: "Not updating.", ups: !!d.ups };
     return { state: d.state, watts: d.state === "ok" && isNum(e.value) ? e.value : null, reason: d.reason || "", ups: !!d.ups,
-      nodeW: isNum(d.node_w) ? d.node_w : null, childrenW: isNum(d.children_w) ? d.children_w : null };
+      nodeW: isNum(d.node_w) ? d.node_w : null, childrenW: isNum(d.children_w) ? d.children_w : null, efficiency: isNum(d.efficiency) ? d.efficiency : null };
   };
-  // A recorded total: { watts, complete, known } (known false while there is no entity yet).
+  // A total: { watts, partial, complete, known }. Only a complete total is recorded as a value; an incomplete one
+  // has no value and carries the monitored part as `partial` for display only, marked incomplete.
   t.total = function (eid, entities) {
     const e = (entities || {})[`${SITE}.${eid}`];
-    if (!e || !e.day) return { watts: null, complete: false, known: false };
-    const live = !e.stale && isNum(e.value);
-    return { watts: live ? e.value : null, complete: live && !!e.day.complete, known: true };
+    if (!e || !e.day) return { watts: null, partial: null, complete: false, known: false };
+    const w = !e.stale && isNum(e.value) ? e.value : null;
+    const partial = !e.stale && isNum(e.day.partial_w) ? e.day.partial_w : null;
+    return { watts: w, partial, complete: w !== null && !!e.day.complete, known: true };
   };
   t.sourceTotal = (ref, entities) => t.total(`treesrc_${t.slug(ref)}`, entities);
 
@@ -111,7 +128,8 @@ SW.ptree = (function () {
   t.gapLine = function (g) {
     if (g.ups) {
       if (g.state === "ok") return { head: "Loss and charging (calculated)", watts: g.watts, text: "", level: "" };
-      if (g.state === "mismatch") return { head: "▲ CHECK", watts: null, text: "It gives out more than it takes in. Check the Upstream, the line and the channel.", level: "check" };
+      if (g.state === "battery") return { head: "▲ MAY BE ON BATTERY", watts: null, text: g.reason || "It gives out more than it takes in.", level: "warn" };
+      if (g.state === "mismatch") return { head: "▲ CHECK", watts: null, text: g.reason || "Check the Upstream, the line and the channel.", level: "check" };
       return { head: "Loss and charging", watts: null, text: g.state === "waiting" ? "Waiting for readings." : "Incomplete: needs the input and what it feeds both reading.", level: "warn" };
     }
     if (g.state === "ok") return { head: "Unmonitored (calculated)", watts: g.watts, text: "", level: "" };
@@ -119,13 +137,15 @@ SW.ptree = (function () {
     if (g.state === "waiting") return { head: "Unmonitored", watts: null, text: "Waiting for readings.", level: "" };
     return { head: "Unmonitored: incomplete", watts: null, text: g.reason || "", level: "warn" };
   };
+  // A meter whose children are all its own circuits: its gap would be 0 W by construction, so none is shown.
+  t.ownCircuitsOnly = (n) => n.kind === "meter" && n.children.length > 0 && n.children.every((c) => c.ref.indexOf("c:" + parseRef(n.ref).dev + ":") === 0);
   // The load bar for a node: reuses the Power card's bar and its 80 % and 100 % levels.
   t.load = function (node, rd, devices) {
     const dev = (devices || {})[parseRef(node.ref).dev] || {};
     const rating = isNum(node.rating_a) ? node.rating_a : (node.kind === "circuit" || node.kind === "meter") && isNum(dev.rating_a) ? dev.rating_a : null;
     if (!rd.amps || !rd.amps.ok || rd.state !== "ok") return { ...SW.pw.loadView(null, rating), rating };
-    // Three lines: the busiest line against the rating. Single-phase circuits of one meter: added together.
-    return { ...SW.pw.loadView(rd.amps.three ? rd.amps.max : rd.amps.sum, rating), rating };
+    // The busiest line against the rating (amps of different lines are never added).
+    return { ...SW.pw.loadView(rd.amps.max, rating), rating };
   };
 
   // ---- DOM --------------------------------------------------------------------------------------------
@@ -184,11 +204,12 @@ SW.ptree = (function () {
       return tiles[id];
     }
     function fillTile(tl, tot, sub) {
-      const f = t.watts(tot.watts);
+      const v = tot.watts != null ? tot.watts : tot.partial;     // an incomplete total shows its monitored part, marked
+      const f = t.watts(v);
       setText(tl.el.querySelector(".pt-num"), f.text);
-      setText(tl.el.querySelector(".unit"), tot.watts == null ? "" : " " + f.unit);
-      setText(tl.el.querySelector(".pt-tilesub"), tot.watts == null ? (tot.known ? "No reading" : "Waiting") : sub + (tot.complete ? "" : " ▲ INCOMPLETE"));
-      setCls(tl.el, "pt-tile" + (tot.watts != null && !tot.complete ? " pt-incomplete" : ""));
+      setText(tl.el.querySelector(".unit"), v == null ? "" : " " + f.unit);
+      setText(tl.el.querySelector(".pt-tilesub"), v == null ? (tot.known ? "No reading" : "Waiting") : sub + (tot.complete ? "" : " ▲ INCOMPLETE"));
+      setCls(tl.el, "pt-tile" + (v != null && !tot.complete ? " pt-incomplete" : ""));
     }
 
     function update(structure, entities, devices, now) {
@@ -212,9 +233,11 @@ SW.ptree = (function () {
         summary.replaceChildren(...items.map((it) => tile(it.id, it.label).el));
         host.dataset.ready = "1";
       }
-      // numbers, in place
+      // numbers, in place (the entities are sorted into devices once, not once per node)
+      const byDev = {};
+      for (const k of Object.keys(entities || {})) { const en = entities[k]; if (en && en.device_id) (byDev[en.device_id] || (byDev[en.device_id] = [])).push(en); }
       for (const ref of Object.keys(els)) {
-        const e = els[ref], n = e.n, rd = t.reading(n, entities, devices, now);
+        const e = els[ref], n = e.n, rd = t.reading(n, entities, devices, now, byDev);
         const f2 = t.watts(rd.w);
         const shown = rd.state === "ok" || rd.state === "old";
         e.figs.hidden = rd.state === "unmetered";
@@ -235,7 +258,7 @@ SW.ptree = (function () {
         setText(e.rating, rated);
         e.rating.hidden = !rated;
         // Unmonitored gap (or UPS loss): only where this node is metered and feeds something
-        const feeds = n.children.length > 0 && n.kind !== "point";
+        const feeds = n.children.length > 0 && n.kind !== "point" && !t.ownCircuitsOnly(n);
         e.gap.hidden = !feeds;
         e.ups.hidden = true;
         if (feeds) {
@@ -246,7 +269,8 @@ SW.ptree = (function () {
           setCls(e.gap, "pt-gap" + (gl.level ? " pt-gap-" + gl.level : ""));
           if (g.ups) {
             const inW = t.watts(g.nodeW), outW = t.watts(g.childrenW);
-            setText(e.ups, `In ${g.nodeW == null ? "—" : inW.text + " " + inW.unit} → Out ${g.childrenW == null ? "—" : outW.text + " " + outW.unit}`);
+            setText(e.ups, `In ${g.nodeW == null ? "—" : inW.text + " " + inW.unit} → Out ${g.childrenW == null ? "—" : outW.text + " " + outW.unit}`
+              + (g.efficiency == null ? "" : ` · Efficiency ${SW.num(g.efficiency, 0)}% (calculated)`));
             e.ups.hidden = false;
           }
         }

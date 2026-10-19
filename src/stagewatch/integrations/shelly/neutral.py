@@ -15,7 +15,8 @@ currents (Kirchhoff's current law at the star point): I_N = -(I_L1 + I_L2 + I_L3
   leading 20 degrees give 5.08 A by phasors but 3.46 A by this formula), so it is always labelled as an estimate.
 
 Limits (shown to the crew): fundamental frequency only (triplen harmonics add in the neutral, so a
-non-linear load can really carry more), meters read at slightly different moments, and loads not on a
+non-linear load can really carry more; a meter's power factor and reactive power include distortion, so with LED
+or switch-mode loads the phasor angles can be wrong and even the phasor result is only a guide), meters read at slightly different moments, and loads not on a
 metered circuit are not counted.
 """
 
@@ -41,6 +42,9 @@ class Circuit:
     power: float | None = None      # watts (negative = returned to the supply)
     pf: float | None = None
     reactive: float | None = None   # var, signed: positive = current lags the voltage (inductive)
+    reactive_calc: bool = False     # True when the reactive power was worked out by Stagewatch (sqrt(S2 - P2)): it has no
+                                    # sign, so it cannot say lagging or leading and the phasor method is not used
+    supply: str = ""                # the supply the circuit is on; neutral currents are never added across supplies
 
 
 @dataclass(frozen=True)
@@ -52,7 +56,7 @@ class Neutral:
 
 def _angle(c: Circuit) -> float | None:
     """The angle of the current behind its line's voltage, or None when it cannot be trusted."""
-    if c.power is None or c.pf is None or c.reactive is None or c.power < 0 or abs(c.pf) < PF_MIN:
+    if c.power is None or c.pf is None or c.reactive is None or c.reactive_calc or c.power < 0 or abs(c.pf) < PF_MIN:
         return None
     phi = math.acos(min(1.0, abs(c.pf)))
     return -phi if c.reactive < 0 else phi
@@ -61,6 +65,8 @@ def _angle(c: Circuit) -> float | None:
 def neutral_current(circuits: list[Circuit]) -> Neutral:
     """The calculated neutral current of the circuits given. Unavailable (no figure, a reason) unless every
     line has at least one circuit and every circuit has a current; nothing is assumed or left out."""
+    if len({c.supply for c in circuits}) > 1:
+        return Neutral(None, reason="The circuits are on more than one supply, and current is not added across supplies")
     for line in LINES:
         mine = [c for c in circuits if c.line == line]
         if not mine:

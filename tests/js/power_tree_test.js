@@ -51,17 +51,23 @@ eq(T.reading(node("c:d:ch0", "equipment"), { "d.ch0_total_power": ent("d.ch0_tot
 // ---- amps and the bar: busiest of three lines, all or nothing
 const cur = (g, v, stale) => ent(`d.em_${g}_current`, v, stale, { field: "current", channel: "em", group: g });
 const three = { a: cur("a", 16, false), b: cur("b", 8, false), c: cur("c", 4, false), t: cur("total", 28, false), n: cur("n", 9, false) };
-const am = T.amps(m, three);
+const am = T.amps(m, Object.values(three), { d: dev("ok") });
 eq([am.ok, am.max, am.lines.map((l) => l.label)], [true, 16, ["L1", "L2", "L3"]], "three lines; neutral and total are not lines");
-eq(T.amps(m, { ...three, b: cur("b", 8, true) }).ok, false, "one old line: no bar (no partial figure)");
+eq(T.amps(m, Object.values({ ...three, b: cur("b", 8, true) }), { d: dev("ok") }).ok, false, "one old line: no bar (no partial figure)");
 const ld = T.load(m, { state: "ok", amps: am }, { d: dev("ok") });
 eq([ld.level, Math.round(ld.pct), ld.rating], ["ok", 50, 32], "16 A of 32 A");
 eq(T.load({ ...m, rating_a: 20 }, { state: "ok", amps: am }, { d: dev("ok") }).level, "high", "80 % warns");
 eq(T.load({ ...m, rating_a: 16 }, { state: "ok", amps: am }, { d: dev("ok") }).level, "over", "100 % is over");
+// single-phase circuits on different lines are not added together: the busiest line, not the sum
+const one = (ch, v) => ent(`d.${ch}_current`, v, false, { field: "current", channel: ch, group: "" });
+const twoLines = T.amps(m, [one("c0", 10), one("c1", 7)], { d: { ...dev("ok"), channels: { c0: { phase: "L1" }, c1: { phase: "L2" } } } });
+eq([twoLines.max, twoLines.lines.map((l) => l.label)], [10, ["L1", "L2"]], "two lines are not added");
+const noLine = T.amps(m, [one("c0", 10), one("c1", 7)], { d: dev("ok") });
+eq(noLine.max, 17, "circuits with no line set are one group");
 eq(T.load(m, { state: "old", amps: am }, { d: dev("ok") }).level, "none", "no bar from an old reading");
 
 // ---- the server's figures
-const gapEnt = (v, day, stale) => ({ "power_site.treegap_m_d": { value: v, day, stale: !!stale } });
+const gapEnt = (v, day, stale) => ({ ["power_site.treegap_" + T.slug("m:d")]: { value: v, day, stale: !!stale } });
 eq(T.gap("m:d", gapEnt(1000, { state: "ok" })).watts, 1000, "gap ok");
 eq(T.gap("m:d", gapEnt(null, { state: "incomplete", reason: "x" })).watts, null, "incomplete has no number");
 eq(T.gap("m:d", gapEnt(-5, { state: "mismatch" })).watts, null, "a mismatch never shows a number");
@@ -71,9 +77,17 @@ eq(T.gapLine(T.gap("m:d", gapEnt(1000, { state: "ok" }))).head, "Unmonitored (ca
 eq(T.gapLine(T.gap("m:d", gapEnt(null, { state: "mismatch", ups: false }))).level, "check", "mismatch asks for a check");
 eq(T.gapLine(T.gap("m:d", gapEnt(80, { state: "ok", ups: true }))).head, "Loss and charging (calculated)", "UPS loss wording");
 eq(T.gapLine(T.gap("m:d", gapEnt(null, { state: "incomplete", ups: true }))).watts, null, "UPS loss needs both sides");
-eq(T.total("tree_site", { "power_site.tree_site": { value: 5000, day: { complete: false }, stale: false } }), { watts: 5000, complete: false, known: true }, "incomplete total is flagged");
+eq(T.total("tree_site", { "power_site.tree_site": { value: null, day: { complete: false, partial_w: 5000 }, stale: false } }), { watts: null, partial: 5000, complete: false, known: true }, "incomplete total: no value, the monitored part kept for display");
+eq(T.total("tree_site", { "power_site.tree_site": { value: 5000, day: { complete: true }, stale: false } }).complete, true, "complete total");
 eq(T.total("tree_site", {}).known, false, "no total yet");
-eq(T.sourceTotal("p:g1", { "power_site.treesrc_p_g1": { value: 10, day: { complete: true }, stale: false } }).watts, 10, "source total by ref");
+eq(T.sourceTotal("p:g1", { ["power_site.treesrc_" + T.slug("p:g1")]: { value: 10, day: { complete: true }, stale: false } }).watts, 10, "source total by ref");
+eq(T.gapLine(T.gap("m:d", gapEnt(null, { state: "battery", ups: true, reason: "r" }))).head, "▲ MAY BE ON BATTERY", "a UPS giving out more than it takes in is not a wiring check");
+eq(T.gapLine(T.gap("m:d", gapEnt(null, { state: "battery", ups: true }))).text.indexOf("Upstream"), -1, "and does not say Upstream");
+eq(T.gap("m:d", gapEnt(80, { state: "ok", ups: true, efficiency: 91 })).efficiency, 91, "UPS efficiency passes through");
+eq(T.ownCircuitsOnly({ kind: "meter", ref: "m:d", children: [{ ref: "c:d:a" }, { ref: "c:d:b" }] }), true, "a meter against its own circuits has no gap");
+eq(T.ownCircuitsOnly({ kind: "meter", ref: "m:d", children: [{ ref: "c:d:a" }, { ref: "m:e" }] }), false, "but one with another meter below it does");
+eq(T.slug("m:abc"), "m_abc_f273c4f4", "same entity id piece as the server");
+eq(T.slug("c:dev:ch_0"), "c_dev_ch_0_ad2dadf3", "including a circuit");
 eq(T.watts(1500), { text: "1.50", unit: "kW" }, "kW from 1,000 W");
 eq(T.watts(null).text, "—", "a dash, never 0");
 

@@ -41,7 +41,7 @@ def reactive_var(watts: float | None, apparent_va: float | None) -> float | None
 
 # ---------------------------------------------------------------- 2. phase unbalance
 def unbalance(a: float | None, b: float | None, c: float | None) -> dict | None:
-    """Current unbalance of three line currents, by the NEMA MG 1 definition:
+    """Current unbalance of three line currents, by the NEMA MG 1 voltage-unbalance method applied to current:
     (largest deviation of any line current from the mean of the three) / mean x 100.
     Returns {"pct", "mean", "shares"} where shares are each line's % of the three currents added up
     (L1, L2, L3), or None when any line is missing or the mean is below UNBALANCE_FLOOR_A."""
@@ -136,7 +136,8 @@ def gap_seconds(poll_interval_s: float) -> float:
 # ---------------------------------------------------------------- 4. generator suggestion
 def generator_suggestion(peak_va: float | None, loading_pct: float = GEN_LOADING_DEFAULT,
                          pf: float = GEN_PF_DEFAULT, size_kva: float | None = None,
-                         now_va: float | None = None, sizes: tuple = GEN_SIZES_KVA) -> dict | None:
+                         now_va: float | None = None, sizes: tuple = GEN_SIZES_KVA,
+                         line_peak_va: float | None = None) -> dict | None:
     """Minimum generator size from the measured peak demand (kVA) and the loading limit:
     min kVA = peak kVA / (loading limit / 100); kW = min kVA x generator power factor; next size up = the
     smallest standard size at or above min kVA (None if it is above the list). If the admin typed a generator
@@ -147,8 +148,13 @@ def generator_suggestion(peak_va: float | None, loading_pct: float = GEN_LOADING
     if peak_va is None or peak_va <= 0:
         return None
     peak_kva = peak_va / 1000
+    basis = "total"
+    # A three-phase generator is limited by its busiest line: each line can give only a third of the rating.
+    # When every line is known, size from three times the busiest line's peak if that is more than the total.
+    if line_peak_va is not None and line_peak_va > 0 and 3 * line_peak_va > peak_va:
+        peak_kva, basis = 3 * line_peak_va / 1000, "line"
     min_kva = peak_kva / (loading_pct / 100)
-    out: dict = {"peak_kva": peak_kva, "loading_pct": loading_pct, "pf": pf, "min_kva": min_kva,
+    out: dict = {"basis": basis, "peak_kva": peak_kva, "loading_pct": loading_pct, "pf": pf, "min_kva": min_kva,
                  "min_kw": min_kva * pf, "next_kva": next((s for s in sizes if s >= min_kva - 1e-9), None)}
     if size_kva:
         pct = 100 * peak_kva / size_kva

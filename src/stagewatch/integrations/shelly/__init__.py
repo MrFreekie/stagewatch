@@ -176,10 +176,10 @@ def seed_emulate_shelly(config) -> bool:
         return False
     config.shelly_devices = [
         ShellyDeviceConfig(id="mic_rack_sim", host=DEMO_HOST, mac=emulated_mac(DEMO_HOST),
-                           name=DEMO_NAME, area="Stage L", rating_a=16, role="equipment", unit_no=1, upstream="p:stage_left",
+                           name=DEMO_NAME, area="Stage L", rating_a=16, role="equipment", unit_no=1, upstream="m:distro_sim",
                            channels=[ShellyChannelConfig(key="pm1_0", label="Mic rack", phase="L1", in_total=True)]),
         ShellyDeviceConfig(id="amp_rack_sim", host=DEMO4_HOST, mac=emulated_mac(DEMO4_HOST),
-                           name=DEMO4_NAME, area="Stage R", rating_a=16, role="equipment", unit_no=2, upstream="p:stage_left",
+                           name=DEMO4_NAME, area="Stage R", rating_a=16, role="equipment", unit_no=2, upstream="m:distro_sim",
                            channels=[ShellyChannelConfig(key="pm1_0", phase="L2")]),
         ShellyDeviceConfig(id="lighting_sim", host=DEMO5_HOST, mac=emulated_mac(DEMO5_HOST),
                            name=DEMO5_NAME, area="Truss", rating_a=16, role="equipment", unit_no=3, upstream="c:em_sim:gen1em_0",
@@ -197,7 +197,7 @@ def seed_emulate_shelly(config) -> bool:
     config.power_points = [
         PowerPointConfig(id="gen_foh", name="Main generator", role="source", unit_no=1, rating_kva=60),
         PowerPointConfig(id="gen_tower", name="Delay tower generator", role="source", unit_no=2, rating_kva=20),
-        PowerPointConfig(id="stage_left", name="Stage left distribution", role="cdu", unit_no=1, upstream="m:distro_sim"),
+        PowerPointConfig(id="stage_left", name="Stage left distribution", role="cdu", unit_no=1, upstream="p:gen_foh"),
         PowerPointConfig(id="video_wall", name="Video wall", role="equipment", unit_no=5, upstream="p:stage_left"),
     ]
     # Short demand window and a generator size, so the calculated figures appear within minutes in emulate mode.
@@ -423,6 +423,7 @@ class ShellyIntegration(Integration):
         """Every single-phase circuit the admin put on a line, with its readings as of now. A circuit of a
         three-phase meter is left out: that meter has its own phases and (Pro 3EM) its own measured neutral."""
         out = []
+        groups = self._derived.supply_groups()
         for cfg in self.hub.config.shelly_devices:
             for ch in cfg.channels:
                 if ch.phase not in nt.LINES:
@@ -431,8 +432,10 @@ class ShellyIntegration(Integration):
                        for e in self.hub.entities.values()):
                     continue
                 base = f"{cfg.id}.{ch.key}_"
+                rx = self.hub.entities.get(base + "reactive")
                 out.append(nt.Circuit(ch.phase, self._fresh(base + "current", now), self._fresh(base + "power", now),
-                                      self._fresh(base + "pf", now), self._fresh(base + "reactive", now)))
+                                      self._fresh(base + "pf", now), self._fresh(base + "reactive", now),
+                                      bool(rx is not None and rx.labels.get("calculated")), groups.get((cfg.id, ch.key), "")))
         return out
 
     def _update_neutral(self, ts: float) -> None:

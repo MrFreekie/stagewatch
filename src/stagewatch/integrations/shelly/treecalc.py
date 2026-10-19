@@ -9,15 +9,37 @@ is never shown as a negative load. Advisory and labelled "calculated".
 
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass, field
 
 # Meter accuracy allowance for the sign check: a gap may be this far below zero before it is a mismatch.
 # Shelly meters are about 1 to 2 % of reading, and the parent and every child each add their own error.
 TOLERANCE_PCT = 2.0         # % of (parent power + sum of children power)
 TOLERANCE_W = 5.0           # plus this much per meter, for readings near zero
-MAX_DEPTH = 12              # deeper than any real site; stops a runaway on bad data
+MAX_DEPTH = 12
 
-GAP_OK, GAP_INCOMPLETE, GAP_MISMATCH = "ok", "incomplete", "mismatch"
+
+def node_slug(ref: str) -> str:
+    """A safe, collision-free piece of an entity id for a node reference (the browser makes the same one):
+    the reference with ':' as '_', then the CRC-32 of the reference in eight hex digits."""
+    return f"{ref.replace(':', '_')}_{zlib.crc32(ref.encode()) & 0xFFFFFFFF:08x}"
+
+
+def supply_key(ref: str, info: dict[str, tuple[str, str]]) -> str:
+    """The supply a node belongs to: the nearest unit above it that is a source or a UPS (a UPS output is
+    its own supply), or "" when none. ``info`` maps ref -> (role, upstream)."""
+    seen = set()
+    cur = info.get(ref, ("", ""))[1]
+    while cur and cur in info and cur not in seen:
+        seen.add(cur)
+        role, up = info[cur]
+        if role in ("source", "ups"):
+            return cur
+        cur = up
+    return ""              # deeper than any real site; stops a runaway on bad data
+
+GAP_OK, GAP_INCOMPLETE, GAP_MISMATCH, GAP_BATTERY = "ok", "incomplete", "mismatch", "battery"
+EFFICIENCY_MIN_W = 100.0   # a UPS efficiency figure needs at least this much going in (near zero it is only noise)
 
 
 @dataclass(frozen=True)
@@ -42,6 +64,7 @@ class Gap:
     children_w: float | None = None
     children: int = 0
     reason: str = ""             # crew words for incomplete / mismatch
+    efficiency: float | None = None   # UPS only: output / input, %, when both are reading and the load is real
 
 
 @dataclass(frozen=True)
@@ -68,6 +91,8 @@ def gaps(nodes: list[TNode]) -> dict[str, Gap]:
         ch = kids.get(n.ref, [])
         if not n.metered or not ch:
             continue
+        if n.kind == "meter" and all(c.ref.startswith(f"c:{n.ref[2:]}:") for c in ch):
+            continue    # a meter against its own circuits is always 0 W by construction: not a measurement
         if n.power is None:
             out[n.ref] = Gap(GAP_INCOMPLETE, None, None, None, len(ch), "This one is not reading.")
             continue
@@ -80,20 +105,25 @@ def gaps(nodes: list[TNode]) -> dict[str, Gap]:
         total = sum(c.power for c in ch)
         gap = n.power - total
         tol = TOLERANCE_PCT / 100 * (abs(n.power) + abs(total)) + TOLERANCE_W * (1 + len(ch))
-        if gap < -tol:
+        if gap < -tol and n.role == "ups":
+            out[n.ref] = Gap(GAP_BATTERY, None, n.power, total, len(ch),
+                             "It gives out more than it takes in. It may be running on its battery.")
+        elif gap < -tol:
             out[n.ref] = Gap(GAP_MISMATCH, None, n.power, total, len(ch),
                              "What is fed from it reads more than it does. Check the Upstream, the line and the channel.")
         else:
-            out[n.ref] = Gap(GAP_OK, max(0.0, gap), n.power, total, len(ch))
+            eff = 100 * total / n.power if n.role == "ups" and n.power >= EFFICIENCY_MIN_W else None
+            out[n.ref] = Gap(GAP_OK, max(0.0, gap), n.power, total, len(ch), efficiency=eff)
     return out
 
 
-def monitored(nodes: list[TNode], ref: str, kids: dict[str, list[TNode]] | None = None, _depth: int = 0) -> Total:
+def monitored(nodes: list[TNode], ref: str, kids: dict[str, list[TNode]] | None = None, _depth: int = 0,
+              by_ref: dict[str, TNode] | None = None) -> Total:
     """The monitored load of the subtree at ``ref``. A node that is metered and reading counts as its own
     reading (it already includes everything below). An unmetered node adds up its children. A silent meter,
     an unmetered leaf and an unmetered UPS (its losses are unknown) leave the total incomplete."""
     kids = kids if kids is not None else _kids(nodes)
-    by_ref = {n.ref: n for n in nodes}
+    by_ref = by_ref if by_ref is not None else {n.ref: n for n in nodes}
     n = by_ref[ref]
     if n.metered:
         if n.power is None:
@@ -102,7 +132,7 @@ def monitored(nodes: list[TNode], ref: str, kids: dict[str, list[TNode]] | None 
     ch = kids.get(ref, [])
     if not ch or _depth >= MAX_DEPTH:
         return Total(None, False, 1)
-    parts = [monitored(nodes, c.ref, kids, _depth + 1) for c in ch]
+    parts = [monitored(nodes, c.ref, kids, _depth + 1, by_ref) for c in ch]
     vals = [p.watts for p in parts if p.watts is not None]
     bad = sum(p.unmonitored for p in parts)
     complete = all(p.complete for p in parts) and n.role != "ups"
@@ -128,15 +158,25 @@ def rollup(nodes: list[TNode]) -> Rollup:
     """Per-supply totals, an Unassigned group, and the site total (watts only: amps per line are never added
     across supplies). The site total is incomplete if any supply or the unassigned group is."""
     kids = _kids(nodes)
-    by_ref = {n.ref for n in nodes}
+    node_by = {n.ref: n for n in nodes}
     r = Rollup()
     for n in nodes:
         if n.role == "source":
-            r.sources[n.ref] = monitored(nodes, n.ref, kids)
-    loose = [n for n in nodes if n.role != "source" and (not n.upstream or n.upstream not in by_ref)
+            r.sources[n.ref] = monitored(nodes, n.ref, kids, 0, node_by)
+    loose = [n for n in nodes if n.role != "source" and (not n.upstream or n.upstream not in node_by)
              and _is_listed(n, kids)]
+    # A circuit's power is counted once, through its own meter. A loose meter with some circuits placed under a
+    # supply is replaced by its circuits that are not placed; a loose circuit whose meter is counted is dropped.
+    placed_meters = {f"m:{n.ref.split(':')[1]}" for n in nodes if n.kind == "circuit" and n.upstream in node_by}
+    swap = [m for m in loose if m.ref in placed_meters]
+    extra = [n for n in nodes if n.kind == "circuit" and not (n.upstream in node_by)
+             and f"m:{n.ref.split(':')[1]}" in {m.ref for m in swap}]
+    loose = [n for n in loose if n not in swap]
+    loose = [n for n in loose if not (n.kind == "circuit" and f"m:{n.ref.split(':')[1]}" in node_by
+                                      and f"m:{n.ref.split(':')[1]}" not in {m.ref for m in swap})]
+    loose += [n for n in extra if n not in loose]
     if loose:
-        parts = [monitored(nodes, n.ref, kids) for n in loose]
+        parts = [monitored(nodes, n.ref, kids, 0, node_by) for n in loose]
         vals = [p.watts for p in parts if p.watts is not None]
         r.unassigned = Total(sum(vals) if vals else None, all(p.complete for p in parts), sum(p.unmonitored for p in parts))
         r.unassigned_refs = [n.ref for n in loose]

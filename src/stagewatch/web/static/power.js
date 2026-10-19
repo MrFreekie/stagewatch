@@ -539,6 +539,7 @@ SW.pw = (function () {
       lines.push(`Loaded to ${SW.num(d.loaded_pct, 0)}% of ${SW.num(d.size_kva, 0)} kVA at the day's peak${isNum(d.now_pct) ? ` (${SW.num(d.now_pct, 0)}% now)` : ""}.${word}`);
     }
     if (d.peak_incomplete) lines.push("▲ Readings were missing inside the peak window, so the real peak may be higher.");
+    if (d.basis === "line") lines.push("Sized from three times the busiest line: a generator can give only a third of its rating on each line, so an uneven load needs a bigger one.");
     return { head: SW.num(d.min_kva, 1), lines, level };
   };
 
@@ -737,7 +738,7 @@ SW.pw = (function () {
       if (s.unb) { row("unb", "Phase unbalance"); r.shares = h("div", { class: "pw-dayrow muted" }); body.append(r.shares); }
       r.genLines = s.gen ? h("div", { class: "pw-dayrow" }) : null;
       if (s.gen) body.append(r.genLines, h("p", { class: "pw-note muted" }, pw.GEN_NOTE));
-      body.append(h("p", { class: "pw-note muted" }, "Demand is the average over a rolling window (set in Admin), counted only over the time Stagewatch was reading. Load factor is the day's average divided by the peak. Phase unbalance uses the NEMA MG 1 current definition: the biggest difference of any line from the average of the three, as a percentage of that average."));
+      body.append(h("p", { class: "pw-note muted" }, "Demand is the average over a rolling window (set in Admin), counted only over the time Stagewatch was reading. Load factor is the day's average divided by the peak. Phase unbalance uses the NEMA MG 1 voltage-unbalance method applied to current: the biggest difference of any line from the average of the three, as a percentage of that average."));
       const fold = h("details", { class: "pw-dayfold" }, h("summary", {}, "Site figures in detail"), body);
       fold.open = !!pw.dayFoldOpen[pw.SITE_ID];
       fold.addEventListener("toggle", () => { pw.dayFoldOpen[pw.SITE_ID] = fold.open; });
