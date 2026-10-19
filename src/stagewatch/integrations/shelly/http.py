@@ -1,9 +1,15 @@
 """A tiny, strict HTTP client for reading a Shelly meter. Read-only by construction.
 
-Only two requests can ever be made, both plain GETs:
+Only four requests can ever be made, all plain GETs. Two for second-generation (Gen2+) meters:
 
     GET /rpc/Shelly.GetDeviceInfo
     GET /rpc/Shelly.GetStatus
+
+and two for first-generation (Gen1) meters such as the Shelly EM, tried only when a meter has no
+``/rpc`` interface:
+
+    GET /shelly
+    GET /status
 
 ``rpc_path`` refuses every other method name before any connection is opened, so nothing that
 switches a relay, changes a setting, restarts, updates or resets a meter can be sent (a test pins
@@ -15,7 +21,7 @@ this). The client also:
 * gives up after a total time limit, and reads at most 256 KiB;
 * never returns text from the meter in an error: failures are a short fixed category.
 
-Authentication: a meter with a password set is reported as ``needs_password``. Stagewatch does not
+Authentication: a meter with a password set (either generation) is reported as ``needs_password``. Stagewatch does not
 send passwords yet.
 """
 
@@ -33,7 +39,10 @@ log = logging.getLogger(__name__)
 
 GET_DEVICE_INFO = "Shelly.GetDeviceInfo"
 GET_STATUS = "Shelly.GetStatus"
-ALLOWED_METHODS = frozenset({GET_DEVICE_INFO, GET_STATUS})
+GEN1_INFO = "gen1.shelly"       # GET /shelly   (first generation: who the meter is)
+GEN1_STATUS = "gen1.status"     # GET /status   (first generation: what it reads)
+ALLOWED_METHODS = frozenset({GET_DEVICE_INFO, GET_STATUS, GEN1_INFO, GEN1_STATUS})
+_GEN1_PATHS = {GEN1_INFO: "/shelly", GEN1_STATUS: "/status"}
 
 TIMEOUT_S = 2.0              # total time for one request, connect to last byte
 MAX_BODY = 256 * 1024
@@ -61,7 +70,7 @@ def rpc_path(method: str) -> str:
     """The request path for an allowed method. Raises ForbiddenMethod for anything else."""
     if method not in ALLOWED_METHODS:
         raise ForbiddenMethod("method not allowed")
-    return f"/rpc/{method}"
+    return _GEN1_PATHS.get(method) or f"/rpc/{method}"
 
 
 Fetch = Callable[[str, str], Awaitable[dict]]   # (host, method) -> the JSON object the meter returned

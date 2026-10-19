@@ -177,8 +177,8 @@ FORBIDDEN_METHODS = ["Switch.Set", "Switch.Toggle", "Switch.SetConfig", "Cover.O
                      "shelly.getstatus", "Shelly.GetStatus/../Shelly.Reboot", "Shelly.GetStatus?x=1", "", " Shelly.GetStatus"]
 
 
-def test_the_allow_list_is_exactly_the_two_read_methods():
-    assert ALLOWED_METHODS == frozenset({"Shelly.GetDeviceInfo", "Shelly.GetStatus"})
+def test_the_allow_list_is_exactly_the_read_methods():
+    assert ALLOWED_METHODS == frozenset({"Shelly.GetDeviceInfo", "Shelly.GetStatus", "gen1.shelly", "gen1.status"})
     assert rpc_path("Shelly.GetStatus") == "/rpc/Shelly.GetStatus"
     assert rpc_path("Shelly.GetDeviceInfo") == "/rpc/Shelly.GetDeviceInfo"
 
@@ -1398,7 +1398,7 @@ def test_the_three_phase_sim_has_uneven_lines_and_a_neutral_that_follows():
     assert ids["em0_n_current"].value > 0
 
 
-def test_a_fresh_emulate_config_gets_a_single_phase_and_a_three_phase_meter():
+def test_a_fresh_emulate_config_gets_single_phase_three_phase_and_gen1_meters():
     cfg = Config()
     assert seed_emulate_shelly(cfg) is True
-    assert [d.id for d in cfg.shelly_devices] == ["mic_rack_sim", "distro_sim"]
+    assert [d.id for d in cfg.shelly_devices] == ["mic_rack_sim", "distro_sim", "em_sim"]

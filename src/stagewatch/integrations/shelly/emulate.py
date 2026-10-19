@@ -20,12 +20,14 @@ import time
 import zlib
 from typing import Callable
 
-from .http import GET_DEVICE_INFO, GET_STATUS, ForbiddenMethod, ShellyError, rpc_path
+from .http import GEN1_INFO, GEN1_STATUS, GET_DEVICE_INFO, GET_STATUS, ForbiddenMethod, ShellyError, rpc_path
 
 DEMO_HOST = "192.0.2.10"        # documentation address: never a real device
 DEMO_NAME = "Mic rack (sim)"
 DEMO3_HOST = "192.0.2.11"       # a simulated three-phase meter (a Pro 3EM shape: em:0 and emdata:0)
 DEMO3_NAME = "Distro (sim)"
+DEMO1_HOST = "192.0.2.12"        # a simulated first-generation Shelly EM (two channels, one relay)
+DEMO1_NAME = "FOH power (sim, Gen1)"
 CYCLE_S = 300.0
 OUTAGE_START_S = 240.0
 OUTAGE_S = 40.0
@@ -42,6 +44,8 @@ def emulated_mac(host: str) -> str:
         return "025e00000301"
     if host == DEMO3_HOST:
         return "025e00000302"
+    if host == DEMO1_HOST:
+        return "025e00000303"
     return f"025e000003{zlib.crc32(host.encode()) & 0xFF:02x}"
 
 
@@ -55,6 +59,8 @@ class EmulatedMeter:
         self._outages = outages
         self._energy_wh = 15662.781 + (zlib.crc32(host.encode()) % 5000)
         self.three = host == DEMO3_HOST
+        self.gen1 = host == DEMO1_HOST
+        self._gen1_wh = [1615941.4, 52310.2]
         self._phase_wh = {"a": 40000.0, "b": 31000.0, "c": 26000.0}
 
     def offline(self, now: float) -> bool:
@@ -77,6 +83,24 @@ class EmulatedMeter:
         return {"name": None, "id": f"shellypmminig3-{self.mac.upper()}", "mac": self.mac.upper(),
                 "slot": 0, "model": "S3PM-001PCEU16", "gen": 3, "fw_id": "20250101-000000/sim",
                 "ver": "sim", "app": "MiniPMG3", "auth_en": False, "auth_domain": None}
+
+    def info1(self) -> dict:
+        """What a first-generation Shelly EM says at GET /shelly (anonymised)."""
+        return {"type": "SHEM", "mac": self.mac.upper(), "auth": False, "fw": "20230913-000000/v1.14.0-sim",
+                "num_outputs": 1, "num_meters": 0, "num_emeters": 2}
+
+    def status1(self, now: float) -> dict:
+        """GET /status of a Shelly EM: two channels, watt-hours totals, and the relay (never read)."""
+        dt = max(0.0, now - self._last)
+        self._last = now
+        out = []
+        for i, base in enumerate((228.0, 61.0)):
+            w = round(base + 20.0 * math.sin(now / (70.0 + 9 * i)), 2)
+            self._gen1_wh[i] += w * dt / 3600.0
+            out.append({"power": w, "reactive": round(-0.77 * w, 2), "pf": round(-0.79 + 0.02 * i, 2),
+                        "voltage": round(242.0 + 0.8 * math.sin(now / 50.0), 2), "is_valid": True,
+                        "total": round(self._gen1_wh[i], 1), "total_returned": 97.8})
+        return {"relays": [{"ison": False}], "emeters": out}
 
     def components(self, now: float) -> dict:
         """The status components this meter sends: pm1:0, or em:0 and emdata:0 for the three-phase one."""
@@ -135,6 +159,12 @@ class EmulatedFleet:
         now = self._clock()
         if meter.offline(now):
             raise ShellyError("timeout")
+        if method in (GET_DEVICE_INFO, GET_STATUS) and meter.gen1:
+            raise ShellyError("not_shelly")               # a first-generation meter has no /rpc (404)
+        if method in (GEN1_INFO, GEN1_STATUS):
+            if not meter.gen1:
+                raise ShellyError("not_shelly")
+            return meter.info1() if method == GEN1_INFO else meter.status1(now)
         if method == GET_DEVICE_INFO:
             return meter.info()
         if method == GET_STATUS:

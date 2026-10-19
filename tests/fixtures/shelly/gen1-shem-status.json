@@ -1,0 +1,5 @@
+{"_note": "GET /status from a first-generation Shelly EM (fw v1.14.0), trimmed to the parts Stagewatch reads plus the relay, anonymised.",
+ "relays": [{"ison": false, "has_timer": false, "source": "input"}],
+ "emeters": [
+  {"power": 228.36, "reactive": -175.40, "pf": -0.79, "voltage": 242.30, "is_valid": true, "total": 1615941.4, "total_returned": 97.8},
+  {"power": 61.5, "reactive": -10.25, "pf": 0.98, "voltage": 242.10, "is_valid": true, "total": 52310.2, "total_returned": 0.0}]}

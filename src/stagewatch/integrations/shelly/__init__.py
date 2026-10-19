@@ -2,7 +2,7 @@
 network, shown on the Power card.
 
 Read-only. Stagewatch asks a meter for its readings (two requests only: Shelly.GetDeviceInfo and
-Shelly.GetStatus, see http.py) and never sends anything that changes it. It cannot switch a relay,
+Shelly.GetStatus, or /shelly and /status for a first-generation meter, see http.py) and never sends anything that changes it. It cannot switch a relay,
 change a setting, restart, update or reset a meter. A Shelly that has a relay (a Plug or a Plus 1PM,
 for example) is read for its power only; its relay is never touched, and Stagewatch cannot stop the
 Shelly's own button, schedule or app from switching it.
@@ -34,9 +34,9 @@ from ...core.plugin import Integration, Manifest
 from ..smaart.client import is_local_address
 from . import dayfigures as df
 from . import readings as rd
-from .emulate import DEMO3_HOST, DEMO3_NAME, DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac
-from .http import GET_DEVICE_INFO, GET_STATUS, Fetch, ShellyError, get_json
-from .transport import DeviceInfo, HttpPollTransport, Target, Transport, parse_device_info
+from .emulate import DEMO1_HOST, DEMO1_NAME, DEMO3_HOST, DEMO3_NAME, DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac
+from .http import Fetch, ShellyError, get_json
+from .transport import DeviceInfo, HttpPollTransport, Target, Transport, identify, read_status
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ MANIFEST = Manifest(
     version="0.1.0",
     description="Reads watts, volts, amps, frequency and energy (watt-hours, the meter's running "
                 "total) from Shelly power meters on the local network, by asking each meter every "
-                "few seconds (Shelly.GetDeviceInfo and Shelly.GetStatus only). Read-only: it never "
+                "few seconds (Shelly.GetDeviceInfo and Shelly.GetStatus, or /shelly and /status for a first-generation meter, only). Read-only: it never "
                 "switches a relay, changes a setting, restarts, updates or resets a meter. Apparent "
                 "power and power factor are shown only when a meter sends them. All readings are "
                 "Equipment: never part of a site average. Phase 1 uses HTTP polling only and has "
@@ -82,7 +82,7 @@ TEXT = {
     "unreachable": "Could not reach that address. Check the meter is switched on and on the same network.",
     "redirect": "The meter tried to send Stagewatch somewhere else, so Stagewatch stopped.",
     "needs_password": "This meter needs a password: not supported yet.",
-    "not_shelly": "That address did not answer like a Shelly (second generation or newer).",
+    "not_shelly": "That address did not answer like a Shelly (any generation).",
     "too_large": "The reply was too big to be from a Shelly meter.",
     "bad_reply": "The reply was not what a Shelly sends.",
     "other_meter": "A different meter answered at that address.",
@@ -172,6 +172,8 @@ def seed_emulate_shelly(config) -> bool:
                            name=DEMO_NAME, area="Stage L", rating_a=16),
         ShellyDeviceConfig(id="distro_sim", host=DEMO3_HOST, mac=emulated_mac(DEMO3_HOST),
                            name=DEMO3_NAME, area="Dock", rating_a=32),
+        ShellyDeviceConfig(id="em_sim", host=DEMO1_HOST, mac=emulated_mac(DEMO1_HOST),
+                           name=DEMO1_NAME, area="FOH"),
     ]
     for d in config.dashboards:
         if d.slug == "wall":
@@ -374,10 +376,10 @@ class ShellyIntegration(Integration):
     async def _identify(self, host: str) -> tuple[DeviceInfo, dict]:
         """Ask a meter who it is and what it reads (the two allowed requests). Raises ShellyError."""
         ip = validate_host(host)
-        info = parse_device_info(await self._fetch(ip, GET_DEVICE_INFO))
+        info, gen1 = await identify(self._fetch, ip)
         if info.auth_enabled:
             raise ShellyError("needs_password")
-        status = await self._fetch(ip, GET_STATUS)
+        status = await read_status(self._fetch, ip, gen1)
         if not isinstance(status, dict) or not rd.readings_from_status(status):
             raise ShellyError("no_power")
         return info, status
@@ -432,7 +434,7 @@ class ShellyIntegration(Integration):
             if host is not None:
                 new_host = validate_host(host)
                 if new_host != cfg.host:
-                    info = parse_device_info(await self._fetch(new_host, GET_DEVICE_INFO))
+                    info, _ = await identify(self._fetch, new_host)
                     if info.mac != cfg.mac:
                         raise ShellyError("other_meter")    # the saved meter is not at that address
             if name is not None:

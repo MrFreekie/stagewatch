@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from typing import Callable, Protocol
 
 from ...core.model import normalise_mac
-from .http import GET_DEVICE_INFO, GET_STATUS, Fetch, ShellyError, get_json
+from . import readings as rd
+from .http import GEN1_INFO, GEN1_STATUS, GET_DEVICE_INFO, GET_STATUS, Fetch, ShellyError, get_json
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +68,41 @@ def parse_device_info(data: object) -> DeviceInfo:
                       name=text("name"), auth_enabled=data.get("auth_en") is True)
 
 
+def parse_gen1_info(data: object) -> DeviceInfo:
+    """A first-generation ``GET /shelly`` reply (``type``, ``mac``, ``fw``, ``auth``). Raises
+    ShellyError("not_shelly") unless it looks like one; a reply with a ``gen`` field is not Gen1."""
+    if not isinstance(data, dict) or "gen" in data:
+        raise ShellyError("not_shelly")
+    mac = normalise_mac(data.get("mac"))
+    if mac is None or not isinstance(data.get("type"), str):
+        raise ShellyError("not_shelly")
+
+    def text(key: str) -> str:
+        v = data.get(key)
+        return "".join(ch for ch in v if ch.isprintable())[:60] if isinstance(v, str) else ""
+
+    return DeviceInfo(mac=mac, model=text("type"), app="", firmware=text("fw"), name="",
+                      auth_enabled=data.get("auth") is True)
+
+
+async def identify(fetch: Fetch, host: str) -> tuple[DeviceInfo, bool]:
+    """Ask who is at ``host``. Tries the Gen2+ way first; a meter with no such interface (404) is then
+    asked the Gen1 way. Returns (info, is_gen1). Raises ShellyError."""
+    try:
+        return parse_device_info(await fetch(host, GET_DEVICE_INFO)), False
+    except ShellyError as exc:
+        if exc.category != "not_shelly":
+            raise
+    return parse_gen1_info(await fetch(host, GEN1_INFO)), True
+
+
+async def read_status(fetch: Fetch, host: str, gen1: bool) -> dict:
+    """The meter's readings as a status dictionary the reading layer understands."""
+    if gen1:
+        return rd.gen1_status(await fetch(host, GEN1_STATUS))
+    return await fetch(host, GET_STATUS)
+
+
 class Sink(Protocol):
     def identified(self, mac: str, info: DeviceInfo) -> None: ...
     def status(self, mac: str, status: dict, ts: float) -> None: ...
@@ -92,9 +128,10 @@ class Transport(ABC):
 
 
 class HttpPollTransport(Transport):
-    """Asks each meter for ``Shelly.GetDeviceInfo`` (when it first connects, and again after every
-    failure, to check it is still the same meter) and ``Shelly.GetStatus`` every few seconds.
-    Nothing else is ever requested (see http.py)."""
+    """Asks each meter who it is (when it first connects, and again after every failure, to check it
+    is still the same meter) and for its readings every few seconds: ``Shelly.GetDeviceInfo`` and
+    ``Shelly.GetStatus``, or ``/shelly`` and ``/status`` for a first-generation meter. Nothing else is
+    ever requested (see http.py)."""
     name = "HTTP polling"
 
     def __init__(self, fetch: Fetch = get_json, clock: Callable[[], float] = time.time,
@@ -143,17 +180,18 @@ class HttpPollTransport(Transport):
         sink = self._sink
         failures = 0
         verified = False
+        gen1 = False
         while True:
             try:
                 if not verified:
-                    info = parse_device_info(await self._request(target.host, GET_DEVICE_INFO))
+                    info, gen1 = await identify(self._request, target.host)
                     if info.auth_enabled:
                         raise ShellyError("needs_password")
                     if info.mac != target.mac:
                         raise ShellyError("other_meter")
                     sink.identified(target.mac, info)
                     verified = True
-                status = await self._request(target.host, GET_STATUS)
+                status = await read_status(self._request, target.host, gen1)
                 failures = 0
                 sink.status(target.mac, status, self._clock())
                 delay = target.interval_s

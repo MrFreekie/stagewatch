@@ -41,27 +41,34 @@ the [notices](README.md#notices).
 
 ### Which Shelly meters
 
-Stagewatch reads Shelly meters of the **second generation or newer** that have an address on your
-network. It chooses what to read by what the meter reports, not by its name. It looks for these
+Stagewatch reads Shelly meters of **any generation** that have an address on your network. That
+includes the first-generation **Shelly EM** (and 3EM), which Stagewatch finds by itself when the
+meter has no second-generation interface. It chooses what to read by what the meter reports, not by its name. It looks for these
 kinds of meter:
 
 - A single power meter (the kind of reading a PM Mini gives).
 - A three-phase meter, with each phase, the neutral and the totals.
 - A single-circuit energy meter.
 - A relay that also measures power (read-only: its on/off state is never read).
+- A first-generation Shelly EM: each of its energy-meter channels shows voltage, power, reactive
+  power, power factor and energy (watt-hours and watt-hours returned, as the meter sends them). It
+  sends no current, so none is shown. The relay in a Shelly EM is never read or switched. A channel
+  the meter marks as not valid shows no reading, never zero.
 
 **Not yet built:** meters that push their readings to Stagewatch (WebSocket or MQTT), and passwords.
 A meter with a password set is not supported yet. Stagewatch says so in words.
 
 ### What Stagewatch sends
 
-Only two requests, both plain `GET`s to the meter's address on port 80. Any other request is refused
+Only these requests, all plain `GET`s to the meter's address on port 80. Any other request is refused
 before a connection is opened.
 
 | Request | When |
 |---|---|
 | `GET /rpc/Shelly.GetDeviceInfo` | When it first connects, after any failed read (to check it is still the same meter), and when you click **Test** or **Save meter** |
 | `GET /rpc/Shelly.GetStatus` | Every 3 seconds by default. You can set 2 to 5 seconds for each meter. Also on **Test**. |
+| `GET /shelly` | First-generation meters only (a Shelly EM has no `/rpc`): in place of `GetDeviceInfo`, on the same occasions |
+| `GET /status` | First-generation meters only: in place of `GetStatus`, at the same rate |
 
 Nothing else. Stagewatch does not follow a redirect. It gives up on a request after 2 seconds, and
 refuses a reply over 256 KiB. It asks at most four meters at the same moment.
@@ -126,7 +133,7 @@ Error messages use fixed words and never repeat text from the meter.
 | `Could not reach that address. Check the meter is switched on and on the same network.` | Same check. |
 | `Something is at that address, but it is not accepting requests.` | Check the address. |
 | `This meter needs a password: not supported yet.` | Stagewatch cannot read a meter with a password set yet. |
-| `That address did not answer like a Shelly (second generation or newer).` | Check the address, and that the meter is second generation or newer. |
+| `That address did not answer like a Shelly (any generation).` | Check the address, and that it is a Shelly. |
 | `This Shelly has no power readings to show.` | This Shelly does not report power. |
 | `The meter tried to send Stagewatch somewhere else, so Stagewatch stopped.` | Stagewatch never follows a redirect. Check the address. |
 | `A different meter answered at that address.` | Another device now has that IP address. Nothing was changed. Find the right address. |
@@ -145,13 +152,14 @@ More: [Troubleshooting](../troubleshooting.md).
 ## Tested status
 
 - **Tried on real kit:** one Shelly PM Mini Gen3, over HTTP polling.
+- **First-generation Shelly EM:** tried on one real Shelly EM (firmware 1.14.0) in read-only fixtures; live use on a show day is pending. A Gen1 meter with a password set is not supported (it says so).
 - **Not yet tested:** any other model, including the Shelly EM Mini Gen4 and the Shelly 3EM.
   Three-phase and single-circuit meters, and relays that measure power, are read by what they report
   but have not been tried.
 - **Not built:** meters pushing readings (WebSocket or MQTT), and meters with a password.
 - **Tested on hardware: pending** for a full show day.
 
-The card works in emulate mode (`--emulate`) with a simulated PM Mini that stops answering for 40
+The card works in emulate mode (`--emulate`) with a simulated PM Mini, a simulated three-phase meter and a simulated first-generation Shelly EM. The PM Mini stops answering for 40
 seconds every 5 minutes, to show the frozen state.
 
 Related: [Notices](README.md#notices), [Equipment](../cards/equipment.md), [Troubleshooting](../troubleshooting.md).

@@ -11,6 +11,9 @@ rounded). A field that is missing, ``null``, not a number or not finite gives ``
 Sources: Shelly Gen2+ API documentation, components PM1, EM, EMData, EM1 and Switch
 (https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/PM1 and the pages for the others),
 and one real ``Shelly.GetStatus`` from a Shelly PM Mini Gen3 (see tests/fixtures/shelly/).
+First-generation meters (Shelly EM, 3EM) are read from ``GET /status``: :func:`gen1_status` turns its
+``emeters`` list into ``gen1em:N`` components. Source: the Shelly Gen1 API reference (/status) and one
+real Shelly EM (fw v1.14.0). Their ``total`` and ``total_returned`` are watt-hours, kept as sent.
 Not read on purpose: relay state, ``by_minute`` energy, returned energy, error flags, em1 energy
 (its field names are not confirmed).
 """
@@ -24,7 +27,7 @@ from dataclasses import dataclass
 from ...core.model import Kind
 
 # Components that can carry power readings. A key like "pm1:0" -> ("pm1", 0).
-_COMPONENT_RE = re.compile(r"^(pm1|em1|em|emdata|switch):([0-7])$")   # no real meter has more than 8 of a kind
+_COMPONENT_RE = re.compile(r"^(pm1|em1|em|emdata|switch|gen1em):([0-7])$")   # no real meter has more than 8 of a kind
 MAX_READINGS = 64    # per meter: a hostile reply cannot register thousands of entities
 
 _PHASES = ("a", "b", "c")
@@ -161,7 +164,37 @@ def _switch(status: dict, n: int) -> list[Reading]:
     ]
 
 
-_BUILDERS = {"pm1": _pm1, "em1": _em1, "em": _em, "emdata": _emdata, "switch": _switch}
+def gen1_status(data: object) -> dict:
+    """A Gen1 ``/status`` reply as ``{"gen1em:N": {...}}``, one entry per energy-meter channel.
+    Nothing else in the reply is carried over (relay state in particular is dropped)."""
+    out: dict = {}
+    emeters = data.get("emeters") if isinstance(data, dict) else None
+    if isinstance(emeters, list):
+        for i, em in enumerate(emeters[:8]):
+            if isinstance(em, dict):
+                out[f"gen1em:{i}"] = em
+    return out
+
+
+def _gen1em(status: dict, n: int) -> list[Reading]:
+    """One channel of a first-generation energy meter. A channel that says ``is_valid`` is false has
+    no valid reading: every value is None. It sends no current, so none is shown (never worked out)."""
+    comp = status[f"gen1em:{n}"]
+    ch = f"gen1em_{n}"
+    ok = comp.get("is_valid") is not False
+    r = lambda field, kind, dec, key, cum=False: Reading(  # noqa: E731
+        f"{ch}_{field}", ch, "", field, kind, dec, num(comp.get(key)) if ok else None, cum)
+    return [
+        r("voltage", Kind.VOLTAGE, 1, "voltage"),
+        r("power", Kind.POWER, 1, "power"),
+        r("reactive", Kind.REACTIVE_POWER, 1, "reactive"),
+        r("pf", Kind.POWER_FACTOR, 2, "pf"),
+        r("energy", Kind.ENERGY, 1, "total", True),
+        r("energy_ret", Kind.ENERGY, 1, "total_returned", True),
+    ]
+
+
+_BUILDERS = {"gen1em": _gen1em, "pm1": _pm1, "em1": _em1, "em": _em, "emdata": _emdata, "switch": _switch}
 
 
 def readings_from_status(status: object) -> list[Reading]:
@@ -180,7 +213,7 @@ def readings_from_status(status: object) -> list[Reading]:
 # --------------------------------------------------------------------- names for people
 _FIELD_WORDS = {
     "voltage": "voltage", "current": "current", "power": "power", "apparent": "apparent power",
-    "pf": "power factor", "freq": "frequency", "energy": "energy", "energy_ret": "energy returned",
+    "pf": "power factor", "reactive": "reactive power", "freq": "frequency", "energy": "energy", "energy_ret": "energy returned",
     "device_temp": "meter temperature",
 }
 _GROUP_WORDS = {"a": "Line 1 (Brown)", "b": "Line 2 (Black)", "c": "Line 3 (Grey)", "n": "Neutral (Blue)", "total": "Total"}
@@ -207,7 +240,7 @@ def channel_counts(readings: list[Reading]) -> int:
 def component_words(status: object) -> list[str]:
     """Plain words for the components found, for the Test result: ["Power meter"], ..."""
     names = {"pm1": "Power meter", "em1": "Single-circuit meter", "em": "Three-phase meter",
-             "emdata": "Energy totals (three-phase)", "switch": "Metering relay (read only)"}
+             "emdata": "Energy totals (three-phase)", "gen1em": "Energy meter (first generation)", "switch": "Metering relay (read only)"}
     seen = []
     for prefix, n in components(status):
         if prefix == "switch" and "apower" not in status[f"switch:{n}"]:
