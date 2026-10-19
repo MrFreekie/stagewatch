@@ -144,9 +144,12 @@
     <h2><span>Power</span><span class="grow"></span><img class="card-logo" src="/static/shelly-badge.svg" alt="Shelly" width="26" height="26" onerror="this.hidden=true"></h2>
     <div id="power-body"></div>
     <div class="pw-hist" id="power-hist" hidden>
-      <div class="pw-histbar"><select id="power-meter" aria-label="Meter for the chart"></select><span class="seg" id="power-metric-seg"></span><span class="seg" id="power-span-seg"></span></div>
-      <div class="chart-wrap pw-chart-wrap"><canvas id="power-chart"></canvas></div>
-      <div class="legend" id="power-legend"></div>
+      <div class="pw-histbar"><select id="power-meter" aria-label="What the graph shows"></select><span class="seg" id="power-metric-seg"></span><span class="seg" id="power-span-seg"></span></div>
+      <div id="power-totals" class="pw-totalsbox" hidden></div>
+      <div id="power-chart-box">
+        <div class="chart-wrap pw-chart-wrap"><canvas id="power-chart"></canvas></div>
+        <div class="legend" id="power-legend"></div>
+      </div>
     </div>
     <details class="card-about"><summary>About these figures</summary>
       <p class="muted pw-note2" id="power-chart-note"></p>

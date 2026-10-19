@@ -1142,6 +1142,11 @@ body.layout-wall .pw-gsub { display: none; }
 /* Chart controls sit on the right, as on every other card. */
 .pw-histbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; margin-bottom: 6px; }
 .pw-histbar select { min-height: 36px; }
+.pw-totals { margin-bottom: 10px; }
+.pw-totals caption { text-align: left; font-weight: 600; padding: 4px 0; }
+.pw-totals td.pw-incomplete { font-weight: 700; color: var(--warn); }
+.pw-totals .pw-grandtotal th, .pw-totals .pw-grandtotal td { border-top: 2px solid currentColor; }
+body.layout-wall .pw-totals { font-size: 28px; }
 .pw-chart-wrap { height: 200px; }
 body.layout-phone .pw-chart-wrap { height: 160px; }
 body.layout-wall .pw-chart-wrap { height: 260px; }
@@ -1504,3 +1509,6 @@ body.layout-wall .adv-list > li.adv-line { flex-wrap: nowrap; align-items: cente
 .adv-admin-btns { white-space: nowrap; }
 .adv-admin-btns button { min-width: 44px; min-height: 44px; }
 .adv-on { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
+.pw-histbar [hidden] { display: none; }
+.pw-totals th[scope="row"] { text-transform: none; letter-spacing: 0; font-size: 1em; }
+.pw-totals caption { font-size: 1em; }

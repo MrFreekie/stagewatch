@@ -37,7 +37,7 @@
     selectedMarker: null, history: {}, showHidden: false,
     showEquipment: localGet("sw.chartEquipment", "off") === "on",
     splSpan: Number(localGet("sw.splspan", 3600)), splHistory: {},
-    pwMetric: localGet("sw.pwmetric", "power"), pwSpan: Number(localGet("sw.pwspan", 3600)), pwMeter: "", pwHistory: {},
+    pwMetric: localGet("sw.pwmetric", "power"), pwSpan: Number(localGet("sw.pwspan", 3600)), pwScope: localGet("sw.pwscope", ""), pwHistory: {},
   };
   // The marker whose note is being edited ({id, text}), or null.
   let noteEdit = null;
@@ -1224,25 +1224,47 @@
       h("p", { class: "muted wm-note" }, SW.wm.NOTE));
   }
 
-  // History chart under the meters: pick a meter, a measurement and a span. Lines are what was recorded
-  // (as received, averaged only into time buckets); a silence breaks the line; nothing is filled in.
+  // History chart under the meters: pick what to show (one meter, one circuit or phase, everything on one
+  // graph, or the totals), a measurement and a span. Lines are what was recorded (averaged only into time
+  // buckets); a silence breaks the line; nothing is filled in. The choice is kept in this browser only.
   const pwSpanS = () => spanSeconds(state.pwSpan);
+  const pwFields = () => SW.pw.METRICS.filter(([f]) => SW.pw.seriesFor(state.entities, state.devices, state.pwScope, f).length);
   function renderPowerHist(view) {
     const box = $("power-hist");
     const meters = view.meters;
     box.hidden = !meters.length;
     if (!meters.length) return;
-    if (!meters.some((m) => m.id === state.pwMeter)) { state.pwMeter = meters[0].id; state.pwHistory = {}; }
+    const scopes = SW.pw.chartScopes(state.entities, state.devices);
+    const scope = SW.pw.pickScope(scopes, state.pwScope);
+    if (scope !== state.pwScope) { state.pwScope = scope; state.pwHistory = {}; }
     const sel = $("power-meter");
-    const key = meters.map((m) => m.id + m.name).join("|");
+    const key = scopes.map((x) => x.value + x.label + x.group).join("|");
     if (sel.dataset.key !== key) {
       sel.dataset.key = key;
-      sel.replaceChildren(...meters.map((m) => h("option", { value: m.id }, m.name)));
-      sel.onchange = () => { state.pwMeter = sel.value; state.pwHistory = {}; loadPowerHistory(); };
+      const groups = {};
+      const opts = [];
+      for (const x of scopes) {
+        const o = h("option", { value: x.value }, x.label);
+        if (!x.group) { opts.push(o); continue; }
+        if (!groups[x.group]) { groups[x.group] = h("optgroup", { label: x.group }); opts.push(groups[x.group]); }
+        groups[x.group].append(o);
+      }
+      sel.replaceChildren(...opts);
+      sel.onchange = () => { state.pwScope = sel.value; localSet("sw.pwscope", sel.value); state.pwHistory = {}; loadPowerHistory(); renderPowerHist(view); };
     }
-    sel.value = state.pwMeter;
-    sel.hidden = meters.length < 2;
-    const metrics = SW.pw.METRICS.filter(([f]) => SW.pw.chartSeries(state.entities, state.pwMeter, f).length);
+    sel.value = state.pwScope;
+    sel.hidden = scopes.length < 2;
+    const totals = state.pwScope === "totals";
+    $("power-totals").hidden = !totals;
+    $("power-chart-box").hidden = totals;
+    $("power-metric-seg").hidden = totals;
+    $("power-span-seg").hidden = totals;
+    if (totals) {
+      SW.pw.renderTotals($("power-totals"), SW.pw.phaseTotals(state.devices, view.meters));
+      setText($("power-chart-note"), "Each line's watts as the meters report them now. A line with a circuit that is not reading shows no figure, never a partial one.");
+      return;
+    }
+    const metrics = pwFields();
     if (metrics.length && !metrics.some(([f]) => f === state.pwMetric)) state.pwMetric = metrics[0][0];
     $("power-metric-seg").replaceChildren(...metrics.map(([f, label]) =>
       h("button", { class: f === state.pwMetric ? "on" : "", onclick: () => { state.pwMetric = f; localSet("sw.pwmetric", f); loadPowerHistory(); renderPowerHist(view); } }, label)));
@@ -1253,8 +1275,8 @@
   }
   const pwHist = { loaded: false, at: 0 };
   async function loadPowerHistory() {
-    if (!has("power") || !state.pwMeter) return;
-    const lines = SW.pw.chartSeries(state.entities, state.pwMeter, state.pwMetric);
+    if (!has("power") || !state.pwScope || state.pwScope === "totals") return;
+    const lines = SW.pw.chartPlan(state.entities, state.devices, state.pwScope, state.pwMetric).lines;
     if (!lines.length) return;
     const span = pwSpanS(), since = serverNow() - span;
     pwHist.at = Date.now();
@@ -1264,20 +1286,21 @@
     updatePowerChart();
   }
   function updatePowerChart() {
-    if (!has("power") || $("power-hist").hidden) return;
+    if (!has("power") || $("power-hist").hidden || state.pwScope === "totals") return;
     const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-    const lines = SW.pw.chartSeries(state.entities, state.pwMeter, state.pwMetric), span = pwSpanS(), now = serverNow();
+    const plan = SW.pw.chartPlan(state.entities, state.devices, state.pwScope, state.pwMetric), lines = plan.lines, span = pwSpanS(), now = serverNow();
     const gap = SW.pw.gapSeconds(span / SW.pw.POINTS);
     const dec = lines.length ? lines[0].decimals : 1;
     pwChart.format = (v) => SW.num(v, Math.min(2, dec));
-    pwChart.series = lines.map((l, i) => ({ label: l.label, color: css(`--spl-${(i % 3) + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[i % 3], points: SW.pw.smooth(state.pwHistory[l.id], SW.pw.smoothWindow(span), gap) }));
+    // Colour (3) and dash (3) together tell up to nine lines apart; the legend names every one.
+    pwChart.series = lines.map((l) => ({ label: l.label, color: css(`--spl-${l.colour + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[l.dash], points: SW.pw.smooth(state.pwHistory[l.id], SW.pw.smoothWindow(span), gap) }));
     pwChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "shelly" || m.source === "schedule").map((m) => ({ ...m, selected: false }));
     const sc = SW.pw.chartScale(state.pwMetric);
     pwChart.fixedRange = sc.fixed; pwChart.defaultRange = sc.def;
     pwChart.range = [now - span, now];
     pwChart.draw();
-    $("power-legend").replaceChildren(...lines.map((l, i) => h("span", {}, h("i", { class: `spl-key spl-line-${i % 3}`, style: `border-top-color:${css(`--spl-${(i % 3) + 1}`)}` }), `${l.label}${l.unit ? " (" + l.unit + ")" : ""}`)));
-    setText($("power-chart-note"), SW.pw.chartNote(span, SW.pw.POINTS));
+    $("power-legend").replaceChildren(...lines.map((l) => h("span", {}, h("i", { class: `spl-key spl-line-${l.dash}`, style: `border-top-color:${css(`--spl-${l.colour + 1}`)}` }), `${l.label}${l.unit ? " (" + l.unit + ")" : ""}`)));
+    setText($("power-chart-note"), [plan.note, SW.pw.chartNote(span, SW.pw.POINTS)].filter(Boolean).join(" "));
   }
 
   // ------------------------------------------------------- sound level

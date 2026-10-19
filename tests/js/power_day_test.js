@@ -157,5 +157,57 @@ eq(SW.sourceInput.shelly([]).reported, "waiting", "no meters: waiting");
   eq(SW.pw.view(three, dev(), 101).meters[0].combined, false, "three phases are never added into one bar");
 }
 
+// chart scopes, one graph for everything, and the totals view
+{
+  const mk = (id, dev, ch, g, f, v, over) => Object.assign({ id, device_id: dev, kind: f === "power" ? "power" : "current", unit: f === "power" ? "W" : "A", decimals: 1, value: v, labels: { channel: ch, field: f, group: g } }, over || {});
+  const devs = { pm: { id: "pm", name: "Amp rack", category: "meter", channels: { switch_0: { label: "Left", phase: "L1" }, switch_1: { label: "Right", phase: "L1" } } },
+    em: { id: "em", name: "Distro", category: "meter", channels: {} }, e1: { id: "e1", name: "FOH", category: "meter", channels: { em1_0: { phase: "L2" }, em1_1: { phase: "L3" } } } };
+  const E2 = {};
+  const put = (e) => { E2[e.id] = e; };
+  [["s0p", "switch_0", 100], ["s1p", "switch_1", 200]].forEach(([id, ch, v]) => put(mk(id, "pm", ch, "", "power", v)));
+  put(mk("s0c", "pm", "switch_0", "", "current", 0.4)); put(mk("s1c", "pm", "switch_1", "", "current", 0.9));
+  [["a", 1000], ["b", 2000], ["c", 3000], ["total", 6000]].forEach(([g, v]) => put(mk("em" + g, "em", "em0", g, "power", v)));
+  put(mk("emn", "em", "em0", "n", "current", 2));
+  put(mk("f0", "e1", "em1_0", "", "power", 50)); put(mk("f1", "e1", "em1_1", "", "power", 70));
+  const scopes = SW.pw.chartScopes(E2, devs);
+  eq(scopes.slice(0, 3).map((x) => x.value), ["all", "totals", "x:neutral_earth"], "all, totals and the neutral group lead");
+  eq(scopes.filter((x) => x.group === "Amp rack").map((x) => x.label), ["All circuits", "Left · Line 1 (Brown)", "Right · Line 1 (Brown)"], "a 2PM offers each switch");
+  eq(scopes.filter((x) => x.group === "Distro").map((x) => x.value), ["d:em", "g:em/em0/a", "g:em/em0/b", "g:em/em0/c", "g:em/em0/n", "g:em/em0/total"], "a three-phase meter offers each phase");
+  eq(SW.pw.pickScope(scopes, "d:gone"), "all", "a removed meter falls back");
+  eq(SW.pw.seriesFor(E2, devs, "c:pm/switch_1", "power").map((l) => l.id), ["s1p"], "one circuit only");
+  eq(SW.pw.seriesFor(E2, devs, "g:em/em0/b", "power").map((l) => l.label), ["Line 2 (Black)"], "one phase only");
+  const plan = SW.pw.chartPlan(E2, devs, "all", "power");
+  eq(plan.lines.slice(0, 6).map((l) => l.label), ["Amp rack · Left · Line 1 (Brown)", "Amp rack · Right · Line 1 (Brown)", "Distro · Line 1 (Brown)", "Distro · Line 2 (Black)", "Distro · Line 3 (Grey)", "Distro · Total"], "all on one graph names meter, circuit and phase");
+  eq(plan.lines.length, 8, "eight power lines");
+  eq(plan.lines.slice(0, 4).map((l) => [l.colour, l.dash]), [[0, 0], [1, 0], [2, 0], [0, 1]], "colour and dash both vary");
+  eq(SW.pw.chartPlan(E2, devs, "all", "current").lines.map((l) => l.unit), ["A", "A", "A"], "one kind per chart");
+  eq(SW.pw.seriesFor(E2, devs, "x:neutral_earth", "current").map((l) => l.id), ["emn"], "neutral group");
+  // a future earth-leakage reading in mA joins the group but never shares an axis with amps
+  put(mk("pe", "em", "em0", "pe", "current", 5, { unit: "mA" }));
+  const pe = SW.pw.chartPlan(E2, devs, "x:neutral_earth", "current");
+  eq([pe.lines.map((l) => l.id), pe.note.includes("another unit")], [["emn"], true], "PE in mA is left off the amps axis and said so");
+  delete E2.pe;
+
+  // totals
+  const ch = (id, groups) => ({ id, groups, cfg: null });
+  const P = (v, stale) => ({ value: v, stale: !!stale, unit: "W" });
+  const meters = [
+    { id: "pm", name: "Amp rack", state: "live", channels: [ch("switch_0", { "": { power: P(100) } }), ch("switch_1", { "": { power: P(200) } })] },
+    { id: "em", name: "Distro", state: "live", channels: [ch("em0", { a: { power: P(1000) }, b: { power: P(2000) }, c: { power: P(3000) }, total: { power: P(6000) }, n: { current: Object.assign(P(2), { unit: "A", decimals: 1 }) } })] },
+    { id: "e1", name: "FOH", state: "live", channels: [ch("em1_0", { "": { power: P(50) } }), ch("em1_1", { "": { power: P(70) } })] },
+  ];
+  let t = SW.pw.phaseTotals(devs, meters);
+  eq(t.three[0].rows.map((r) => r.watts), [1000, 2000, 3000, 6000], "three-phase: a, b, c and its own total");
+  eq(t.single.rows.map((r) => [r.label, r.watts]), [["Line 1 (Brown)", 300], ["Line 2 (Black)", 50], ["Line 3 (Grey)", 70]], "single-phase circuits summed by line");
+  eq(t.single.overall.watts, 420, "overall total");
+  eq(t.extra.map((r) => r.value), [2], "neutral listed, not added");
+  meters[0].channels[1].groups[""].power = P(200, true);   // a stale circuit
+  t = SW.pw.phaseTotals(devs, meters);
+  eq([t.single.rows[0].watts, t.single.rows[0].missing, t.single.rows[1].watts, t.single.overall.watts], [null, ["Amp rack · Channel 2"], 50, null], "a stale circuit makes its line and the total incomplete, others stay");
+  meters[2].state = "frozen";
+  t = SW.pw.phaseTotals(devs, meters);
+  eq([t.single.rows[1].watts, t.single.rows[2].watts], [null, null], "a meter not answering gives no figure");
+}
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power_day_test: all passed");

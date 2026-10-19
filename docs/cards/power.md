@@ -87,9 +87,13 @@ Rows that a meter does not send are left out. No supported meter sends these yet
 
 The voltage and frequency warnings put a quiet notice in the alarm bar. It never makes a sound, and it clears itself when the reading is back inside with a little margin. All of this is advisory. Stagewatch only reads, and the rating is simply the number you typed in. Colour is never the only signal: the words are always shown.
 
+## Totals
+
+Choose **Totals** in the chart's box to see the watts of each line now. A three-phase meter shows its own Line 1, Line 2, Line 3 and total. Single-phase circuits are added up by the line you set for each circuit in Admin (Line 1, 2 or 3, or "Line not set"), with a total for all lines. If any circuit in a line is not reading, that line says INCOMPLETE and names what is missing, instead of showing a part-total. Neutral current is listed as it is, never added up.
+
 ## History chart
 
-Under the meters is a chart of one measurement over time: **Power**, **Current**, **Voltage** or **Frequency**, for the last **15m**, **1h** or the whole **Show**. A three-phase meter gets one line per phase, and lines also differ by dash style, not just colour. With more than one meter, pick the meter above the chart. The chart draws what was recorded. When Stagewatch was not reading the meter, the line breaks. Nothing is joined up or filled in. Short surges between two readings can be missed. On a wall screen the controls are hidden and the chart shows the saved choice.
+Under the meters is a chart of one measurement over time: **Power**, **Current**, **Voltage** or **Frequency**, for the last **15m**, **1h** or the whole **Show**. A three-phase meter gets one line per phase, and lines also differ by dash style, not just colour. The box above the chart chooses what it shows: **All on one graph** (every circuit of every meter as separate lines, each named in the key, up to nine at once), **Totals**, one meter, or just one circuit or phase of a meter (for example one switch of a 2PM, one channel of an EM, or phase 2 of a three-phase meter). Only one kind of measurement is drawn at a time, so watts and amps never share a scale. Your choice is kept on this device only. The chart draws what was recorded. When Stagewatch was not reading the meter, the line breaks. Nothing is joined up or filled in. Short surges between two readings can be missed. On a wall screen the controls are hidden and the chart shows the saved choice.
 
 ## Equipment, not air
 

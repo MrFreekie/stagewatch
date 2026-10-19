@@ -17,10 +17,12 @@ SW.pw = (function () {
   const pw = {};
   const isNum = (x) => typeof x === "number" && isFinite(x);
 
-  pw.GROUP_ORDER = ["", "a", "b", "c", "n", "total", "l12", "l23", "l31", "avg"];
+  // "pe" (protective earth / earth leakage current) is reserved: no meter reads it yet, so nothing is drawn
+  // for it, but the name and the "Neutral and earth" group below are ready for when one does.
+  pw.GROUP_ORDER = ["", "a", "b", "c", "n", "pe", "total", "l12", "l23", "l31", "avg"];
   // Line-to-line voltage groups (from meters that report them): shown as swing meters and rows, never in the phase table.
   pw.LL = ["l12", "l23", "l31", "avg"];
-  pw.GROUP_WORD = { "": "", a: "Line 1 (Brown)", b: "Line 2 (Black)", c: "Line 3 (Grey)", n: "Neutral (Blue)", total: "Total",
+  pw.GROUP_WORD = { "": "", a: "Line 1 (Brown)", b: "Line 2 (Black)", c: "Line 3 (Grey)", n: "Neutral (Blue)", pe: "Earth leakage (PE)", total: "Total",
     l12: "Line 1 to Line 2 (Brown-Black)", l23: "Line 2 to Line 3 (Black-Grey)", l31: "Line 3 to Line 1 (Grey-Brown)", avg: "Average" };
   // The line a single-phase meter was assigned in Admin.
   pw.PHASE_WORD = { L1: "Line 1 (Brown)", L2: "Line 2 (Black)", L3: "Line 3 (Grey)" };
@@ -158,16 +160,169 @@ SW.pw = (function () {
   // ---- history chart: one measurement of one meter over time (one line per phase on a 3-phase meter).
   pw.METRICS = [["power", "Power"], ["current", "Current"], ["voltage", "Voltage"], ["voltage_ll", "Line-to-line"], ["freq", "Frequency"], ["thd_v", "Voltage THD"], ["thd_i", "Current THD"]];
   pw.POINTS = 500;
-  // The lines to draw: [{ id, label, unit, decimals }] for one meter's field, in phase order.
-  pw.chartSeries = function (entities, deviceId, field) {
-    const out = [];
-    for (const e of Object.keys(entities || {}).map((k) => entities[k])) {
-      if (e.device_id !== deviceId || !e.labels || e.labels.field !== field || e.kind === "energy") continue;
-      const g = e.labels.group || "";
-      out.push({ id: e.id, label: pw.GROUP_WORD[g] || pw.FIELD_WORD[field], unit: e.unit || "", decimals: e.decimals || 0, order: pw.GROUP_ORDER.indexOf(g) });
-    }
-    return out.sort((a, b) => a.order - b.order);
+  // ---- what the chart can show. A "scope" is a short string chosen in the chart's select box:
+  //   "all"                          every circuit of every meter, as separate lines
+  //   "totals"                       each line's total (a table, not a graph: see phaseTotals)
+  //   "x:<group id>"                 an extra group across every meter, e.g. "x:neutral_earth"
+  //   "d:<device>"                   one meter, all its circuits
+  //   "c:<device>/<channel>"         one circuit of a meter (a switch of a 2PM, an em1 channel ...)
+  //   "g:<device>/<channel>/<group>" one phase of a three-phase meter (a, b, c, n, total ...)
+  // Extending: a future earth-leakage (PE) current is just a reading with group "pe" and field "current". It
+  // joins the "Neutral and earth" group below, so it appears as extra lines (in its own unit: see chartPlan)
+  // without changing the scopes, the select box or the totals logic.
+  pw.SERIES_GROUPS = [
+    { id: "neutral_earth", label: "Neutral and earth", groups: ["n", "pe"], fields: ["current"] },
+  ];
+  const seriesGroup = (id) => pw.SERIES_GROUPS.find((x) => x.id === id);
+  pw.MAX_LINES = 9;   // 3 colours x 3 dash styles
+
+  const meterEntities = (entities) => Object.keys(entities || {}).map((k) => entities[k])
+    .filter((e) => e && e.device_id && e.labels && e.labels.channel && e.kind !== "energy" && e.labels.field);
+  // Does entity e belong in scope?
+  pw.inScope = function (scope, e) {
+    const l = e.labels || {};
+    if (scope === "all") return true;
+    const kind = scope.slice(0, 2), rest = scope.slice(2);
+    if (kind === "x:") { const g = seriesGroup(rest); return !!g && g.groups.includes(l.group || "") && g.fields.includes(l.field); }
+    if (kind === "d:") return e.device_id === rest;
+    if (kind === "c:") return `${e.device_id}/${l.channel}` === rest;
+    if (kind === "g:") return `${e.device_id}/${l.channel}/${l.group || ""}` === rest;
+    return false;
   };
+
+  // The lines to draw for a scope and a field: [{ id, label, unit, decimals, order }], in meter, circuit and phase
+  // order. A label names only what is needed: the meter when several are shown, the circuit when a meter has
+  // several, and the phase when there is one.
+  pw.seriesFor = function (entities, devices, scope, field) {
+    const all = meterEntities(entities);
+    const ents = all.filter((e) => e.labels.field === field && pw.inScope(scope, e));
+    const perDevice = {};
+    for (const e of all) (perDevice[e.device_id] || (perDevice[e.device_id] = new Set())).add(e.labels.channel);
+    const devNames = new Set(ents.map((e) => e.device_id));
+    const out = ents.map((e) => {
+      const l = e.labels, g = l.group || "", d = (devices && devices[e.device_id]) || {};
+      const many = perDevice[e.device_id].size > 1;
+      const parts = [];
+      if (devNames.size > 1) parts.push(d.name || e.device_id);
+      const t = pw.channelTitle({ id: l.channel, cfg: (d.channels || {})[l.channel] || null }, many);
+      if (t) parts.push(t);
+      if (pw.GROUP_WORD[g]) parts.push(pw.GROUP_WORD[g]);
+      return { id: e.id, label: parts.join(" · ") || pw.FIELD_WORD[field], unit: e.unit || "", decimals: e.decimals || 0,
+        device: e.device_id, channel: l.channel, group: g, order: pw.GROUP_ORDER.indexOf(g), name: d.name || e.device_id };
+    });
+    return out.sort((a, b) => a.name.localeCompare(b.name) || a.channel.localeCompare(b.channel) || a.order - b.order);
+  };
+  // One meter's lines for a field (the older call).
+  pw.chartSeries = (entities, deviceId, field) => pw.seriesFor(entities, null, "d:" + deviceId, field);
+
+  // What to draw: at most MAX_LINES lines of one unit (never two units on one axis), each with a colour
+  // number and a dash number (so a line is told apart by more than colour), and a note of anything left out.
+  pw.chartPlan = function (entities, devices, scope, field) {
+    let lines = pw.seriesFor(entities, devices, scope, field);
+    const notes = [];
+    if (lines.length) {
+      const unit = lines[0].unit, keep = lines.filter((l) => l.unit === unit), n = lines.length - keep.length;
+      if (n) notes.push(`${n} line${n === 1 ? "" : "s"} in another unit not drawn (one unit per chart).`);
+      lines = keep;
+    }
+    if (lines.length > pw.MAX_LINES) { notes.push(`Only the first ${pw.MAX_LINES} lines are drawn: pick a meter or circuit to see the rest.`); lines = lines.slice(0, pw.MAX_LINES); }
+    lines.forEach((l, i) => { l.colour = i % 3; l.dash = Math.floor(i / 3) % 3; });
+    return { lines, note: notes.join(" ") };
+  };
+
+  // The choices for the chart's select box: [{ value, label, group }]; group is the meter's name (an option
+  // group in the select box) or "" for the top choices.
+  pw.chartScopes = function (entities, devices) {
+    const ents = meterEntities(entities);
+    const out = [];
+    if (!ents.length) return out;
+    const names = (id) => (devices && devices[id] && devices[id].name) || id;
+    const devIds = [...new Set(ents.map((e) => e.device_id))].sort((a, b) => names(a).localeCompare(names(b)));
+    out.push({ value: "all", label: "All on one graph", group: "" }, { value: "totals", label: "Totals", group: "" });
+    for (const g of pw.SERIES_GROUPS) if (ents.some((e) => pw.inScope("x:" + g.id, e))) out.push({ value: "x:" + g.id, label: g.label, group: "" });
+    for (const id of devIds) {
+      const mine = ents.filter((e) => e.device_id === id);
+      const chans = [...new Set(mine.map((e) => e.labels.channel))].sort();
+      const grp = names(id);
+      out.push({ value: "d:" + id, label: chans.length > 1 ? "All circuits" : "Whole meter", group: grp });
+      for (const c of chans) {
+        const cfg = ((devices && devices[id] && devices[id].channels) || {})[c] || null;
+        const groups = pw.GROUP_ORDER.filter((g) => g && mine.some((e) => e.labels.channel === c && (e.labels.group || "") === g));
+        if (chans.length > 1) out.push({ value: `c:${id}/${c}`, label: pw.channelTitle({ id: c, cfg }, true) || c, group: grp });
+        if (groups.length > 1) for (const g of groups) out.push({ value: `g:${id}/${c}/${g}`, label: (chans.length > 1 ? "  " : "") + pw.GROUP_WORD[g], group: grp });
+      }
+    }
+    return out;
+  };
+  // A saved choice that is no longer on offer (a meter removed) falls back to the first one.
+  pw.pickScope = (scopes, wanted) => (scopes.some((s) => s.value === wanted) ? wanted : (scopes[0] ? scopes[0].value : ""));
+
+  // ---- Totals view: the watts of each line, never summed across anything that is not reading.
+  // Three-phase meters: their own a, b, c and total readings (the total is the meter's own, not a sum).
+  // Single-phase circuits: grouped by the line set in Admin (L1, L2, L3, or "Line not set"), each group
+  // added up, then the overall total. If any circuit in a group is not reading (meter not answering, reading
+  // old, or never received) that group is INCOMPLETE: no figure, the missing circuits listed. Nothing is
+  // filled in. Neutral and earth currents (SERIES_GROUPS) are listed one row per reading and never added up.
+  pw.phaseTotals = function (devices, meters) {
+    const live = (m, e) => !!m && m.state === "live" && !!e && isNum(e.value) && !e.stale;
+    const three = [], single = { L1: [], L2: [], L3: [], "": [] }, extra = [];
+    let anySingle = false;
+    for (const m of meters) {
+      const d = (devices || {})[m.id] || {};
+      const many = m.channels.length > 1;
+      for (const ch of m.channels) {
+        const name = [m.name, pw.channelTitle(ch, many)].filter(Boolean).join(" · ");
+        if (["a", "b", "c"].some((k) => ch.groups[k])) {
+          const rows = ["a", "b", "c", "total"].filter((k) => ch.groups[k] && ch.groups[k].power)
+            .map((k) => { const ok = live(m, ch.groups[k].power); return { label: pw.GROUP_WORD[k], ok, watts: ok ? ch.groups[k].power.value : null }; });
+          three.push({ name, rows });
+        } else if (ch.groups[""] && ch.groups[""].power) {
+          const e = ch.groups[""].power, cfg = (d.channels || {})[ch.id] || {};
+          const ok = live(m, e);
+          single[single[cfg.phase] ? cfg.phase : ""].push({ name, ok, watts: ok ? e.value : null });
+          anySingle = true;
+        }
+        for (const sg of pw.SERIES_GROUPS) for (const g of sg.groups) for (const f of sg.fields) {
+          const e = ch.groups[g] && ch.groups[g][f];
+          if (e) { const ok = live(m, e); extra.push({ group: sg.label, label: [name, pw.GROUP_WORD[g]].filter(Boolean).join(" · "), ok, value: ok ? e.value : null, unit: e.unit || "", decimals: e.decimals || 0 }); }
+        }
+      }
+    }
+    const sum = (items) => {
+      const missing = items.filter((x) => !x.ok).map((x) => x.name);
+      return { count: items.length, missing, watts: missing.length || !items.length ? null : items.reduce((s, x) => s + x.watts, 0) };
+    };
+    const rows = ["L1", "L2", "L3", ""].filter((k) => single[k].length).map((k) => ({ label: k ? pw.PHASE_WORD[k] : "Line not set", ...sum(single[k]) }));
+    return { three, single: anySingle ? { rows, overall: sum([].concat(single.L1, single.L2, single.L3, single[""])) } : null, extra };
+  };
+
+  // Builds the Totals table into host (replaces its contents only when the text would change).
+  pw.renderTotals = function (host, t) {
+    const h = SW.h;
+    const num0 = (w) => (w === null ? "—" : `${SW.num(w, 0)} W`);
+    const state = (x) => (x.watts === null ? (x.missing && x.missing.length ? `INCOMPLETE: not reading ${x.missing.join(", ")}` : "No reading") : "");
+    const sections = [];
+    for (const m of t.three) {
+      sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, m.name + " (the meter's own readings)"),
+        h("tbody", {}, m.rows.map((r) => h("tr", {}, h("th", { scope: "row" }, r.label), h("td", { class: "num" }, num0(r.watts)), h("td", { class: "pw-incomplete" }, r.ok ? "" : "▲ NO READING"))))));
+    }
+    if (t.single) {
+      const all = t.single.overall;
+      sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, "Single-phase circuits, by line"),
+        h("tbody", {}, t.single.rows.map((r) => h("tr", {}, h("th", { scope: "row" }, r.label), h("td", { class: "num" }, num0(r.watts)), h("td", { class: "pw-incomplete" }, state(r) ? "▲ " + state(r) : ""))),
+          h("tr", { class: "pw-grandtotal" }, h("th", { scope: "row" }, "Total, all lines"), h("td", { class: "num" }, num0(all.watts)), h("td", { class: "pw-incomplete" }, state(all) ? "▲ " + state(all) : "")))));
+    }
+    if (t.extra.length) {
+      sections.push(h("table", { class: "pw-table pw-totals" }, h("caption", {}, t.extra[0].group + " (current, not added up)"),
+        h("tbody", {}, t.extra.map((r) => h("tr", {}, h("th", { scope: "row" }, r.label), h("td", { class: "num" }, r.value === null ? "—" : `${SW.num(r.value, Math.min(3, r.decimals))} ${r.unit}`), h("td", { class: "pw-incomplete" }, r.ok ? "" : "▲ NO READING"))))));
+    }
+    if (!sections.length) sections.push(h("p", { class: "muted" }, "No power readings yet."));
+    const sig = JSON.stringify(t);
+    if (host.dataset.sig === sig) return;
+    host.dataset.sig = sig;
+    host.replaceChildren(...sections);
+  };
+
   // A silence longer than this between two points breaks the line (the meter was not read): never joined up.
   // The history chart's vertical scale for a measurement: voltage fixed to the UK range, frequency
   // to 50 Hz ± 1 Hz (a reading outside is drawn at the edge with a mark), power and current from 0
