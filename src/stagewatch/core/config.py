@@ -238,6 +238,16 @@ class ShellyChannelConfig(_Model):
     in_total: bool = False
 
 
+class PowerSiteConfig(_Model):
+    """Site-wide settings for the Power card's calculated figures (demand and generator suggestion).
+    Additive with defaults: no config schema bump; older builds ignore the key. The allowed values match
+    integrations/shelly/calc.py (a test keeps them equal)."""
+    demand_window_min: Literal[5, 15, 30] = 15       # rolling window for average demand
+    gen_loading_pct: float = Field(80.0, ge=50, le=100, allow_inf_nan=False)    # the loading limit
+    gen_power_factor: float = Field(0.8, ge=0.5, le=1.0, allow_inf_nan=False)   # the generator's assumed power factor
+    gen_size_kva: float | None = Field(None, gt=0, le=5000, allow_inf_nan=False)   # a generator size typed in, if any
+
+
 class ShellyDeviceConfig(_Model):
     """A Shelly power meter the admin added (read-only: Stagewatch only asks it for its readings).
     Identity is the meter's MAC, read from the meter itself when it was added; ``host`` is only where
@@ -1063,6 +1073,7 @@ class Config(_Model):
     witmotion: WitmotionConfig = Field(default_factory=WitmotionConfig)
     # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
     shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list)
+    power_site: PowerSiteConfig = Field(default_factory=PowerSiteConfig)
     contacts: ContactsSettings = Field(default_factory=ContactsSettings)
     advice: AdviceConfig = Field(default_factory=AdviceConfig)
 

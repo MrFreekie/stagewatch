@@ -1260,7 +1260,7 @@
     $("power-metric-seg").hidden = totals;
     $("power-span-seg").hidden = totals;
     if (totals) {
-      SW.pw.renderTotals($("power-totals"), SW.pw.phaseTotals(state.devices, view.meters));
+      SW.pw.renderTotals($("power-totals"), SW.pw.phaseTotals(state.devices, view.meters, state.entities));
       setText($("power-chart-note"), "Each line's watts as the meters report them now. A line with a circuit that is not reading shows no figure, never a partial one.");
       return;
     }

@@ -87,6 +87,20 @@ Rows that a meter does not send are left out. No supported meter sends these yet
 
 The voltage and frequency warnings put a quiet notice in the alarm bar. It never makes a sound, and it clears itself when the reading is back inside with a little margin. All of this is advisory. Stagewatch only reads, and the rating is simply the number you typed in. Colour is never the only signal: the words are always shown.
 
+## Calculated figures
+
+These are worked out by Stagewatch from the meter readings. They say "(calculated)" and are a guide only. If a reading they need is missing or old, there is no figure: Stagewatch never guesses and never shows zero.
+
+**Reactive power.** For meters that do not send it, Stagewatch works it out from volt-amps and watts. It shows the size only: it cannot say whether the load leads or lags. A meter that sends its own reactive power (the first-generation EM) is shown as it sent it. Shown as var, or kVAr from 1,000 var.
+
+**Phase unbalance.** The biggest difference of any line current from the average of the three, as a percentage of that average (the NEMA MG 1 method). 0% means the lines carry the same current. Stagewatch works it out for each three-phase meter, and for the circuits you set to Line 1, 2 and 3 in Admin. You also see each line's share of the load. It shows a dash if any line is missing or old, or if the average current is under 1 A (at almost no load the percentage means nothing). It is in **Totals** and on the chart as **Phase unbalance**.
+
+**Demand and load factor.** For the site total and for each meter: the average power over a rolling window (5, 15 or 30 minutes, set in **Admin → Power demand and generator size**; 15 is what electricity suppliers commonly use), the highest of those averages this show day (the peak), and the load factor, which is the show day's average divided by the peak, as a percentage. A silence in the readings is left out, never counted as zero, and the figure says INCOMPLETE. Nothing shows until a full window has passed. The show day starts and ends at the same time as the show day figures above.
+
+**Generator size suggestion.** From the site total's peak demand in kVA: the smallest generator is the peak divided by your loading limit (80% unless you change it in Admin). It also shows the kW at the generator power factor (0.8 unless you change it), and the next standard size up. If you type the size of the generator you have, the card shows how loaded it is at the day's peak, with a warning at your loading limit and again at 100%.
+
+This is a suggestion from the demand Stagewatch measured, nothing more. It leaves out loads that are not metered, starting surges, harmonics and anything added later. Ask a qualified person to size the generator.
+
 ## Totals
 
 **Apparent power** is a chart choice beside Power and Current. In Totals it is added up per line as a **sum of VA** only when every circuit has it; adding VA this way can read higher than the true total when the loads are not in step.

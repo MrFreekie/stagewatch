@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass
 
 from ...core.model import Kind
+from . import calc
 
 # Components that can carry power readings. A key like "pm1:0" -> ("pm1", 0).
 _COMPONENT_RE = re.compile(r"^(pm1|em1|em|emdata|switch|gen1em):([0-7])$")   # no real meter has more than 8 of a kind
@@ -220,6 +221,23 @@ def _gen1em(status: dict, n: int) -> list[Reading]:
 _BUILDERS = {"gen1em": _gen1em, "pm1": _pm1, "em1": _em1, "em": _em, "emdata": _emdata, "switch": _switch}
 
 
+def with_reactive(readings: list[Reading]) -> list[Reading]:
+    """Add a calculated reactive power (var) beside each real + apparent power pair that has no reactive
+    reading of its own (a Gen1 EM sends its own; that one is kept as the meter sent it). Q = sqrt(S^2 - P^2),
+    a size only: no lagging or leading sign. The value is None when either input is missing (see calc.reactive_var)."""
+    have = {(r.channel, r.group) for r in readings if r.field == "reactive"}
+    power = {(r.channel, r.group): r for r in readings if r.field == "power"}
+    out = []
+    for r in readings:
+        if r.field != "apparent" or (r.channel, r.group) in have or (r.channel, r.group) not in power:
+            continue
+        p = power[(r.channel, r.group)]
+        tag = f"{r.group}_" if r.group else ""
+        out.append(Reading(f"{r.channel}_{tag}reactive", r.channel, r.group, "reactive", Kind.REACTIVE_POWER, 1,
+                           calc.reactive_var(p.value, r.value), calculated="square root of (VA squared minus W squared)"))
+    return readings + out
+
+
 def readings_from_status(status: object) -> list[Reading]:
     """Every reading in a status, in a stable order. Empty when the status has no power component."""
     out: list[Reading] = []
@@ -230,7 +248,7 @@ def readings_from_status(status: object) -> list[Reading]:
             out.extend(_BUILDERS[prefix](status, n))
         except Exception:  # noqa: BLE001 - a strange component must never stop the others
             continue
-    return out[:MAX_READINGS]
+    return with_reactive(out[:MAX_READINGS])[:MAX_READINGS]   # calculated readings come last, so a flood cuts those first
 
 
 # --------------------------------------------------------------------- names for people

@@ -749,6 +749,30 @@
       h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it. Stagewatch recognises a meter by its own hardware address, so if its address changes, type the new one in its row and press Save. Warnings at the breaker rating are planned for a later version. Figures are advisory and do not replace the electrician's inspection and testing."));
   }
 
+  // Power card calculations: the demand window and the generator size suggestion. Advisory only: the figures
+  // are worked out from measured demand and change nothing on any meter or generator.
+  function powerSiteCard() {
+    const c = (admin.config && admin.config.power_site) || {};
+    const win = h("select", { "aria-label": "Demand window" }, [5, 15, 30].map((m) => h("option", { value: m, selected: m === (c.demand_window_min || 15) }, `${m} minutes`)));
+    const num = (v, min, max, step, label, ph) => h("input", { class: "num touch", type: "number", min, max, step, value: v || "", placeholder: ph || "", "aria-label": label });
+    const loading = num(c.gen_loading_pct || 80, 50, 100, 1, "Generator loading limit (percent)");
+    const pf = num(c.gen_power_factor || 0.8, 0.5, 1, 0.01, "Generator power factor");
+    const size = num(c.gen_size_kva, 0, 5000, 1, "Generator size you have (kVA)", "none");
+    const save = () => run(() => api("PUT", "/api/admin/power-site", {
+      demand_window_min: Number(win.value), gen_loading_pct: Number(loading.value), gen_power_factor: Number(pf.value), gen_size_kva: Number(size.value) || 0 }),
+      "Power calculations saved").then(refresh, () => {});
+    return card("Power demand and generator size",
+      h("p", { class: "muted" }, "Settings for the calculated figures on the Power card. Demand is the average power over a rolling window. The generator size is a suggestion from the peak demand of the circuits ticked \"Include in site total\"."),
+      h("div", { class: "row" },
+        field("Demand window", win),
+        field("Keep the generator loaded to no more than (%, 50 to 100)", loading),
+        field("Generator power factor (0.5 to 1)", pf),
+        field("Generator you have (kVA, optional)", size),
+        h("button", { class: "primary touch", style: "align-self:flex-end", onclick: save }, "Save")),
+      h("p", { class: "notice" }, "This is a suggestion from the demand Stagewatch measured, nothing more. It leaves out loads that are not metered, starting surges, harmonics and anything added later. Ask a qualified person to size the generator."),
+      SW.help(h("p", { class: "muted hint" }, "The suggested size is the peak demand in kVA for the show day, divided by the loading limit (80% unless you change it). The kW figure uses the generator power factor (0.8 is typical for a generator). If you type the size of the generator you have, the Power card shows how loaded it is at the day's peak, with a warning at your loading limit and again at 100%. Reactive power, phase unbalance and demand are calculated by Stagewatch from the meter readings.")));
+  }
+
   // ------------------------------------------------------------ alarm notices
   // How long advisory notices stay on dashboards. Only the dashboard list changes: the state behind
   // a notice (a node still Missing) stays visible in the sensor list and here.
@@ -2906,6 +2930,7 @@
         added.globcon ? chip(foldCard(globconCard(), "globcon", false), "globcon") : null,
         chip(foldCard(witmotionCard(), "witmotion", false), "witmotion"),
         ((admin.shelly || {}).meters || []).length ? chip(foldCard(shellyCard(), "shelly", false), "shelly") : null,
+        ((admin.shelly || {}).meters || []).length ? foldCard(powerSiteCard(), "powersite", false) : null,
         foldCard(barometerCard(), "barometer", false),
         piHostInfo() ? chip(foldCard(piHostCard(), "pihost", false), "pihost") : null,
         foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
