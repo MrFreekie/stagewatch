@@ -698,34 +698,8 @@
       const area = h("input", { value: m.area, maxlength: "40", "aria-label": `${m.name} area` });
       const host = h("input", { class: "touch", value: m.host, maxlength: "64", autocomplete: "off", spellcheck: "false", "aria-label": `${m.name} address` });
       const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: m.interval_s, "aria-label": `${m.name} reads every (seconds)` });
-      const rating = h("input", { class: "num", type: "number", min: "0", max: "200", step: "0.5", value: m.rating_a || "", placeholder: "none", "aria-label": `${m.name} device limit (amps)` });
-      const breaker = h("input", { class: "num", type: "number", min: "0", max: "1000", step: "0.5", value: m.breaker_a || "", placeholder: "unknown", "aria-label": `${m.name} breaker or fuse rating (amps)` });
-      const weak = h("div", { class: "warn-text", style: "font-size:12px", role: "status" });
-      const checkWeak = () => { weak.textContent = SW.limit(Number(breaker.value) || null, Number(rating.value) || null).weak ? SW.WEAK_NOTE : ""; };
-      rating.addEventListener("input", checkWeak); breaker.addEventListener("input", checkWeak); checkWeak();
-      const chRows = (m.channels || []).map((c) => {
-        const label = h("input", { value: c.label, maxlength: "40", placeholder: "Label (e.g. Amp rack 3)", "aria-label": `${m.name} ${c.name} label` });
-        const phase = h("select", { "aria-label": `${m.name} ${c.name} line` }, [["", "No line set"], ["L1", "Line 1 (Brown)"], ["L2", "Line 2 (Black)"], ["L3", "Line 3 (Grey)"]].map(([v, t]) => h("option", { value: v, selected: v === c.phase }, t)));
-        const rating = h("input", { class: "num", type: "number", min: "0", max: "200", step: "0.5", value: c.rating_a || "", placeholder: "meter's", "aria-label": `${m.name} ${c.name} device limit (amps)` });
-        const brk = h("input", { class: "num", type: "number", min: "0", max: "1000", step: "0.5", value: c.breaker_a || "", placeholder: "meter's", "aria-label": `${m.name} ${c.name} breaker or fuse rating (amps)` });
-        const cWeak = h("div", { class: "warn-text", style: "font-size:12px", role: "status" });
-        const cCheck = () => { cWeak.textContent = SW.limit(Number(brk.value) || null, Number(rating.value) || null).weak ? SW.WEAK_NOTE : ""; };
-        rating.addEventListener("input", cCheck); brk.addEventListener("input", cCheck); cCheck();
-        const inTotal = h("input", { type: "checkbox", checked: !!c.in_total, "aria-label": `${m.name} ${c.name} include in site total` });
-        return { c, label, phase, rating, brk, inTotal, el: h("div", { class: "row", style: "margin:4px 0" }, h("span", { class: "muted", style: "min-width:90px" }, c.name), label,
-          c.three_phase ? h("span", { class: "muted" }, "Lines 1 to 3 (Brown, Black, Grey)") : phase,
-          h("label", { class: "row" }, h("span", { class: "muted" }, "Device limit (A)"), rating), h("label", { class: "row" }, h("span", { class: "muted" }, "Breaker or fuse rating (A)"), brk), cWeak,
-          h("label", { class: "row", style: "min-height:44px", title: "Adds this circuit's watts into one site total on the Power card" }, inTotal, " Include in site total")) };
-      });
-      const singles = (m.channels || []).filter((c) => !c.three_phase).length;
-      const combined = h("input", { type: "checkbox", checked: !!m.combined_bar, "aria-label": `${m.name} combined load bar` });
-      const combinedRow = singles >= 2
-        ? h("label", { class: "row", style: "min-height:44px", title: "One extra bar on the Power card: the amps of all this meter's circuits added together, against the meter's rating above" },
-          combined, " Combined load bar (circuits added together, against the meter's rating; needs a rating)")
-        : null;
-      const channelsPayload = () => chRows.map((r) => ({ key: r.c.key, label: val(r.label), phase: r.c.three_phase ? "" : r.phase.value, rating_a: Number(r.rating.value) || 0, breaker_a: Number(r.brk.value) || 0, in_total: r.inTotal.checked }));
       const facts = [m.model, m.firmware ? `firmware ${m.firmware}` : "", `MAC ${m.mac}`].filter(Boolean).join(" · ");
-      const first = h("tr", {},
+      return h("tr", {},
         h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, m.id)),
         h("td", {}, area),
         h("td", {}, statusPill(m), m.detail ? h("div", { class: "muted", style: "font-size:12px" }, m.detail) : null,
@@ -733,24 +707,21 @@
           m.energy_went_back ? h("div", { class: "warn-text", style: "font-size:12px" }, `Energy counter went back at ${m.energy_went_back}`) : null),
         h("td", {}, host, h("div", { class: "muted", style: "font-size:12px" }, facts)),
         h("td", {}, h("div", { class: "row" }, every, h("span", { class: "muted" }, "s"))),
-        h("td", {}, h("div", { class: "row" }, rating, h("span", { class: "muted" }, "A"))),
-        h("td", {}, h("div", { class: "row" }, breaker, h("span", { class: "muted" }, "A")), weak),
         h("td", {}, h("div", { class: "muted", style: "font-size:12px" }, `${m.ok_polls} ok, ${m.failed_polls} missed`)),
         h("td", {}, h("div", { class: "row" },
           h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/shelly/${encodeURIComponent(m.id)}`, {
-            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value), rating_a: Number(rating.value) || 0, breaker_a: Number(breaker.value) || 0, channels: channelsPayload(), ...(combinedRow ? { combined_bar: combined.checked } : {}) }), "Saved").then(refresh, () => {}) }, "Save"),
-          h("button", { class: "small", title: "Makes two warnings from the rating: a notice at 80% and an alarm at 100%. Your own limits: Stagewatch does not protect or switch anything.",
+            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value) }), "Saved").then(refresh, () => {}) }, "Save"),
+          h("button", { class: "small", title: "Makes two warnings from the lower of the device limit and the breaker rating (set under Power distribution): a notice at 80% and an alarm at 100%. Your own limits: Stagewatch does not protect or switch anything.",
             onclick: () => run(() => api("POST", `/api/admin/shelly/${encodeURIComponent(m.id)}/warnings`), "Warnings added at 80% and 100% (see Thresholds)").then(refresh, () => {}) }, "Add warnings"),
           h("button", { class: "small danger", onclick: () => confirm(`Remove the Shelly power meter ${m.name}? Stagewatch stops reading it. Its history is kept, and it can be added again.`) && run(() => api("DELETE", `/api/admin/shelly/${encodeURIComponent(m.id)}`), "Removed").then(refresh, () => {}) }, "Remove"))));
-      return chRows.length ? [first, h("tr", {}, h("td", { colspan: "9" }, h("div", { class: "muted", style: "font-size:12px" }, "Circuits on this meter: label, which mains line it is on (single-phase meters), its own device limit and breaker or fuse rating (blank uses the meter's), and whether its watts go into the site total on the Power card. Tick one circuit per phase; a three-phase meter already gives its own total, so tick it on its own. Each phase of a three-phase meter keeps its own bar: phases are never added together"), combinedRow, ...chRows.map((r) => r.el)))] : [first];
     });
     const table = h("table", {},
-      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", { title: "What the meter itself can carry (a PM Mini Gen3 is 16 A)" }, "Device limit (A)"), h("th", { title: "The breaker or fuse that protects the circuit, if you know it. The lower of the two is used for the load bar." }, "Breaker or fuse rating (A)"), h("th", {}, "Polls"), h("th", {}, ""))),
-      h("tbody", {}, [].concat(...rows)));
+      h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Polls"), h("th", {}, ""))),
+      h("tbody", {}, rows));
 
 
     return SW.brandCard("Shelly power meters", "shelly-badge.svg", "Shelly",
-      h("p", { class: "muted" }, "Shows watts, volts, amps, frequency and energy from Shelly power meters on dashboards that have the Power card (User dashboards → Edit cards). Stagewatch only reads: every few seconds it asks each meter for its readings, and that is all it ever sends. It never switches a relay, changes a setting, restarts or resets a meter. Type the meter's device limit in amps (for example 16 for a PM Mini) and, if you know it, the rating of the breaker or fuse that protects it. The load bar and the warnings at 80% and 100% use the lower of the two. Voltage and frequency are checked against the UK ranges."),
+      h("p", { class: "muted" }, "Shows watts, volts, amps, frequency and energy from Shelly power meters on dashboards that have the Power card (User dashboards → Edit cards). Stagewatch only reads: every few seconds it asks each meter for its readings, and that is all it ever sends. It never switches a relay, changes a setting, restarts or resets a meter. Each meter's circuits, lines, device limit (for example 16 A for a PM Mini) and breaker or fuse rating are set under Power distribution (Integrations tab). The load bar and the warnings at 80% and 100% use the lower of the two. Voltage and frequency are checked against the UK ranges."),
       h("p", { class: "notice" }, "A Shelly Plug or any Shelly with a relay is read for its power only. Stagewatch never touches the relay, but it cannot stop the Shelly's own button, schedule or app from switching it. For a distro, prefer a meter with no relay, such as the PM Mini."),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: meters are simulated, so any private address (such as 192.0.2.20) will \"find\" a simulated PM Mini. The demo meter stops answering for 40 seconds every 5 minutes, to show how a frozen card looks.")
         : h("p", { class: "notice" }, "Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3. Other Shelly meters are read by what they report, but are not tested. A meter with a password is not supported yet."),
@@ -784,57 +755,100 @@
   }
 
   // Power distribution: who feeds whom. Each point (generator, grid supply, intake unit: things with no meter)
-  // and each power meter or circuit gets a role, a number and an Upstream. Stores the shape only for now;
-  // nothing is read from or sent to a meter. The server checks every rule again before it saves.
+  // and each power meter gets a role, a number and what feeds it. A meter with ONE circuit is ONE row (its
+  // settings are kept once, on that circuit); a meter with several circuits has a header row and a row per circuit.
+  // The basic path is role, number and "What feeds this?". Way, line, breaker rating, device limit and the typed
+  // allowance sit under "More options" (all rows at once with the "Show advanced power options" switch).
+  // Stagewatch only reads from the meters. The server checks every rule again before it saves.
   function powerTreeCard() {
     const pt = admin.power_tree || { roles: [], ups_types: [], nodes: [], problems: [], warnings: [] };
     const roles = pt.roles, PA = SW.ptAdmin;
     const meters = (admin.shelly || {}).meters || [];
     const points = (admin.config && admin.config.power_points) || [];
-    const rows = [];      // one per node: { ref, el, role, no, up, kind, name(), body() }
+    let advanced = !!pt.show_advanced;
+    const rows = [];      // one per node: { ref, kind, el, role, no, up, way, more, name(), line(), body() }
     const pointsBox = h("div", {}), metersBox = h("div", {});
     const roleSel = (cur, label) => h("select", { class: "touch", "aria-label": `${label} role` },
-      [h("option", { value: "" }, "No role")].concat(roles.map((r) => h("option", { value: r.key, selected: r.key === cur }, r.label))));
+      [h("option", { value: "" }, "Choose…")].concat(roles.map((r) => h("option", { value: r.key, selected: r.key === cur }, r.label))));
     const noIn = (cur, label) => h("input", { class: "num touch", type: "number", min: "1", max: "99", step: "1", value: cur || "", placeholder: "No.", "aria-label": `${label} number` });
+    const numIn = (v, max, ph, lab) => h("input", { class: "num touch", type: "number", min: "0", max, step: "any", value: v || "", placeholder: ph, "aria-label": lab });
     const noOf = (e) => (e.no.value.trim() === "" ? null : Math.round(Number(e.no.value)));
+    const wayOf = (e) => (e.way.value.trim() === "" ? null : Math.round(Number(e.way.value)));
     const shown = (e) => PA.display(roles, e.role.value, noOf(e));
+    const live = () => rows.map((e) => ({ ref: e.ref, role: e.role.value, no: noOf(e), upstream: e.up.value, way: wayOf(e), name: e.name(), label: shown(e) || e.name() }));
     const refreshUps = () => {
-      const live = rows.map((e) => ({ ref: e.ref, role: e.role.value, upstream: e.up.value, name: e.name() }));
+      const nodes = live();
       rows.forEach((e) => {
-        const keep = e.up.value, ok = PA.upstreamChoices(roles, live, e.ref, e.role.value);
-        const opts = [h("option", { value: "" }, e.role.value === "source" ? "Nothing above a supply" : "No upstream")];
-        ok.forEach((ref) => { const o = rows.find((x) => x.ref === ref); opts.push(h("option", { value: ref }, PA.optionLabel(roles, o.role.value, noOf(o), o.name()))); });
+        const keep = e.wantUp !== undefined ? e.wantUp : e.up.value, ok = PA.upstreamChoices(roles, nodes, e.ref, e.role.value);
+        const sug = e.role.value ? PA.suggestUpstream(roles, nodes, e.ref, e.role.value) : "";
+        e.wantUp = undefined;
+        const opts = [h("option", { value: "" }, e.role.value === "source" ? "Nothing above a supply" : "Not set")];
+        ok.forEach((ref) => { const o = rows.find((x) => x.ref === ref); opts.push(h("option", { value: ref }, PA.optionLabel(roles, o.role.value, noOf(o), o.name()) + (ref === sug ? " (suggested)" : ""))); });
         e.up.replaceChildren(...opts);
         e.up.value = ok.includes(keep) ? keep : "";
         e.shownEl.textContent = shown(e) || "";
+        e.up.disabled = e.role.value === "source";
+        // fed from CDU02-C2-L1, and a clear message when another unit already uses this way
+        const upRow = rows.find((x) => x.ref === e.up.value);
+        const label = upRow ? PA.linkLabel(shown(upRow) || upRow.name(), wayOf(e), e.line()) : "";
+        e.feedEl.textContent = label ? `Fed from ${label}` : "";
+        e.wayMsg.textContent = PA.wayClash(nodes, e.ref, e.up.value, wayOf(e));
       });
     };
-    const mk = (ref, kind, label, role, unit, upstream, nameFn, extra) => {
-      const e = { ref, kind, name: nameFn };
+    // choosing a role fills in the next free number and, if nothing feeds it yet, the likely unit above
+    const onRole = (e) => {
+      const nodes = live(), role = e.role.value;
+      if (role) {
+        const taken = nodes.some((x) => x.ref !== e.ref && x.role === role && x.no === noOf(e));
+        if (noOf(e) === null || taken) { const n = PA.nextNumber(nodes, e.ref, role); e.no.value = n === null ? "" : String(n); }
+        if (!e.up.value) e.wantUp = PA.suggestUpstream(roles, live(), e.ref, role);
+      }
+      refreshUps();
+      e.sync();
+    };
+    // kind: "point" | "meter" | "circuit". `title` is the line above the row (a meter's name and area).
+    const mk = (ref, kind, label, role, unit, upstream, way, nameFn) => {
+      const e = { ref, kind, name: nameFn, sync: () => {} };
       e.role = roleSel(role, label); e.no = noIn(unit, label);
       e.up = h("select", { class: "touch", "aria-label": `${label} upstream` });
-      e.up.value = upstream || "";
       e.up.append(h("option", { value: upstream || "" }, ""));   // so the saved value survives until the list is built
+      e.up.value = upstream || "";
+      e.way = h("input", { class: "num touch", type: "number", min: "1", max: "99", step: "1", value: way || "", placeholder: "Way", "aria-label": `${label} way on the unit above` });
       e.shownEl = h("strong", { style: "min-width:64px" }, "");
-      e.role.onchange = refreshUps; e.no.oninput = refreshUps; e.up.onchange = refreshUps;
-      e.extra = extra || {};
-      e.el = h("div", { class: "row", style: "margin:4px 0;flex-wrap:wrap" }, e.shownEl, e.role, e.no, field("Upstream", e.up));
+      e.feedEl = h("span", { class: "muted" }, "");
+      e.wayMsg = h("span", { class: "warn-text", role: "status" }, "");
+      e.role.onchange = () => onRole(e); e.no.oninput = refreshUps; e.up.onchange = refreshUps; e.way.oninput = refreshUps;
+      e.line = () => "";
+      e.basic = h("div", { class: "row", style: "margin:4px 0;flex-wrap:wrap" }, e.shownEl, field("What is it?", e.role), field("No.", e.no), field("What feeds this?", e.up), e.feedEl);
+      e.more = h("details", { class: "pd-more", open: advanced }, h("summary", {}, "More options"));
+      e.el = h("div", { class: "pd-row" }, e.basic, e.more);
+      e.addMore = (...items) => e.more.append(h("div", { class: "row", style: "margin:4px 0;flex-wrap:wrap" }, ...items));
+      e.wayField = () => [field("Way (circuit number on the unit above)", e.way), e.wayMsg];
       return e;
+    };
+    const lineSel = (cur, threePhase, label) => {
+      if (threePhase) return null;
+      return h("select", { class: "touch", "aria-label": `${label} line` }, [["", "Not set"], ["L1", "Line 1 (Brown)"], ["L2", "Line 2 (Black)"], ["L3", "Line 3 (Grey)"]].map(([v, t]) => h("option", { value: v, selected: v === (cur || "") }, t)));
+    };
+    const limitFields = (rating, breaker) => {
+      const weak = h("span", { class: "warn-text", role: "status" });
+      const chk = () => { weak.textContent = SW.limit(Number(breaker.value) || null, Number(rating.value) || null).weak ? SW.WEAK_NOTE : ""; };
+      rating.addEventListener("input", chk); breaker.addEventListener("input", chk); chk();
+      return [field("Breaker or fuse rating (A)", breaker), field("Device limit (A, what the meter can carry)", rating), weak];
     };
     // distribution points
     const addPoint = (p, isNew) => {
       const name = h("input", { class: "touch", maxlength: "60", value: p.name || "", placeholder: "Name (e.g. FOH generator)", "aria-label": "Point name" });
-      const e = mk(`p:${p.id}`, "point", p.name || "Point", p.role, p.unit_no, p.upstream, () => name.value.trim(), {});
-      const num = (v, max, ph, lab) => h("input", { class: "num touch", type: "number", min: "0", max, step: "any", value: v || "", placeholder: ph, "aria-label": lab });
-      const ratingA = num(p.rating_a, 5000, "A", "Breaker or fuse rating (amps)"), ratingK = num(p.rating_kva, 10000, "kVA", "Rating (kVA)");
+      const e = mk(`p:${p.id}`, "point", p.name || "Point", p.role, p.unit_no, p.upstream, p.way, () => name.value.trim());
+      const ratingA = numIn(p.rating_a, 5000, "A", "Breaker or fuse rating (amps)"), ratingK = numIn(p.rating_kva, 10000, "kVA", "Rating (kVA)");
       const ups = h("select", { class: "touch", "aria-label": "UPS type" }, pt.ups_types.map((u) => h("option", { value: u.key, selected: u.key === (p.ups_type || "unknown") }, u.label)));
       const mon = h("input", { type: "checkbox", checked: p.monitored === false, "aria-label": "Not monitored" });
       const al = p.allowance || { unit: "unknown", value: null };
       const alUnit = h("select", { class: "touch", "aria-label": "Typed allowance unit" }, [["unknown", "Unknown"], ["a_per_line", "Amps per line"], ["kw", "Kilowatts"]].map(([v, t]) => h("option", { value: v, selected: v === al.unit }, t)));
-      const alVal = num(al.value, 100000, "typed in", "Typed allowance");
+      const alVal = numIn(al.value, 100000, "typed in", "Typed allowance");
       const alBox = h("span", { class: "row" }, field("Typed allowance (a guess, not a measurement)", alUnit), alVal);
-      const sync = () => { alBox.hidden = !mon.checked; ups.hidden = e.role.value !== "ups"; };
-      e.role.addEventListener("change", sync); mon.onchange = sync;
+      e.sync = () => { alBox.hidden = !mon.checked; ups.hidden = e.role.value !== "ups"; };
+      mon.onchange = e.sync;
       const gone = h("button", { class: "small danger touch", onclick: () => {
         if (isNew) { rows.splice(rows.indexOf(e), 1); e.el.remove(); refreshUps(); return; }
         const kids = rows.filter((x) => x.up.value === e.ref).length;
@@ -842,33 +856,73 @@
         const how = kids ? (confirm("Move the units fed from it up a level? OK moves them up. Cancel leaves them with no Upstream.") ? "reparent" : "detach") : "";
         run(() => api("DELETE", `/api/admin/power-points/${encodeURIComponent(p.id)}${how ? `?children=${how}` : ""}`), "Removed").then(refresh, () => {});
       } }, "Remove");
-      e.name = () => name.value.trim() || "";
-      name.addEventListener("input", refreshUps);
-      e.body = () => ({ id: p.id, name: name.value.trim(), role: e.role.value, unit_no: noOf(e), upstream: e.up.value,
+      e.body = () => ({ id: p.id, name: name.value.trim(), role: e.role.value, unit_no: noOf(e), upstream: e.up.value, way: wayOf(e),
         rating_a: Number(ratingA.value) || 0, rating_kva: Number(ratingK.value) || 0, ups_type: e.role.value === "ups" ? ups.value : "unknown",
         monitored: !mon.checked, ...(mon.checked ? { allowance: { unit: alUnit.value, value: alVal.value === "" ? null : Number(alVal.value) } } : {}) });
-      e.el.append(name, field("Breaker or fuse rating (A)", ratingA), field("kVA", ratingK), ups,
-        h("label", { class: "row", style: "min-height:44px" }, mon, " Not monitored (no meter on it)"), alBox, gone);
-      sync();
+      e.basic.prepend(name);
+      e.basic.append(ups, h("label", { class: "row", style: "min-height:44px" }, mon, " Nothing measures it (no meter)"), gone);
+      e.addMore(...e.wayField(), field("Breaker or fuse rating (A)", ratingA), field("Rating (kVA)", ratingK), alBox);
+      e.sync();
       rows.push(e); pointsBox.append(e.el);
     };
     points.forEach((p) => addPoint(p, false));
-    // meters and their circuits
+    // meters: one row for a one-circuit meter, else a header row and a row per circuit
     meters.forEach((m) => {
-      const em = mk(`m:${m.id}`, "meter", m.name, m.role, m.unit_no, m.upstream, () => m.name, {});
-      em.body = () => ({ id: m.id, role: em.role.value, unit_no: noOf(em), upstream: em.up.value,
-        channels: (m.channels || []).map((c) => { const ec = rows.find((x) => x.ref === `c:${m.id}:${c.key}`); return { key: c.key, role: ec.role.value, unit_no: noOf(ec), upstream: ec.up.value }; }) });
-      rows.push(em);
-      const box = h("div", { style: "margin:6px 0" }, h("div", { class: "row" }, h("strong", {}, m.name), h("span", { class: "muted" }, m.area || "")), em.el);
-      (m.channels || []).filter((c) => !c.three_phase || (m.channels || []).length > 1).forEach((c) => {
+      const kinds = PA.meterRows(m);
+      const box = h("div", { class: "pd-meter" }, h("div", { class: "row" }, h("strong", {}, m.name), h("span", { class: "muted" }, m.area || ""),
+        kinds[0].single && m.three_phase ? h("span", { class: "muted" }, "· three-phase (3P)") : null));
+      const ratingIn = numIn(m.rating_a, 200, "none", `${m.name} device limit (amps)`), breakerIn = numIn(m.breaker_a, 1000, "unknown", `${m.name} breaker or fuse rating (amps)`);
+      const em = mk(`m:${m.id}`, "meter", m.name, m.role, m.unit_no, m.upstream, m.way, () => m.name);
+      em.id = m.id;
+      if (kinds[0].single) {
+        const label = h("input", { class: "touch", maxlength: "40", value: m.label || "", placeholder: "Name on the Power card", "aria-label": `${m.name} label` });
+        const inTotal = h("input", { type: "checkbox", checked: !!m.in_total, "aria-label": `${m.name} include in site total` });
+        const line = lineSel(m.phase, m.three_phase, m.name);
+        em.line = () => (m.three_phase ? "3P" : line.value);
+        if (line) line.onchange = refreshUps;
+        em.body = () => ({ id: m.id, role: em.role.value, unit_no: noOf(em), upstream: em.up.value, way: wayOf(em), label: val(label),
+          ...(m.three_phase ? {} : { phase: line.value }), rating_a: Number(ratingIn.value) || 0, breaker_a: Number(breakerIn.value) || 0, in_total: inTotal.checked, channels: [] });
+        em.basic.append(h("label", { class: "row", style: "min-height:44px", title: "Adds this meter's watts into one site total on the Power card" }, inTotal, " Include in site total"));
+        em.addMore(...em.wayField(), m.three_phase ? h("span", { class: "muted" }, "Line: 3P (all three lines)") : field("Line", line), ...limitFields(ratingIn, breakerIn), field("Name on the Power card", label));
+      } else {
+        const chans = (m.channels || []);
+        const singles = chans.filter((c) => !c.three_phase).length;
+        const combined = h("input", { type: "checkbox", checked: !!m.combined_bar, "aria-label": `${m.name} combined load bar` });
+        em.body = () => ({ id: m.id, role: em.role.value, unit_no: noOf(em), upstream: em.up.value, way: wayOf(em),
+          rating_a: Number(ratingIn.value) || 0, breaker_a: Number(breakerIn.value) || 0, ...(singles >= 2 ? { combined_bar: combined.checked } : {}),
+          channels: rows.filter((r) => r.kind === "circuit" && r.meterId === m.id).map((r) => r.body()) });
+        em.addMore(...em.wayField(), ...limitFields(ratingIn, breakerIn));
+        if (singles >= 2) em.addMore(h("label", { class: "row", style: "min-height:44px", title: "One extra bar on the Power card: the amps of all this meter's circuits added together, against the lower of the limits above" },
+          combined, " Combined load bar (circuits added together, against the limits above; needs a limit)"));
+      }
+      rows.push(em); box.append(em.el);
+      kinds.slice(1).forEach((k) => {
+        const c = (m.channels || []).find((x) => x.key === k.key);
         const nm = `${m.name} ${c.label || c.name}`;
-        const ec = mk(`c:${m.id}:${c.key}`, "circuit", nm, c.role, c.unit_no, c.upstream, () => nm, {});
-        ec.el.prepend(h("span", { class: "muted", style: "min-width:120px" }, c.label || c.name));
+        const ec = mk(k.ref, "circuit", nm, c.role, c.unit_no, c.upstream, c.way, () => nm);
+        ec.meterId = m.id;
+        const label = h("input", { class: "touch", maxlength: "40", value: c.label || "", placeholder: "Label (e.g. Amp rack 3)", "aria-label": `${nm} label` });
+        const inTotal = h("input", { type: "checkbox", checked: !!c.in_total, "aria-label": `${nm} include in site total` });
+        const line = lineSel(c.phase, c.three_phase, nm);
+        const cr = numIn(c.rating_a, 200, "meter's", `${nm} device limit (amps)`), cb = numIn(c.breaker_a, 1000, "meter's", `${nm} breaker or fuse rating (amps)`);
+        ec.line = () => (c.three_phase ? "3P" : line.value);
+        if (line) line.onchange = refreshUps;
+        ec.body = () => ({ key: c.key, role: ec.role.value, unit_no: noOf(ec), upstream: ec.up.value, way: wayOf(ec), label: val(label),
+          ...(c.three_phase ? {} : { phase: line.value }), rating_a: Number(cr.value) || 0, breaker_a: Number(cb.value) || 0, in_total: inTotal.checked });
+        ec.basic.prepend(label);
+        ec.basic.append(h("label", { class: "row", style: "min-height:44px" }, inTotal, " Include in site total"));
+        ec.addMore(...ec.wayField(), c.three_phase ? h("span", { class: "muted" }, "Line: 3P (all three lines)") : field("Line", line), ...limitFields(cr, cb));
         rows.push(ec); box.append(ec.el);
       });
       metersBox.append(box);
     });
     refreshUps();
+    const advSwitch = h("input", { type: "checkbox", checked: advanced, "aria-label": "Show advanced power options" });
+    advSwitch.onchange = () => {
+      advanced = advSwitch.checked;
+      rows.forEach((e) => { e.more.open = advanced; });
+      api("PUT", "/api/admin/power-tree", { show_advanced: advanced }).catch(() => {});      // remembered; nothing else changes
+    };
     const unusedId = () => PA.slug("point", new Set(rows.filter((r) => r.kind === "point").map((r) => r.ref.slice(2))));
     const add = h("button", { class: "touch", onclick: () => { addPoint({ id: unusedId(), name: "" }, true); refreshUps(); } }, "Add a point");
     const save = h("button", { class: "primary touch", onclick: () => {
@@ -881,15 +935,16 @@
     const msg = h("p", { class: "muted", role: "alert" });
     const note = (list, cls) => list.map((x) => h("p", { class: cls }, x.message));
     return card("Power distribution",
-      h("p", { class: "muted" }, "Say which unit feeds which, so Stagewatch can show the power flow from each generator or supply down to the equipment. Give a point to anything that has no meter (the generator, the grid supply, an intake unit). Then give each meter, and each of its circuits if they feed different things, a role, a number and what it is fed from (its Upstream). A unit can only be fed from one place. Stagewatch only reads from the meters."),
+      h("p", { class: "muted" }, "Say what feeds what, so Stagewatch can show the power from each generator or supply down to the equipment. Add a point for anything with no meter (the generator, the grid supply, an intake unit). Then, for each meter: choose what it is, check its number, and say what feeds it. Stagewatch only reads from the meters."),
+      h("label", { class: "row", style: "min-height:44px" }, advSwitch, " Show advanced power options (way, line, breaker rating, device limit)"),
       pt.problems.length ? h("div", { class: "notice" }, "Needs fixing: ", ...note(pt.problems, "warn-text")) : null,
       pt.warnings.length ? h("details", { class: "muted" }, h("summary", {}, `${pt.warnings.length} meter${pt.warnings.length === 1 ? "" : "s"} still to set up`), ...note(pt.warnings, "muted")) : null,
       h("h3", {}, "Points with no meter"),
       points.length || rows.some((r) => r.kind === "point") ? null : h("p", { class: "muted" }, "No points yet. Add one for each generator or supply."),
       pointsBox, h("div", { class: "row" }, add),
-      meters.length ? h("h3", {}, "Power meters and circuits") : null, metersBox,
+      meters.length ? h("h3", {}, "Power meters") : null, metersBox,
       h("div", { class: "row sw-dlg-actions" }, msg, h("span", { class: "grow" }), save),
-      SW.help(h("p", { class: "muted hint" }, "The order is supply, intake unit (ISU), main distribution unit (CDU), final distribution unit (FDU), then equipment. A unit can skip a level but cannot be fed from the same level or from below. A UPS can sit anywhere in the chain; its type says how it behaves on mains. Numbers run from 1 to 99 and show as ISU01, CDU02 and so on, each used once per role. Several generators or supplies are fine: each one is the top of its own tree. Mark a point Not monitored when nothing measures it; a figure you type for it is only a guess and is kept apart from measurements. The names ISU, CDU and FDU are the ones many crews use; check them against your own paperwork. Nothing here changes any meter, and nothing uses these figures in a sum yet.")));
+      SW.help(h("p", { class: "muted hint" }, "The order is supply, intake unit (ISU), main distribution unit (CDU), final distribution unit (FDU), then equipment. A unit can skip a level but cannot be fed from the same level or from below. When you choose what a unit is, Stagewatch fills in the next free number and suggests what feeds it; change either if it is wrong. A meter with one circuit is one row. Under More options: the way is the circuit number on the unit above, so a final unit on way 2 of CDU02 reads CDU02-C2, and with its line CDU02-C2-L1 (CDU01-C1-3P for a three-phase feed). Each way feeds one thing. The breaker or fuse rating is the protective device in front of it; the device limit is what the meter itself can carry; the lower of the two is used for the load bars. A UPS can sit anywhere in the chain; its type says how it behaves on mains. Numbers run from 1 to 99, each used once per role. Several generators or supplies are fine: each is the top of its own tree. A figure you type for a point nothing measures is only a guess and is kept apart from measurements. Check the names ISU, CDU and FDU against your own paperwork. Nothing here changes any meter.")));
   }
 
   // ------------------------------------------------------------ alarm notices

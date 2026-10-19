@@ -37,7 +37,7 @@ A new show day starts all of this afresh. If Stagewatch is restarted during a sh
 
 ## Lines, labels and ratings for each circuit
 
-In Admin, each meter lists its circuits. For each one you can type a **label** (for example "Amp rack 3"), set a **device limit** and a **breaker or fuse rating** that override the meter's own, and, on a single-phase meter, say which **line** it is on.
+In Admin, under **Power distribution**, each meter has a row (one row for a meter with one circuit, a row per circuit otherwise). For each one you can type a **label** (for example "Amp rack 3"), set a **device limit** and a **breaker or fuse rating** that override the meter's own, and, on a single-phase meter, say which **line** it is on.
 
 - A three-phase meter shows its lines as **Line 1 (Brown)**, **Line 2 (Black)** and **Line 3 (Grey)**, and the neutral as **Neutral (Blue)**. The meter's A, B and C are shown as Line 1, 2 and 3.
 - A single-phase meter you have assigned to a line shows that line beside its label, for example "Amp rack 3 · Line 2 (Black)".

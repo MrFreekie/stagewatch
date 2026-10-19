@@ -115,5 +115,9 @@ eq(T.limits({ kind: "circuit", ref: "c:m1:c1", rating_a: null }, dv), { breaker:
 const ldv = T.load({ kind: "meter", ref: "m:m1", rating_a: 16 }, { state: "ok", amps: { ok: true, max: 11.2, lines: [] } }, dv);
 eq([ldv.rating, ldv.by, ldv.level], [13, "breaker", "high"], "11.2 A against a 13 A breaker is high load, not ok");
 
+eq(T.fedText({ feed: "CDU02-C2-L1" }), "fed from CDU02-C2-L1", "fed from text");
+eq(T.fedText({ feed: "" }), "", "nothing above: nothing shown");
+eq(T.fedText({}), "", "no field: nothing shown");
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power tree: all cases passed");

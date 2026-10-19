@@ -149,6 +149,8 @@ SW.ptree = (function () {
     return { breaker: pick(node.breaker_a, own.breaker_a, dev.breaker_a),
       device: pick(node.rating_a, node.kind === "circuit" ? dev.rating_a : null, null) };
   };
+  // "fed from CDU02-C2-L1": the server builds the link label (<unit above>-C<way>-<line>); nothing when nothing is above.
+  t.fedText = (n) => (typeof n.feed === "string" && n.feed ? `fed from ${n.feed}` : "");
   t.load = function (node, rd, devices) {
     const lm = t.limits(node, devices), lim = SW.pw.limit(lm.breaker, lm.device), rating = lim.amps;
     const base = { rating, by: lim.by, weak: lim.weak, breaker: lm.breaker, device: lm.device };
@@ -181,13 +183,14 @@ SW.ptree = (function () {
         gap: h("div", { class: "pt-gap" }, h("span", { class: "pt-gaphead" }), " ", h("span", { class: "pt-gapnum" }), h("span", { class: "pt-gaptext muted" })),
         ups: h("div", { class: "pt-ups muted" }),
         rating: h("div", { class: "pt-rating muted" }),
+        feed: h("div", { class: "pt-feed muted" }),
       };
       const toggle = kids.length ? h("button", { class: "pt-toggle", type: "button", "aria-expanded": closed[n.ref] ? "false" : "true",
         "aria-label": `Show or hide what is fed from ${n.display || n.name || "this unit"}`,
         onclick: () => { closed[n.ref] = !closed[n.ref]; key = ""; if (last) update(...last); } }, closed[n.ref] ? "▸" : "▾") : h("span", { class: "pt-toggle pt-leaf" });
       e.row.append(toggle, h("div", { class: "pt-main" },
         h("div", { class: "pt-head" }, e.id, e.name, e.state, n.role === "ups" ? h("span", { class: "pt-state pt-unmon" }, "OWN SUPPLY BELOW") : null),
-        (e.figs = h("div", { class: "pt-figs" }, e.power, e.bar)), e.amps, e.rating, e.ups, e.gap));
+        (e.figs = h("div", { class: "pt-figs" }, e.power, e.bar)), e.feed, e.amps, e.rating, e.ups, e.gap));
       const li = h("li", { class: `pt-node pt-role-${n.role || "none"}`, "data-depth": String(depth) }, e.row);
       if (kids.length && !closed[n.ref]) li.append(h("ul", { class: "pt-kids" }, kids.map((k) => nodeEl(k, depth + 1))));
       e.n = n;
@@ -228,7 +231,7 @@ SW.ptree = (function () {
       summary.hidden = list.hidden = note.hidden = !used;
       if (!used) return;
       const f = t.forest(structure);
-      const sig = JSON.stringify([f.roots, f.loose].map((g) => g.map(function walk(n) { return [n.ref, n.display, n.name, n.role, n.rating_a, n.breaker_a, n.children.map(walk)]; }))) + Object.keys(closed).filter((k) => closed[k]).join(",");
+      const sig = JSON.stringify([f.roots, f.loose].map((g) => g.map(function walk(n) { return [n.ref, n.display, n.name, n.role, n.rating_a, n.breaker_a, n.feed, n.children.map(walk)]; }))) + Object.keys(closed).filter((k) => closed[k]).join(",");
       if (sig !== key) {
         key = sig; els = {}; tiles = {};
         const groups = f.roots.map((r) => h("section", { class: "pt-group", "data-ref": r.ref }, h("ul", { class: "pt-tree" }, nodeEl(r, 0))));
@@ -263,11 +266,15 @@ SW.ptree = (function () {
         e.bar.firstChild.firstChild.style.width = ld.bar + "%";
         setText(e.bar.lastChild, ld.level === "none" ? "" : `${ld.word} ${ld.text}`);
         setCls(e.bar, "pt-bar" + (ld.level === "over" ? " pw-l-over" : ld.level === "high" ? " pw-l-high" : ""));
+        const fedText = t.fedText(n);
+        setText(e.feed, fedText);
+        e.feed.hidden = !fedText;
         const limitTxt = SW.pw.limitText(ld.breaker, ld.device);
         const kva = rd.state === "unmetered" && isNum(n.rating_kva) ? `Rated ${SW.num(n.rating_kva, 0)} kVA` : "";
         const rated = [limitTxt, kva].filter(Boolean).join(" · ") + (ld.weak ? ` · ${SW.pw.WEAK_NOTE}` : "");
-        setText(e.rating, rated);
-        e.rating.hidden = !rated;
+        const needs = rd.state === "ok" && n.kind !== "point" && ld.rating === null ? "Set a breaker rating to see how loaded this is." : "";
+        setText(e.rating, rated || needs);
+        e.rating.hidden = !(rated || needs);
         // Unmonitored gap (or UPS loss): only where this node is metered and feeds something
         const feeds = n.children.length > 0 && n.kind !== "point" && !t.ownCircuitsOnly(n);
         e.gap.hidden = !feeds;

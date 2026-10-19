@@ -500,6 +500,7 @@ class TreeFieldsBody(BaseModel):
     role: str = Field("", max_length=16)
     unit_no: int | None = Field(None, ge=ptree.UNIT_NO_MIN, le=ptree.UNIT_NO_MAX)
     upstream: str = Field("", max_length=80)
+    way: int | None = Field(None, ge=ptree.UNIT_NO_MIN, le=ptree.UNIT_NO_MAX)     # the way of the upstream unit this is fed from
 
     @field_validator("role")
     @classmethod
@@ -541,12 +542,37 @@ class PowerPointBody(TreeFieldsBody):
         return v
 
 
-class PowerCircuitBody(TreeFieldsBody):
+class CircuitExtrasBody(BaseModel):
+    """What the Power distribution card also sets on a circuit (or on the one circuit of a single-circuit meter).
+    null = leave as it is; 0 or empty = clear."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    label: str | None = Field(None, max_length=40)
+    phase: Literal["", "L1", "L2", "L3"] | None = None
+    rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)       # the device limit
+    breaker_a: float | None = Field(None, ge=0, le=1000, allow_inf_nan=False)
+    in_total: bool | None = None
+
+    @field_validator("label")
+    @classmethod
+    def _label(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+
+class PowerCircuitBody(TreeFieldsBody, CircuitExtrasBody):
     key: str = Field(max_length=24, pattern=r"^[a-z0-9_]+$")
 
 
-class PowerMeterBody(TreeFieldsBody):
+class PowerMeterBody(TreeFieldsBody, CircuitExtrasBody):
+    """For a meter with several circuits the extras are the meter's own (device limit, breaker). For a meter with
+    exactly one circuit they are that circuit's, and ``channels`` is not needed."""
     id: str = Field(min_length=1, max_length=40)
+    combined_bar: bool | None = None
     channels: list[PowerCircuitBody] = Field(default_factory=list, max_length=16)
 
 
@@ -557,6 +583,22 @@ class PowerTreeBody(BaseModel):
 
     points: list[PowerPointBody] = Field(default_factory=list, max_length=ptree.MAX_POINTS)
     meters: list[PowerMeterBody] = Field(default_factory=list, max_length=16)
+    show_advanced: bool | None = None       # the "Show advanced power options" switch
+
+
+def _apply_extras(obj, b: CircuitExtrasBody) -> None:
+    """Device limit, breaker, label, line and 'include in site total' where the page sent them (null = untouched)."""
+    if hasattr(obj, "in_total") or isinstance(obj, ptree._SingleMeter):      # a circuit, not a multi-circuit meter
+        if b.label is not None:
+            obj.label = b.label
+        if b.phase is not None:
+            obj.phase = b.phase
+        if b.in_total is not None:
+            obj.in_total = b.in_total
+    if b.rating_a is not None:
+        obj.rating_a = b.rating_a or None
+    if b.breaker_a is not None:
+        obj.breaker_a = b.breaker_a or None
 
 
 def apply_power_tree(cfg, body: PowerTreeBody) -> None:
@@ -575,7 +617,7 @@ def apply_power_tree(cfg, body: PowerTreeBody) -> None:
             existing = PowerPointConfig(id=pid)
             cfg.power_points.append(existing)
         existing.name = pb.name
-        existing.role, existing.unit_no, existing.upstream = pb.role, pb.unit_no, pb.upstream.strip()
+        existing.role, existing.unit_no, existing.upstream, existing.way = pb.role, pb.unit_no, pb.upstream.strip(), pb.way
         existing.rating_a, existing.rating_kva = pb.rating_a or None, pb.rating_kva or None
         existing.ups_type = pb.ups_type if pb.role == "ups" else "unknown"
         existing.monitored = pb.monitored
@@ -587,10 +629,16 @@ def apply_power_tree(cfg, body: PowerTreeBody) -> None:
         dev = next((d for d in cfg.shelly_devices if d.id == mb.id), None)
         if dev is None:
             raise ptree.TreeError("One of the power meters does not exist any more. Reload the page.")
-        dev.role, dev.unit_no, dev.upstream = mb.role, mb.unit_no, mb.upstream.strip()
+        held = ptree.holder_of_meter(dev)       # the meter, or its one circuit (settings are kept once, on the circuit)
+        held.role, held.unit_no, held.upstream, held.way = mb.role, mb.unit_no, mb.upstream.strip(), mb.way
+        _apply_extras(held, mb)
+        if mb.combined_bar is not None and held is dev:
+            dev.combined_bar = mb.combined_bar
         for cb in mb.channels:
+            if held is not dev and cb.key == ptree.single_key(dev):
+                continue        # the one circuit is the meter's own row
             ch = next((c for c in dev.channels if c.key == cb.key), None)
-            empty = not (cb.role or cb.unit_no or cb.upstream)
+            empty = not (cb.role or cb.unit_no or cb.upstream or cb.way or cb.label or cb.phase or cb.rating_a or cb.breaker_a or cb.in_total)
             if ch is None:
                 if empty and ptree.circuit_ref(dev.id, cb.key) not in wanted:
                     continue
@@ -598,7 +646,10 @@ def apply_power_tree(cfg, body: PowerTreeBody) -> None:
                     raise ptree.TreeError("That meter has too many circuits.")
                 ch = ShellyChannelConfig(key=cb.key)
                 dev.channels.append(ch)
-            ch.role, ch.unit_no, ch.upstream = cb.role, cb.unit_no, cb.upstream.strip()
+            ch.role, ch.unit_no, ch.upstream, ch.way = cb.role, cb.unit_no, cb.upstream.strip(), cb.way
+            _apply_extras(ch, cb)
+    if body.show_advanced is not None:
+        cfg.power_site.show_advanced = body.show_advanced
     problems = ptree.validate(ptree.build_nodes(cfg))
     if problems:
         raise ptree.TreeError(problems[0].message + (f" ({len(problems)} problems in all.)" if len(problems) > 1 else ""), problems)
@@ -2067,7 +2118,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         """Demand window and generator suggestion settings for the Power card (advisory figures only)."""
         hub.config.power_site = PowerSiteConfig(
             demand_window_min=body.demand_window_min, gen_loading_pct=body.gen_loading_pct,
-            gen_power_factor=body.gen_power_factor, gen_size_kva=body.gen_size_kva or None)
+            gen_power_factor=body.gen_power_factor, gen_size_kva=body.gen_size_kva or None,
+            show_advanced=hub.config.power_site.show_advanced)
         hub.save_config()
         return {"ok": True}
 

@@ -54,7 +54,8 @@ Admin has four tabs: **Show day**, **Sensors and nodes**, **Integrations** and *
 | **Sound level limits** | Licence limits and curfew | [Sound level limits](../cards/sound-level-limits.md) |
 | **DirectOut GLOBCON** | Connection state | [GLOBCON](../integrations/globcon.md) |
 | **WitMotion tilt sensors** | Find and set up tilt sensors | [WitMotion](../integrations/witmotion.md) |
-| **Shelly power meters** | Names, device limits and breaker ratings, lines, site total and combined load bar | [Shelly](../integrations/shelly.md), [Power](../cards/power.md) |
+| **Shelly power meters** | Names, areas, addresses and how often each meter is asked | [Shelly](../integrations/shelly.md), [Power](../cards/power.md) |
+| **Power distribution** | What feeds what: roles, numbers, ways, lines, breaker ratings and device limits; basic and advanced options | [Shelly](../integrations/shelly.md#power-distribution-who-feeds-whom), [Power tree](../cards/power-tree.md) |
 | **Barometer** | Pressure settings | [Barometer](../cards/barometer.md) |
 | **This Raspberry Pi** | Health of the Pi (only on a Pi) | [Raspberry Pi card](../cards/raspberry-pi.md) |
 | **Action targets** | Where OSC actions send (QLab, Companion); actions on the schedule and on thresholds | [OSC actions](osc-actions.md) |

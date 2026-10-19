@@ -785,7 +785,7 @@ def test_config_round_trip_and_mac_is_normalised(tmp_path):
     again = ConfigStore(tmp_path / "config.yaml").load()
     assert again.shelly_devices == [ShellyDeviceConfig(id="mic_rack", host="192.0.2.50", mac=MAC, name="Mic rack", area="FOH", poll_interval_s=2.5)]
     raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
-    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "breaker_a", "combined_bar", "channels", "role", "unit_no", "upstream"}   # no password field exists
+    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "breaker_a", "combined_bar", "channels", "role", "unit_no", "upstream", "way", "circuit_keys", "three_phase_keys"}   # no password field exists
 
 
 def test_interval_outside_two_to_five_seconds_is_brought_into_range():
@@ -1352,7 +1352,7 @@ async def test_each_circuit_can_have_a_label_a_line_and_its_own_rating_and_they_
     assert pub["channels"] == {"pm1_0": {"label": "Amp rack 3", "phase": "L2", "rating_a": 10.0}} and pub["rating_a"] == 16.0
     assert integ.admin_status()["meters"][0]["channels"] == [
         {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0, "breaker_a": None, "in_total": False,
-         "role": "", "unit_no": None, "upstream": ""}]
+         "role": "", "unit_no": None, "upstream": "", "way": None}]
     await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "label": "", "phase": "", "rating_a": 0}])
     assert cfg.channels == [] and "channels" not in hub.devices["rack"].to_dict()      # nothing typed: nothing kept
 
@@ -1558,3 +1558,17 @@ async def test_warnings_are_made_from_the_lower_limit(hub):
     integ.apply_warnings("rack")
     th = {t.id: t for t in hub.config.thresholds if t.id.startswith("shelly_rack_")}
     assert sorted(round(t.above, 2) for t in th.values()) == [10.4, 13.0]
+
+
+async def test_the_circuits_a_meter_reports_are_remembered_and_a_one_circuit_meter_settings_move_onto_its_circuit(hub):
+    cfg = ShellyDeviceConfig(id="rack", host=HOST, mac=MAC, name="Mic rack", area="FOH", role="equipment", unit_no=2, upstream="", way=3)
+    integ, _ = await make(hub, cfg)
+    assert cfg.circuit_keys == []
+    feed(integ, fx("pmmini-gen3-getstatus.json"), 1000.0)
+    assert cfg.circuit_keys == ["pm1_0"] and cfg.three_phase_keys == []
+    ch = cfg.channels[0]
+    assert (cfg.role, cfg.unit_no, cfg.way) == ("", None, None) and (ch.role, ch.unit_no, ch.way) == ("equipment", 2, 3)
+    feed(integ, fx("pmmini-gen3-getstatus.json"), 1003.0)       # again: nothing changes
+    assert cfg.circuit_keys == ["pm1_0"]
+    adm = integ.admin_status()["meters"][0]
+    assert adm["single"] is True and adm["role"] == "equipment" and adm["way"] == 3

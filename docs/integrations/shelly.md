@@ -104,16 +104,14 @@ wait a minute.
 
 ### Name each circuit and set the limits
 
-Each saved meter has a row in the **Shelly power meters** card, with its circuits listed under it. All of
-this is optional, and none of it changes the meter.
+The **Shelly power meters** card is only about the connection: name, area, address and how often Stagewatch asks. Everything about what a meter feeds is in **Admin → Power distribution**. All of it is optional, and none of it changes the meter.
 
-1. Type a **Label** for each circuit, for example `Amp rack 3`.
-2. On a single-phase circuit, choose which line it is on: **Line 1 (Brown)**, **Line 2 (Black)** or **Line 3 (Grey)**. This is only a label you type. Check the real line at the distro.
-3. Type the **Device limit (A)** for the meter (what the meter itself can carry), and the **Breaker or fuse rating (A)** if you know it. Do the same for any circuit that has limits of its own. The load bar uses the lower of the two.
-4. Tick **Include in site total** on each circuit whose watts should go into the one **Site total power** figure on the Power card.
-5. If a meter has two or more single-phase circuits on one supply, tick **Combined load bar** to add one bar for their amps together against the meter's lower limit.
-6. Click **Save** on that meter's row.
-7. Click **Add warnings** to make a notice at 80 % of the rating and an alarm at 100 % of that lower limit. Nothing is made until you click it.
+1. Find the meter in **Power distribution**. A meter with one circuit (a PM Mini, a 1PM, a Plug, a three-phase meter) is **one row**. A meter with two circuits (a 2PM, a first-generation EM) has a header row for the meter and a row for each circuit.
+2. On a circuit, type a **Label**, for example `Amp rack 3`, and tick **Include in site total** if its watts should go into the one **Site total power** figure on the Power card.
+3. Under **More options**: choose the **Line** (Line 1 Brown, Line 2 Black, Line 3 Grey; a three-phase meter shows 3P and has no choice), type the **Breaker or fuse rating (A)** if you know it and the **Device limit (A)** (what the meter itself can carry). The load bar uses the lower of the two.
+4. On a meter with two or more single-phase circuits, the header row's **More options** has **Combined load bar**, which adds one bar for their amps together against the meter's lower limit.
+5. Click **Save** in Power distribution.
+6. Click **Add warnings** on the meter in the Shelly card to make a notice at 80 % of the lower limit and an alarm at 100 %. Nothing is made until you click it.
 
 **What you'll see:** the Power card shows the labels, the lines and the load bars. How each figure is worked out is on the [Power card](../cards/power.md) page. A circuit that is not reading never counts as zero in a total.
 
@@ -180,11 +178,12 @@ seconds every 5 minutes, to show the frozen state.
 
 ## Power distribution (who feeds whom)
 
-**Admin → Power distribution** records how your power is laid out, ready for a power flow view in a later version. Nothing is drawn or added up from it yet.
+**Admin → Power distribution** records how your power is laid out, ready for a power flow view in a later version. The [Power tree](../cards/power-tree.md) card draws it.
 
 1. Add a **point** for anything that has no meter: the generator, the grid supply, an intake unit. Give it a role, a number and, if it is fed from something else, its Upstream. A generator or supply has nothing above it. Several separate supplies are fine, for example a delay tower with its own generator.
-2. For each power meter, and each of its circuits if they feed different things, choose a role, a number and the Upstream (the one unit that feeds it).
-3. Save. Stagewatch refuses a loop, a unit fed from itself, a unit fed from the same level or from below, and a number used twice in the same role. Nothing is changed when it refuses, and it says why.
+2. For each power meter, choose what it is (a role). Stagewatch fills in the next free number for that role and suggests what feeds it (for example the only CDU for a final distribution unit); change either if it is wrong. A meter with two circuits has a row for each circuit if they feed different things.
+3. Under **More options** (or switch on **Show advanced power options** to open them on every row): the **Way** is the circuit number on the unit above, so a unit on way 2 of CDU02 on line 1 reads **CDU02-C2-L1** (**CDU01-C1-3P** for a three-phase feed). Each way of a unit feeds one thing, and Stagewatch tells you if you use one twice. With no way set, the card shows just the unit above. Also here: line, breaker or fuse rating, device limit, and the typed allowance for a point nothing measures.
+4. Save. Stagewatch refuses a loop, a unit fed from itself, a unit fed from the same level or from below, and a number used twice in the same role. Nothing is changed when it refuses, and it says why.
 
 The order is supply, intake unit (ISU), main distribution unit (CDU), final distribution unit (FDU), then equipment. A unit may skip a level. A UPS can sit anywhere; choose its type if you know it. A point you mark **Not monitored** can carry a figure you type in: that is a guess, kept apart from measurements, and not used yet. The names ISU, CDU and FDU are the ones many crews use. Check them against your own paperwork.
 
