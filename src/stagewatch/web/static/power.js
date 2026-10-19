@@ -127,13 +127,23 @@ SW.pw = (function () {
       note: "UK 50 Hz: red outside 49.5 to 50.5, amber outside 49.8 to 50.2 (advisory)", na: "Not a 50 Hz supply: not judged" },
   };
 
+  pw.fmtReading = SW.fmtReading; pw.fmtRating = SW.fmtRating; pw.limit = SW.limit; pw.limitText = SW.limitText;
+  // The quiet line under a load bar: which numbers are set and which one limits; a note when the breaker is bigger than the device.
+  pw.limitLine = function (breaker, device, noNote) {
+    const t = pw.limitText(breaker, device);
+    const lim = pw.limit(breaker, device);
+    const h = SW.h;
+    return h("div", { class: "pw-glimit muted" }, t, lim.weak && !noNote ? h("div", { class: "pw-gweak" }, pw.WEAK_NOTE) : null);
+  };
+  pw.WEAK_NOTE = SW.WEAK_NOTE;
   // How loaded a circuit is: { pct, bar (0..100, capped), level: "ok"|"high"|"over"|"none", word, text }.
-  pw.loadView = function (amps, rating) {
+  // `by` ("breaker" or "device") only changes the word for "over".
+  pw.loadView = function (amps, rating, by) {
     if (!isNum(rating) || rating <= 0 || !isNum(amps)) return { pct: null, bar: 0, level: "none", word: "", text: "—" };
     const pct = 100 * amps / rating;
     const level = pct >= pw.LOAD_OVER ? "over" : pct >= pw.LOAD_HIGH ? "high" : "ok";
-    const word = level === "over" ? "OVER RATING" : level === "high" ? "HIGH LOAD" : "OK";
-    return { pct, bar: Math.max(0, Math.min(100, pct)), level, word, text: `${SW.num(amps, 2)} A of ${SW.num(rating, 0)} A (${SW.num(pct, 0)}%)` };
+    const word = level === "over" ? (by === "breaker" ? "OVER BREAKER" : by === "device" ? "OVER DEVICE LIMIT" : "OVER RATING") : level === "high" ? "HIGH LOAD" : "OK";
+    return { pct, bar: Math.max(0, Math.min(100, pct)), level, word, text: `${pw.fmtReading(amps)} A of ${pw.fmtRating(rating)} A (${SW.num(pct, 0)}%)` };
   };
 
   // Phase imbalance (NEMA MG 1 current unbalance), from the three phase currents: the biggest difference of
@@ -407,7 +417,7 @@ SW.pw = (function () {
   // The combined load bar: the SUM of the currents of a meter's single-phase circuits against the
   // meter's own rating. All or nothing: if any circuit's current is missing or old, or the meter is not
   // live, there is no sum ("unavailable"), never a partial one. Three-phase phases are never added.
-  pw.combinedView = function (ids, entities, rating, live) {
+  pw.combinedView = function (ids, entities, rating, live, by) {
     const none = { pct: null, bar: 0, level: "none", word: "", text: "—", ok: false };
     if (!live || !ids.length) return none;
     let sum = 0;
@@ -416,7 +426,7 @@ SW.pw = (function () {
       if (!e || !isNum(e.value) || e.stale) return none;
       sum += e.value;
     }
-    return { ...pw.loadView(sum, rating), ok: true };
+    return { ...pw.loadView(sum, rating, by), ok: true };
   };
 
   const ageText = (updated, now) => (updated ? SW.age(updated, now) : "never");
@@ -446,13 +456,18 @@ SW.pw = (function () {
     const list = Object.keys(channels).sort().map((k) => {
       const ch = channels[k];
       ch.cfg = cfgs[k] || null;
-      ch.rating = isNum(ch.cfg && ch.cfg.rating_a) ? ch.cfg.rating_a : (isNum(device.rating_a) ? device.rating_a : null);
+      const c = ch.cfg || {};
+      ch.device = isNum(c.rating_a) ? c.rating_a : (isNum(device.rating_a) ? device.rating_a : null);
+      ch.breaker = isNum(c.breaker_a) ? c.breaker_a : (isNum(device.breaker_a) ? device.breaker_a : null);
+      const lim = pw.limit(ch.breaker, ch.device);
+      ch.rating = lim.amps; ch.by = lim.by; ch.weak = lim.weak;
       return ch;
     });
     const combinedIds = [];
     for (const ch of list) if (ch.groups[""] && ch.groups[""].current) combinedIds.push(ch.groups[""].current.id);
-    const combined = !!device.combined_bar && isNum(device.rating_a) && device.rating_a > 0 && combinedIds.length >= 2;
-    return { combined, combinedIds, id: device.id, entities: Object.fromEntries(mine.map((e) => [e.id, e])), rating: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "",
+    const mlim = pw.limit(device.breaker_a, device.rating_a);
+    const combined = !!device.combined_bar && mlim.amps !== null && combinedIds.length >= 2;
+    return { combined, combinedIds, id: device.id, entities: Object.fromEntries(mine.map((e) => [e.id, e])), rating: mlim.amps, by: mlim.by, weak: mlim.weak, breaker: isNum(device.breaker_a) ? device.breaker_a : null, device: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "",
       demandIds: ["demand", "demand_va"].map((f) => { const e = ents.find((x) => x.device_id === device.id && x.labels && x.labels.derived && x.labels.field === f); return e ? e.id : ""; }) };
   };
 
@@ -463,7 +478,7 @@ SW.pw = (function () {
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
       .map((d) => pw.meterView(d, ents, now));
     // The key changes only when the set of meters or readings changes, so the DOM is rebuilt rarely.
-    const key = meters.map((m) => m.id + "@" + (m.rating || 0) + (m.combined ? "C" + m.combinedIds.length : "") + ":" + m.channels.map((c) => c.id + "~" + (c.rating || 0) + (c.cfg ? (c.cfg.label || "") + (c.cfg.phase || "") : "") + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
+    const key = meters.map((m) => m.id + "@" + (m.rating || 0) + (m.by || "") + (m.weak ? "W" : "") + (m.combined ? "C" + m.combinedIds.length : "") + ":" + m.channels.map((c) => c.id + "~" + (c.rating || 0) + (c.by || "") + (c.weak ? "W" : "") + (c.breaker || 0) + "/" + (c.device || 0) + (c.cfg ? (c.cfg.label || "") + (c.cfg.phase || "") : "") + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
     const total = pw.totalView(devices, meters);
     const site = pw.siteView(entities);
     return { meters, total, site, key: (site ? "S" + site.key + ";" : "") + (total ? "T" + total.parts.length + ";" : "") + key + meters.map((m) => m.demandIds.join("+")).join(",") };
@@ -615,14 +630,17 @@ SW.pw = (function () {
       }
       // Load bar (needs a rating) and swing meters for voltage and frequency, per circuit or phase.
       r.gauges = [];
+      let noted = false;      // the "breaker is bigger" note once per meter, not under every bar
       const gaugeBox = h("div", { class: "pw-gauges" });
       if (m.combined) {
         const fill = h("div", { class: "pw-fill" });
         const text = h("span", { class: "pw-gtext" }), word = h("span", { class: "pw-gword" });
         const track = h("div", { class: "pw-track" }, fill, h("i", { class: "pw-tick", style: `left:${pw.LOAD_HIGH}%` }));
         gaugeBox.append(h("div", { class: "pw-gauge" }, h("div", { class: "pw-glabel" }, h("span", { class: "pw-label" }, "Combined load"), " ", text, " ", word), track,
-          h("div", { class: "pw-gscale muted" }, h("span", {}, "0"), h("span", { style: `left:${pw.LOAD_HIGH}%` }, "80%"), h("span", { class: "r" }, "100%"))));
-        r.gauges.push({ kind: "combined", ids: m.combinedIds, rating: m.rating, fill, text, word, el: track, meter: m });
+          h("div", { class: "pw-gscale muted" }, h("span", {}, "0"), h("span", { style: `left:${pw.LOAD_HIGH}%` }, "80%"), h("span", { class: "r" }, "100%")),
+          pw.limitLine(m.breaker, m.device, false)));
+        noted = !!m.weak;
+        r.gauges.push({ kind: "combined", ids: m.combinedIds, rating: m.rating, by: m.by, fill, text, word, el: track, meter: m });
       }
       for (const ch of m.channels) {
         for (const g of pw.GROUP_ORDER.filter((k) => ch.groups[k] && k !== "n" && k !== "total" && k !== "avg")) {
@@ -634,8 +652,10 @@ SW.pw = (function () {
             const text = h("span", { class: "pw-gtext" }), word = h("span", { class: "pw-gword" });
             const track = h("div", { class: "pw-track" }, fill, mark, h("i", { class: "pw-tick", style: `left:${pw.LOAD_HIGH}%` }));
             gaugeBox.append(h("div", { class: "pw-gauge" }, h("div", { class: "pw-glabel" }, h("span", { class: "pw-label" }, pre + "Load"), " ", text, " ", word), track,
-              h("div", { class: "pw-gscale muted" }, h("span", {}, "0"), h("span", { style: `left:${pw.LOAD_HIGH}%` }, "80%"), h("span", { class: "r" }, "100%"))));
-            r.gauges.push({ kind: "load", rating: ch.rating, entity: cur.id, fill, mark, text, word, el: track });
+              h("div", { class: "pw-gscale muted" }, h("span", {}, "0"), h("span", { style: `left:${pw.LOAD_HIGH}%` }, "80%"), h("span", { class: "r" }, "100%")),
+              pw.limitLine(ch.breaker, ch.device, noted)));
+            noted = noted || ch.weak;
+            r.gauges.push({ kind: "load", rating: ch.rating, by: ch.by, entity: cur.id, fill, mark, text, word, el: track });
           }
           for (const f of ["voltage", "voltage_ll", "freq"]) {
             const e = ch.groups[g][f];
@@ -809,13 +829,13 @@ SW.pw = (function () {
           for (const gg of r.gauges) {
             const e = entities[gg.entity];
             if (gg.kind === "combined") {
-              const lv = pw.combinedView(gg.ids, entities, gg.rating, m.state === "live");
+              const lv = pw.combinedView(gg.ids, entities, gg.rating, m.state === "live", gg.by);
               gg.fill.style.width = lv.bar + "%";
               gg.text.textContent = lv.ok ? lv.text : "Unavailable: a circuit is not reading";
               gg.word.textContent = lv.word;
               gg.el.className = `pw-track pw-l-${lv.level}`;
             } else if (gg.kind === "load") {
-              const lv = pw.loadView(e ? e.value : null, gg.rating);
+              const lv = pw.loadView(e ? e.value : null, gg.rating, gg.by);
               gg.fill.style.width = lv.bar + "%";
               gg.text.textContent = lv.text;
               gg.word.textContent = lv.word;

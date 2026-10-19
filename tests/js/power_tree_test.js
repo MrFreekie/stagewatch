@@ -91,5 +91,33 @@ eq(T.slug("c:dev:ch_0"), "c_dev_ch_0_ad2dadf3", "including a circuit");
 eq(T.watts(1500), { text: "1.50", unit: "kW" }, "kW from 1,000 W");
 eq(T.watts(null).text, "—", "a dash, never 0");
 
+// breaker and device limit: the lower one is used, and which one limits is named
+const LIM = (b, d) => { const l = SW.limit(b, d); return [l.amps, l.by, l.weak]; };
+eq(LIM(13, 16), [13, "breaker", false], "breaker below the device limit");
+eq(LIM(63, 32), [32, "device", true], "breaker above the device limit: the device is the weak point");
+eq(LIM(16, 16), [16, "breaker", false], "equal counts as the breaker");
+eq(LIM(null, 16), [16, "device", false], "device limit only");
+eq(LIM(20, null), [20, "breaker", false], "breaker only");
+eq(LIM(null, null), [null, "", false], "neither: no bar");
+eq(LIM(0, 16), [16, "device", false], "zero means unknown");
+eq(SW.limitText(13, 16), "Breaker 13 A · device limit 16 A · limited by breaker", "both set");
+eq(SW.limitText(null, 6.3), "Device limit 6.3 A", "one decimal only when needed");
+eq(SW.limitText(32, null), "Breaker 32 A", "breaker only text");
+eq(SW.pw.loadView(11.2, 16, "breaker").text, "11.2 A of 16 A (70%)", "one number format");
+eq(SW.pw.loadView(14, 13, "breaker").word, "OVER BREAKER", "over the breaker");
+eq(SW.pw.loadView(17, 16, "device").word, "OVER DEVICE LIMIT", "over the device limit");
+// the tree: a point's rating is its breaker; a circuit falls back to its meter's numbers
+const dv = { m1: { rating_a: 16, breaker_a: 13, channels: { c0: { breaker_a: 6 } } } };
+eq(T.limits({ kind: "point", ref: "p:g", rating_a: 125 }, dv), { breaker: 125, device: null }, "point: rating is the breaker");
+eq(T.limits({ kind: "meter", ref: "m:m1", rating_a: 16 }, dv), { breaker: 13, device: 16 }, "meter");
+eq(T.limits({ kind: "circuit", ref: "c:m1:c0", rating_a: null }, dv), { breaker: 6, device: 16 }, "circuit: own breaker, meter's device limit");
+eq(T.limits({ kind: "circuit", ref: "c:m1:c1", rating_a: null }, dv), { breaker: 13, device: 16 }, "circuit: meter's breaker");
+const ldv = T.load({ kind: "meter", ref: "m:m1", rating_a: 16 }, { state: "ok", amps: { ok: true, max: 11.2, lines: [] } }, dv);
+eq([ldv.rating, ldv.by, ldv.level], [13, "breaker", "high"], "11.2 A against a 13 A breaker is high load, not ok");
+
+eq(T.fedText({ feed: "CDU02-C2-L1" }), "fed from CDU02-C2-L1", "fed from text");
+eq(T.fedText({ feed: "" }), "", "nothing above: nothing shown");
+eq(T.fedText({}), "", "no field: nothing shown");
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power tree: all cases passed");

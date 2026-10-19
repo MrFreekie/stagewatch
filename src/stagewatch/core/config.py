@@ -233,6 +233,15 @@ class _TreeFields(_Model):
     role: str = ""
     unit_no: int | None = None
     upstream: str = Field("", max_length=80)
+    # The way (circuit number) of the UPSTREAM unit this one is fed from: "fed from way 2 of CDU02". Belongs
+    # to the link, not to this unit. Optional; additive, no schema bump; an older build ignores it.
+    way: int | None = None
+
+    @field_validator("way", mode="before")
+    @classmethod
+    def _way_range(cls, v):
+        ok = isinstance(v, int) and not isinstance(v, bool) and power_tree.UNIT_NO_MIN <= v <= power_tree.UNIT_NO_MAX
+        return v if ok else None
 
     @field_validator("role", mode="before")
     @classmethod
@@ -264,6 +273,8 @@ class PowerPointConfig(_TreeFields):
     a typed figure for it (admin-only for now). Additive: no schema bump."""
     id: str
     name: str = Field("", max_length=60)
+    # For a point the amp rating IS the breaker or fuse (a point has no device limit): shown as
+    # "Breaker or fuse rating (A)" in Admin. The name rating_a is kept so saved files stay as they are.
     rating_a: float | None = Field(None, gt=0, le=5000, allow_inf_nan=False)
     rating_kva: float | None = Field(None, gt=0, le=10000, allow_inf_nan=False)
     ups_type: str = "unknown"
@@ -290,10 +301,16 @@ class ShellyChannelConfig(_TreeFields):
     key: str = Field(max_length=24, pattern=r"^[a-z0-9_]+$")
     label: str = Field("", max_length=40)
     phase: Literal["", "L1", "L2", "L3"] = ""
-    rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)
+    rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)    # the DEVICE LIMIT: what this circuit of the meter can carry
+    # The breaker or fuse that protects the circuit, if the admin knows it. Additive, none = unknown:
+    # no schema bump; an older build ignores it. The lower of this and rating_a is the effective limit.
+    breaker_a: float | None = Field(None, gt=0, le=1000, allow_inf_nan=False)
     # "Include in site total": the Power card adds the watts of every ticked circuit (across meters) into
     # one total. Additive with a default of off: no schema bump; an older build ignores it.
     in_total: bool = False
+
+
+power_tree.channel_factory = ShellyChannelConfig
 
 
 class PowerSiteConfig(_Model):
@@ -304,6 +321,9 @@ class PowerSiteConfig(_Model):
     gen_loading_pct: float = Field(80.0, ge=50, le=100, allow_inf_nan=False)    # the loading limit
     gen_power_factor: float = Field(0.8, ge=0.5, le=1.0, allow_inf_nan=False)   # the generator's assumed power factor
     gen_size_kva: float | None = Field(None, gt=0, le=5000, allow_inf_nan=False)   # a generator size typed in, if any
+    # Admin switch "Show advanced power options" on the Power distribution card: way, line, breaker rating,
+    # device limit and the typed allowance on every row at once. Additive, default off.
+    show_advanced: bool = False
 
 
 class ShellyDeviceConfig(_TreeFields):
@@ -317,15 +337,23 @@ class ShellyDeviceConfig(_TreeFields):
     name: str = Field("", max_length=60)
     area: str = Field("", max_length=40)
     poll_interval_s: float = Field(SHELLY_POLL_DEFAULT_S, ge=SHELLY_POLL_MIN_S, le=SHELLY_POLL_MAX_S)
-    # The rating (amps) of the meter or of the breaker/circuit it watches, typed in by the admin. Shown
-    # on the Power card as a load bar with warnings at 80 % and 100 %. None = no bar. Advisory only.
+    # The DEVICE LIMIT (amps): what the meter itself can carry. Shown on the Power card as a load bar with
+    # warnings at 80 % and 100 % (against the lower of this and breaker_a). None = no bar. Advisory only.
     rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)
+    # The breaker or fuse that protects the meter's supply, if known. Additive, none = unknown: no schema
+    # bump; an older build ignores it (and drops it on its next save).
+    breaker_a: float | None = Field(None, gt=0, le=1000, allow_inf_nan=False)
     # "Combined load bar": for a meter with two or more single-phase circuits, one extra bar on the Power
     # card for the SUM of their currents against rating_a (the whole meter or its supply breaker). The
     # circuits keep their own bars. Never applied to three-phase meters. Additive, default off: no schema
     # bump; an older build ignores it.
     combined_bar: bool = False
     channels: list[ShellyChannelConfig] = Field(default_factory=list, max_length=16)
+    # The circuits the meter itself has reported (written by Stagewatch from its readings, never typed): the
+    # keys, and which of them are three-phase. A meter with exactly ONE circuit is one node in the power
+    # tree and its settings are stored once, on that circuit (core/power_tree.py). Additive: no schema bump.
+    circuit_keys: list[str] = Field(default_factory=list, max_length=16)
+    three_phase_keys: list[str] = Field(default_factory=list, max_length=16)
 
     @field_validator("id")
     @classmethod

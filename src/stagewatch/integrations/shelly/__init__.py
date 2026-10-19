@@ -109,9 +109,12 @@ IMMEDIATE = frozenset(DETAIL) - {"no_power"}   # problems that are not a passing
 
 
 def channel_rating(cfg: ShellyDeviceConfig, key: str) -> float | None:
-    """A circuit's own rating, else the meter's."""
+    """The amps a circuit is judged against: the lower of its breaker and its device limit, each its
+    own, else the meter's."""
     ch = next((c for c in cfg.channels if c.key == key), None)
-    return (ch.rating_a if ch and ch.rating_a else None) or cfg.rating_a
+    device = (ch.rating_a if ch and ch.rating_a else None) or cfg.rating_a
+    breaker = (ch.breaker_a if ch and ch.breaker_a else None) or cfg.breaker_a
+    return power_tree.effective_limit(breaker, device)[0]
 
 
 def public_extra(cfg: ShellyDeviceConfig) -> dict:
@@ -119,11 +122,13 @@ def public_extra(cfg: ShellyDeviceConfig) -> dict:
     out: dict = {}
     if cfg.rating_a:
         out["rating_a"] = cfg.rating_a
-    if cfg.combined_bar and cfg.rating_a:
+    if cfg.breaker_a:
+        out["breaker_a"] = cfg.breaker_a
+    if cfg.combined_bar and (cfg.rating_a or cfg.breaker_a):
         out["combined_bar"] = True
     chans = {}
     for c in cfg.channels:
-        d = {k: v for k, v in (("label", c.label), ("phase", c.phase), ("rating_a", c.rating_a), ("in_total", c.in_total)) if v}
+        d = {k: v for k, v in (("label", c.label), ("phase", c.phase), ("rating_a", c.rating_a), ("breaker_a", c.breaker_a), ("in_total", c.in_total)) if v}
         if d:
             chans[c.key] = d
     if chans:
@@ -177,23 +182,29 @@ def seed_emulate_shelly(config) -> bool:
             or any(CARD_ID in d.cards for d in config.dashboards):
         return False
     config.shelly_devices = [
-        ShellyDeviceConfig(id="mic_rack_sim", host=DEMO_HOST, mac=emulated_mac(DEMO_HOST),
-                           name=DEMO_NAME, area="Stage L", rating_a=16, role="equipment", unit_no=1, upstream="m:distro_sim",
-                           channels=[ShellyChannelConfig(key="pm1_0", label="Mic rack", phase="L1", in_total=True)]),
+        # one circuit: its settings are stored once, on the circuit (breaker below the device limit)
+        ShellyDeviceConfig(id="mic_rack_sim", host=DEMO_HOST, mac=emulated_mac(DEMO_HOST), name=DEMO_NAME, area="Stage L",
+                           circuit_keys=["pm1_0"],
+                           channels=[ShellyChannelConfig(key="pm1_0", label="Mic rack", phase="L1", in_total=True, rating_a=16, breaker_a=13,
+                                                         role="equipment", unit_no=1, upstream="m:distro_sim", way=1)]),
+        # an older-style file: role and upstream on the meter itself; moved onto its one circuit when the meter first reports
         ShellyDeviceConfig(id="amp_rack_sim", host=DEMO4_HOST, mac=emulated_mac(DEMO4_HOST),
-                           name=DEMO4_NAME, area="Stage R", rating_a=16, role="equipment", unit_no=2, upstream="m:distro_sim",
+                           name=DEMO4_NAME, area="Stage R", rating_a=16, role="equipment", unit_no=2, upstream="m:distro_sim", way=2,
                            channels=[ShellyChannelConfig(key="pm1_0", phase="L2")]),
-        ShellyDeviceConfig(id="lighting_sim", host=DEMO5_HOST, mac=emulated_mac(DEMO5_HOST),
-                           name=DEMO5_NAME, area="Truss", rating_a=16, role="equipment", unit_no=3, upstream="c:em_sim:gen1em_0",
-                           channels=[ShellyChannelConfig(key="pm1_0", phase="L3")]),
-        ShellyDeviceConfig(id="distro_sim", host=DEMO3_HOST, mac=emulated_mac(DEMO3_HOST),
-                           name=DEMO3_NAME, area="Dock", rating_a=32, role="isu", unit_no=1, upstream="p:gen_foh"),
+        ShellyDeviceConfig(id="lighting_sim", host=DEMO5_HOST, mac=emulated_mac(DEMO5_HOST), name=DEMO5_NAME, area="Truss",
+                           circuit_keys=["pm1_0"],
+                           channels=[ShellyChannelConfig(key="pm1_0", phase="L3", rating_a=16, role="equipment", unit_no=3,
+                                                         upstream="c:em_sim:gen1em_0", way=1)]),
+        # a three-phase meter: one node, fixed lines (3P); breaker above the device limit
+        ShellyDeviceConfig(id="distro_sim", host=DEMO3_HOST, mac=emulated_mac(DEMO3_HOST), name=DEMO3_NAME, area="Dock",
+                           circuit_keys=["em0"], three_phase_keys=["em0"],
+                           channels=[ShellyChannelConfig(key="em0", rating_a=32, breaker_a=63, role="isu", unit_no=1, upstream="p:gen_foh", way=1)]),
         ShellyDeviceConfig(id="em_sim", host=DEMO1_HOST, mac=emulated_mac(DEMO1_HOST),
                            name=DEMO1_NAME, area="FOH", rating_a=16, combined_bar=True, role="isu", unit_no=2, upstream="p:gen_tower",
-                           channels=[ShellyChannelConfig(key="gen1em_0", label="FOH L1", phase="L1", rating_a=10, in_total=True,
-                                                         role="ups", unit_no=1, upstream="m:em_sim"),
+                           channels=[ShellyChannelConfig(key="gen1em_0", label="FOH L1", phase="L1", rating_a=10, breaker_a=6, in_total=True,
+                                                         role="ups", unit_no=1, upstream="m:em_sim", way=1),
                                      ShellyChannelConfig(key="gen1em_1", label="FOH L2", phase="L2", rating_a=10, in_total=True,
-                                                         role="equipment", unit_no=4, upstream="m:em_sim")]),
+                                                         role="equipment", unit_no=4, upstream="m:em_sim", way=2)]),
     ]
     # Two independent supplies (a main generator and a delay-tower generator), unmetered points, and a UPS.
     config.power_points = [
@@ -303,6 +314,7 @@ class ShellyIntegration(Integration):
             self.hub.set_device_status(cfg.id, Status.FAULT, DETAIL["no_power"], silent_alarm=True)
             return
         channels = rd.channel_counts(found)
+        self._note_circuits(cfg, found)
         for r in found:
             eid = f"{cfg.id}.{r.object_id}"
             if r.object_id not in m.entities:
@@ -325,6 +337,25 @@ class ShellyIntegration(Integration):
             self._derived.meter_polled(m, found, ts)
         except Exception:  # noqa: BLE001 - a calculated figure must never stop the readings
             log.exception("Shelly %s: could not work out the calculated figures", cfg.id)
+
+    def _note_circuits(self, cfg: ShellyDeviceConfig, found: list) -> None:
+        """Remember which circuits the meter itself reported (and which are three-phase). A meter with exactly one
+        circuit is one node in the power tree, so its settings are moved onto that circuit (once). Written only
+        when the list changes. Never typed by anyone: it is what the meter said."""
+        seen: dict[str, bool] = {}
+        for r in found:
+            if r.channel and r.value is not None and not r.calculated:
+                seen[r.channel] = seen.get(r.channel, False) or r.group in ("a", "b", "c")
+        # only ever grows: a circuit missing from one reply must not turn a two-circuit meter into a one-circuit one
+        keys = sorted(set(cfg.circuit_keys) | set(seen))
+        if not seen or len(keys) > 16:
+            return
+        three = sorted(set(cfg.three_phase_keys) | {k for k in keys if seen.get(k)})
+        if keys == cfg.circuit_keys and three == cfg.three_phase_keys:
+            return
+        cfg.circuit_keys, cfg.three_phase_keys = keys, three
+        power_tree.merge_single_circuits(self.hub.config)
+        self.hub.save_config()
 
     def _register(self, m: _Meter, r: rd.Reading, eid: str, channels: int) -> None:
         labels = {"channel": r.channel, "field": r.field}
@@ -531,7 +562,8 @@ class ShellyIntegration(Integration):
 
     async def update(self, device_id: str, name: str | None, area: str | None, interval_s: float | None,
                      host: str | None, rating_a: float | None = None,
-                     channels: list[dict] | None = None, combined_bar: bool | None = None) -> None:
+                     channels: list[dict] | None = None, combined_bar: bool | None = None,
+                     breaker_a: float | None = None) -> None:
         async with self._lock:
             cfg = next((c for c in self.hub.config.shelly_devices if c.id == device_id), None)
             if cfg is None:
@@ -551,6 +583,8 @@ class ShellyIntegration(Integration):
                 cfg.poll_interval_s = interval_s
             if rating_a is not None:
                 cfg.rating_a = rating_a or None      # 0 clears it
+            if breaker_a is not None:
+                cfg.breaker_a = breaker_a or None    # 0 clears it
             if combined_bar is not None:
                 cfg.combined_bar = combined_bar
             if channels is not None:
@@ -560,8 +594,9 @@ class ShellyIntegration(Integration):
                     # The power tree fields (role, number, upstream) are edited on their own card: keep them.
                     prev = old.get(c.get("key"))
                     tree = {"role": prev.role, "unit_no": prev.unit_no, "upstream": prev.upstream} if prev else {}
-                    ch = ShellyChannelConfig(**{**tree, **c, "rating_a": c.get("rating_a") or None})
-                    if ch.key not in seen and (ch.label or ch.phase or ch.rating_a or ch.in_total or ch.role or ch.upstream):
+                    ch = ShellyChannelConfig(**{**tree, **c, "rating_a": c.get("rating_a") or None,
+                                                "breaker_a": c.get("breaker_a") or None})
+                    if ch.key not in seen and (ch.label or ch.phase or ch.rating_a or ch.breaker_a or ch.in_total or ch.role or ch.upstream):
                         seen.add(ch.key)
                         kept.append(ch)
                 cfg.channels = kept
@@ -638,9 +673,9 @@ class ShellyIntegration(Integration):
             c = next((x for x in cfg.channels if x.key == key), None)
             out.append({"key": key, "name": name, "three_phase": three, "label": c.label if c else "",
                         "phase": c.phase if c else "", "rating_a": c.rating_a if c else None,
-                        "in_total": bool(c and c.in_total),
+                        "breaker_a": c.breaker_a if c else None, "in_total": bool(c and c.in_total),
                         "role": c.role if c else "", "unit_no": c.unit_no if c else None,
-                        "upstream": c.upstream if c else ""})
+                        "upstream": c.upstream if c else "", "way": c.way if c else None})
         return out
 
     def admin_status(self) -> dict:
@@ -650,10 +685,15 @@ class ShellyIntegration(Integration):
         for cfg in self.hub.config.shelly_devices:
             m = self._meters.get(cfg.mac)
             dev = self.hub.devices.get(cfg.id)
+            held = power_tree.holder_of_meter(cfg)       # the meter, or its only circuit when it has just one
+            key = power_tree.single_key(cfg)
             meters.append({
                 "id": cfg.id, "name": cfg.name, "area": cfg.area, "host": cfg.host, "mac": cfg.mac,
-                "interval_s": cfg.poll_interval_s, "rating_a": cfg.rating_a, "combined_bar": cfg.combined_bar,
-                "role": cfg.role, "unit_no": cfg.unit_no, "upstream": cfg.upstream,
+                "interval_s": cfg.poll_interval_s, "rating_a": held.rating_a, "breaker_a": held.breaker_a, "combined_bar": cfg.combined_bar,
+                "role": held.role, "unit_no": held.unit_no, "upstream": held.upstream, "way": held.way,
+                "single": bool(key), "circuit_key": key,
+                "three_phase": bool(key) and power_tree.is_three_phase(cfg, key),
+                "phase": held.phase if key else "", "label": held.label if key else "", "in_total": bool(held.in_total) if key else False,
                 "channels": self._admin_channels(cfg),
                 "model": (m.info.app or m.info.model) if m and m.info else "",
                 "firmware": m.info.firmware if m and m.info else "",

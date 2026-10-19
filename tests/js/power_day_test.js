@@ -45,7 +45,7 @@ eq(SW.pw.dayOf([{}, W]), "2026-10-14", "show day");
 // load bar: 1.8 A of 16 A is 11.25 %, 12.8 A is exactly 80 %, 16 A is 100 %, 20 A is 125 % (bar capped at 100)
 const L = (a) => SW.pw.loadView(a, 16);
 eq([L(1.8).level, Math.round(L(1.8).pct * 100) / 100], ["ok", 11.25], "11 percent is ok");
-eq(L(1.8).text, "1.80 A of 16 A (11%)", "load text");
+eq(L(1.8).text, "1.8 A of 16 A (11%)", "load text");
 eq([L(12.8).level, L(12.8).word], ["high", "HIGH LOAD"], "80 percent is high");
 eq([L(16).level, L(16).word], ["over", "OVER RATING"], "100 percent is over");
 eq([L(20).level, L(20).bar], ["over", 100], "bar is capped");

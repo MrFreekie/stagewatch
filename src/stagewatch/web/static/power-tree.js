@@ -140,12 +140,23 @@ SW.ptree = (function () {
   // A meter whose children are all its own circuits: its gap would be 0 W by construction, so none is shown.
   t.ownCircuitsOnly = (n) => n.kind === "meter" && n.children.length > 0 && n.children.every((c) => c.ref.indexOf("c:" + parseRef(n.ref).dev + ":") === 0);
   // The load bar for a node: reuses the Power card's bar and its 80 % and 100 % levels.
+  // The two numbers behind a node's limit: a point's amp rating IS its breaker or fuse; a meter or circuit
+  // has a device limit and, if known, a breaker (a circuit with none of its own uses its meter's).
+  t.limits = function (node, devices) {
+    if (node.kind === "point") return { breaker: isNum(node.rating_a) ? node.rating_a : null, device: null };
+    const r = parseRef(node.ref), dev = (devices || {})[r.dev] || {}, own = r.key ? ((dev.channels || {})[r.key] || {}) : {};
+    const pick = (a, b, c) => (isNum(a) ? a : isNum(b) ? b : isNum(c) ? c : null);
+    return { breaker: pick(node.breaker_a, own.breaker_a, dev.breaker_a),
+      device: pick(node.rating_a, node.kind === "circuit" ? dev.rating_a : null, null) };
+  };
+  // "fed from CDU02-C2-L1": the server builds the link label (<unit above>-C<way>-<line>); nothing when nothing is above.
+  t.fedText = (n) => (typeof n.feed === "string" && n.feed ? `fed from ${n.feed}` : "");
   t.load = function (node, rd, devices) {
-    const dev = (devices || {})[parseRef(node.ref).dev] || {};
-    const rating = isNum(node.rating_a) ? node.rating_a : (node.kind === "circuit" || node.kind === "meter") && isNum(dev.rating_a) ? dev.rating_a : null;
-    if (!rd.amps || !rd.amps.ok || rd.state !== "ok") return { ...SW.pw.loadView(null, rating), rating };
-    // The busiest line against the rating (amps of different lines are never added).
-    return { ...SW.pw.loadView(rd.amps.max, rating), rating };
+    const lm = t.limits(node, devices), lim = SW.pw.limit(lm.breaker, lm.device), rating = lim.amps;
+    const base = { rating, by: lim.by, weak: lim.weak, breaker: lm.breaker, device: lm.device };
+    if (!rd.amps || !rd.amps.ok || rd.state !== "ok") return { ...SW.pw.loadView(null, rating, lim.by), ...base };
+    // The busiest line against the limit (amps of different lines are never added).
+    return { ...SW.pw.loadView(rd.amps.max, rating, lim.by), ...base };
   };
 
   // ---- DOM --------------------------------------------------------------------------------------------
@@ -172,13 +183,14 @@ SW.ptree = (function () {
         gap: h("div", { class: "pt-gap" }, h("span", { class: "pt-gaphead" }), " ", h("span", { class: "pt-gapnum" }), h("span", { class: "pt-gaptext muted" })),
         ups: h("div", { class: "pt-ups muted" }),
         rating: h("div", { class: "pt-rating muted" }),
+        feed: h("div", { class: "pt-feed muted" }),
       };
       const toggle = kids.length ? h("button", { class: "pt-toggle", type: "button", "aria-expanded": closed[n.ref] ? "false" : "true",
         "aria-label": `Show or hide what is fed from ${n.display || n.name || "this unit"}`,
         onclick: () => { closed[n.ref] = !closed[n.ref]; key = ""; if (last) update(...last); } }, closed[n.ref] ? "▸" : "▾") : h("span", { class: "pt-toggle pt-leaf" });
       e.row.append(toggle, h("div", { class: "pt-main" },
         h("div", { class: "pt-head" }, e.id, e.name, e.state, n.role === "ups" ? h("span", { class: "pt-state pt-unmon" }, "OWN SUPPLY BELOW") : null),
-        (e.figs = h("div", { class: "pt-figs" }, e.power, e.bar)), e.amps, e.rating, e.ups, e.gap));
+        (e.figs = h("div", { class: "pt-figs" }, e.power, e.bar)), e.feed, e.amps, e.rating, e.ups, e.gap));
       const li = h("li", { class: `pt-node pt-role-${n.role || "none"}`, "data-depth": String(depth) }, e.row);
       if (kids.length && !closed[n.ref]) li.append(h("ul", { class: "pt-kids" }, kids.map((k) => nodeEl(k, depth + 1))));
       e.n = n;
@@ -219,7 +231,7 @@ SW.ptree = (function () {
       summary.hidden = list.hidden = note.hidden = !used;
       if (!used) return;
       const f = t.forest(structure);
-      const sig = JSON.stringify([f.roots, f.loose].map((g) => g.map(function walk(n) { return [n.ref, n.display, n.name, n.role, n.rating_a, n.children.map(walk)]; }))) + Object.keys(closed).filter((k) => closed[k]).join(",");
+      const sig = JSON.stringify([f.roots, f.loose].map((g) => g.map(function walk(n) { return [n.ref, n.display, n.name, n.role, n.rating_a, n.breaker_a, n.feed, n.children.map(walk)]; }))) + Object.keys(closed).filter((k) => closed[k]).join(",");
       if (sig !== key) {
         key = sig; els = {}; tiles = {};
         const groups = f.roots.map((r) => h("section", { class: "pt-group", "data-ref": r.ref }, h("ul", { class: "pt-tree" }, nodeEl(r, 0))));
@@ -252,11 +264,17 @@ SW.ptree = (function () {
         const ld = t.load(n, rd, devices);
         e.bar.hidden = ld.level === "none";
         e.bar.firstChild.firstChild.style.width = ld.bar + "%";
-        setText(e.bar.lastChild, ld.level === "none" ? "" : `${ld.word} ${SW.num(ld.pct, 0)}% of ${SW.num(ld.rating, 0)} A`);
+        setText(e.bar.lastChild, ld.level === "none" ? "" : `${ld.word} ${ld.text}`);
         setCls(e.bar, "pt-bar" + (ld.level === "over" ? " pw-l-over" : ld.level === "high" ? " pw-l-high" : ""));
-        const rated = rd.state === "unmetered" && isNum(n.rating_a) ? `Rated ${SW.num(n.rating_a, 0)} A` : (rd.state === "unmetered" && isNum(n.rating_kva) ? `Rated ${SW.num(n.rating_kva, 0)} kVA` : "");
-        setText(e.rating, rated);
-        e.rating.hidden = !rated;
+        const fedText = t.fedText(n);
+        setText(e.feed, fedText);
+        e.feed.hidden = !fedText;
+        const limitTxt = SW.pw.limitText(ld.breaker, ld.device);
+        const kva = rd.state === "unmetered" && isNum(n.rating_kva) ? `Rated ${SW.num(n.rating_kva, 0)} kVA` : "";
+        const rated = [limitTxt, kva].filter(Boolean).join(" · ") + (ld.weak ? ` · ${SW.pw.WEAK_NOTE}` : "");
+        const needs = rd.state === "ok" && n.kind !== "point" && ld.rating === null ? "Set a breaker rating to see how loaded this is." : "";
+        setText(e.rating, rated || needs);
+        e.rating.hidden = !(rated || needs);
         // Unmonitored gap (or UPS loss): only where this node is metered and feeds something
         const feeds = n.children.length > 0 && n.kind !== "point" && !t.ownCircuitsOnly(n);
         e.gap.hidden = !feeds;
