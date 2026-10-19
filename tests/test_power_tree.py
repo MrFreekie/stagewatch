@@ -32,7 +32,7 @@ def test_display_names():
     assert pt.display_name("ups", None) == "UPS"
     assert pt.display_name("", 3) == ""
     assert pt.display_name("isu", 100) == "ISU"
-    assert pt.role_label("isu") == "Intake unit (ISU)"
+    assert pt.role_label("isu") == "Intake switch unit (ISU)"
     assert pt.role_label("") == ""
     assert pt.role_label("ups") == "UPS"
 

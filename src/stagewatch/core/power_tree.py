@@ -16,13 +16,13 @@ log = logging.getLogger("stagewatch.power_tree")
 
 # --------------------------------------------------------------------------- roles
 # Stable keys are what is saved. Labels and abbreviations are shown only, and can be renamed without a
-# data change. UNVERIFIED: the exact BS 7909 wording for ISU, CDU and FDU has not been confirmed (see the
-# private power-tree plan, "Still open"). Change the words in this one table when it has been.
+# data change. The owner confirmed (19/10/2026) the terms ISU intake switch unit, CDU central distribution
+# unit and FDU final distribution unit; the words live in this one table.
 ROLE_TABLE: dict[str, tuple[str, str]] = {
     # key: (plain-English label, abbreviation used in the display name)
     "source": ("Generator or grid supply", "SRC"),
-    "isu": ("Intake unit", "ISU"),
-    "cdu": ("Main distribution unit", "CDU"),
+    "isu": ("Intake switch unit", "ISU"),
+    "cdu": ("Central distribution unit", "CDU"),
     "fdu": ("Final distribution unit", "FDU"),
     "equipment": ("Equipment", "EQP"),
     "ups": ("UPS", "UPS"),
