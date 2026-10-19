@@ -73,6 +73,9 @@ class Demand:
         self.last_v = 0.0
         self.segs: deque = deque()      # (t0, t1, value) held segments inside the window
         self.gaps: deque = deque()      # (t0, t1) silences inside the window
+        self._win_ws = 0.0              # running sums over self.segs (value x seconds, seconds): feed is O(1)
+        self._win_s = 0.0
+        self._fed = 0
         self.day_ws = 0.0               # value x seconds over the whole day, gaps left out
         self.day_s = 0.0
         self.had_gap = False            # any gap this show day
@@ -91,6 +94,8 @@ class Demand:
                 self.had_gap = True
             else:
                 self.segs.append((self.last_ts, ts, self.last_v))
+                self._win_ws += self.last_v * (ts - self.last_ts)
+                self._win_s += ts - self.last_ts
                 self.day_ws += self.last_v * (ts - self.last_ts)
                 self.day_s += ts - self.last_ts
         else:
@@ -98,14 +103,22 @@ class Demand:
         self.last_ts, self.last_v = ts, value
         lo = ts - self.window_s
         while self.segs and self.segs[0][1] <= lo:
-            self.segs.popleft()
+            t0, t1, v = self.segs.popleft()
+            self._win_ws -= v * (t1 - t0)
+            self._win_s -= t1 - t0
         while self.gaps and self.gaps[0][1] <= lo:
             self.gaps.popleft()
-        ws = s = 0.0
-        for t0, t1, v in self.segs:
-            d = t1 - max(t0, lo)
-            ws += v * d
-            s += d
+        self._fed += 1
+        if not self.segs or self._fed % 512 == 0:
+            # Re-add from the segments now and then (and reset when empty) so rounding cannot build up.
+            self._win_ws = sum(v * (t1 - t0) for t0, t1, v in self.segs)
+            self._win_s = sum(t1 - t0 for t0, t1, v in self.segs)
+        # Only the oldest segment can reach back past the window start: cut that part off.
+        ws, s = self._win_ws, self._win_s
+        if self.segs and self.segs[0][0] < lo:
+            t0, t1, v = self.segs[0]
+            ws -= v * (lo - t0)
+            s -= lo - t0
         self.avg = ws / s if s > 0 and ts - self.first_ts >= self.window_s else None
         self.avg_incomplete = bool(self.gaps)
         if self.avg is not None and (self.peak is None or self.avg > self.peak):

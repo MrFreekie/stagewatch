@@ -205,6 +205,7 @@ UPDATER_BACKUP_MAX_AGE_S = 3600.0
 HEARTBEAT_S = 30.0
 CHECKPOINT_S = 60.0
 MAX_PENDING_ROWS = 200_000  # ~1.5 h of 35 rows/s kept in memory while the DB refuses writes
+RAW_SHOW_SLACK_S = 3600.0  # raw_states: a show is still searched this long after its recorded end
 STOP_REASONS = ("stop", "update", "rollback")
 # Written on the NEXT start for a run that never stopped cleanly but ended before the computer
 # last started (restart or power loss), so it is not counted as a Stagewatch crash.
@@ -710,15 +711,37 @@ class Recorder:
         except sqlite3.Error as e:
             log.warning("Could not sync the history to disk (%s)", type(e).__name__)
 
+    _RAW_SQL = ("SELECT ts, value FROM states WHERE show_id IN (SELECT id FROM shows WHERE ended IS NULL OR ended >= ?) "
+                "AND entity_id = ? AND ts >= ? AND ts <= ? AND value IS NOT NULL ORDER BY ts, rowid")
+
     def raw_states(self, entity_id: str, since: float, until: float) -> list[tuple[float, float]]:
         """Every recorded reading of one entity between two times, oldest first, across all shows:
         [(ts, value), ...], exactly as recorded (no averaging). "Not available" records are left out.
-        Read only: it never changes the history."""
+        Read only: it never changes the history.
+
+        The shows that can hold readings in the range are named, so the (show, entity, time) index is used. Asked
+        by entity and time alone SQLite reads the whole states table: seconds on a show-day sized history, on the
+        event loop, once per calculated figure after every restart (the freeze of 19 October 2026)."""
         self.flush()
-        rows = self._db.execute(
-            "SELECT ts, value FROM states WHERE entity_id = ? AND ts >= ? AND ts <= ? "
-            "AND value IS NOT NULL ORDER BY ts, rowid", (entity_id, since, until)).fetchall()
+        rows = self._db.execute(self._RAW_SQL, (since - RAW_SHOW_SLACK_S, entity_id, since, until)).fetchall()
         return [(r[0], r[1]) for r in rows]
+
+    def count_raw_states(self, entity_id: str, since: float, until: float, limit: int) -> int:
+        """How many readings raw_states would give, counted up to ``limit`` (cheap: the index only)."""
+        self.flush()
+        return self._db.execute(
+            "SELECT COUNT(*) FROM (SELECT 1 FROM states WHERE show_id IN (SELECT id FROM shows WHERE ended IS NULL OR ended >= ?) "
+            "AND entity_id = ? AND ts >= ? AND ts <= ? AND value IS NOT NULL LIMIT ?)",
+            (since - RAW_SHOW_SLACK_S, entity_id, since, until, limit)).fetchone()[0]
+
+    def raw_states_threaded(self, entity_id: str, since: float, until: float) -> list[tuple[float, float]]:
+        """raw_states for a worker thread: its own read-only connection, so the hub's connection is never
+        shared and nothing is written. Only what was already committed is seen (the caller flushed first)."""
+        ro = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            return [(r[0], r[1]) for r in ro.execute(self._RAW_SQL, (since - RAW_SHOW_SLACK_S, entity_id, since, until))]
+        finally:
+            ro.close()
 
     def history(self, entity_ids: list[str], since: float, until: float | None = None,
                 max_points: int = 600, show_id: int | None = None) -> dict[str, list[list[float]]]:

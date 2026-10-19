@@ -16,6 +16,7 @@ import logging
 from ...core import power_tree, sitetime
 from ...core.model import UNITS, Device, Entity, Kind, Status
 from . import calc, treecalc
+from .replay import Rebuild
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class DerivedPower:
         self._last: dict = {}        # entity id -> (value, recorded at, signature)
         self._tree_at = -1e18        # when the power tree was last worked out
         self._demand: dict = {}      # entity id of the load series -> (day, Demand)
+        self._rebuilds: dict = {}    # entity id of the load series -> Rebuild, while the day so far is being read back
 
     # ------------------------------------------------------------------ plumbing
     def _put(self, eid: str, name: str, kind: Kind, unit: str, dec: int, value, ts: float, device_id: str,
@@ -70,12 +72,17 @@ class DerivedPower:
         cur = self._demand.get(load_eid)
         if cur is None or cur[0] != day or cur[1].window_s != window_s or cur[1].gap_s != gap_s:
             d = calc.Demand(window_s, gap_s)
-            try:
-                for t, v in self.hub.recorder.raw_states(load_eid, sitetime.resolve(day, site.day_rollover, site), ts):
-                    d.feed(v, t)
-            except Exception:  # noqa: BLE001 - no history just means the day starts from this reading
-                log.exception("Shelly: could not read the day so far for demand")
+            self._rebuilds[load_eid] = Rebuild(self.hub.recorder, load_eid, lambda: sitetime.resolve(day, site.day_rollover, site), ts, d)
             cur = self._demand[load_eid] = (day, d)
+        return cur
+
+    def ready_demand(self, load_eid: str):
+        """(day, Demand) of a load series, or None while its day so far is still being read back (no figure yet)."""
+        cur = self._demand.get(load_eid)
+        rb = self._rebuilds.get(load_eid)
+        if cur is None or (rb is not None and not rb.ready):
+            return None
+        self._rebuilds.pop(load_eid, None)
         return cur
 
     def _series(self, eid_base: str, device_id: str, label: str, kind: Kind, unit: str, dec: int,
@@ -85,11 +92,13 @@ class DerivedPower:
         day, tr = self._tracker(load_eid, ts, gap_s)
         # The load first, so a restart finds it in the history; the tracker is fed from the same value.
         self._put(load_eid, f"{label} (calculated)", kind, unit, dec, value, ts, device_id, {"field": "load"})
+        rb = self._rebuilds.get(load_eid)
         if value is not None:
-            tr.feed(value, ts)
-        self._put(dem_eid, f"{label} demand (calculated)", kind, unit, dec, tr.avg if value is not None else None, ts,
+            (rb or tr).feed(value, ts)
+        ready = self.ready_demand(load_eid) is not None
+        self._put(dem_eid, f"{label} demand (calculated)", kind, unit, dec, tr.avg if value is not None and ready else None, ts,
                   device_id, {"channel": "calc", "field": "demand" if kind == Kind.POWER else "demand_va", "calculated": "average over the window"},
-                  tr.to_dict(day))
+                  tr.to_dict(day) if ready else None)
 
     # ------------------------------------------------------------------ one meter
     @staticmethod
@@ -238,7 +247,7 @@ class DerivedPower:
                     vals = [self._circuit(c, k, "apparent", ts) for c, k in mem]
                     self._series(f"{SITE_ID}.site_line_{i + 1}_apparent", SITE_ID, f"Line {i + 1} apparent power",
                                  Kind.APPARENT_POWER, "VA", 1, None if any(v is None for v in vals) else sum(vals), ts, gap_s)
-                peaks = [self._demand.get(f"{SITE_ID}.site_line_{i + 1}_apparent_load") for i in range(3)]
+                peaks = [self.ready_demand(f"{SITE_ID}.site_line_{i + 1}_apparent_load") for i in range(3)]
                 if all(p is not None and p[1].peak is not None for p in peaks):
                     line_peaks = max(p[1].peak for p in peaks)
             self._generator(ts, line_peaks)
@@ -294,7 +303,7 @@ class DerivedPower:
     def _generator(self, ts: float, line_peak_va: float | None = None) -> None:
         """The generator suggestion from this show day's peak site demand in VA (see calc.generator_suggestion)."""
         ps = self.hub.config.power_site
-        cur = self._demand.get(f"{SITE_ID}.site_apparent_load")
+        cur = self.ready_demand(f"{SITE_ID}.site_apparent_load")
         va = self.hub.entities.get(f"{SITE_ID}.site_apparent_load")
         sug = None
         if cur is not None:

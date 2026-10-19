@@ -13,7 +13,8 @@ from typing import Callable
 
 from .. import __version__, acoustics
 from ..boottime import system_boot_time
-from . import sitetime
+from . import loopguard, sitetime
+from .loopguard import LoopWatchdog
 from .alarms import AlarmChange, AlarmEngine
 from .statustext import alarm_detail, safe_status_detail
 from .barometer import BarometerService
@@ -107,6 +108,7 @@ class Hub:
         self._ema_sigs: dict[str, tuple] = {}
         self.average_info: dict[str, dict] = {}   # admin only (see _average_info)
         self._tasks: list[asyncio.Task] = []
+        self._watchdog: LoopWatchdog | None = None
         # Set by the updater: process exit code (75 = launcher applies a pending update) and the
         # callback __main__ installs to stop uvicorn gracefully.
         self.exit_code = 0
@@ -172,6 +174,8 @@ class Hub:
         await self.wall_clock.start()
         await self.ontime_timer.start()
         await self.ontime_rundown.start()
+        self._watchdog = LoopWatchdog()
+        self._watchdog.start()
         self._tasks = [
             asyncio.create_task(self._periodic(1.0, self.tick), name="hub-tick"),
             asyncio.create_task(self._periodic(2.0, self.recorder.flush), name="hub-flush"),
@@ -181,6 +185,8 @@ class Hub:
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
+        if self._watchdog is not None:
+            await self._watchdog.stop()
         await self.advice.stop()
         await self.ontime_rundown.stop()
         await self.ontime_timer.stop()
@@ -197,7 +203,8 @@ class Hub:
         while True:
             await asyncio.sleep(interval)
             try:
-                fn()
+                with loopguard.timed(f"hub task {getattr(fn, '__name__', 'periodic')}"):
+                    fn()
             except Exception:
                 log.exception("Periodic task %s failed", getattr(fn, "__name__", fn))
 

@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from ...core import power_tree, sitetime
+from ...core import loopguard, power_tree, sitetime
 from ...core.config import SHELLY_MAX_METERS, PowerPointConfig, ShellyChannelConfig, ShellyDeviceConfig, Threshold
 from ...core.model import UNITS, Device, Entity, Kind, Status, slugify
 from ...core.plugin import Integration, Manifest
@@ -35,6 +35,7 @@ from ..smaart.client import is_local_address
 from . import dayfigures as df
 from . import neutral as nt
 from .derived import SITE_ID, DerivedPower
+from .replay import Rebuild
 from . import readings as rd
 from .emulate import (DEMO1_HOST, DEMO1_NAME, DEMO3_HOST, DEMO3_NAME, DEMO4_HOST, DEMO4_NAME, DEMO5_HOST, DEMO5_NAME,
                       DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac)
@@ -165,6 +166,7 @@ class _Meter:
     volts_out: dict = field(default_factory=dict)     # object_id -> outside the UK range now
     day_key: str = ""                                 # the show day the figures below belong to
     figures: dict = field(default_factory=dict)       # object_id -> DayFigures for that show day
+    rebuilds: dict = field(default_factory=dict)      # object_id -> Rebuild, while that day so far is read back
 
 
 def seed_emulate_shelly(config) -> bool:
@@ -268,7 +270,8 @@ class ShellyIntegration(Integration):
         if m is None:
             return
         try:
-            self._apply_status(m, status, ts)
+            with loopguard.timed(f"Shelly poll {m.cfg.id}"):
+                self._apply_status(m, status, ts)
         except Exception:  # noqa: BLE001 - a strange reply must never stop the hub
             log.exception("Shelly %s: could not use a status reply", m.cfg.id)
 
@@ -343,16 +346,16 @@ class ShellyIntegration(Integration):
         site = self.hub.config.site
         day = sitetime.show_day(ts, site).isoformat()
         if m.day_key != day:
-            m.day_key, m.figures = day, {}
+            m.day_key, m.figures, m.rebuilds = day, {}, {}
         fig = m.figures.get(r.object_id)
         if fig is None:
             fig = m.figures[r.object_id] = df.DayFigures(r.field, r.cumulative, day)
-            try:
-                for t, v in self.hub.recorder.raw_states(eid, sitetime.resolve(day, site.day_rollover, site), ts):
-                    fig.feed(v, t)
-            except Exception:  # noqa: BLE001 - no history just means the day starts from this reading
-                log.exception("Shelly %s: could not read the day so far", m.cfg.id)
-        fig.feed(r.value, ts)
+            m.rebuilds[r.object_id] = Rebuild(self.hub.recorder, eid, lambda: sitetime.resolve(day, site.day_rollover, site), ts, fig)
+        rb = m.rebuilds.get(r.object_id)
+        (rb or fig).feed(r.value, ts)
+        if rb is not None and not rb.ready:
+            return      # the day so far is still being read back: no figure yet, never a partial one
+        m.rebuilds.pop(r.object_id, None)
         entity.day = fig.to_dict()
 
     def _set_notice(self, key: str, on: bool, level: int, text: str) -> None:
