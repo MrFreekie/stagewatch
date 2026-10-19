@@ -1435,7 +1435,7 @@ def test_the_three_phase_sim_has_uneven_lines_and_a_neutral_that_follows():
 def test_a_fresh_emulate_config_gets_single_phase_three_phase_and_gen1_meters():
     cfg = Config()
     assert seed_emulate_shelly(cfg) is True
-    assert [d.id for d in cfg.shelly_devices] == ["mic_rack_sim", "distro_sim", "em_sim"]
+    assert [d.id for d in cfg.shelly_devices] == ["mic_rack_sim", "amp_rack_sim", "lighting_sim", "distro_sim", "em_sim"]
 
 
 # ===================================================================== calculated apparent power
