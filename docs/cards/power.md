@@ -45,6 +45,15 @@ In Admin, each meter lists its circuits. For each one you can type a **label** (
 
 These are only labels you typed. Stagewatch cannot check which line a circuit is really on. Always check at the distro.
 
+## Site total
+
+To add the power of several circuits into one figure, for example one circuit on each of the three lines, tick **Include in site total** beside each circuit in Admin and save. The Power card then shows **Site total power** in watts at the top, with the list of circuits it adds up.
+
+- Only the circuits you ticked are added, from any meter.
+- A three-phase meter already gives its own total. Tick it once; do not tick its separate lines as well.
+- The total shows only while **every** ticked circuit is reading. If a meter stops answering, or a reading is old, the total shows a dash and says **INCOMPLETE** with the names that are missing. Stagewatch never shows a part-total and never fills in a missing circuit.
+- It is worked out on the screen from the latest readings. It is not recorded, and it has no history chart.
+
 ## More meter types
 
 Some meters report more than the Shelly does. When a meter sends them, the card also shows:

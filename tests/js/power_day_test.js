@@ -115,5 +115,27 @@ eq(SW.sourceInput.shelly([live, { dev: { status: "missing" }, ents: [] }]).repor
 eq(SW.sourceInput.shelly([live]).reported, "ok", "all live: ok");
 eq(SW.sourceInput.shelly([]).reported, "waiting", "no meters: waiting");
 
+// Site total: all or nothing, never a partial sum.
+{
+  const ent = (id, dev, ch, v, stale) => ({ id, device_id: dev, kind: "power", unit: "W", decimals: 0, value: v, stale: !!stale, updated: 100, labels: { channel: ch, field: "power", group: "" } });
+  const devs = (ok2) => ({
+    a: { id: "a", name: "Amp A", category: "meter", status: "ok", channels: { pm1_0: { in_total: true, phase: "L1" } } },
+    b: { id: "b", name: "Amp B", category: "meter", status: ok2 ? "ok" : "missing", channels: { pm1_0: { in_total: true, phase: "L2" } } },
+    c: { id: "c", name: "Other", category: "meter", status: "ok", channels: { pm1_0: { label: "not ticked" } } },
+  });
+  const ents = (stale) => ({ "a.pm1_0_power": ent("a.pm1_0_power", "a", "pm1_0", 1000), "b.pm1_0_power": ent("b.pm1_0_power", "b", "pm1_0", 250.5, stale), "c.pm1_0_power": ent("c.pm1_0_power", "c", "pm1_0", 99) });
+  let v = SW.pw.view(ents(false), devs(true), 101);
+  eq(v.total.watts, 1250.5, "total adds only the ticked circuits");
+  eq(v.total.parts.length, 2, "two circuits counted");
+  v = SW.pw.view(ents(true), devs(true), 101);
+  eq([v.total.watts, v.total.missing], [null, ["Amp B · Line 2 (Black)"]], "a stale circuit: no sum, and it is named");
+  v = SW.pw.view(ents(false), devs(false), 101);
+  eq(v.total.watts, null, "a meter not answering: no sum");
+  const noReading = ents(false); delete noReading["b.pm1_0_power"];
+  eq(SW.pw.view(noReading, devs(true), 101).total.watts, null, "never received: no sum");
+  const none = devs(true); delete none.a.channels.pm1_0.in_total; delete none.b.channels.pm1_0.in_total;
+  eq(SW.pw.view(ents(false), none, 101).total, null, "nothing ticked: no total");
+}
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power_day_test: all passed");

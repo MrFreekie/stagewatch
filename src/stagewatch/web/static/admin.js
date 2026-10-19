@@ -703,10 +703,12 @@
         const label = h("input", { value: c.label, maxlength: "40", placeholder: "Label (e.g. Amp rack 3)", "aria-label": `${m.name} ${c.name} label` });
         const phase = h("select", { "aria-label": `${m.name} ${c.name} line` }, [["", "No line set"], ["L1", "Line 1 (Brown)"], ["L2", "Line 2 (Black)"], ["L3", "Line 3 (Grey)"]].map(([v, t]) => h("option", { value: v, selected: v === c.phase }, t)));
         const rating = h("input", { class: "num", type: "number", min: "0", max: "200", step: "0.5", value: c.rating_a || "", placeholder: "meter's", "aria-label": `${m.name} ${c.name} rating (amps)` });
-        return { c, label, phase, rating, el: h("div", { class: "row", style: "margin:4px 0" }, h("span", { class: "muted", style: "min-width:90px" }, c.name), label,
-          c.three_phase ? h("span", { class: "muted" }, "Lines 1 to 3 (Brown, Black, Grey)") : phase, rating, h("span", { class: "muted" }, "A")) };
+        const inTotal = h("input", { type: "checkbox", checked: !!c.in_total, "aria-label": `${m.name} ${c.name} include in site total` });
+        return { c, label, phase, rating, inTotal, el: h("div", { class: "row", style: "margin:4px 0" }, h("span", { class: "muted", style: "min-width:90px" }, c.name), label,
+          c.three_phase ? h("span", { class: "muted" }, "Lines 1 to 3 (Brown, Black, Grey)") : phase, rating, h("span", { class: "muted" }, "A"),
+          h("label", { class: "row", style: "min-height:44px", title: "Adds this circuit's watts into one site total on the Power card" }, inTotal, " Include in site total")) };
       });
-      const channelsPayload = () => chRows.map((r) => ({ key: r.c.key, label: val(r.label), phase: r.c.three_phase ? "" : r.phase.value, rating_a: Number(r.rating.value) || 0 }));
+      const channelsPayload = () => chRows.map((r) => ({ key: r.c.key, label: val(r.label), phase: r.c.three_phase ? "" : r.phase.value, rating_a: Number(r.rating.value) || 0, in_total: r.inTotal.checked }));
       const facts = [m.model, m.firmware ? `firmware ${m.firmware}` : "", `MAC ${m.mac}`].filter(Boolean).join(" · ");
       const first = h("tr", {},
         h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, m.id)),
@@ -724,7 +726,7 @@
           h("button", { class: "small", title: "Makes two warnings from the rating: a notice at 80% and an alarm at 100%. Your own limits: Stagewatch does not protect or switch anything.",
             onclick: () => run(() => api("POST", `/api/admin/shelly/${encodeURIComponent(m.id)}/warnings`), "Warnings added at 80% and 100% (see Thresholds)").then(refresh, () => {}) }, "Add warnings"),
           h("button", { class: "small danger", onclick: () => confirm(`Remove the Shelly power meter ${m.name}? Stagewatch stops reading it. Its history is kept, and it can be added again.`) && run(() => api("DELETE", `/api/admin/shelly/${encodeURIComponent(m.id)}`), "Removed").then(refresh, () => {}) }, "Remove"))));
-      return chRows.length ? [first, h("tr", {}, h("td", { colspan: "8" }, h("div", { class: "muted", style: "font-size:12px" }, "Circuits on this meter: label, which mains line it is on (single-phase meters), and its own rating (blank uses the meter's rating)"), ...chRows.map((r) => r.el)))] : [first];
+      return chRows.length ? [first, h("tr", {}, h("td", { colspan: "8" }, h("div", { class: "muted", style: "font-size:12px" }, "Circuits on this meter: label, which mains line it is on (single-phase meters), its own rating (blank uses the meter's rating), and whether its watts go into the site total on the Power card. Tick one circuit per phase; a three-phase meter already gives its own total, so tick it on its own"), ...chRows.map((r) => r.el)))] : [first];
     });
     const table = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Rating (amps)"), h("th", {}, "Polls"), h("th", {}, ""))),

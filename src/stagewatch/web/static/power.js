@@ -241,7 +241,35 @@ SW.pw = (function () {
       .map((d) => pw.meterView(d, ents, now));
     // The key changes only when the set of meters or readings changes, so the DOM is rebuilt rarely.
     const key = meters.map((m) => m.id + "@" + (m.rating || 0) + ":" + m.channels.map((c) => c.id + "~" + (c.rating || 0) + (c.cfg ? (c.cfg.label || "") + (c.cfg.phase || "") : "") + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
-    return { meters, key };
+    const total = pw.totalView(devices, meters);
+    return { meters, total, key: (total ? "T" + total.parts.length + ";" : "") + key };
+  };
+
+  // ---- site total: the watts of every circuit ticked "Include in site total" in Admin, added together.
+  // All or nothing: if any ticked circuit is not reading right now (meter not answering, reading old, or
+  // never received) there is no sum, only a list of what is missing. Nothing is filled in, estimated or
+  // left out. A three-phase meter counts once, by its own total, never by its three phases as well.
+  // Returns null when nothing is ticked, else { parts, missing, watts } with watts null when incomplete.
+  pw.totalView = function (devices, meters) {
+    const parts = [];
+    for (const d of Object.keys(devices || {}).map((k) => devices[k])) {
+      if (!d || d.category !== "meter" || !d.channels) continue;
+      const m = meters.find((x) => x.id === d.id);
+      for (const key of Object.keys(d.channels).sort()) {
+        const cfg = d.channels[key];
+        if (!cfg || !cfg.in_total) continue;
+        const ch = m && m.channels.find((c) => c.id === key);
+        const g = ch && (ch.groups[""] || ch.groups.total);
+        const e = g && g.power;
+        const ok = !!m && m.state === "live" && !!e && isNum(e.value) && !e.stale;
+        const many = !!m && m.channels.length > 1;
+        const name = [d.name || d.id, pw.channelTitle({ id: key, cfg }, many)].filter(Boolean).join(" · ");
+        parts.push({ name, ok, watts: ok ? e.value : null, entity: e ? e.id : "" });
+      }
+    }
+    if (!parts.length) return null;
+    const missing = parts.filter((p) => !p.ok).map((p) => p.name);
+    return { parts, missing, watts: missing.length ? null : parts.reduce((s, p) => s + p.watts, 0) };
   };
 
   // ------------------------------------------------------------------ DOM
@@ -400,12 +428,28 @@ SW.pw = (function () {
       return r;
     }
 
+    function buildTotal() {
+      const t = cell("Site total power", "W");
+      const note = h("p", { class: "pw-note", role: "status" });
+      const sub = h("div", { class: "pw-gsub muted" });
+      return { val: t.val, unit: t.unit, note, sub, root: h("div", { class: "pw-meter pw-total" }, h("div", { class: "pw-grid" }, t.el), note, sub) };
+    }
+
     return {
       update(view, entities) {
         if (view.key !== ui.key) {
           ui.key = view.key;
           ui.meters = {};
-          host.replaceChildren(...view.meters.map((m) => { const r = buildMeter(m); ui.meters[m.id] = r; return r.root; }));
+          ui.total = view.total ? buildTotal() : null;
+          host.replaceChildren(...(ui.total ? [ui.total.root] : []), ...view.meters.map((m) => { const r = buildMeter(m); ui.meters[m.id] = r; return r.root; }));
+        }
+        if (ui.total && view.total) {
+          const t = view.total, n = t.parts.length;
+          ui.total.val.textContent = t.watts === null ? "—" : SW.num(t.watts, 0);
+          ui.total.root.className = `pw-meter pw-total pw-s-${t.watts === null ? "frozen" : "live"}`;
+          ui.total.note.textContent = t.watts === null ? `INCOMPLETE: not reading ${t.missing.join(", ")}. No total is shown until every ticked circuit is reading.` : "";
+          SW.slot(ui.total.note, t.watts !== null);
+          ui.total.sub.textContent = `Adds the watts of ${n} ticked circuit${n === 1 ? "" : "s"}: ${t.parts.map((p) => p.name).join(", ")}.`;
         }
         for (const m of view.meters) {
           const r = ui.meters[m.id];

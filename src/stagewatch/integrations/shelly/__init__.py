@@ -115,7 +115,7 @@ def public_extra(cfg: ShellyDeviceConfig) -> dict:
         out["rating_a"] = cfg.rating_a
     chans = {}
     for c in cfg.channels:
-        d = {k: v for k, v in (("label", c.label), ("phase", c.phase), ("rating_a", c.rating_a)) if v}
+        d = {k: v for k, v in (("label", c.label), ("phase", c.phase), ("rating_a", c.rating_a), ("in_total", c.in_total)) if v}
         if d:
             chans[c.key] = d
     if chans:
@@ -173,7 +173,9 @@ def seed_emulate_shelly(config) -> bool:
         ShellyDeviceConfig(id="distro_sim", host=DEMO3_HOST, mac=emulated_mac(DEMO3_HOST),
                            name=DEMO3_NAME, area="Dock", rating_a=32),
         ShellyDeviceConfig(id="em_sim", host=DEMO1_HOST, mac=emulated_mac(DEMO1_HOST),
-                           name=DEMO1_NAME, area="FOH"),
+                           name=DEMO1_NAME, area="FOH",
+                           channels=[ShellyChannelConfig(key="em0", label="FOH L1", phase="L1", in_total=True),
+                                     ShellyChannelConfig(key="em1", label="FOH L2", phase="L2", in_total=True)]),
     ]
     for d in config.dashboards:
         if d.slug == "wall":
@@ -449,7 +451,7 @@ class ShellyIntegration(Integration):
                 seen, kept = set(), []
                 for c in channels:
                     ch = ShellyChannelConfig(**{**c, "rating_a": c.get("rating_a") or None})
-                    if ch.key not in seen and (ch.label or ch.phase or ch.rating_a):
+                    if ch.key not in seen and (ch.label or ch.phase or ch.rating_a or ch.in_total):
                         seen.add(ch.key)
                         kept.append(ch)
                 cfg.channels = kept
@@ -519,7 +521,8 @@ class ShellyIntegration(Integration):
             name = f"Channel {int(m.group(1)) + 1}" if (m and len(seen) > 1) else ("Three-phase" if three else "Circuit")
             c = next((x for x in cfg.channels if x.key == key), None)
             out.append({"key": key, "name": name, "three_phase": three, "label": c.label if c else "",
-                        "phase": c.phase if c else "", "rating_a": c.rating_a if c else None})
+                        "phase": c.phase if c else "", "rating_a": c.rating_a if c else None,
+                        "in_total": bool(c and c.in_total)})
         return out
 
     def admin_status(self) -> dict:

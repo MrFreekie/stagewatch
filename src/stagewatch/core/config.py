@@ -233,6 +233,9 @@ class ShellyChannelConfig(_Model):
     label: str = Field("", max_length=40)
     phase: Literal["", "L1", "L2", "L3"] = ""
     rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)
+    # "Include in site total": the Power card adds the watts of every ticked circuit (across meters) into
+    # one total. Additive with a default of off: no schema bump; an older build ignores it.
+    in_total: bool = False
 
 
 class ShellyDeviceConfig(_Model):

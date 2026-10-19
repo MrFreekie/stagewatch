@@ -1303,6 +1303,25 @@ async def test_the_rating_can_be_set_and_cleared_and_is_public_and_saved(hub):
         ShellyDeviceConfig(id="x", host=HOST, mac=MAC, rating_a=-1)
 
 
+async def test_a_circuit_can_be_included_in_the_site_total_and_that_is_public_and_saved(hub):
+    integ, cfg = await make(hub)
+    feed(integ, pm(100.0, 230.0, 1.0, 1000.0), T0)
+    assert ShellyChannelConfig(key="pm1_0").in_total is False        # off unless ticked
+    await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "label": "", "phase": "", "rating_a": 0, "in_total": True}])
+    assert cfg.channels[0].in_total is True                           # kept although nothing else was typed
+    assert hub.devices["rack"].to_dict()["channels"] == {"pm1_0": {"in_total": True}}
+    assert integ.admin_status()["meters"][0]["channels"][0]["in_total"] is True
+    await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "in_total": False}])
+    assert cfg.channels == [] and "channels" not in hub.devices["rack"].to_dict()
+
+
+def test_emulate_seed_ticks_the_two_gen1_channels():
+    cfg = Config()
+    assert seed_emulate_shelly(cfg) is True
+    em = next(d for d in cfg.shelly_devices if d.id == "em_sim")
+    assert [(c.key, c.in_total) for c in em.channels] == [("em0", True), ("em1", True)]
+
+
 def em_status():
     st = fx("docs-em-getstatus.json")
     return st
@@ -1315,7 +1334,7 @@ async def test_each_circuit_can_have_a_label_a_line_and_its_own_rating_and_they_
     pub = hub.devices["rack"].to_dict()
     assert pub["channels"] == {"pm1_0": {"label": "Amp rack 3", "phase": "L2", "rating_a": 10.0}} and pub["rating_a"] == 16.0
     assert integ.admin_status()["meters"][0]["channels"] == [
-        {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0}]
+        {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0, "in_total": False}]
     await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "label": "", "phase": "", "rating_a": 0}])
     assert cfg.channels == [] and "channels" not in hub.devices["rack"].to_dict()      # nothing typed: nothing kept
     with pytest.raises(ValueError):

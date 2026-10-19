@@ -470,6 +470,7 @@ class ShellyChannelBody(BaseModel):
     label: str = Field("", max_length=40)
     phase: Literal["", "L1", "L2", "L3"] = ""
     rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)
+    in_total: bool = False
 
     @field_validator("label")
     @classmethod
