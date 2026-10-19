@@ -27,7 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from ..updater_common import atomic_write_bytes, fsync_dir, remove_stale_temps, replace_with_retry
 from ..version import CONFIG_SCHEMA_VERSION
-from . import spl
+from . import power_tree, spl
 from .cards import CARD_ID_RE, MAX_CARDS, clean_card_sizes, default_cards, legacy_cards
 from .model import normalise_mac, slugify
 
@@ -225,7 +225,65 @@ SHELLY_POLL_DEFAULT_S = 3.0
 SHELLY_MAX_METERS = 16
 
 
-class ShellyChannelConfig(_Model):
+class _TreeFields(_Model):
+    """Where a meter or circuit sits in the power distribution tree (see core/power_tree.py). All optional.
+    Additive with defaults: no schema bump; an older build ignores them and drops them on its next save.
+    On load, a role this build does not know becomes "" and a number out of range becomes None, so a file
+    from a newer build never costs the meter."""
+    role: str = ""
+    unit_no: int | None = None
+    upstream: str = Field("", max_length=80)
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def _known_role(cls, v):
+        return v if v in power_tree.ROLES else ""
+
+    @field_validator("unit_no", mode="before")
+    @classmethod
+    def _unit_range(cls, v):
+        ok = isinstance(v, int) and not isinstance(v, bool) and power_tree.UNIT_NO_MIN <= v <= power_tree.UNIT_NO_MAX
+        return v if ok else None
+
+    @field_validator("upstream", mode="before")
+    @classmethod
+    def _upstream_text(cls, v):
+        return v.strip()[:80] if isinstance(v, str) else ""
+
+
+class UnmonitoredAllowance(_Model):
+    """What the admin TYPED about load that has no meter. Never a measurement; stored only for now
+    (nothing uses it in any sum yet). ``unit``: amps per line, kilowatts, or "unknown" (value ignored)."""
+    unit: Literal["a_per_line", "kw", "unknown"] = "unknown"
+    value: float | None = Field(None, ge=0, le=100000, allow_inf_nan=False)
+
+
+class PowerPointConfig(_TreeFields):
+    """A distribution point with no meter of its own: a generator, grid supply or intake unit. A virtual
+    node of the power tree. ``monitored`` False means "nothing here is metered" and ``allowance`` may carry
+    a typed figure for it (admin-only for now). Additive: no schema bump."""
+    id: str
+    name: str = Field("", max_length=60)
+    rating_a: float | None = Field(None, gt=0, le=5000, allow_inf_nan=False)
+    rating_kva: float | None = Field(None, gt=0, le=10000, allow_inf_nan=False)
+    ups_type: str = "unknown"
+    monitored: bool = True
+    allowance: UnmonitoredAllowance | None = None
+
+    @field_validator("id")
+    @classmethod
+    def _slug(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("id needed")
+        return slugify(v)[:40]
+
+    @field_validator("ups_type", mode="before")
+    @classmethod
+    def _known_ups(cls, v):
+        return v if v in power_tree.UPS_TYPES else "unknown"
+
+
+class ShellyChannelConfig(_TreeFields):
     """What the admin typed about one circuit of a meter: a label ("Amp rack 3"), the mains line it is on
     (single-phase meters) and its own rating in amps. Advisory only. ``key`` is the channel the card
     groups readings by (for example "pm1_0" or "em0")."""
@@ -248,7 +306,7 @@ class PowerSiteConfig(_Model):
     gen_size_kva: float | None = Field(None, gt=0, le=5000, allow_inf_nan=False)   # a generator size typed in, if any
 
 
-class ShellyDeviceConfig(_Model):
+class ShellyDeviceConfig(_TreeFields):
     """A Shelly power meter the admin added (read-only: Stagewatch only asks it for its readings).
     Identity is the meter's MAC, read from the meter itself when it was added; ``host`` is only where
     to ask now (a private-network address, checked again at every connection). Additive with
@@ -1074,6 +1132,9 @@ class Config(_Model):
     # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
     shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list)
     power_site: PowerSiteConfig = Field(default_factory=PowerSiteConfig)
+    # Power distribution tree: points with no meter (generator, grid supply, intake units). Meters and circuits
+    # carry their own role, number and upstream. Additive: no schema bump; salvage keeps each valid point.
+    power_points: list[PowerPointConfig] = Field(default_factory=list)
     contacts: ContactsSettings = Field(default_factory=ContactsSettings)
     advice: AdviceConfig = Field(default_factory=AdviceConfig)
 
@@ -1123,6 +1184,20 @@ class Config(_Model):
             kept.append(d)
         if len(kept) < len(v):
             log.warning("Shelly meters: %d duplicate or surplus entr%s left out", len(v) - len(kept), "y" if len(v) - len(kept) == 1 else "ies")
+        return kept
+
+    @field_validator("power_points")
+    @classmethod
+    def _points_unique_and_capped(cls, v: list) -> list:
+        """Later duplicates (same id) are dropped and the list cut to MAX_POINTS. Logs a count only."""
+        seen, kept = set(), []
+        for p in v:
+            if p.id in seen or len(kept) >= power_tree.MAX_POINTS:
+                continue
+            seen.add(p.id)
+            kept.append(p)
+        if len(kept) < len(v):
+            log.warning("Power points: %d duplicate or surplus entr%s left out", len(v) - len(kept), "y" if len(v) - len(kept) == 1 else "ies")
         return kept
 
     @field_validator("globcon", mode="before")
@@ -1475,6 +1550,7 @@ class ConfigStore:
                         self.save()
                     except OSError:
                         log.error("could not write the salvaged config")
+        power_tree.tidy_config(self.config)
         if self.config.admin.pin_hash:
             try:
                 (self.path.parent / ALLOW_ONBOARDING_FLAG).unlink()

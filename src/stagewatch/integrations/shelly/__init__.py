@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-from ...core import sitetime
+from ...core import power_tree, sitetime
 from ...core.config import SHELLY_MAX_METERS, ShellyChannelConfig, ShellyDeviceConfig, Threshold
 from ...core.model import UNITS, Device, Entity, Kind, Status, slugify
 from ...core.plugin import Integration, Manifest
@@ -540,9 +540,13 @@ class ShellyIntegration(Integration):
                 cfg.combined_bar = combined_bar
             if channels is not None:
                 seen, kept = set(), []
+                old = {x.key: x for x in cfg.channels}
                 for c in channels:
-                    ch = ShellyChannelConfig(**{**c, "rating_a": c.get("rating_a") or None})
-                    if ch.key not in seen and (ch.label or ch.phase or ch.rating_a or ch.in_total):
+                    # The power tree fields (role, number, upstream) are edited on their own card: keep them.
+                    prev = old.get(c.get("key"))
+                    tree = {"role": prev.role, "unit_no": prev.unit_no, "upstream": prev.upstream} if prev else {}
+                    ch = ShellyChannelConfig(**{**tree, **c, "rating_a": c.get("rating_a") or None})
+                    if ch.key not in seen and (ch.label or ch.phase or ch.rating_a or ch.in_total or ch.role or ch.upstream):
                         seen.add(ch.key)
                         kept.append(ch)
                 cfg.channels = kept
@@ -597,6 +601,10 @@ class ShellyIntegration(Integration):
             self._transport.remove(cfg.mac)
             self._meters.pop(cfg.mac, None)
             self.hub.config.shelly_devices.remove(cfg)
+            # whatever was fed from this meter or its circuits has no upstream any more
+            power_tree.detach_children(self.hub.config, power_tree.meter_ref(cfg.id))
+            for ch in cfg.channels:
+                power_tree.detach_children(self.hub.config, power_tree.circuit_ref(cfg.id, ch.key))
             self.hub.save_config()
             self.hub.remove_device(cfg.id)      # its history stays
             self._update_neutral(self._clock())
@@ -615,7 +623,9 @@ class ShellyIntegration(Integration):
             c = next((x for x in cfg.channels if x.key == key), None)
             out.append({"key": key, "name": name, "three_phase": three, "label": c.label if c else "",
                         "phase": c.phase if c else "", "rating_a": c.rating_a if c else None,
-                        "in_total": bool(c and c.in_total)})
+                        "in_total": bool(c and c.in_total),
+                        "role": c.role if c else "", "unit_no": c.unit_no if c else None,
+                        "upstream": c.upstream if c else ""})
         return out
 
     def admin_status(self) -> dict:
@@ -628,6 +638,7 @@ class ShellyIntegration(Integration):
             meters.append({
                 "id": cfg.id, "name": cfg.name, "area": cfg.area, "host": cfg.host, "mac": cfg.mac,
                 "interval_s": cfg.poll_interval_s, "rating_a": cfg.rating_a, "combined_bar": cfg.combined_bar,
+                "role": cfg.role, "unit_no": cfg.unit_no, "upstream": cfg.upstream,
                 "channels": self._admin_channels(cfg),
                 "model": (m.info.app or m.info.model) if m and m.info else "",
                 "firmware": m.info.firmware if m and m.info else "",

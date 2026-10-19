@@ -34,7 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from .. import __version__, acoustics
 from ..core.config import (
     ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
-    ContactsSettings, PowerSiteConfig, SiteConfig, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error,
+    ContactsSettings, PowerPointConfig, PowerSiteConfig, ShellyChannelConfig, SiteConfig, UnmonitoredAllowance, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
 from ..core import calibration_io
@@ -44,6 +44,7 @@ from ..core.recorder import clean_note, valid_day
 from .. import diagnostics, netinfo
 from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
+from ..core import power_tree as ptree
 from ..core import device_errors as errors_mod
 from ..core import actions as actions_mod
 from ..core import schedule as sched
@@ -489,6 +490,117 @@ class PowerSiteBody(BaseModel):
     gen_loading_pct: float = Field(80.0, ge=50, le=100, allow_inf_nan=False)
     gen_power_factor: float = Field(0.8, ge=0.5, le=1.0, allow_inf_nan=False)
     gen_size_kva: float | None = Field(None, ge=0, le=5000, allow_inf_nan=False)   # 0 or empty = none
+
+
+class TreeFieldsBody(BaseModel):
+    """Role, number and upstream, shared by points, meters and circuits. "" or null = not set."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    role: str = Field("", max_length=16)
+    unit_no: int | None = Field(None, ge=ptree.UNIT_NO_MIN, le=ptree.UNIT_NO_MAX)
+    upstream: str = Field("", max_length=80)
+
+    @field_validator("role")
+    @classmethod
+    def _role(cls, v: str) -> str:
+        if v and v not in ptree.ROLES:
+            raise ValueError("Choose a role from the list")
+        return v
+
+
+class PowerAllowanceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    unit: Literal["a_per_line", "kw", "unknown"] = "unknown"
+    value: float | None = Field(None, ge=0, le=100000, allow_inf_nan=False)
+
+
+class PowerPointBody(TreeFieldsBody):
+    id: str = Field("", max_length=40, pattern=r"^([a-z0-9][a-z0-9_]*)?$")    # "" = a new point
+    name: str = Field(min_length=1, max_length=60)
+    rating_a: float | None = Field(None, ge=0, le=5000, allow_inf_nan=False)     # 0 or empty = none
+    rating_kva: float | None = Field(None, ge=0, le=10000, allow_inf_nan=False)
+    ups_type: str = Field("unknown", max_length=20)
+    monitored: bool = True
+    allowance: PowerAllowanceBody | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _plain(cls, v: str) -> str:
+        v = v.strip()
+        if not v or _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+    @field_validator("ups_type")
+    @classmethod
+    def _ups(cls, v: str) -> str:
+        if v not in ptree.UPS_TYPES:
+            raise ValueError("Choose a UPS type from the list")
+        return v
+
+
+class PowerCircuitBody(TreeFieldsBody):
+    key: str = Field(max_length=24, pattern=r"^[a-z0-9_]+$")
+
+
+class PowerMeterBody(TreeFieldsBody):
+    id: str = Field(min_length=1, max_length=40)
+    channels: list[PowerCircuitBody] = Field(default_factory=list, max_length=16)
+
+
+class PowerTreeBody(BaseModel):
+    """PUT /api/admin/power-tree: adds or changes points, and sets role, number and upstream on meters and
+    circuits. Whatever is not mentioned is left as it is. A point is only removed with DELETE."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    points: list[PowerPointBody] = Field(default_factory=list, max_length=ptree.MAX_POINTS)
+    meters: list[PowerMeterBody] = Field(default_factory=list, max_length=16)
+
+
+def apply_power_tree(cfg, body: PowerTreeBody) -> None:
+    """Change ``cfg`` (a Config, or a copy of one) as the body says. Raises ptree.TreeError (fixed text) when
+    the result would not be a valid tree; the caller runs this on a copy first, so nothing is half applied."""
+    for pb in body.points:
+        pid = pb.id      # for a new point the page suggests an id, so other rows can name it as their upstream
+        existing = next((p for p in cfg.power_points if p.id == pid), None) if pid else None
+        if existing is None:
+            if len(cfg.power_points) >= ptree.MAX_POINTS:
+                raise ptree.TreeError("There are too many points. Remove one first.")
+            base = slugify(pid or pb.name)[:36] or "point"
+            pid, n = base, 2
+            while any(p.id == pid for p in cfg.power_points):
+                pid, n = f"{base}_{n}", n + 1
+            existing = PowerPointConfig(id=pid)
+            cfg.power_points.append(existing)
+        existing.name = pb.name
+        existing.role, existing.unit_no, existing.upstream = pb.role, pb.unit_no, pb.upstream.strip()
+        existing.rating_a, existing.rating_kva = pb.rating_a or None, pb.rating_kva or None
+        existing.ups_type = pb.ups_type if pb.role == "ups" else "unknown"
+        existing.monitored = pb.monitored
+        existing.allowance = (UnmonitoredAllowance(unit=pb.allowance.unit, value=pb.allowance.value)
+                              if pb.allowance and not pb.monitored else None)
+    wanted = {pb.upstream.strip() for pb in body.points} | {m.upstream.strip() for m in body.meters} \
+        | {c.upstream.strip() for m in body.meters for c in m.channels}
+    for mb in body.meters:
+        dev = next((d for d in cfg.shelly_devices if d.id == mb.id), None)
+        if dev is None:
+            raise ptree.TreeError("One of the power meters does not exist any more. Reload the page.")
+        dev.role, dev.unit_no, dev.upstream = mb.role, mb.unit_no, mb.upstream.strip()
+        for cb in mb.channels:
+            ch = next((c for c in dev.channels if c.key == cb.key), None)
+            empty = not (cb.role or cb.unit_no or cb.upstream)
+            if ch is None:
+                if empty and ptree.circuit_ref(dev.id, cb.key) not in wanted:
+                    continue
+                if len(dev.channels) >= 16:
+                    raise ptree.TreeError("That meter has too many circuits.")
+                ch = ShellyChannelConfig(key=cb.key)
+                dev.channels.append(ch)
+            ch.role, ch.unit_no, ch.upstream = cb.role, cb.unit_no, cb.upstream.strip()
+    problems = ptree.validate(ptree.build_nodes(cfg))
+    if problems:
+        raise ptree.TreeError(problems[0].message + (f" ({len(problems)} problems in all.)" if len(problems) > 1 else ""), problems)
 
 
 class ShellyPatchBody(BaseModel):
@@ -1369,6 +1481,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "witmotion": {"emulate": hub.emulate, **witmotion_admin()},
             # Shelly power meters card: the meters (addresses, MACs and firmware are admin-only), no passwords exist.
             "shelly": shelly_admin(),
+            "power_tree": ptree.admin_view(hub.config),
             # Sound level card: the values that can be chosen, and what is running (no addresses).
             "spl": spl_admin(),
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
@@ -1955,6 +2068,37 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             gen_power_factor=body.gen_power_factor, gen_size_kva=body.gen_size_kva or None)
         hub.save_config()
         return {"ok": True}
+
+    @app.put("/api/admin/power-tree", dependencies=admin_deps)
+    async def put_power_tree(body: PowerTreeBody):
+        """Add or change distribution points and set role, number and upstream on meters and circuits.
+        Checked on a copy first: any rule breach refuses the whole change with a plain message."""
+        try:
+            apply_power_tree(hub.config.model_copy(deep=True), body)
+        except ptree.TreeError as exc:
+            raise HTTPException(422, f"{exc.message} Nothing has been changed.") from None
+        apply_power_tree(hub.config, body)
+        hub.save_config()
+        return {"ok": True, "power_tree": ptree.admin_view(hub.config)}
+
+    @app.delete("/api/admin/power-points/{point_id}", dependencies=admin_deps)
+    async def delete_power_point(point_id: str, children: Literal["reparent", "detach"] | None = Query(None)):
+        """Remove a point. If other units are fed from it, say what to do with them: ``children=reparent``
+        (they take the point's own upstream) or ``children=detach`` (they are left with no upstream)."""
+        try:
+            ptree.delete_point(hub.config, point_id, children)
+        except LookupError:
+            raise HTTPException(404, "No such point") from None
+        except ptree.TreeError as exc:
+            raise HTTPException(409, f"{exc.message} Nothing has been changed.") from None
+        hub.save_config()
+        return {"ok": True, "power_tree": ptree.admin_view(hub.config)}
+
+    @app.get("/api/power-tree")
+    async def get_power_tree():
+        """Public: the shape of the power tree for dashboards. Names, roles, display names, upstream links and
+        ratings only: no addresses and none of the typed allowances."""
+        return ptree.public_structure(hub.config)
 
     @app.delete("/api/admin/shelly/{device_id}", dependencies=admin_deps)
     async def shelly_delete(device_id: str):

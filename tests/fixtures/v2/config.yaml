@@ -1,0 +1,148 @@
+schema_version: 2
+site:
+  name: Stagewatch
+  altitude_m: 0.0
+  reference_distance_m: 30.0
+  stale_after_s: 60.0
+  smoothing_tau_s: 30.0
+  outlier_reject: true
+  weight_by_accuracy: false
+  timezone: ''
+  day_rollover: 06:00
+  schedule_auto_markers: true
+  schedule_warn_minutes:
+  - 15
+  - 5
+  schedule_warn_flash_minutes: []
+admin:
+  pin_hash: ''
+mdns_name: stagewatch
+esphome_devices: []
+esphome_ignored: []
+entities: {}
+calibrations: {}
+thresholds: []
+dashboards:
+- slug: foh
+  title: FOH
+  layout: tablet
+  allow_marker: true
+  allow_ack: true
+  cards:
+  - env_tiles
+  - schedule
+  - chart
+  - markers
+  - sensors
+  stage: ''
+  clock_style: digits
+  card_sizes: {}
+  show_dew_point: true
+  globcon:
+    controller: 1
+    strips: 8
+    range: null
+  show_contact_phones: false
+  contacts_area: ''
+- slug: phone
+  title: Phone
+  layout: phone
+  allow_marker: true
+  allow_ack: false
+  cards:
+  - env_tiles
+  - schedule
+  - markers
+  - chart
+  stage: ''
+  clock_style: digits
+  card_sizes: {}
+  show_dew_point: true
+  globcon:
+    controller: 1
+    strips: 8
+    range: null
+  show_contact_phones: false
+  contacts_area: ''
+- slug: wall
+  title: Wall
+  layout: wall
+  allow_marker: false
+  allow_ack: false
+  cards:
+  - env_tiles
+  - schedule
+  - chart
+  - connect_footer
+  stage: ''
+  clock_style: digits
+  card_sizes: {}
+  show_dew_point: true
+  globcon:
+    controller: 1
+    strips: 8
+    range: null
+  show_contact_phones: false
+  contacts_area: ''
+osc_out:
+  destinations: []
+  per_node: false
+  rate_hz: 1.0
+actions:
+  targets: []
+updater:
+  channel: null
+wall_clock:
+  source: pc
+  display:
+    hour12: false
+    show_date: false
+    ring: sweep
+  ontime_url: http://127.0.0.1:4001
+  warn_offset_s: 2.0
+ontime_timer:
+  show_title: true
+barometer:
+  hemisphere: north
+  rapid_fall_alarm: false
+  rapid_fall_hpa_3h: 3.6
+alarms:
+  hide_acked_min: 2
+  fold_old_min: 30
+spl:
+  enabled: false
+  host: 127.0.0.1
+  port: 26000
+  slots:
+  - a_slow
+  - c_slow
+  - laeq_15m
+globcon:
+  host: 127.0.0.1
+  port: 9091
+witmotion:
+  enabled: false
+  address: ''
+  axis: both
+  smoothing_s: 2.0
+  target_x: null
+  target_y: null
+  on_target_deg: 0.2
+  close_deg: 1.0
+  sensors: []
+shelly_devices:
+- id: dist_a
+  host: 192.168.1.50
+  mac: aabbccddeeff
+  name: Distro A
+  area: ''
+  poll_interval_s: 3.0
+  rating_a: 32.0
+  channels:
+  - key: pm1_0
+    label: Amp rack
+    phase: L1
+    rating_a: 16.0
+contacts:
+  phones_enabled: false
+  reveal_pin_hash: ''

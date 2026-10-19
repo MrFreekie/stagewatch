@@ -785,7 +785,7 @@ def test_config_round_trip_and_mac_is_normalised(tmp_path):
     again = ConfigStore(tmp_path / "config.yaml").load()
     assert again.shelly_devices == [ShellyDeviceConfig(id="mic_rack", host="192.0.2.50", mac=MAC, name="Mic rack", area="FOH", poll_interval_s=2.5)]
     raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
-    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "combined_bar", "channels"}   # no password field exists
+    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "combined_bar", "channels", "role", "unit_no", "upstream"}   # no password field exists
 
 
 def test_interval_outside_two_to_five_seconds_is_brought_into_range():
@@ -1351,9 +1351,22 @@ async def test_each_circuit_can_have_a_label_a_line_and_its_own_rating_and_they_
     pub = hub.devices["rack"].to_dict()
     assert pub["channels"] == {"pm1_0": {"label": "Amp rack 3", "phase": "L2", "rating_a": 10.0}} and pub["rating_a"] == 16.0
     assert integ.admin_status()["meters"][0]["channels"] == [
-        {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0, "in_total": False}]
+        {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0, "in_total": False,
+         "role": "", "unit_no": None, "upstream": ""}]
     await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "label": "", "phase": "", "rating_a": 0}])
     assert cfg.channels == [] and "channels" not in hub.devices["rack"].to_dict()      # nothing typed: nothing kept
+
+
+async def test_saving_circuits_keeps_their_power_tree_fields_and_the_public_device_hides_them(hub):
+    integ, cfg = await make(hub)
+    feed(integ, pm(100.0, 230.0, 1.0, 1000.0), T0)
+    cfg.channels = [ShellyChannelConfig(key="pm1_0", role="fdu", unit_no=1, upstream="m:rack")]
+    await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "label": "Amp rack 3"}])
+    ch = cfg.channels[0]
+    assert (ch.label, ch.role, ch.unit_no, ch.upstream) == ("Amp rack 3", "fdu", 1, "m:rack")
+    await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "label": ""}])
+    assert cfg.channels and cfg.channels[0].role == "fdu"      # a role alone keeps the circuit
+    assert "upstream" not in str(hub.devices["rack"].to_dict())
     with pytest.raises(ValueError):
         ShellyChannelConfig(key="pm1_0", phase="L4")
     with pytest.raises(ValueError):

@@ -178,6 +178,18 @@ More: [Troubleshooting](../troubleshooting.md).
 The card works in emulate mode (`--emulate`) with a simulated PM Mini, a simulated three-phase meter and a simulated first-generation Shelly EM. The PM Mini stops answering for 40
 seconds every 5 minutes, to show the frozen state.
 
+## Power distribution (who feeds whom)
+
+**Admin → Power distribution** records how your power is laid out, ready for a power flow view in a later version. Nothing is drawn or added up from it yet.
+
+1. Add a **point** for anything that has no meter: the generator, the grid supply, an intake unit. Give it a role, a number and, if it is fed from something else, its Upstream. A generator or supply has nothing above it. Several separate supplies are fine, for example a delay tower with its own generator.
+2. For each power meter, and each of its circuits if they feed different things, choose a role, a number and the Upstream (the one unit that feeds it).
+3. Save. Stagewatch refuses a loop, a unit fed from itself, a unit fed from the same level or from below, and a number used twice in the same role. Nothing is changed when it refuses, and it says why.
+
+The order is supply, intake unit (ISU), main distribution unit (CDU), final distribution unit (FDU), then equipment. A unit may skip a level. A UPS can sit anywhere; choose its type if you know it. A point you mark **Not monitored** can carry a figure you type in: that is a guess, kept apart from measurements, and not used yet. The names ISU, CDU and FDU are the ones many crews use. Check them against your own paperwork.
+
+Removing a point asks what to do with the units fed from it: move them up a level, or leave them with no Upstream. Removing a meter leaves whatever it fed with no Upstream.
+
 Related: [Notices](README.md#notices), [Equipment](../cards/equipment.md), [Troubleshooting](../troubleshooting.md).
 
 Back to [Integrations](README.md).

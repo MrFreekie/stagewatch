@@ -773,6 +773,115 @@
       SW.help(h("p", { class: "muted hint" }, "The suggested size is the peak demand in kVA for the show day, divided by the loading limit (80% unless you change it). The kW figure uses the generator power factor (0.8 is typical for a generator). If you type the size of the generator you have, the Power card shows how loaded it is at the day's peak, with a warning at your loading limit and again at 100%. Reactive power, phase unbalance and demand are calculated by Stagewatch from the meter readings.")));
   }
 
+  // Power distribution: who feeds whom. Each point (generator, grid supply, intake unit: things with no meter)
+  // and each power meter or circuit gets a role, a number and an Upstream. Stores the shape only for now;
+  // nothing is read from or sent to a meter. The server checks every rule again before it saves.
+  function powerTreeCard() {
+    const pt = admin.power_tree || { roles: [], ups_types: [], nodes: [], problems: [], warnings: [] };
+    const roles = pt.roles, PA = SW.ptAdmin;
+    const meters = (admin.shelly || {}).meters || [];
+    const points = (admin.config && admin.config.power_points) || [];
+    const rows = [];      // one per node: { ref, el, role, no, up, kind, name(), body() }
+    const pointsBox = h("div", {}), metersBox = h("div", {});
+    const roleSel = (cur, label) => h("select", { class: "touch", "aria-label": `${label} role` },
+      [h("option", { value: "" }, "No role")].concat(roles.map((r) => h("option", { value: r.key, selected: r.key === cur }, r.label))));
+    const noIn = (cur, label) => h("input", { class: "num touch", type: "number", min: "1", max: "99", step: "1", value: cur || "", placeholder: "No.", "aria-label": `${label} number` });
+    const noOf = (e) => (e.no.value.trim() === "" ? null : Math.round(Number(e.no.value)));
+    const shown = (e) => PA.display(roles, e.role.value, noOf(e));
+    const refreshUps = () => {
+      const live = rows.map((e) => ({ ref: e.ref, role: e.role.value, upstream: e.up.value, name: e.name() }));
+      rows.forEach((e) => {
+        const keep = e.up.value, ok = PA.upstreamChoices(roles, live, e.ref, e.role.value);
+        const opts = [h("option", { value: "" }, e.role.value === "source" ? "Nothing above a supply" : "No upstream")];
+        ok.forEach((ref) => { const o = rows.find((x) => x.ref === ref); opts.push(h("option", { value: ref }, [shown(o), o.name()].filter(Boolean).join(" · ") || "Unnamed")); });
+        e.up.replaceChildren(...opts);
+        e.up.value = ok.includes(keep) ? keep : "";
+        e.shownEl.textContent = shown(e) || "";
+      });
+    };
+    const mk = (ref, kind, label, role, unit, upstream, nameFn, extra) => {
+      const e = { ref, kind, name: nameFn };
+      e.role = roleSel(role, label); e.no = noIn(unit, label);
+      e.up = h("select", { class: "touch", "aria-label": `${label} upstream` });
+      e.up.value = upstream || "";
+      e.up.append(h("option", { value: upstream || "" }, ""));   // so the saved value survives until the list is built
+      e.shownEl = h("strong", { style: "min-width:64px" }, "");
+      e.role.onchange = refreshUps; e.no.oninput = refreshUps; e.up.onchange = refreshUps;
+      e.extra = extra || {};
+      e.el = h("div", { class: "row", style: "margin:4px 0;flex-wrap:wrap" }, e.shownEl, e.role, e.no, field("Upstream", e.up));
+      return e;
+    };
+    // distribution points
+    const addPoint = (p, isNew) => {
+      const name = h("input", { class: "touch", maxlength: "60", value: p.name || "", placeholder: "Name (e.g. FOH generator)", "aria-label": "Point name" });
+      const e = mk(`p:${p.id}`, "point", p.name || "Point", p.role, p.unit_no, p.upstream, () => name.value.trim(), {});
+      const num = (v, max, ph, lab) => h("input", { class: "num touch", type: "number", min: "0", max, step: "any", value: v || "", placeholder: ph, "aria-label": lab });
+      const ratingA = num(p.rating_a, 5000, "A", "Rating (amps)"), ratingK = num(p.rating_kva, 10000, "kVA", "Rating (kVA)");
+      const ups = h("select", { class: "touch", "aria-label": "UPS type" }, pt.ups_types.map((u) => h("option", { value: u.key, selected: u.key === (p.ups_type || "unknown") }, u.label)));
+      const mon = h("input", { type: "checkbox", checked: p.monitored === false, "aria-label": "Not monitored" });
+      const al = p.allowance || { unit: "unknown", value: null };
+      const alUnit = h("select", { class: "touch", "aria-label": "Typed allowance unit" }, [["unknown", "Unknown"], ["a_per_line", "Amps per line"], ["kw", "Kilowatts"]].map(([v, t]) => h("option", { value: v, selected: v === al.unit }, t)));
+      const alVal = num(al.value, 100000, "typed in", "Typed allowance");
+      const alBox = h("span", { class: "row" }, field("Typed allowance (a guess, not a measurement)", alUnit), alVal);
+      const sync = () => { alBox.hidden = !mon.checked; ups.hidden = e.role.value !== "ups"; };
+      e.role.addEventListener("change", sync); mon.onchange = sync;
+      const gone = h("button", { class: "small danger touch", onclick: () => {
+        if (isNew) { rows.splice(rows.indexOf(e), 1); e.el.remove(); refreshUps(); return; }
+        const kids = rows.filter((x) => x.up.value === e.ref).length;
+        if (!confirm(`Remove ${shown(e) || e.name() || "this point"}?${kids ? ` ${kids} unit${kids === 1 ? " is" : "s are"} fed from it.` : ""}`)) return;
+        const how = kids ? (confirm("Move the units fed from it up a level? OK moves them up. Cancel leaves them with no Upstream.") ? "reparent" : "detach") : "";
+        run(() => api("DELETE", `/api/admin/power-points/${encodeURIComponent(p.id)}${how ? `?children=${how}` : ""}`), "Removed").then(refresh, () => {});
+      } }, "Remove");
+      e.name = () => name.value.trim() || "";
+      name.addEventListener("input", refreshUps);
+      e.body = () => ({ id: p.id, name: name.value.trim(), role: e.role.value, unit_no: noOf(e), upstream: e.up.value,
+        rating_a: Number(ratingA.value) || 0, rating_kva: Number(ratingK.value) || 0, ups_type: e.role.value === "ups" ? ups.value : "unknown",
+        monitored: !mon.checked, ...(mon.checked ? { allowance: { unit: alUnit.value, value: alVal.value === "" ? null : Number(alVal.value) } } : {}) });
+      e.el.append(name, field("Amps", ratingA), field("kVA", ratingK), ups,
+        h("label", { class: "row", style: "min-height:44px" }, mon, " Not monitored (no meter on it)"), alBox, gone);
+      sync();
+      rows.push(e); pointsBox.append(e.el);
+    };
+    points.forEach((p) => addPoint(p, false));
+    // meters and their circuits
+    meters.forEach((m) => {
+      const em = mk(`m:${m.id}`, "meter", m.name, m.role, m.unit_no, m.upstream, () => m.name, {});
+      em.body = () => ({ id: m.id, role: em.role.value, unit_no: noOf(em), upstream: em.up.value,
+        channels: (m.channels || []).map((c) => { const ec = rows.find((x) => x.ref === `c:${m.id}:${c.key}`); return { key: c.key, role: ec.role.value, unit_no: noOf(ec), upstream: ec.up.value }; }) });
+      rows.push(em);
+      const box = h("div", { style: "margin:6px 0" }, h("div", { class: "row" }, h("strong", {}, m.name), h("span", { class: "muted" }, m.area || "")), em.el);
+      (m.channels || []).filter((c) => !c.three_phase || (m.channels || []).length > 1).forEach((c) => {
+        const nm = `${m.name} ${c.label || c.name}`;
+        const ec = mk(`c:${m.id}:${c.key}`, "circuit", nm, c.role, c.unit_no, c.upstream, () => nm, {});
+        ec.el.prepend(h("span", { class: "muted", style: "min-width:120px" }, c.label || c.name));
+        rows.push(ec); box.append(ec.el);
+      });
+      metersBox.append(box);
+    });
+    refreshUps();
+    const unusedId = () => PA.slug("point", new Set(rows.filter((r) => r.kind === "point").map((r) => r.ref.slice(2))));
+    const add = h("button", { class: "touch", onclick: () => { addPoint({ id: unusedId(), name: "" }, true); refreshUps(); } }, "Add a point");
+    const save = h("button", { class: "primary touch", onclick: () => {
+      const body = { points: rows.filter((r) => r.kind === "point").map((r) => r.body()),
+        meters: rows.filter((r) => r.kind === "meter").map((r) => r.body()) };
+      if (body.points.some((p) => !p.name)) { msg.textContent = "Give every point a name."; return; }
+      msg.textContent = "";
+      run(() => api("PUT", "/api/admin/power-tree", body), "Power distribution saved").then(refresh, () => {});
+    } }, "Save");
+    const msg = h("p", { class: "muted", role: "alert" });
+    const note = (list, cls) => list.map((x) => h("p", { class: cls }, x.message));
+    return card("Power distribution",
+      h("p", { class: "muted" }, "Say which unit feeds which, so Stagewatch can show the power flow from each generator or supply down to the equipment. Give a point to anything that has no meter (the generator, the grid supply, an intake unit). Then give each meter, and each of its circuits if they feed different things, a role, a number and what it is fed from (its Upstream). A unit can only be fed from one place. Stagewatch only reads from the meters."),
+      pt.problems.length ? h("div", { class: "notice" }, "Needs fixing: ", ...note(pt.problems, "warn-text")) : null,
+      pt.warnings.length ? h("details", { class: "muted" }, h("summary", {}, `${pt.warnings.length} meter${pt.warnings.length === 1 ? "" : "s"} still to set up`), ...note(pt.warnings, "muted")) : null,
+      h("h3", {}, "Points with no meter"),
+      points.length || rows.some((r) => r.kind === "point") ? null : h("p", { class: "muted" }, "No points yet. Add one for each generator or supply."),
+      pointsBox, h("div", { class: "row" }, add),
+      meters.length ? h("h3", {}, "Power meters and circuits") : null, metersBox,
+      h("div", { class: "row sw-dlg-actions" }, msg, h("span", { class: "grow" }), save),
+      SW.help(h("p", { class: "muted hint" }, "The order is supply, intake unit (ISU), main distribution unit (CDU), final distribution unit (FDU), then equipment. A unit can skip a level but cannot be fed from the same level or from below. A UPS can sit anywhere in the chain; its type says how it behaves on mains. Numbers run from 1 to 99 and show as ISU01, CDU02 and so on, each used once per role. Several generators or supplies are fine: each one is the top of its own tree. Mark a point Not monitored when nothing measures it; a figure you type for it is only a guess and is kept apart from measurements. The names ISU, CDU and FDU are the ones many crews use; check them against your own paperwork. Nothing here changes any meter, and nothing uses these figures in a sum yet.")));
+  }
+
   // ------------------------------------------------------------ alarm notices
   // How long advisory notices stay on dashboards. Only the dashboard list changes: the state behind
   // a notice (a node still Missing) stays visible in the sensor list and here.
@@ -2931,6 +3040,7 @@
         chip(foldCard(witmotionCard(), "witmotion", false), "witmotion"),
         ((admin.shelly || {}).meters || []).length ? chip(foldCard(shellyCard(), "shelly", false), "shelly") : null,
         ((admin.shelly || {}).meters || []).length ? foldCard(powerSiteCard(), "powersite", false) : null,
+        (((admin.shelly || {}).meters || []).length || ((admin.config || {}).power_points || []).length) ? foldCard(powerTreeCard(), "powertree", false) : null,
         foldCard(barometerCard(), "barometer", false),
         piHostInfo() ? chip(foldCard(piHostCard(), "pihost", false), "pihost") : null,
         foldCard(actionTargetsCard(), "actiontargets", false, !!(admin.actions && admin.actions.armed)),
