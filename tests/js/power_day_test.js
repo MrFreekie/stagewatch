@@ -137,5 +137,25 @@ eq(SW.sourceInput.shelly([]).reported, "waiting", "no meters: waiting");
   eq(SW.pw.view(ents(false), none, 101).total, null, "nothing ticked: no total");
 }
 
+// Combined load bar: the sum of the circuits' amps against the meter's rating; all or nothing.
+{
+  const cur = (ch, v, stale, g) => ({ id: `m.${ch}_current`, device_id: "m", kind: "current", unit: "A", decimals: 2, value: v, stale: !!stale, updated: 100, labels: { channel: ch, field: "current", group: g || "" } });
+  const dev = (extra) => ({ m: Object.assign({ id: "m", name: "Dist", category: "meter", status: "ok", rating_a: 16, combined_bar: true }, extra) });
+  const ents = (b, stale) => ({ "m.pm1_0_current": cur("pm1_0", 6), "m.pm1_1_current": cur("pm1_1", b, stale) });
+  let m = SW.pw.view(ents(7), dev(), 101).meters[0];
+  eq([m.combined, m.combinedIds.length], [true, 2], "two single-phase circuits and a rating: a combined bar");
+  const v = SW.pw.combinedView(m.combinedIds, ents(7), 16, true);
+  eq([v.ok, Math.round(v.pct), v.level], [true, 81, "high"], "6 A + 7 A of 16 A is 81 %: high");
+  eq(SW.pw.combinedView(m.combinedIds, ents(10), 16, true).level, "over", "16 A or more: over");
+  eq(SW.pw.combinedView(m.combinedIds, ents(7, true), 16, true).ok, false, "a stale circuit: unavailable, no partial sum");
+  const missing = ents(7); delete missing["m.pm1_1_current"];
+  eq(SW.pw.combinedView(m.combinedIds, missing, 16, true).ok, false, "a missing circuit: unavailable");
+  eq(SW.pw.combinedView(m.combinedIds, ents(7), 16, false).ok, false, "meter not live: unavailable");
+  eq(SW.pw.view(ents(7), dev({ combined_bar: false }), 101).meters[0].combined, false, "not ticked: no combined bar");
+  eq(SW.pw.view(ents(7), dev({ rating_a: undefined }), 101).meters[0].combined, false, "no meter rating: no combined bar");
+  const three = { "m.em0_a_current": cur("em0", 5, false, "a"), "m.em0_b_current": cur("em0", 5, false, "b"), "m.em0_c_current": cur("em0", 5, false, "c") };
+  eq(SW.pw.view(three, dev(), 101).meters[0].combined, false, "three phases are never added into one bar");
+}
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power_day_test: all passed");

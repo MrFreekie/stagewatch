@@ -17,6 +17,8 @@ them into a dated release section and tags the commit.
 
 ### Added
 
+- **Power card: combined load bar.** For a Shelly meter with two or more single-phase circuits (a 2PM with two 10 A outputs on a 16 A feed, or an EM with two channels), a new **Combined load bar** tickbox in Admin adds one extra bar to the Power card: the amps of all the circuits together against the meter's rating, with the usual warnings at 80% and 100%. If any circuit is not reading it says Unavailable rather than showing a part-total. Not offered for three-phase meters. Off by default; read-only toward the meters. The simulated Shelly EM shows it.
+
 - **Power card: site total.** Each Shelly circuit in Admin has a new **Include in site total** tickbox. The Power card adds the watts of every ticked circuit, across meters, into one **Site total power** figure. If any ticked circuit is not reading, the total shows a dash and says which ones are missing, rather than a part-total. Off by default; read-only toward the meters.
 
 - **Shelly: first-generation meters (Shelly EM).** Stagewatch now finds and reads a Gen1 Shelly EM (and 3EM) as well as second-generation meters. When a meter has no `/rpc` interface it is asked `GET /shelly` and `GET /status` instead; each energy-meter channel shows voltage, power, reactive power, power factor and energy in watt-hours exactly as sent. Still read-only (the relay is never read or switched); a Gen1 meter with a password is reported, not read. A simulated Shelly EM joins the emulate-mode meters.

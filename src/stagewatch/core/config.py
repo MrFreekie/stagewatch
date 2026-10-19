@@ -252,6 +252,11 @@ class ShellyDeviceConfig(_Model):
     # The rating (amps) of the meter or of the breaker/circuit it watches, typed in by the admin. Shown
     # on the Power card as a load bar with warnings at 80 % and 100 %. None = no bar. Advisory only.
     rating_a: float | None = Field(None, gt=0, le=200, allow_inf_nan=False)
+    # "Combined load bar": for a meter with two or more single-phase circuits, one extra bar on the Power
+    # card for the SUM of their currents against rating_a (the whole meter or its supply breaker). The
+    # circuits keep their own bars. Never applied to three-phase meters. Additive, default off: no schema
+    # bump; an older build ignores it.
+    combined_bar: bool = False
     channels: list[ShellyChannelConfig] = Field(default_factory=list, max_length=16)
 
     @field_validator("id")

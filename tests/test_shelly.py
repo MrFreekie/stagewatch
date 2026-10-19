@@ -780,7 +780,7 @@ def test_config_round_trip_and_mac_is_normalised(tmp_path):
     again = ConfigStore(tmp_path / "config.yaml").load()
     assert again.shelly_devices == [ShellyDeviceConfig(id="mic_rack", host="192.0.2.50", mac=MAC, name="Mic rack", area="FOH", poll_interval_s=2.5)]
     raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
-    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "channels"}   # no password field exists
+    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "combined_bar", "channels"}   # no password field exists
 
 
 def test_interval_outside_two_to_five_seconds_is_brought_into_range():
@@ -1313,6 +1313,18 @@ async def test_a_circuit_can_be_included_in_the_site_total_and_that_is_public_an
     assert integ.admin_status()["meters"][0]["channels"][0]["in_total"] is True
     await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "in_total": False}])
     assert cfg.channels == [] and "channels" not in hub.devices["rack"].to_dict()
+
+
+async def test_combined_load_bar_is_off_by_default_public_when_rated_and_saved(hub):
+    integ, cfg = await make(hub)
+    assert cfg.combined_bar is False and "combined_bar" not in hub.devices["rack"].to_dict()
+    await integ.update("rack", None, None, None, None, 16.0, None, True)
+    assert cfg.combined_bar is True and hub.devices["rack"].to_dict()["combined_bar"] is True
+    assert integ.admin_status()["meters"][0]["combined_bar"] is True
+    await integ.update("rack", None, None, None, None, 0.0)              # no rating: nothing to measure against
+    assert "combined_bar" not in hub.devices["rack"].to_dict() and cfg.combined_bar is True
+    await integ.update("rack", None, None, None, None, None, None, False)
+    assert cfg.combined_bar is False
 
 
 def test_emulate_seed_ticks_the_two_gen1_channels():

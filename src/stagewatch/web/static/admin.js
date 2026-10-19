@@ -708,6 +708,12 @@
           c.three_phase ? h("span", { class: "muted" }, "Lines 1 to 3 (Brown, Black, Grey)") : phase, rating, h("span", { class: "muted" }, "A"),
           h("label", { class: "row", style: "min-height:44px", title: "Adds this circuit's watts into one site total on the Power card" }, inTotal, " Include in site total")) };
       });
+      const singles = (m.channels || []).filter((c) => !c.three_phase).length;
+      const combined = h("input", { type: "checkbox", checked: !!m.combined_bar, "aria-label": `${m.name} combined load bar` });
+      const combinedRow = singles >= 2
+        ? h("label", { class: "row", style: "min-height:44px", title: "One extra bar on the Power card: the amps of all this meter's circuits added together, against the meter's rating above" },
+          combined, " Combined load bar (circuits added together, against the meter's rating; needs a rating)")
+        : null;
       const channelsPayload = () => chRows.map((r) => ({ key: r.c.key, label: val(r.label), phase: r.c.three_phase ? "" : r.phase.value, rating_a: Number(r.rating.value) || 0, in_total: r.inTotal.checked }));
       const facts = [m.model, m.firmware ? `firmware ${m.firmware}` : "", `MAC ${m.mac}`].filter(Boolean).join(" · ");
       const first = h("tr", {},
@@ -722,11 +728,11 @@
         h("td", {}, h("div", { class: "muted", style: "font-size:12px" }, `${m.ok_polls} ok, ${m.failed_polls} missed`)),
         h("td", {}, h("div", { class: "row" },
           h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/shelly/${encodeURIComponent(m.id)}`, {
-            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value), rating_a: Number(rating.value) || 0, channels: channelsPayload() }), "Saved").then(refresh, () => {}) }, "Save"),
+            name: val(name), area: val(area), host: val(host), interval_s: Number(every.value), rating_a: Number(rating.value) || 0, channels: channelsPayload(), ...(combinedRow ? { combined_bar: combined.checked } : {}) }), "Saved").then(refresh, () => {}) }, "Save"),
           h("button", { class: "small", title: "Makes two warnings from the rating: a notice at 80% and an alarm at 100%. Your own limits: Stagewatch does not protect or switch anything.",
             onclick: () => run(() => api("POST", `/api/admin/shelly/${encodeURIComponent(m.id)}/warnings`), "Warnings added at 80% and 100% (see Thresholds)").then(refresh, () => {}) }, "Add warnings"),
           h("button", { class: "small danger", onclick: () => confirm(`Remove the Shelly power meter ${m.name}? Stagewatch stops reading it. Its history is kept, and it can be added again.`) && run(() => api("DELETE", `/api/admin/shelly/${encodeURIComponent(m.id)}`), "Removed").then(refresh, () => {}) }, "Remove"))));
-      return chRows.length ? [first, h("tr", {}, h("td", { colspan: "8" }, h("div", { class: "muted", style: "font-size:12px" }, "Circuits on this meter: label, which mains line it is on (single-phase meters), its own rating (blank uses the meter's rating), and whether its watts go into the site total on the Power card. Tick one circuit per phase; a three-phase meter already gives its own total, so tick it on its own"), ...chRows.map((r) => r.el)))] : [first];
+      return chRows.length ? [first, h("tr", {}, h("td", { colspan: "8" }, h("div", { class: "muted", style: "font-size:12px" }, "Circuits on this meter: label, which mains line it is on (single-phase meters), its own rating (blank uses the meter's rating), and whether its watts go into the site total on the Power card. Tick one circuit per phase; a three-phase meter already gives its own total, so tick it on its own. Each phase of a three-phase meter keeps its own bar: phases are never added together"), combinedRow, ...chRows.map((r) => r.el)))] : [first];
     });
     const table = h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Area"), h("th", {}, "Status"), h("th", {}, "Address"), h("th", {}, "Reads every"), h("th", {}, "Rating (amps)"), h("th", {}, "Polls"), h("th", {}, ""))),

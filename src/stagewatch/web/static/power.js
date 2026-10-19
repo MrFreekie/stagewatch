@@ -201,6 +201,21 @@ SW.pw = (function () {
   };
   pw.chartNote = (spanS, points) => `One point per ${SW.num(Math.max(1, spanS / points), 0)} s at most, as recorded, smoothed over ${pw.smoothWindow(spanS) < 60 ? SW.num(pw.smoothWindow(spanS), 0) + " s" : SW.num(pw.smoothWindow(spanS) / 60, 0) + " min"}; gaps are left as gaps. Short surges are flattened: check the meter's maximum above.`;
 
+  // The combined load bar: the SUM of the currents of a meter's single-phase circuits against the
+  // meter's own rating. All or nothing: if any circuit's current is missing or old, or the meter is not
+  // live, there is no sum ("unavailable"), never a partial one. Three-phase phases are never added.
+  pw.combinedView = function (ids, entities, rating, live) {
+    const none = { pct: null, bar: 0, level: "none", word: "", text: "—", ok: false };
+    if (!live || !ids.length) return none;
+    let sum = 0;
+    for (const id of ids) {
+      const e = entities[id];
+      if (!e || !isNum(e.value) || e.stale) return none;
+      sum += e.value;
+    }
+    return { ...pw.loadView(sum, rating), ok: true };
+  };
+
   const ageText = (updated, now) => (updated ? SW.age(updated, now) : "never");
 
   // One meter's readings, grouped. entities is the snapshot's entity map (id -> entity), device the
@@ -230,7 +245,10 @@ SW.pw = (function () {
       ch.rating = isNum(ch.cfg && ch.cfg.rating_a) ? ch.cfg.rating_a : (isNum(device.rating_a) ? device.rating_a : null);
       return ch;
     });
-    return { id: device.id, entities: Object.fromEntries(mine.map((e) => [e.id, e])), rating: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "" };
+    const combinedIds = [];
+    for (const ch of list) if (ch.groups[""] && ch.groups[""].current) combinedIds.push(ch.groups[""].current.id);
+    const combined = !!device.combined_bar && isNum(device.rating_a) && device.rating_a > 0 && combinedIds.length >= 2;
+    return { combined, combinedIds, id: device.id, entities: Object.fromEntries(mine.map((e) => [e.id, e])), rating: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "" };
   };
 
   pw.view = function (entities, devices, now) {
@@ -240,7 +258,7 @@ SW.pw = (function () {
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
       .map((d) => pw.meterView(d, ents, now));
     // The key changes only when the set of meters or readings changes, so the DOM is rebuilt rarely.
-    const key = meters.map((m) => m.id + "@" + (m.rating || 0) + ":" + m.channels.map((c) => c.id + "~" + (c.rating || 0) + (c.cfg ? (c.cfg.label || "") + (c.cfg.phase || "") : "") + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
+    const key = meters.map((m) => m.id + "@" + (m.rating || 0) + (m.combined ? "C" + m.combinedIds.length : "") + ":" + m.channels.map((c) => c.id + "~" + (c.rating || 0) + (c.cfg ? (c.cfg.label || "") + (c.cfg.phase || "") : "") + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
     const total = pw.totalView(devices, meters);
     return { meters, total, key: (total ? "T" + total.parts.length + ";" : "") + key };
   };
@@ -345,6 +363,14 @@ SW.pw = (function () {
       // Load bar (needs a rating) and swing meters for voltage and frequency, per circuit or phase.
       r.gauges = [];
       const gaugeBox = h("div", { class: "pw-gauges" });
+      if (m.combined) {
+        const fill = h("div", { class: "pw-fill" });
+        const text = h("span", { class: "pw-gtext" }), word = h("span", { class: "pw-gword" });
+        const track = h("div", { class: "pw-track" }, fill, h("i", { class: "pw-tick", style: `left:${pw.LOAD_HIGH}%` }));
+        gaugeBox.append(h("div", { class: "pw-gauge" }, h("div", { class: "pw-glabel" }, h("span", { class: "pw-label" }, "Combined load"), " ", text, " ", word), track,
+          h("div", { class: "pw-gscale muted" }, h("span", {}, "0"), h("span", { style: `left:${pw.LOAD_HIGH}%` }, "80%"), h("span", { class: "r" }, "100%"))));
+        r.gauges.push({ kind: "combined", ids: m.combinedIds, rating: m.rating, fill, text, word, el: track, meter: m });
+      }
       for (const ch of m.channels) {
         for (const g of pw.GROUP_ORDER.filter((k) => ch.groups[k] && k !== "n" && k !== "total" && k !== "avg")) {
           const pre = pw.GROUP_WORD[g] ? pw.GROUP_WORD[g] + " " : "";
@@ -467,7 +493,13 @@ SW.pw = (function () {
           }
           for (const gg of r.gauges) {
             const e = entities[gg.entity];
-            if (gg.kind === "load") {
+            if (gg.kind === "combined") {
+              const lv = pw.combinedView(gg.ids, entities, gg.rating, m.state === "live");
+              gg.fill.style.width = lv.bar + "%";
+              gg.text.textContent = lv.ok ? lv.text : "Unavailable: a circuit is not reading";
+              gg.word.textContent = lv.word;
+              gg.el.className = `pw-track pw-l-${lv.level}`;
+            } else if (gg.kind === "load") {
               const lv = pw.loadView(e ? e.value : null, gg.rating);
               gg.fill.style.width = lv.bar + "%";
               gg.text.textContent = lv.text;

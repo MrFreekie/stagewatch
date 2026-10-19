@@ -113,6 +113,8 @@ def public_extra(cfg: ShellyDeviceConfig) -> dict:
     out: dict = {}
     if cfg.rating_a:
         out["rating_a"] = cfg.rating_a
+    if cfg.combined_bar and cfg.rating_a:
+        out["combined_bar"] = True
     chans = {}
     for c in cfg.channels:
         d = {k: v for k, v in (("label", c.label), ("phase", c.phase), ("rating_a", c.rating_a), ("in_total", c.in_total)) if v}
@@ -173,9 +175,9 @@ def seed_emulate_shelly(config) -> bool:
         ShellyDeviceConfig(id="distro_sim", host=DEMO3_HOST, mac=emulated_mac(DEMO3_HOST),
                            name=DEMO3_NAME, area="Dock", rating_a=32),
         ShellyDeviceConfig(id="em_sim", host=DEMO1_HOST, mac=emulated_mac(DEMO1_HOST),
-                           name=DEMO1_NAME, area="FOH",
-                           channels=[ShellyChannelConfig(key="em0", label="FOH L1", phase="L1", in_total=True),
-                                     ShellyChannelConfig(key="em1", label="FOH L2", phase="L2", in_total=True)]),
+                           name=DEMO1_NAME, area="FOH", rating_a=16, combined_bar=True,
+                           channels=[ShellyChannelConfig(key="em0", label="FOH L1", phase="L1", rating_a=10, in_total=True),
+                                     ShellyChannelConfig(key="em1", label="FOH L2", phase="L2", rating_a=10, in_total=True)]),
     ]
     for d in config.dashboards:
         if d.slug == "wall":
@@ -427,7 +429,7 @@ class ShellyIntegration(Integration):
 
     async def update(self, device_id: str, name: str | None, area: str | None, interval_s: float | None,
                      host: str | None, rating_a: float | None = None,
-                     channels: list[dict] | None = None) -> None:
+                     channels: list[dict] | None = None, combined_bar: bool | None = None) -> None:
         async with self._lock:
             cfg = next((c for c in self.hub.config.shelly_devices if c.id == device_id), None)
             if cfg is None:
@@ -447,6 +449,8 @@ class ShellyIntegration(Integration):
                 cfg.poll_interval_s = interval_s
             if rating_a is not None:
                 cfg.rating_a = rating_a or None      # 0 clears it
+            if combined_bar is not None:
+                cfg.combined_bar = combined_bar
             if channels is not None:
                 seen, kept = set(), []
                 for c in channels:
@@ -534,7 +538,7 @@ class ShellyIntegration(Integration):
             dev = self.hub.devices.get(cfg.id)
             meters.append({
                 "id": cfg.id, "name": cfg.name, "area": cfg.area, "host": cfg.host, "mac": cfg.mac,
-                "interval_s": cfg.poll_interval_s, "rating_a": cfg.rating_a,
+                "interval_s": cfg.poll_interval_s, "rating_a": cfg.rating_a, "combined_bar": cfg.combined_bar,
                 "channels": self._admin_channels(cfg),
                 "model": (m.info.app or m.info.model) if m and m.info else "",
                 "firmware": m.info.firmware if m and m.info else "",

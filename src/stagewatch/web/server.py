@@ -490,6 +490,7 @@ class ShellyPatchBody(BaseModel):
     interval_s: float | None = Field(None, ge=2.0, le=5.0, allow_inf_nan=False)
     rating_a: float | None = Field(None, ge=0, le=200, allow_inf_nan=False)   # 0 clears the rating
     channels: list[ShellyChannelBody] | None = Field(None, max_length=16)
+    combined_bar: bool | None = None
     host: str | None = Field(None, min_length=1, max_length=64)
 
     @field_validator("name", "area")
@@ -1918,7 +1919,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def shelly_patch(device_id: str, body: ShellyPatchBody):
         try:
             await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host, body.rating_a,
-                                       None if body.channels is None else [c.model_dump() for c in body.channels])
+                                       None if body.channels is None else [c.model_dump() for c in body.channels],
+                                       body.combined_bar)
         except LookupError:
             raise HTTPException(404, "No such power meter") from None
         except ShellyError as exc:

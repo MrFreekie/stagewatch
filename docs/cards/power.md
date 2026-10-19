@@ -54,6 +54,15 @@ To add the power of several circuits into one figure, for example one circuit on
 - The total shows only while **every** ticked circuit is reading. If a meter stops answering, or a reading is old, the total shows a dash and says **INCOMPLETE** with the names that are missing. Stagewatch never shows a part-total and never fills in a missing circuit.
 - It is worked out on the screen from the latest readings. It is not recorded, and it has no history chart.
 
+## Combined load bar
+
+Some meters have two circuits that share one supply, for example a Shelly 2PM with two 10 A outputs on a 16 A feed. Each circuit can be fine while the two together are too much. In Admin, type the **rating of the whole supply** (16 in that example), give each circuit its own rating, and tick **Combined load bar**. The card then shows one extra bar, **Combined load**, for the amps of the circuits added together against the meter's rating, with the same amber at 80% and red at 100%. The circuits keep their own bars.
+
+- The tickbox only appears for a meter with two or more single-phase circuits, and it needs a meter rating.
+- If any circuit is not reading, or its reading is old, the bar says **Unavailable** rather than showing a part-total.
+- A three-phase meter has no combined bar: each phase is its own circuit with its own limit, and the meter already shows its total power.
+- This adds up amps against a limit. It is separate from **Site total power**, which adds up watts across circuits you choose.
+
 ## More meter types
 
 Some meters report more than the Shelly does. When a meter sends them, the card also shows:
