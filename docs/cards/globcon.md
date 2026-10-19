@@ -25,7 +25,7 @@ The channel groups are 1-4, 5-8, 1-8, 9-12, 13-16, 9-16 and 1-16. These are the 
 
 - **The levels are GLOBCON's own numbers in dB.** Stagewatch does not average, smooth, hold or convert them. It does not say whether they are peak or RMS, because GLOBCON does not say.
 - **An empty bar and a dash** mean there is no level to show. GLOBCON reports "no signal", the channel has no level meter (such as the USB channels on some set-ups), or no reading has arrived yet. It is never shown as zero.
-- **The bar changes colour at high levels:** amber from about -9 dB and orange from about -3 dB. This is a display guide only. It is not a statement about clipping or headroom. The colour is the only sign, so do not rely on it alone.
+- **The bar changes colour at high levels:** amber with one triangle (▲) from about -9 dB, and orange with two (▲▲) from about -3 dB. The triangles and the words "high level" and "very high level" go with the colour. This is a display guide only. It is not a statement about clipping or headroom.
 - **MUTED** on a bar, with an orange outline and a dimmed bar, means the channel is muted on the GLOBCON controller. Stagewatch only reads this. It can never set a mute.
 
 ## What the card says

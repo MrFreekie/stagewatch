@@ -85,8 +85,8 @@ check delay (ADVISORY)`.
   **Off**.
 - It is never an Alert or Stop.
 - It clears by itself when the drift falls back to 80 % of the limit or less.
-- If your tech ticked **Add a marker when a notice shows**, one marker is added each time it shows,
-  for example `Drift: Delay tower L +1.1 ms`.
+- **Add a marker when a notice shows** is ticked to start with. One marker is added each time a
+  notice shows, for example `Drift: Delay tower L +1.1 ms`. Your tech can untick it.
 - The warn limit is set per path, from 0.2 to 10 ms (1 ms to start with). Empty means no notice.
 
 ## What the HF air loss card shows
@@ -143,7 +143,7 @@ Please read these before you act on a figure.
 
 ## For your tech: set it up
 
-Open **Admin**, **Show** tab, **FOH advice** card.
+Open **Admin**, go to the **Show day** tab and find the **FOH advice** card.
 
 1. Click **Add path** for each delay path. Type a **Name** and a **Distance (m)**. For a delay
    tower, distance means the **extra path the main PA's sound travels to the alignment point

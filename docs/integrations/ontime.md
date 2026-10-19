@@ -39,7 +39,7 @@ Every request is a plain read. Stagewatch never sends a command, and it never fo
 | What | When |
 |---|---|
 | A listening connection to `/ws` on the Ontime address | While a dashboard has a card that needs Ontime. Stagewatch sends **no data** down it. Only the connection's own keep-alive goes back. |
-| `GET /api/version` | When it connects, and when you click **Test** in Connections |
+| `GET /api/version` | When it connects, and when you click **Test** in the Ontime pop-out |
 | `GET /api/poll` | Once a second, **only** while the listening connection is not working, until Stagewatch can try it again |
 | `GET /data/rundowns/current` | **Only** while a dashboard has the Ontime Rundown card: when it connects, when the running event or the number of events changes, and at least once a minute. Never more often than every 5 seconds. |
 
@@ -54,8 +54,8 @@ dashboard, Stagewatch does not contact Ontime at all.
 1. Make sure Ontime is running.
 2. Find the address and port of the computer that runs Ontime. If Ontime runs on the same computer
    as Stagewatch, use `127.0.0.1`. See [IP address](../glossary.md) in the glossary.
-3. Open **Admin**. Under **Integrations**, in the **Connections** card, click **Add integration**
-   and choose **Ontime**. (Already listed? Click **Edit** on its row instead.)
+3. Open **Admin**, go to the **Integrations** tab and, in the **Integrations** card at the top, click **Add integration**
+   and choose **Ontime**. (Already added? Click its tile instead.)
 4. Type the address in **Address (IP or host name)**, for example `192.168.1.50`, and the port in
    **Port** (usually 4001). It starts as `127.0.0.1` and `4001`. Check the port against your Ontime.
 5. Click **Test**.
@@ -104,7 +104,7 @@ belongs to the Ontime project. It is shown only for that reason. See the [notice
 
 ## How to check it worked
 
-1. In Admin, in **Connections**, click **Edit** on Ontime, then **Test**.
+1. In Admin, on the **Integrations** tab, click the Ontime tile, then **Test**.
 2. Add the **Ontime Timer** or **Ontime Rundown** card to a dashboard, then open that dashboard.
 
 **What you'll see:** the card shows Ontime's countdown or position, and a small green `●` **Online**

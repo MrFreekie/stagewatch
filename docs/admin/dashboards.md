@@ -107,6 +107,13 @@ The names in this list are slightly different from the headings on screen.
 | **Sound level** | **Sound level** | [Sound level](../cards/sound-level.md) |
 | **DirectOut GLOBCON** | **DirectOut GLOBCON** | [GLOBCON](../cards/globcon.md) |
 | **Power** | **Power** | [Power](../cards/power.md) |
+| **Sound level limits** | **Sound level limits** | [Sound level limits](../cards/sound-level-limits.md) |
+| **Raspberry Pi** | **Raspberry Pi** | [Raspberry Pi](../cards/raspberry-pi.md) |
+| **Plans on file** | **Plans on file** | [Plans on file](../cards/documents.md) |
+| **Onsite contacts** | **Onsite contacts** | [Onsite contacts](../cards/contacts.md) |
+| **Inclinometer (WitMotion)** | **Inclinometer** | [Inclinometer](../cards/witmotion-tilt.md) |
+| **Alignment drift** | **Alignment drift** | [FOH advice cards](../cards/foh-advice.md) |
+| **HF air loss** | **HF air loss** | [FOH advice cards](../cards/foh-advice.md) |
 | **Open on a tablet** | The address and QR code at the bottom | [Dashboard cards](../cards/README.md) |
 
 ### What a new dashboard starts with
@@ -121,8 +128,7 @@ If you change the **Layout** of a new dashboard before saving, the ticks change 
 set. On a dashboard that already exists, changing the layout does not change its cards. A dashboard
 from an earlier version keeps exactly the cards it already had.
 
-The other cards (Wall Clock, Ontime Timer, Ontime Rundown, Equipment, Barometer, Sound level,
-GLOBCON and Power) are never switched on by default. Tick them where you want them.
+Every other card is never switched on by default. Tick them where you want them.
 
 ### Cards that hide themselves
 
@@ -136,12 +142,18 @@ A ticked card can still be hidden until it has something to show.
 | **Sound level** | Sound level values are set up. |
 | **DirectOut GLOBCON** | GLOBCON has answered. |
 | **Power** | A power meter has been added. |
+| **Sound level limits** | Limits have been entered in Admin. |
+| **Raspberry Pi** | Stagewatch is running on a Raspberry Pi. |
+| **Plans on file** | A document has been shared with this dashboard. |
+| **Inclinometer (WitMotion)** | A tilt sensor has been set up. |
+| **Alignment drift** | A delay path has been set up in **FOH advice**. |
+| **HF air loss** | A position has been set up in **FOH advice**. |
 | **Wall Clock**, **Ontime Timer**, **Ontime Rundown** | The first message from the clock or from Ontime arrives. |
 
 ### Card width: Full or Half
 
-Five cards have a **Card width** choice, **Full** or **Half**, beside them once they are ticked:
-**Wall Clock**, **Ontime Timer**, **Ontime Rundown**, **DirectOut GLOBCON** and **Power**.
+Six cards have a **Card width** choice, **Full** or **Half**, beside them once they are ticked:
+**Wall Clock**, **Ontime Timer**, **Ontime Rundown**, **DirectOut GLOBCON**, **Power** and **Raspberry Pi**.
 
 - Every card is **Full** until you choose **Half**.
 - Put two **Half** cards next to each other in the order and they sit side by side on a tablet or a

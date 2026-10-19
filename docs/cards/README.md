@@ -22,18 +22,25 @@ This page is the one list of every card. Each card has its own page.
 | [Barometer](barometer.md) | Sea-level pressure dial, 3-hour tendency and a rough outlook | No | No | A pressure sensor |
 | [Equipment](equipment.md) | Readings from Equipment-role sensors, such as amp racks. Hidden while there are none | No | No | An Equipment sensor |
 | [Sound level](sound-level.md) | Up to three sound level values from Smaart, and their timeline. Hidden until set up | No | No | [Smaart](../integrations/smaart.md) |
-| [Sound level limits](sound-level-limits.md) | The licence limit now, the next change and Smaart's live value beside it. Public wording only | Tablet, phone, wall | No | [Smaart](../integrations/smaart.md) and limits entered in Admin |
+| [Sound level limits](sound-level-limits.md) | The licence limit now, the next change and Smaart's live value beside it. Public wording only | No | No | [Smaart](../integrations/smaart.md) and limits entered in Admin |
 | [DirectOut GLOBCON](globcon.md) | Level meters for 4, 8 or 16 channels of one controller. Hidden until GLOBCON has answered | No | Yes | [DirectOut GLOBCON](../integrations/globcon.md) |
 | [Power](power.md) | Watts, volts, amps and energy from power meters. Hidden until a meter is added | No | Yes | [Shelly](../integrations/shelly.md) |
 | [Raspberry Pi](raspberry-pi.md) | The health of the Pi Stagewatch runs on: temperature, power supply, load, memory, disk. Hidden unless it runs on a Pi | No | Yes | A Raspberry Pi |
 | [Inclinometer (WitMotion)](witmotion-tilt.md) | Roll and/or pitch of each WitMotion tilt sensor, an optional target angle, battery and the sensor's settings. A guide, not a safety system. Hidden until a sensor is set up | No | No | [WitMotion](../integrations/witmotion.md) |
 | [Alignment drift](foh-advice.md) | How far each delay path has drifted since the **Aligned** marker, with a suggested delay. Advice only. Hidden until a path is set up | No | No | A sensor node and paths entered in Admin |
 | [HF air loss](foh-advice.md) | Estimated change in top end lost to the air at FOH and Rear since the **Soundcheck** marker. Advice only. Hidden until a position is set up | No | No | A sensor node with humidity and positions entered in Admin |
-| [Onsite contacts](contacts.md) | Key people for the event: job title, name, radio and area. Phone numbers only where allowed | No | Yes | Contacts entered in Admin |
-| [Plans on file](documents.md) | The event's safety and risk documents shared with this dashboard. Titles only on the wall | No | Yes | Documents uploaded in Admin |
+| [Onsite contacts](contacts.md) | Key people for the event: job title, name, radio and area. Phone numbers only where allowed | No | No | Contacts entered in Admin |
+| [Plans on file](documents.md) | The event's safety and risk documents shared with this dashboard. Titles only on the wall | No | No | Documents uploaded in Admin |
 
 "On by default" is what a new dashboard of that layout starts with. A dashboard from an earlier
 version keeps the cards it already had.
+
+## Admin-only cards
+
+These are on the **Admin** page, not on a dashboard.
+
+- [Device errors](device-errors.md): how many problems each device had in a show. Experimental. Imports from
+  [Import a log file](../admin/import-log.md).
 
 ## Always there
 

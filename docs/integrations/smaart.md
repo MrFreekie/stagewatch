@@ -55,8 +55,8 @@ show network as readable text. Use a password that you use nowhere else.
 
 ## Set up Stagewatch
 
-1. Open **Admin**. Under **Integrations**, in the **Connections** card, click **Add integration**
-   and choose **Smaart**. (Already added? Click **Edit** on its row instead.)
+1. Open **Admin**, go to the **Integrations** tab and, in the **Integrations** card at the top, click **Add integration**
+   and choose **Smaart**. (Already added? Click its tile instead.)
 2. Type the Smaart computer in **Address (IP or host name)**: `127.0.0.1` if Smaart runs on this
    computer.
 3. Type the **Port**. Confirm it on your Smaart. Leave it empty and Stagewatch uses 26000.
@@ -138,7 +138,7 @@ The Admin card says why, in words.
 
 | What the card says | What it means and what to do |
 |---|---|
-| `Smaart's API has a password. Enter it in the Sound level settings` | In **Connections**, click **Edit** on Smaart, type the password in **Password** and click **Save**. Stagewatch checks again once a minute. |
+| `Smaart's API has a password. Enter it in the Sound level settings` | On the **Integrations** tab, click the Smaart tile, type the password in **Password** and click **Save**. Stagewatch checks again once a minute. |
 | `Smaart did not accept the password. Check it in the Sound level settings; Stagewatch will not try again until you save it` | Retype the password and click **Save**. |
 | `Connected, but Smaart has no active inputs. Start logging in Smaart` | Start logging in Smaart. |
 | `That address did not answer like Smaart's API. This build only knows the v4 API (/api/v4/)…` | Check the API is switched on in Smaart and the port is right. Stagewatch knows only Smaart's `/api/v4/` address. Another Smaart version may answer differently. |

@@ -11,7 +11,8 @@ Stagewatch is independent. It is not made, approved or supported by Allterco Rob
 the [notices](README.md#notices).
 
 > **Test status.** First version. It reads by **HTTP polling only** (Stagewatch asks the meter) and
-> has been tried on **one Shelly PM Mini Gen3 only**. Other models are read by what they report but
+> has been run live on **one Shelly PM Mini Gen3 only**. The first-generation Shelly EM is checked
+> against a saved reply from a real one. Other models are read by what they report but
 > are **not yet tested**. That includes the Shelly EM Mini Gen4 and the Shelly 3EM. Check their
 > figures against the Shelly's own page.
 
@@ -81,7 +82,7 @@ addresses are refused. You can add up to 16 meters.
 1. Find the meter's **IP address**: in your router's list of devices, or in the Shelly app under the
    meter's settings.
 2. Give the meter a fixed address in your router (a "DHCP reservation"), so it stays put.
-3. Open **Admin**. Under **Integrations**, in the **Connections** card, click **Add integration**
+3. Open **Admin**, go to the **Integrations** tab and, in the **Integrations** card at the top, click **Add integration**
    and choose **Shelly power meter**. (The **Shelly power meters** card shows once a meter is added.)
 4. Type the address in **Meter address (an IP address on your local network)**,
    for example `192.168.1.50`.
@@ -100,6 +101,21 @@ on it.` After **Save meter**, the meter appears in the table with a status.
 
 **Test** and **Save meter** together are limited to 10 a minute. If you see `Too many requests`,
 wait a minute.
+
+### Name each circuit and set the limits
+
+Each saved meter has a row in the **Shelly power meters** card, with its circuits listed under it. All of
+this is optional, and none of it changes the meter.
+
+1. Type a **Label** for each circuit, for example `Amp rack 3`.
+2. On a single-phase circuit, choose which line it is on: **Line 1 (Brown)**, **Line 2 (Black)** or **Line 3 (Grey)**. This is only a label you type. Check the real line at the distro.
+3. Type a **Rating (amps)** for the meter, and for any circuit that has a lower limit of its own.
+4. Tick **Include in site total** on each circuit whose watts should go into the one **Site total power** figure on the Power card.
+5. If a meter has two or more single-phase circuits on one supply, tick **Combined load bar** to add one bar for their amps together against the meter's rating.
+6. Click **Save** on that meter's row.
+7. Click **Add warnings** to make a notice at 80 % of the rating and an alarm at 100 %. Nothing is made until you click it.
+
+**What you'll see:** the Power card shows the labels, the lines and the load bars. How each figure is worked out is on the [Power card](../cards/power.md) page. A circuit that is not reading never counts as zero in a total.
 
 ### How Stagewatch recognises a meter
 

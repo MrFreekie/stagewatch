@@ -51,8 +51,8 @@ use a password you use nowhere else.
 ## Set up
 
 1. Make sure GLOBCON is running.
-2. Open **Admin**. Under **Integrations**, in the **Connections** card, click **Add integration**
-   and choose **DirectOut GLOBCON**. (Already added? Click **Edit** on its row instead.)
+2. Open **Admin**, go to the **Integrations** tab and, in the **Integrations** card at the top, click **Add integration**
+   and choose **DirectOut GLOBCON**. (Already added? Click its tile instead.)
 3. Type the GLOBCON computer in **Address (IP or host name)**: `127.0.0.1` if GLOBCON runs on this
    computer, otherwise that computer's address on your network.
 4. Check the **Port** (usually 9091). 9091 is where GLOBCON's remote controller page was on the

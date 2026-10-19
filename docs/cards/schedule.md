@@ -19,7 +19,7 @@ NOW shows the item that is on at the moment.
 
 - **Title** of the item.
 - **Time left**, for example `12 min left`. This only appears when the item has its own end time.
-  An item with no end time simply runs until the next item starts, so there is no countdown, only
+  An item with no end time runs until the next item starts, so there is no countdown, only
   the line `Started 19:30, 12 min ago`.
 - **Started and ends**, for example `Started 19:30, 12 min ago · ends 20:15`.
 - **A progress bar** for how much of the item's planned time has gone. It also needs an end time.

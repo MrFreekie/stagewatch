@@ -127,6 +127,6 @@ Some Shelly products, such as a Plug, have a relay in the load path. Stagewatch 
 
 ## Tested on real kit
 
-The first version has been tried on one Shelly PM Mini Gen3 only. Other Shelly meters (three-phase meters, single-circuit meters, and relays that measure power) are read by the readings they report, but have not been tried. Check their figures against the Shelly's own page. A meter with a password set is not supported yet.
+**Tested on hardware: pending** for a full show day. Live readings have been tried on one Shelly PM Mini Gen3 only. The first-generation Shelly EM is read from a saved reply of a real one, and has not yet been run live. Other Shelly meters (three-phase meters, single-circuit meters, and relays that measure power) are read by the readings they report, but have not been tried. Site total, the combined load bar, apparent power, Totals and the graph choices are checked with simulated meters only. Check the figures against the Shelly's own page. A meter with a password set is not supported yet.
 
 Related: [Equipment](equipment.md), [Troubleshooting](../troubleshooting.md).

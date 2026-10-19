@@ -23,7 +23,7 @@ approved or supported by them. See the [notices](README.md#notices).
   reading as it is taken, so the dashboards update live.
 - **How Stagewatch finds nodes:** it listens for nodes announcing themselves on the network
   (mDNS, how devices find each other by name). That is why a node must be on the **same
-  network** as the Stagewatch computer. If your network blocks that, add it by its address with **Add integration** in the **Connections** card.
+  network** as the Stagewatch computer. If your network blocks that, add it by its address with **Add integration** on the **Integrations** tab in Admin.
 - **Where it shows:** the tiles, the History chart, the Barometer and the Equipment card. See
   [Dashboard cards](../cards/README.md).
 
@@ -56,8 +56,7 @@ In short, in **Admin**, on the **ESPHome nodes** card:
 2. Paste the **Encryption key**, type the **Area**, and choose the **Role**.
 3. Click **Adopt**.
 
-When the node is not listed, add it by its address: in the **Connections** card (under
-**Integrations**), click **Add integration**, choose **ESPHome node**, and fill in the same boxes.
+When the node is not listed, add it by its address: on the **Integrations** tab in Admin, click **Add integration**, choose **ESPHome node**, and fill in the same boxes.
 
 ### The encryption key
 
