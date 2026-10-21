@@ -58,8 +58,8 @@
 # different key per node) and wifi_ap_password (new: the fallback access point;
 # add it to your secrets.yaml, see secrets.example.yaml).
 #
-# Status: validated with `esphome config`; the screen layout and the MAX17048 gauge
-# are untested on hardware. If the picture is upside down change rotation to 270;
+# Status: validated with `esphome config` and tested on hardware: the screen works.
+# The MAX17048 battery readings have not been seen on a real board yet. If the picture is upside down change rotation to 270;
 # if colours look inverted flip invert_colors.
 
 substitutions:

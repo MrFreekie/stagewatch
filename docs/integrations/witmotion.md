@@ -92,6 +92,7 @@ witmotion:
 Press **Find sensors**. If you would rather not, set only `enabled: true` and leave out `sensors`. Stagewatch then connects to the first sensor whose own name still starts `WT901BLE` (the factory name, for example `WT901BLE67`) and writes its name and address to the log. Copy the address into the list as above. This only works while the name has not been changed, and it is a first try, not a way to run two sensors.
 
 Try it without a sensor using `--emulate`. You get one simulated sensor that loses its link for 20 seconds every 5 minutes.
+
 ## What the small print means
 
 Each time Stagewatch connects, it asks the sensor how it is set up (the return rate, bandwidth, install direction and axis mode). It only reads. It never changes these. The answers show on the card as small print, for example "2 Hz · 20 Hz bandwidth · horizontal · 6-axis", with the battery and the sensor body temperature on the line below.

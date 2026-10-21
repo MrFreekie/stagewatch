@@ -101,8 +101,8 @@ You do not have to do anything.
 - They are in a `backups` folder inside your data folder (see
   [Where your data lives](#where-your-data-lives)).
 - The Software card lists them under **Data backups**, with their sizes.
-- A backup holds your settings (`config.yaml`), the login key, contacts, event logos and the
-  history database. It does **not** hold event documents or logs. Make your own backup
+- A backup holds your settings (`config.yaml`), the login key, contacts, event logos, event
+  documents and the history database. It does **not** hold logs. Make your own backup
   (below) to keep everything.
 
 Plain updates that do not change the data format do not need a backup, so you may see

@@ -1,6 +1,6 @@
 # Power tree
 
-Shows how power flows through the site: each supply (a generator or the grid) at the top, then intake units, main distribution, final distribution and equipment below it. It answers "where is the power going, and what are we not seeing?".
+Shows how power flows through the site: each supply (a generator or the grid) at the top, then intake switch units, central distribution units, final distribution units and equipment below it. It answers "where is the power going, and what are we not seeing?".
 
 Stagewatch is a guide. These figures do not replace the electrician's inspection and testing. Stagewatch only reads the meters. It never switches anything.
 
@@ -21,7 +21,7 @@ On a wall screen the figures are large, and the line currents and the explanatio
 
 ## Diagram view
 
-Above the card, **List** and **Diagram** switch between the tree and a block diagram. The diagram runs left to right: supplies, then intake units (ISU), main distribution (CDU), final distribution (FDU) and equipment. Each box shows the unit's name and number; a UPS also shows its type; a line between two boxes carries the way and line when they are set (for example CDU02-C2-L1). Each supply is drawn as its own tree with a heading, and anything with no supply above it sits in **Unassigned**. A box that is part of a loop is marked "check: loop".
+Above the card, **List** and **Diagram** switch between the tree and a block diagram. The diagram runs left to right: supplies, then intake switch units (ISU), central distribution units (CDU), final distribution units (FDU) and equipment. Each box shows the unit's name and number; a UPS also shows its type; a line between two boxes carries the way and line when they are set (for example CDU02-C2-L1). Each supply is drawn as its own tree with a heading, and anything with no supply above it sits in **Unassigned**. A box that is part of a loop is marked "check: loop".
 
 - Tap or press Enter on a box to highlight it and the path back to its supply. Tap it again to clear.
 - **Show live power** adds each unit's reading and its load bar with the figure in words. A unit with no meter says "not monitored"; an old reading says OLD. Figures refresh every few seconds, not on every update.
