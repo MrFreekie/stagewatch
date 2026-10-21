@@ -1588,3 +1588,25 @@ body.layout-wall .adv-list > li.adv-line { flex-wrap: nowrap; align-items: cente
 .pw-histbar [hidden] { display: none; }
 .pw-totals th[scope="row"] { text-transform: none; letter-spacing: 0; font-size: 1em; }
 .pw-totals caption { font-size: 1em; }
+
+/* Power block diagram (power-diagram.js): the Admin preview and the Diagram view on the Power tree card */
+.pd-switch { gap: 6px; margin: 0 0 10px; }
+.pd-switch button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+.pd-bar { gap: 8px; margin: 6px 0; flex-wrap: wrap; align-items: center; }
+.pd-live { gap: 6px; min-height: 44px; }
+.pd-msg:empty { display: none; }
+.pd-none .pd-bar { display: none; }
+.pd-scroll { overflow: auto; touch-action: pan-x pan-y; max-width: 100%; border: 1px solid var(--grid); border-radius: var(--radius); background: var(--bg); }
+.pd-svg { display: block; margin: 0 auto; }
+.pd-preview { margin: 12px 0; }
+.pd-preview > summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.pd-print-title { display: none; }
+@media print {
+  @page { size: landscape; margin: 10mm; }
+  body.pd-printing * { visibility: hidden !important; }
+  body.pd-printing .pd-print-area, body.pd-printing .pd-print-area * { visibility: visible !important; }
+  body.pd-printing .pd-print-area { position: absolute; left: 0; top: 0; width: 100%; }
+  body.pd-printing .pd-bar, body.pd-printing .pd-msg { display: none !important; }
+  body.pd-printing .pd-scroll { overflow: visible; border: 0; background: #fff; }
+  body.pd-printing .pd-svg { width: 100% !important; height: auto !important; max-width: none !important; max-height: 185mm !important; }
+}

@@ -142,7 +142,9 @@
 
   <section class="card" data-card="power_tree" id="power-tree-card" hidden>
     <h2><span>Power tree</span><span class="grow"></span><img class="card-logo" src="/static/shelly-badge.svg" alt="Shelly" width="26" height="26" onerror="this.hidden=true"></h2>
+    <div class="pd-switch row" role="group" aria-label="Power tree view"><button type="button" class="small touch" id="pt-view-list" aria-pressed="true">List</button><button type="button" class="small touch" id="pt-view-diagram" aria-pressed="false">Diagram</button></div>
     <div id="power-tree-body"></div>
+    <div id="power-tree-diagram" hidden></div>
     <details class="card-about"><summary>Trend lines</summary>
       <p class="muted">The small line on each unit is its power over the last <select id="pt-span" aria-label="Minutes shown in the trend lines"><option value="15">15</option><option value="30">30</option><option value="60">60</option></select> minutes, as the meter recorded it. It runs from 0 W at the bottom to that unit's busiest moment in the period at the top, so two lines are not comparable by height. A gap is a time the meter was not reading: nothing is drawn across it. A unit with no meter or no record yet has no line.</p>
     </details>
@@ -207,6 +209,7 @@
 <script src="/static/globcon.js"></script>
 <script src="/static/power.js"></script>
 <script src="/static/power-tree.js"></script>
+<script src="/static/power-diagram.js"></script>
 <script src="/static/pihost.js"></script>
 <script src="/static/witmotion.js"></script>
 <script src="/static/advice.js"></script>

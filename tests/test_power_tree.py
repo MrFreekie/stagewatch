@@ -483,3 +483,15 @@ def test_old_config_without_way_or_circuit_keys_loads_and_a_newer_file_survives_
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     raw["shelly_devices"][0]["channels"][0]["way"] = 500
     assert Config.model_validate(raw).shelly_devices[0].channels[0].way is None
+
+
+def test_power_diagram_layout_js():
+    """Hand-checked coordinates for the block diagram's layout (tests/js/power_diagram_test.js), when node is installed."""
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    r = subprocess.run([node, str(Path(__file__).resolve().parent / "js" / "power_diagram_test.js")],
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr

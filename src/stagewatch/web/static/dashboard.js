@@ -1106,7 +1106,7 @@
   // ratings: nothing private) and is fetched on load and every 30 s; the numbers are the dashboard's own
   // entities, including the ones the server calculates. The card stays visible with an empty-state note
   // pointing to Admin until a tree is set up.
-  const ptUi = { ui: null, data: null, loading: false, at: 0, trend: null, trendAt: 0, trendLoading: false, minutes: SW.ptree.trendMinutes(localGet("sw.ptspan", 30)) };
+  const ptUi = { ui: null, data: null, loading: false, at: 0, trend: null, trendAt: 0, trendLoading: false, minutes: SW.ptree.trendMinutes(localGet("sw.ptspan", 30)), view: localGet("sw.ptview", "list") === "diagram" ? "diagram" : "list", diagram: null };
   // Trend lines on the tiles: ONE request for every tile (the server's recorded watts, nothing new), every 45 s,
   // and not while the tab is hidden. The tick that already runs every 5 s drives it, so there is no timer to stop.
   async function loadPowerTrend() {
@@ -1139,6 +1139,21 @@
       loadPowerTrend();
     };
   }
+  // List or Diagram, remembered per viewer. The diagram redraws on a change of shape and (with live power on) every 5 s.
+  function wirePowerView() {
+    const bl = $("pt-view-list"), bd = $("pt-view-diagram");
+    const apply = () => {
+      const dg = ptUi.view === "diagram";
+      $("power-tree-body").hidden = dg; $("power-tree-diagram").hidden = !dg;
+      bl.setAttribute("aria-pressed", String(!dg)); bd.setAttribute("aria-pressed", String(dg));
+    };
+    if (!bl.dataset.wired) {
+      bl.dataset.wired = "1";
+      const pick = (v) => { ptUi.view = v; localSet("sw.ptview", v); apply(); renderPowerTree(); };
+      bl.onclick = () => pick("list"); bd.onclick = () => pick("diagram");
+    }
+    apply();
+  }
   function renderPowerTree() {
     const card = $("power-tree-card");
     if (!has("power_tree")) { card.hidden = true; return; }
@@ -1146,6 +1161,12 @@
     if (!ptUi.data) { if (Date.now() - ptUi.at > 5000) loadPowerTree(); return; }
     if (!ptUi.ui) ptUi.ui = SW.ptree.build($("power-tree-body"));
     ptUi.ui.update(ptUi.data, state.entities, state.devices, state.now, ptUi.trend);
+    wirePowerView();
+    if (ptUi.view === "diagram") {
+      if (!ptUi.diagram) ptUi.diagram = SW.ptDiagram.mount($("power-tree-diagram"), { liveKey: "sw.ptdiagLive", fit: (state.dash && state.dash.layout) === "wall" ? true : null });
+      ptUi.diagram.update(SW.ptree.inUse(ptUi.data) ? ptUi.data.nodes : [], { entities: state.entities, devices: state.devices, now: state.now,
+        upsTypes: [], emptyText: "No power distribution set up. Add supplies, units and meters in Admin, under Power distribution." });
+    }
     wirePowerTrendOption();
     if (!ptUi.trendAt) loadPowerTrend();
     if (!ptUi.status && SW.ptree.inUse(ptUi.data)) ptUi.status = addCardStatus(card, "shelly");

@@ -795,7 +795,31 @@
     const wayOf = (e) => (e.way.value.trim() === "" ? null : Math.round(Number(e.way.value)));
     const shown = (e) => PA.display(roles, e.role.value, noOf(e));
     const live = () => rows.map((e) => ({ ref: e.ref, role: e.role.value, no: noOf(e), upstream: e.up.value, way: wayOf(e), name: e.name(), label: shown(e) || e.name() }));
+    // Live preview of the diagram from what is typed here (before saving), so loops, missing links and wrong
+    // parents show at once. It appears once there is something to draw; redrawn shortly after a change.
+    const previewHost = h("div", { class: "pd-host" });
+    const preview = h("details", { class: "pd-preview", open: true, hidden: true }, h("summary", {}, "Diagram preview"),
+      h("p", { class: "muted" }, "What feeds what, as it stands now (not saved until you press Save). Supplies are on the left, equipment on the right."), previewHost);
+    let previewer = null, previewTimer = 0;
+    const drawPreview = () => {
+      previewTimer = 0;
+      const byRef = {};
+      rows.forEach((e) => { byRef[e.ref] = e; });
+      const fedFrom = new Set(rows.map((e) => e.up.value).filter(Boolean));
+      const nodes = rows.filter((e) => !(e.ref.startsWith("c:") && !e.role.value && !fedFrom.has(e.ref))).map((e) => {
+        const up = byRef[e.up.value], upShown = up ? shown(up) || up.name() : "";
+        return { ref: e.ref, kind: e.kind, name: e.name(), role: e.role.value, role_label: (roles.find((r) => r.key === e.role.value) || {}).label || "", display: shown(e),
+          upstream: up ? e.up.value : "", feed: up && upShown ? PA.linkLabel(upShown, wayOf(e), e.line()) : "", ups_type: e.upsType ? e.upsType() : null };
+      });
+      const used = nodes.some((n) => n.role || n.upstream);
+      preview.hidden = !used;
+      if (!used) return;
+      if (!previewer) previewer = SW.ptDiagram.mount(previewHost, { fit: false });
+      previewer.update(nodes, { upsTypes: pt.ups_types, emptyText: "Nothing to draw yet." });
+    };
+    const queuePreview = () => { if (!previewTimer) previewTimer = setTimeout(drawPreview, 150); };
     const refreshUps = () => {
+      queuePreview();
       const nodes = live();
       rows.forEach((e) => {
         const keep = e.wantUp !== undefined ? e.wantUp : e.up.value, ok = PA.upstreamChoices(roles, nodes, e.ref, e.role.value);
@@ -861,6 +885,8 @@
       const e = mk(`p:${p.id}`, "point", p.name || "Point", p.role, p.unit_no, p.upstream, p.way, () => name.value.trim());
       const ratingA = numIn(p.rating_a, 5000, "A", "Breaker or fuse rating (amps)"), ratingK = numIn(p.rating_kva, 10000, "kVA", "Rating (kVA)");
       const ups = h("select", { class: "touch", "aria-label": "UPS type" }, pt.ups_types.map((u) => h("option", { value: u.key, selected: u.key === (p.ups_type || "unknown") }, u.label)));
+      e.upsType = () => ups.value;
+      ups.addEventListener("change", queuePreview); name.addEventListener("input", queuePreview);
       const mon = h("input", { type: "checkbox", checked: p.monitored === false, "aria-label": "Not monitored" });
       const al = p.allowance || { unit: "unknown", value: null };
       const alUnit = h("select", { class: "touch", "aria-label": "Typed allowance unit" }, [["unknown", "Unknown"], ["a_per_line", "Amps per line"], ["kw", "Kilowatts"]].map(([v, t]) => h("option", { value: v, selected: v === al.unit }, t)));
@@ -960,6 +986,7 @@
       h("label", { class: "row", style: "min-height:44px" }, advSwitch, " Show advanced power options (way, line, breaker rating, device limit)"),
       pt.problems.length ? h("div", { class: "notice" }, "Needs fixing: ", ...note(pt.problems, "warn-text")) : null,
       pt.warnings.length ? h("details", { class: "muted" }, h("summary", {}, `${pt.warnings.length} meter${pt.warnings.length === 1 ? "" : "s"} still to set up`), ...note(pt.warnings, "muted")) : null,
+      preview,
       h("h3", {}, "Points with no meter"),
       points.length || rows.some((r) => r.kind === "point") ? null : h("p", { class: "muted" }, "No points yet. Add one for each generator or supply."),
       pointsBox, h("div", { class: "row" }, add),

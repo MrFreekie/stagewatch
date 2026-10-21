@@ -19,6 +19,17 @@ Two supplies that feed separate parts of the site (for example a generator at th
 
 On a wall screen the figures are large, and the line currents and the explanation are hidden; the limit line stays. On a phone the tree is indented less so it fits.
 
+## Diagram view
+
+Above the card, **List** and **Diagram** switch between the tree and a block diagram. The diagram runs left to right: supplies, then intake units (ISU), main distribution (CDU), final distribution (FDU) and equipment. Each box shows the unit's name and number; a UPS also shows its type; a line between two boxes carries the way and line when they are set (for example CDU02-C2-L1). Each supply is drawn as its own tree with a heading, and anything with no supply above it sits in **Unassigned**. A box that is part of a loop is marked "check: loop".
+
+- Tap or press Enter on a box to highlight it and the path back to its supply. Tap it again to clear.
+- **Show live power** adds each unit's reading and its load bar with the figure in words. A unit with no meter says "not monitored"; an old reading says OLD. Figures refresh every few seconds, not on every update.
+- **Fit** fits the whole diagram to the screen (the wall display does this on its own). On a phone it scrolls sideways; pinch, or use **+** and **−**, to zoom.
+- **Save as image** downloads an SVG file; **Print** gives one clean landscape page. Up to 200 units are drawn; if there are more, a note says so.
+
+The same diagram appears in Admin, under Power distribution, as **Diagram preview**. It shows what you have typed before you press Save, so a missing link or a wrong feed is easy to spot. It appears once you have given something a role or a feed.
+
 ## Not yet tested on hardware
 
 The unmonitored gap, the CHECK warning, the UPS loss and efficiency and the totals are worked out from hand-checked cases and from the emulator. They have **not yet been tested against real meters**. Treat them as a guide until they have been.
