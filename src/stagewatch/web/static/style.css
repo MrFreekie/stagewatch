@@ -1481,6 +1481,13 @@ button.primary:disabled { background: var(--panel-2); color: var(--muted); borde
 .pt-figs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 2px; }
 .pt-power { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 110px; }
 .pt-bar { flex: 1 1 200px; max-width: 340px; min-width: 0; }
+.pt-trend { width: 120px; height: 28px; flex: none; color: var(--accent); }
+.pt-trend[hidden] { display: none; }
+.pt-trend-line { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.pt-trend-dot { fill: currentColor; }
+.pt-trend-base { stroke: var(--grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
+body.layout-wall .pt-trend { width: 200px; height: 46px; }
+body.layout-phone .pt-trend { width: 96px; height: 24px; }
 .pt-figs[hidden], .pt-bar[hidden], .pt-amps[hidden], .pt-rating[hidden], .pt-ups[hidden], .pt-gap[hidden] { display: none; }
 .pt-bar .pw-gword { display: block; margin: 2px 0 0; font-size: 14px; font-variant-numeric: tabular-nums; }
 .pt-bar .pw-fill { background: var(--ok); }

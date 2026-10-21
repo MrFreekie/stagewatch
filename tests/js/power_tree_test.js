@@ -119,5 +119,18 @@ eq(T.fedText({ feed: "CDU02-C2-L1" }), "fed from CDU02-C2-L1", "fed from text");
 eq(T.fedText({ feed: "" }), "", "nothing above: nothing shown");
 eq(T.fedText({}), "", "no field: nothing shown");
 
+// ---- trend lines: segments, gaps, no points, scale
+const tr1 = T.trendSegments([[110, 100], [120, 200], [130, 150]], 100, 200, 30, 100, 20);
+eq([tr1.segs.length, tr1.segs[0].length, tr1.max], [1, 3, 200], "one run, three points, peak 200");
+eq(tr1.segs[0][0][0], 10, "x follows the time");
+const tr2 = T.trendSegments([[110, 100], [120, 100], [190, 100]], 100, 200, 30, 100, 20);
+eq(tr2.segs.map((s) => s.length), [2, 1], "a long hole ends the run: nothing is drawn across it");
+eq(T.trendSegments([], 100, 200, 30, 100, 20), { segs: [], max: null }, "no history: no line, not a flat zero");
+eq(T.trendSegments([[50, 100], [300, 100]], 100, 200, 30, 100, 20).segs, [], "readings outside the window are ignored");
+eq(T.trendSegments([[110, "x"], [120, NaN]], 100, 200, 30, 100, 20).segs, [], "non-numbers are ignored");
+eq(T.trendSegments([[110, 0], [120, 0]], 100, 200, 30, 100, 20).segs[0].every((p) => p[1] > 0 && p[1] <= 20), true, "an all-zero line stays inside the box");
+eq([T.trendMinutes("15"), T.trendMinutes(60), T.trendMinutes("7"), T.trendMinutes(undefined)], [15, 60, 30, 30], "span choices, default 30");
+eq(T.trendWords(30, { max: 1500 }), "Last 30 minutes, from 0 W to a peak of 1.50 kW", "words for the screen reader");
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("power tree: all cases passed");

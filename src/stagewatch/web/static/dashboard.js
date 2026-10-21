@@ -1106,7 +1106,20 @@
   // ratings: nothing private) and is fetched on load and every 30 s; the numbers are the dashboard's own
   // entities, including the ones the server calculates. The card stays visible with an empty-state note
   // pointing to Admin until a tree is set up.
-  const ptUi = { ui: null, data: null, loading: false, at: 0 };
+  const ptUi = { ui: null, data: null, loading: false, at: 0, trend: null, trendAt: 0, trendLoading: false, minutes: SW.ptree.trendMinutes(localGet("sw.ptspan", 30)) };
+  // Trend lines on the tiles: ONE request for every tile (the server's recorded watts, nothing new), every 45 s,
+  // and not while the tab is hidden. The tick that already runs every 5 s drives it, so there is no timer to stop.
+  async function loadPowerTrend() {
+    if (!has("power_tree") || ptUi.trendLoading || document.hidden || !ptUi.data || !SW.ptree.inUse(ptUi.data)) return;
+    ptUi.trendLoading = true;
+    ptUi.trendAt = Date.now();
+    const minutes = ptUi.minutes;
+    try {
+      const tr = await SW.api("GET", `/api/power-tree/trend?minutes=${minutes}`);
+      if (tr && tr.series && minutes === ptUi.minutes) ptUi.trend = tr;
+    } catch (_) { /* keep the lines on screen */ } finally { ptUi.trendLoading = false; }
+    renderPowerTree();
+  }
   async function loadPowerTree() {
     if (!has("power_tree") || ptUi.loading) return;
     ptUi.loading = true;
@@ -1114,13 +1127,27 @@
     try { ptUi.data = await SW.api("GET", "/api/power-tree"); } catch (_) { /* keep what is on screen */ } finally { ptUi.loading = false; }
     renderPowerTree();
   }
+  function wirePowerTrendOption() {
+    const sel = $("pt-span");
+    if (!sel || sel.dataset.wired) return;
+    sel.dataset.wired = "1";
+    sel.value = String(ptUi.minutes);
+    sel.onchange = () => {
+      ptUi.minutes = SW.ptree.trendMinutes(sel.value);
+      localSet("sw.ptspan", String(ptUi.minutes));
+      ptUi.trend = null; ptUi.trendAt = 0;
+      loadPowerTrend();
+    };
+  }
   function renderPowerTree() {
     const card = $("power-tree-card");
     if (!has("power_tree")) { card.hidden = true; return; }
     card.hidden = false;
     if (!ptUi.data) { if (Date.now() - ptUi.at > 5000) loadPowerTree(); return; }
     if (!ptUi.ui) ptUi.ui = SW.ptree.build($("power-tree-body"));
-    ptUi.ui.update(ptUi.data, state.entities, state.devices, state.now);
+    ptUi.ui.update(ptUi.data, state.entities, state.devices, state.now, ptUi.trend);
+    wirePowerTrendOption();
+    if (!ptUi.trendAt) loadPowerTrend();
     if (!ptUi.status && SW.ptree.inUse(ptUi.data)) ptUi.status = addCardStatus(card, "shelly");
     if (ptUi.status) ptUi.status.update(SW.sourceInput.shelly(Object.keys(state.devices || {}).map((k) => state.devices[k])
       .filter((d) => d && d.category === "meter" && !d.derived).map((d) => ({ dev: d, ents: Object.values(state.entities).filter((e) => e.device_id === d.id) }))), state.now);
@@ -2088,5 +2115,5 @@
   // does work while its card is on this dashboard.
   setInterval(() => { if (has("chart")) loadHistory(); if (has("env_tiles")) loadTileHistory(false); }, 60000);
   setInterval(() => { if (has("spl_live")) loadSplHistory(); }, 60000);
-  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("power_tree")) { renderPowerTree(); if (Date.now() - ptUi.at > 30000) loadPowerTree(); } if (has("pi_host")) renderPiHost(); if (has("witmotion_tilt")) renderWitmotion(); if (has("alignment_drift")) renderDrift(); if (has("hf_air_loss")) renderAir(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
+  setInterval(() => { state.now = serverNow(); if (has("sensors")) renderSensors(); if (has("barometer")) renderBarometer(); if (has("equipment")) renderEquipment(); if (has("power")) renderPower(); if (has("power_tree")) { renderPowerTree(); if (Date.now() - ptUi.at > 30000) loadPowerTree(); if (Date.now() - ptUi.trendAt > 45000) loadPowerTrend(); } if (has("pi_host")) renderPiHost(); if (has("witmotion_tilt")) renderWitmotion(); if (has("alignment_drift")) renderDrift(); if (has("hf_air_loss")) renderAir(); if (has("power") && Date.now() - pwHist.at > 15000) loadPowerHistory(); if (has("spl_live")) renderSpl(); if (has("spl_limits")) renderSplLimits(); if (wantLimits() && Date.now() - splLim.at > 60000) loadSplLimits(); }, 5000);
 })();

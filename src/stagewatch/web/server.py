@@ -70,6 +70,8 @@ STATIC = Path(__file__).parent / "static"
 STATE_FLUSH_S = 0.5
 MIN_PIN_LEN = 4
 # HTTP status per updater error category (default 409: "the request is fine, the state isn't")
+TREND_SERIES = 60       # most nodes one trend request reads
+TREND_POINTS = 60       # points per line (averaged on the server)
 UPDATER_STATUS = {"rate_limited": 429, "history_not_found": 404, "bad_channel": 422, "bad_sha": 422}
 # Per-path request-body limits above the 64 KiB default (plan §1.11), merged under the
 # ``body_limit_overrides`` argument of create_app. Sized to the real need, never unlimited.
@@ -2165,6 +2167,31 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         """Public: the shape of the power tree for dashboards. Names, roles, display names, upstream links and
         ratings only: no addresses and none of the typed allowances."""
         return ptree.public_structure(hub.config)
+
+    @app.get("/api/power-tree/trend")
+    async def get_power_tree_trend(minutes: int = 30):
+        """Public: one small recorded-watts line per metered node of the power tree, for the tiles' trend lines.
+        Reads only what was already recorded (no new values): at most TREND_SERIES nodes, 15 to 60 minutes,
+        TREND_POINTS points each, averaged on a worker thread. A node with no meter or no history is absent."""
+        minutes = max(15, min(minutes, 60))
+        until = time.time()
+        since = until - minutes * 60.0
+        ids: dict[str, str] = {}
+        for node in ptree.public_structure(hub.config)["nodes"]:
+            if node["kind"] == "point" or len(ids) >= TREND_SERIES:
+                continue
+            parts = node["ref"].split(":", 2)
+            dev, key = parts[1], (parts[2] if len(parts) > 2 else "")
+            for eid in ([f"{dev}.meter_power_load"] if node["kind"] == "meter" else [f"{dev}.{key}_power", f"{dev}.{key}_total_power"]):
+                if eid in hub.entities:
+                    ids[node["ref"]] = eid
+                    break
+        if not ids:
+            return {"minutes": minutes, "since": since, "until": until, "bucket_s": 0, "series": {}}
+        hub.recorder.flush()
+        data = await asyncio.to_thread(hub.recorder.trend_threaded, list(ids.values()), since, until, TREND_POINTS)
+        return {"minutes": minutes, "since": since, "until": until, "bucket_s": (until - since) / TREND_POINTS,
+                "series": {ref: data[eid] for ref, eid in ids.items() if data.get(eid)}}
 
     @app.delete("/api/admin/shelly/{device_id}", dependencies=admin_deps)
     async def shelly_delete(device_id: str):

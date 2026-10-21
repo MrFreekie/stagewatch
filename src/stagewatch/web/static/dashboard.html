@@ -143,6 +143,9 @@
   <section class="card" data-card="power_tree" id="power-tree-card" hidden>
     <h2><span>Power tree</span><span class="grow"></span><img class="card-logo" src="/static/shelly-badge.svg" alt="Shelly" width="26" height="26" onerror="this.hidden=true"></h2>
     <div id="power-tree-body"></div>
+    <details class="card-about"><summary>Trend lines</summary>
+      <p class="muted">The small line on each unit is its power over the last <select id="pt-span" aria-label="Minutes shown in the trend lines"><option value="15">15</option><option value="30">30</option><option value="60">60</option></select> minutes, as the meter recorded it. It runs from 0 W at the bottom to that unit's busiest moment in the period at the top, so two lines are not comparable by height. A gap is a time the meter was not reading: nothing is drawn across it. A unit with no meter or no record yet has no line.</p>
+    </details>
     <details class="card-about"><summary>About these figures</summary>
       <p class="muted">Each unit shows what its own meter reads now. A unit with no meter says NOT MONITORED, never zero. "Unmonitored (calculated)" is the unit's power minus the power of everything fed from it, shown only when all of those are metered and reading. It includes cable and board losses and meter error. If one is missing it says incomplete. If what is fed from a unit reads more than the unit, it says CHECK: look at the Upstream, line and channel. The load bar is the busiest line against the rating typed in Admin (amber from 80%, red from 100%). Totals count only what is metered and add power across supplies, never amps. Below a UPS is its own supply; the loss is its input minus its output, shown only when both are reading.</p>
     </details>

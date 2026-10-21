@@ -743,6 +743,29 @@ class Recorder:
         finally:
             ro.close()
 
+    def trend_threaded(self, entity_ids: list[str], since: float, until: float, max_points: int) -> dict[str, list[list[float]]]:
+        """Small trend lines for a worker thread: per entity [[ts, value], ...] averaged into at most
+        ``max_points`` buckets, across every show that overlaps the window (a restart does not cut it). Own
+        read-only connection; one indexed (show, entity, ts) query per entity; only what was recorded, so an
+        outage stays a gap. The caller flushes first and caps the number of entities and the window."""
+        bucket = max((until - since) / max(max_points, 1), 0.001)
+        ro = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            shows = [r[0] for r in ro.execute("SELECT id FROM shows WHERE started <= ? AND (ended IS NULL OR ended >= ?)", (until, since))]
+            if not shows:
+                return {e: [] for e in entity_ids}
+            marks = ",".join("?" * len(shows))
+            out: dict[str, list[list[float]]] = {}
+            for entity_id in entity_ids:
+                rows = ro.execute(
+                    "SELECT CAST((ts - ?) / ? AS INTEGER) AS b, AVG(ts), AVG(value) FROM states "
+                    f"WHERE show_id IN ({marks}) AND entity_id = ? AND ts >= ? AND ts <= ? AND value IS NOT NULL "
+                    "GROUP BY b ORDER BY b", (since, bucket, *shows, entity_id, since, until)).fetchall()
+                out[entity_id] = [[r[1], r[2]] for r in rows]
+            return out
+        finally:
+            ro.close()
+
     def history(self, entity_ids: list[str], since: float, until: float | None = None,
                 max_points: int = 600, show_id: int | None = None) -> dict[str, list[list[float]]]:
         """Per-entity [[ts, value], ...], averaged into at most max_points

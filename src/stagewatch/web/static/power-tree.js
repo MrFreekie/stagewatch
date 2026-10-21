@@ -159,6 +159,53 @@ SW.ptree = (function () {
     return { ...SW.pw.loadView(rd.amps.max, rating, lim.by), ...base };
   };
 
+  // ---- trend lines -------------------------------------------------------------------------------------
+  // points = [[ts, watts], ...] as recorded (averaged by the server). Returns { segs, max } where each segment is
+  // a run of [x, y] in a w x h box, x over since..until and y from 0 W (bottom) to the busiest reading (top).
+  // A hole longer than gapS ends a segment: nothing is drawn across it, and nothing before the first or after the
+  // last reading. No points: no segments (never a flat zero line).
+  t.trendSegments = function (points, since, until, gapS, w, h) {
+    const pts = (points || []).filter((p) => Array.isArray(p) && isNum(p[0]) && isNum(p[1]) && p[0] >= since && p[0] <= until).sort((a, b) => a[0] - b[0]);
+    if (!pts.length || !(until > since)) return { segs: [], max: null };
+    const max = Math.max(...pts.map((p) => p[1])), top = max > 0 ? max * 1.1 : 1, pad = 2;
+    const segs = [];
+    let cur = null, prev = null;
+    for (const p of pts) {
+      if (!cur || p[0] - prev > gapS) { cur = []; segs.push(cur); }
+      cur.push([Math.round((p[0] - since) / (until - since) * w * 10) / 10, Math.round((pad + (h - 2 * pad) * (1 - Math.max(p[1], 0) / top)) * 10) / 10]);
+      prev = p[0];
+    }
+    return { segs, max };
+  };
+  t.TREND_SPANS = [15, 30, 60];
+  t.trendMinutes = (v) => (t.TREND_SPANS.indexOf(Number(v)) >= 0 ? Number(v) : 30);
+  // The words behind a line (for the screen reader and the hover title): the peak and the span.
+  t.trendWords = function (minutes, tr) {
+    if (!tr || tr.max === null) return "";
+    const f = t.watts(tr.max);
+    return `Last ${minutes} minutes, from 0 W to a peak of ${f.text} ${f.unit}`;
+  };
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const svgEl = function (name, attrs) {
+    const el = document.createElementNS(SVGNS, name);
+    for (const k of Object.keys(attrs || {})) el.setAttribute(k, String(attrs[k]));
+    return el;
+  };
+  t.TREND_W = 120;
+  t.TREND_H = 28;
+  // Draws the segments into an svg (replaces its children; createElementNS only).
+  t.drawTrend = function (svg, tr, words) {
+    const kids = [svgEl("title", {})];
+    kids[0].textContent = words;
+    kids.push(svgEl("line", { class: "pt-trend-base", x1: 0, y1: t.TREND_H - 2, x2: t.TREND_W, y2: t.TREND_H - 2 }));
+    for (const seg of tr.segs) {
+      if (seg.length === 1) kids.push(svgEl("circle", { class: "pt-trend-dot", cx: seg[0][0], cy: seg[0][1], r: 1.6 }));
+      else kids.push(svgEl("polyline", { class: "pt-trend-line", points: seg.map((p) => p[0] + "," + p[1]).join(" ") }));
+    }
+    svg.setAttribute("aria-label", words);
+    svg.replaceChildren(...kids);
+  };
+
   // ---- DOM --------------------------------------------------------------------------------------------
   // build(host) -> { update(structure, entities, devices, now) }. The tree is rebuilt only when its shape,
   // names or open/closed state change; otherwise numbers and classes are set in place.
@@ -184,13 +231,16 @@ SW.ptree = (function () {
         ups: h("div", { class: "pt-ups muted" }),
         rating: h("div", { class: "pt-rating muted" }),
         feed: h("div", { class: "pt-feed muted" }),
+        trend: svgEl("svg", { class: "pt-trend", viewBox: `0 0 ${t.TREND_W} ${t.TREND_H}`, role: "img", focusable: "false" }),
+        trendFor: null,
       };
+      e.trend.setAttribute("hidden", "");
       const toggle = kids.length ? h("button", { class: "pt-toggle", type: "button", "aria-expanded": closed[n.ref] ? "false" : "true",
         "aria-label": `Show or hide what is fed from ${n.display || n.name || "this unit"}`,
         onclick: () => { closed[n.ref] = !closed[n.ref]; key = ""; if (last) update(...last); } }, closed[n.ref] ? "▸" : "▾") : h("span", { class: "pt-toggle pt-leaf" });
       e.row.append(toggle, h("div", { class: "pt-main" },
         h("div", { class: "pt-head" }, e.id, e.name, e.state, n.role === "ups" ? h("span", { class: "pt-state pt-unmon" }, "OWN SUPPLY BELOW") : null),
-        (e.figs = h("div", { class: "pt-figs" }, e.power, e.bar)), e.feed, e.amps, e.rating, e.ups, e.gap));
+        (e.figs = h("div", { class: "pt-figs" }, e.power, e.trend, e.bar)), e.feed, e.amps, e.rating, e.ups, e.gap));
       const li = h("li", { class: `pt-node pt-role-${n.role || "none"}`, "data-depth": String(depth) }, e.row);
       if (kids.length && !closed[n.ref]) li.append(h("ul", { class: "pt-kids" }, kids.map((k) => nodeEl(k, depth + 1))));
       e.n = n;
@@ -224,8 +274,19 @@ SW.ptree = (function () {
       setCls(tl.el, "pt-tile" + (v != null && !tot.complete ? " pt-incomplete" : ""));
     }
 
-    function update(structure, entities, devices, now) {
-      last = [structure, entities, devices, now];
+    // One line per node from the batched history (trend = the server's answer plus the minutes it was asked for).
+    // Redrawn only when a new answer has arrived; a node with no history shows no line.
+    function drawNodeTrend(e, ref, trend) {
+      if (e.trendFor === trend) return;
+      e.trendFor = trend;
+      const pts = trend && trend.series ? trend.series[ref] : null;
+      const tr = pts ? t.trendSegments(pts, trend.since, trend.until, Math.max(3 * trend.bucket_s, 60), t.TREND_W, t.TREND_H) : { segs: [], max: null };
+      if (tr.segs.length) e.trend.removeAttribute("hidden"); else e.trend.setAttribute("hidden", "");
+      if (tr.segs.length) t.drawTrend(e.trend, tr, t.trendWords(trend.minutes, tr));
+    }
+
+    function update(structure, entities, devices, now, trend) {
+      last = [structure, entities, devices, now, trend];
       const used = t.inUse(structure);
       empty.hidden = used;
       summary.hidden = list.hidden = note.hidden = !used;
@@ -251,6 +312,7 @@ SW.ptree = (function () {
       for (const ref of Object.keys(els)) {
         const e = els[ref], n = e.n, rd = t.reading(n, entities, devices, now, byDev);
         const f2 = t.watts(rd.w);
+        drawNodeTrend(e, ref, trend);
         const shown = rd.state === "ok" || rd.state === "old";
         e.figs.hidden = rd.state === "unmetered";
         setText(e.power.firstChild, shown ? f2.text : "—");
