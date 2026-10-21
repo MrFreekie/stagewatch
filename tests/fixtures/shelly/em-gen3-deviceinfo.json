@@ -1,0 +1,1 @@
+{"_note": "SYNTHETIC: shape of Shelly.GetDeviceInfo for an EM Gen3, made-up MAC.", "name": null, "id": "shellyemg3-025E00000042", "mac": "025E00000042", "slot": 0, "model": "S3EM-002CXCEU", "gen": 3, "fw_id": "sim", "ver": "1.4.4", "app": "EMG3", "auth_en": false, "auth_domain": null}

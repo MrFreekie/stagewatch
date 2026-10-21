@@ -70,6 +70,8 @@ before a connection is opened.
 | `GET /rpc/Shelly.GetStatus` | Every 3 seconds by default. You can set 2 to 5 seconds for each meter. Also on **Test**. |
 | `GET /shelly` | First-generation meters only (a Shelly EM has no `/rpc`): in place of `GetDeviceInfo`, on the same occasions |
 | `GET /status` | First-generation meters only: in place of `GetStatus`, at the same rate |
+| `GET /rpc/Shelly.GetConfig` | Once after Stagewatch connects to a meter, on **Test** and **Save meter**, and when you click **Use the device's name**. It only reads the names typed into the meter |
+| `GET /settings` | First-generation meters only: in place of `GetConfig`, for the meter's name |
 
 Nothing else. Stagewatch does not follow a redirect. It gives up on a request after 2 seconds, and
 refuses a reply over 256 KiB. It asks at most four meters at the same moment.
@@ -95,6 +97,8 @@ addresses are refused. You can add up to 16 meters.
 11. Under **User dashboards**, click **Edit cards** on a dashboard, tick **Power**, and click **Save
     dashboards**. The card stays hidden until a meter has been added.
 
+If the meter has a name stored in it (in the Shelly app), Stagewatch uses it: the meter's name fills **Name** while it still says `Power meter`, and a circuit named on the meter starts with that name as its label. A meter with no names, or one that does not answer the name request in time, just keeps the default labels. Stagewatch only reads these names. It never writes anything to the meter.
+
 **What you'll see:** after **Test**, `Found <the meter's model>, firmware …. It measures: Power meter.`
 and a list of live readings, then `These are live readings from the meter. Nothing has been changed
 on it.` After **Save meter**, the meter appears in the table with a status.
@@ -109,9 +113,10 @@ The **Shelly power meters** card is only about the connection: name, area, addre
 1. Find the meter in **Power distribution**. A meter with one circuit (a PM Mini, a 1PM, a Plug, a three-phase meter) is **one row**. A meter with two circuits (a 2PM, a first-generation EM) has a header row for the meter and a row for each circuit.
 2. On a circuit, type a **Label**, for example `Amp rack 3`, and tick **Include in site total** if its watts should go into the one **Site total power** figure on the Power card.
 3. Under **More options**: choose the **Line** (Line 1 Brown, Line 2 Black, Line 3 Grey; a three-phase meter shows 3P and has no choice), type the **Breaker or fuse rating (A)** if you know it and the **Device limit (A)** (what the meter itself can carry). The load bar uses the lower of the two.
-4. On a meter with two or more single-phase circuits, the header row's **More options** has **Combined load bar**, which adds one bar for their amps together against the meter's lower limit.
-5. Click **Save** in Power distribution.
-6. Click **Add warnings** on the meter in the Shelly card to make a notice at 80 % of the lower limit and an alarm at 100 %. Nothing is made until you click it.
+4. Each circuit label has a **Use the device's name** button. It reads the name stored in the meter and puts it in the box; press **Save** to keep it. What you type always wins and is never replaced without you pressing the button. When the meter holds a different name, it is shown beside the box as **Name on the meter**. The meter's own name has the same button in the **Shelly power meters** card.
+5. A meter with two or more single-phase circuits shows its circuits only, with no separate total for the whole meter. Its header row's **More options** has **All circuits, total**: tick it to add one summary line (and its demand figures), plus, when a limit is set, one bar for their amps together against the meter's lower limit. A three-phase meter keeps its Line 1, 2, 3 and Total readings: that total is the meter's own.
+6. Click **Save** in Power distribution.
+7. Click **Add warnings** on the meter in the Shelly card to make a notice at 80 % of the lower limit and an alarm at 100 %. Nothing is made until you click it.
 
 **What you'll see:** the Power card shows the labels, the lines and the load bars. How each figure is worked out is on the [Power card](../cards/power.md) page. A circuit that is not reading never counts as zero in a total.
 

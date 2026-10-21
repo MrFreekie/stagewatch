@@ -1,0 +1,6 @@
+{
+  "_note": "Names as read (GET only) from an EM Gen3 on 21/10/2026: two em1 channels named on the device, device name left at its default. Other Shelly.GetConfig fields omitted; address and MAC not included.",
+  "sys": {"device": {"name": "Shelly EM Gen3", "fw_id": "sim", "discoverable": true}},
+  "em1:0": {"id": 0, "name": "CU-10-All-Lights", "ct_type": "120A"},
+  "em1:1": {"id": 1, "name": "CU-00-Spare", "ct_type": "120A"}
+}

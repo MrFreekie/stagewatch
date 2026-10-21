@@ -56,7 +56,7 @@ To add the power of several circuits into one figure, for example one circuit on
 
 ## Combined load bar
 
-Some meters have two circuits that share one supply, for example a Shelly 2PM with two 10 A outputs on a 16 A feed. Each circuit can be fine while the two together are too much. In Admin, type the **device limit of the whole supply** (16 in that example), give each circuit its own device limit, and tick **Combined load bar**. The card then shows one extra bar, **Combined load**, for the amps of the circuits added together against the meter's rating, with the same amber at 80% and red at 100%. The circuits keep their own bars.
+Some meters have two circuits that share one supply, for example a Shelly 2PM with two 10 A outputs on a 16 A feed. Each circuit can be fine while the two together are too much. In Admin, type the **device limit of the whole supply** (16 in that example), give each circuit its own device limit, and tick **All circuits, total**. A meter with several circuits shows its circuits only, with no separate whole-meter figures, until you tick it. The card then shows one summary line, **All circuits, total (calculated)**, with its demand figures, and one extra bar, **Combined load**, for the amps of the circuits added together against the meter's rating, with the same amber at 80% and red at 100%. The circuits keep their own bars.
 
 - The tickbox only appears for a meter with two or more single-phase circuits, and it needs a device limit or a breaker rating on the meter.
 - If any circuit is not reading, or its reading is old, the bar says **Unavailable** rather than showing a part-total.

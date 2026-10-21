@@ -63,10 +63,10 @@ def fetcher(srv):
     return fetch
 
 
-def test_the_allow_list_is_the_four_read_methods():
-    assert ALLOWED_METHODS == frozenset({"Shelly.GetDeviceInfo", "Shelly.GetStatus", "gen1.shelly", "gen1.status"})
+def test_the_allow_list_is_the_read_methods():
+    assert ALLOWED_METHODS == frozenset({"Shelly.GetDeviceInfo", "Shelly.GetStatus", "Shelly.GetConfig", "gen1.shelly", "gen1.status", "gen1.settings"})
     assert rpc_path("gen1.shelly") == "/shelly" and rpc_path("gen1.status") == "/status"
-    for bad in ("/relay/0?turn=on", "gen1.relay", "gen1.settings", "gen1.reboot", "/shelly", "/status"):
+    for bad in ("/relay/0?turn=on", "gen1.relay", "gen1.reboot", "gen1.settings/x", "/shelly", "/status"):
         with pytest.raises(Exception):
             rpc_path(bad)
 
@@ -150,7 +150,8 @@ async def test_the_whole_loop_reads_a_gen1_meter_with_only_the_allowed_gets(tmp_
         finally:
             await integ.stop()
             hub.recorder.close()
-        assert set(srv.requests) <= {"GET /rpc/Shelly.GetDeviceInfo HTTP/1.1", "GET /shelly HTTP/1.1", "GET /status HTTP/1.1"}
+        assert set(srv.requests) <= {"GET /rpc/Shelly.GetDeviceInfo HTTP/1.1", "GET /shelly HTTP/1.1", "GET /status HTTP/1.1",
+                                  "GET /rpc/Shelly.GetConfig HTTP/1.1", "GET /settings HTTP/1.1"}
 
 
 async def test_the_emulated_gen1_meter_has_no_rpc_and_answers_the_gen1_paths():

@@ -20,7 +20,12 @@ import time
 import zlib
 from typing import Callable
 
-from .http import GEN1_INFO, GEN1_STATUS, GET_DEVICE_INFO, GET_STATUS, ForbiddenMethod, ShellyError, rpc_path
+from .http import (GEN1_INFO, GEN1_SETTINGS, GEN1_STATUS, GET_CONFIG, GET_DEVICE_INFO, GET_STATUS, ForbiddenMethod, ShellyError,
+                   rpc_path)
+
+
+def _raise_not_shelly():
+    raise ShellyError("not_shelly")
 
 DEMO_HOST = "192.0.2.10"        # documentation address: never a real device
 DEMO_NAME = "Mic rack (sim)"
@@ -168,6 +173,12 @@ class EmulatedFleet:
             if not meter.gen1:
                 raise ShellyError("not_shelly")
             return meter.info1() if method == GEN1_INFO else meter.status1(now)
+        if method == GEN1_SETTINGS:
+            return {"name": "Shelly EM (sim)"} if meter.gen1 else _raise_not_shelly()
+        if method == GET_CONFIG:
+            if meter.gen1:
+                raise ShellyError("not_shelly")
+            return {"sys": {"device": {"name": None}}}
         if method == GET_DEVICE_INFO:
             return meter.info()
         if method == GET_STATUS:

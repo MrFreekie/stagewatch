@@ -1,15 +1,17 @@
 """A tiny, strict HTTP client for reading a Shelly meter. Read-only by construction.
 
-Only four requests can ever be made, all plain GETs. Two for second-generation (Gen2+) meters:
+Only six requests can ever be made, all plain GETs. Three for second-generation (Gen2+) meters:
 
     GET /rpc/Shelly.GetDeviceInfo
     GET /rpc/Shelly.GetStatus
+    GET /rpc/Shelly.GetConfig     (only to read the names typed into the meter)
 
-and two for first-generation (Gen1) meters such as the Shelly EM, tried only when a meter has no
+and three for first-generation (Gen1) meters such as the Shelly EM, tried only when a meter has no
 ``/rpc`` interface:
 
     GET /shelly
     GET /status
+    GET /settings                 (only to read the name typed into the meter)
 
 ``rpc_path`` refuses every other method name before any connection is opened, so nothing that
 switches a relay, changes a setting, restarts, updates or resets a meter can be sent (a test pins
@@ -41,8 +43,10 @@ GET_DEVICE_INFO = "Shelly.GetDeviceInfo"
 GET_STATUS = "Shelly.GetStatus"
 GEN1_INFO = "gen1.shelly"       # GET /shelly   (first generation: who the meter is)
 GEN1_STATUS = "gen1.status"     # GET /status   (first generation: what it reads)
-ALLOWED_METHODS = frozenset({GET_DEVICE_INFO, GET_STATUS, GEN1_INFO, GEN1_STATUS})
-_GEN1_PATHS = {GEN1_INFO: "/shelly", GEN1_STATUS: "/status"}
+GET_CONFIG = "Shelly.GetConfig"  # names only: read, never written
+GEN1_SETTINGS = "gen1.settings"  # GET /settings (first generation): the name only
+ALLOWED_METHODS = frozenset({GET_DEVICE_INFO, GET_STATUS, GEN1_INFO, GEN1_STATUS, GET_CONFIG, GEN1_SETTINGS})
+_GEN1_PATHS = {GEN1_INFO: "/shelly", GEN1_STATUS: "/status", GEN1_SETTINGS: "/settings"}
 
 TIMEOUT_S = 2.0              # total time for one request, connect to last byte
 MAX_BODY = 256 * 1024

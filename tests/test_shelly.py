@@ -177,12 +177,12 @@ def test_device_with_a_password_is_reported_in_words_not_read():
 FORBIDDEN_METHODS = ["Switch.Set", "Switch.Toggle", "Switch.SetConfig", "Cover.Open", "Cover.GoToPosition", "Light.Set",
                      "Shelly.Reboot", "Shelly.Update", "Shelly.FactoryReset", "Shelly.SetAuth", "Shelly.GetStatusX",
                      "Ws.SetConfig", "Mqtt.SetConfig", "Script.Start", "Webhook.Create", "EMData.DeleteAllData",
-                     "EMData.ResetCounters", "EM.GetStatus", "PM1.ResetCounters", "Shelly.GetConfig", "Shelly.GetComponents",
+                     "EMData.ResetCounters", "EM.GetStatus", "PM1.ResetCounters", "Shelly.GetComponents", "Shelly.SetConfig", "Sys.SetConfig", "gen1.settings/../reboot",
                      "shelly.getstatus", "Shelly.GetStatus/../Shelly.Reboot", "Shelly.GetStatus?x=1", "", " Shelly.GetStatus"]
 
 
 def test_the_allow_list_is_exactly_the_read_methods():
-    assert ALLOWED_METHODS == frozenset({"Shelly.GetDeviceInfo", "Shelly.GetStatus", "gen1.shelly", "gen1.status"})
+    assert ALLOWED_METHODS == frozenset({"Shelly.GetDeviceInfo", "Shelly.GetStatus", "Shelly.GetConfig", "gen1.shelly", "gen1.status", "gen1.settings"})
     assert rpc_path("Shelly.GetStatus") == "/rpc/Shelly.GetStatus"
     assert rpc_path("Shelly.GetDeviceInfo") == "/rpc/Shelly.GetDeviceInfo"
 
@@ -454,7 +454,7 @@ async def test_the_whole_loop_against_a_fake_server_asks_only_the_two_allowed_th
             await integ.stop()
             hub.recorder.close()
         assert srv.requests, "nothing was asked"
-        assert set(srv.requests) <= {"GET /rpc/Shelly.GetDeviceInfo HTTP/1.1", "GET /rpc/Shelly.GetStatus HTTP/1.1"}
+        assert set(srv.requests) <= {"GET /rpc/Shelly.GetDeviceInfo HTTP/1.1", "GET /rpc/Shelly.GetStatus HTTP/1.1", "GET /rpc/Shelly.GetConfig HTTP/1.1"}
 
 
 # ===================================================================== through the hub (sink calls)
@@ -1326,8 +1326,8 @@ async def test_combined_load_bar_is_off_by_default_public_when_rated_and_saved(h
     await integ.update("rack", None, None, None, None, 16.0, None, True)
     assert cfg.combined_bar is True and hub.devices["rack"].to_dict()["combined_bar"] is True
     assert integ.admin_status()["meters"][0]["combined_bar"] is True
-    await integ.update("rack", None, None, None, None, 0.0)              # no rating: nothing to measure against
-    assert "combined_bar" not in hub.devices["rack"].to_dict() and cfg.combined_bar is True
+    await integ.update("rack", None, None, None, None, 0.0)              # no rating: the summary line stays, only the bar needs a limit
+    assert hub.devices["rack"].to_dict()["combined_bar"] is True and cfg.combined_bar is True
     await integ.update("rack", None, None, None, None, None, None, False)
     assert cfg.combined_bar is False
 
@@ -1351,7 +1351,7 @@ async def test_each_circuit_can_have_a_label_a_line_and_its_own_rating_and_they_
     pub = hub.devices["rack"].to_dict()
     assert pub["channels"] == {"pm1_0": {"label": "Amp rack 3", "phase": "L2", "rating_a": 10.0}} and pub["rating_a"] == 16.0
     assert integ.admin_status()["meters"][0]["channels"] == [
-        {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "phase": "L2", "rating_a": 10.0, "breaker_a": None, "in_total": False,
+        {"key": "pm1_0", "name": "Circuit", "three_phase": False, "label": "Amp rack 3", "device_name": "", "phase": "L2", "rating_a": 10.0, "breaker_a": None, "in_total": False,
          "role": "", "unit_no": None, "upstream": "", "way": None}]
     await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "label": "", "phase": "", "rating_a": 0}])
     assert cfg.channels == [] and "channels" not in hub.devices["rack"].to_dict()      # nothing typed: nothing kept

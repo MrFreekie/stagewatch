@@ -1,0 +1,5 @@
+{
+  "_note": "SYNTHETIC from the EM1 documentation field names (not captured): two single-circuit channels with round numbers so sums can be done by hand. 700 W + 300 W = 1,000 W.",
+  "em1:0": {"id": 0, "current": 3.0, "voltage": 230.0, "act_power": 700.0, "aprt_power": 740.0, "pf": 0.95, "freq": 50.0},
+  "em1:1": {"id": 1, "current": 1.5, "voltage": 230.0, "act_power": 300.0, "aprt_power": 345.0, "pf": 0.87, "freq": 50.0}
+}

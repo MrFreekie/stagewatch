@@ -467,8 +467,13 @@ SW.pw = (function () {
     for (const ch of list) if (ch.groups[""] && ch.groups[""].current) combinedIds.push(ch.groups[""].current.id);
     const mlim = pw.limit(device.breaker_a, device.rating_a);
     const combined = !!device.combined_bar && mlim.amps !== null && combinedIds.length >= 2;
-    return { combined, combinedIds, id: device.id, entities: Object.fromEntries(mine.map((e) => [e.id, e])), rating: mlim.amps, by: mlim.by, weak: mlim.weak, breaker: isNum(device.breaker_a) ? device.breaker_a : null, device: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "",
-      demandIds: ["demand", "demand_va"].map((f) => { const e = ents.find((x) => x.device_id === device.id && x.labels && x.labels.derived && x.labels.field === f); return e ? e.id : ""; }) };
+    // A meter with several single-phase circuits shows its circuits only. The device total (the sum of the circuits:
+    // a summary line and its demand figures) appears only when the admin ticked "All circuits, total". A three-phase
+    // meter has one circuit with its own measured total, which is not a duplicate.
+    const multi = list.length > 1 && !list.some((c) => c.groups.a);
+    const showTotal = multi && !!device.combined_bar;
+    return { combined, combinedIds, multi, showTotal, totalId: showTotal ? device.id + ".meter_power_load" : "", id: device.id, entities: Object.fromEntries(mine.map((e) => [e.id, e])), rating: mlim.amps, by: mlim.by, weak: mlim.weak, breaker: isNum(device.breaker_a) ? device.breaker_a : null, device: isNum(device.rating_a) ? device.rating_a : null, name: device.name || device.id, area: device.area || "", state, badge, note, channels: list, newest, count: mine.length, model: device.model || "",
+      demandIds: ["demand", "demand_va"].map((f) => { if (multi && !showTotal) return ""; const e = ents.find((x) => x.device_id === device.id && x.labels && x.labels.derived && x.labels.field === f); return e ? e.id : ""; }) };
   };
 
   pw.view = function (entities, devices, now) {
@@ -478,7 +483,7 @@ SW.pw = (function () {
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
       .map((d) => pw.meterView(d, ents, now));
     // The key changes only when the set of meters or readings changes, so the DOM is rebuilt rarely.
-    const key = meters.map((m) => m.id + "@" + (m.rating || 0) + (m.by || "") + (m.weak ? "W" : "") + (m.combined ? "C" + m.combinedIds.length : "") + ":" + m.channels.map((c) => c.id + "~" + (c.rating || 0) + (c.by || "") + (c.weak ? "W" : "") + (c.breaker || 0) + "/" + (c.device || 0) + (c.cfg ? (c.cfg.label || "") + (c.cfg.phase || "") : "") + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
+    const key = meters.map((m) => m.id + "@" + (m.rating || 0) + (m.by || "") + (m.weak ? "W" : "") + (m.combined ? "C" + m.combinedIds.length : "") + (m.showTotal ? "T" : "") + ":" + m.channels.map((c) => c.id + "~" + (c.rating || 0) + (c.by || "") + (c.weak ? "W" : "") + (c.breaker || 0) + "/" + (c.device || 0) + (c.cfg ? (c.cfg.label || "") + (c.cfg.phase || "") : "") + "[" + Object.keys(c.groups).map((g) => g + "=" + Object.keys(c.groups[g]).join("+")).join(",") + "|" + c.energy.map((x) => x.entity.id).join("+") + "]").join("")).join(";");
     const total = pw.totalView(devices, meters);
     const site = pw.siteView(entities);
     return { meters, total, site, key: (site ? "S" + site.key + ";" : "") + (total ? "T" + total.parts.length + ";" : "") + key + meters.map((m) => m.demandIds.join("+")).join(",") };
@@ -627,6 +632,13 @@ SW.pw = (function () {
           energyRows.push(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, word[0].toUpperCase() + word.slice(1) + " (meter total)"), " ", val, unit));
           r.energy.push({ entity: x.entity.id, val, unit });
         }
+      }
+      // "All circuits, total": one summary line, only when the admin asked for it (the sum of the circuits above).
+      r.total = null;
+      if (m.showTotal) {
+        const val = h("span", { class: "pw-num" });
+        body.append(h("div", { class: "pw-dayrow" }, h("span", { class: "pw-label" }, "All circuits, total (calculated)"), " ", val));
+        r.total = { entity: m.totalId, val };
       }
       // Load bar (needs a rating) and swing meters for voltage and frequency, per circuit or phase.
       r.gauges = [];
@@ -877,6 +889,7 @@ SW.pw = (function () {
             r.neu.val.textContent = v === null ? "—" : `${SW.num(v.pct, 0)}%`;
             r.neu.word.textContent = v && v.high ? " HIGH" : "";
           }
+          if (r.total) { const e = entities[r.total.entity]; const t = pw.fmtW(e && !e.stale ? e.value : null); r.total.val.textContent = `${t.text} ${t.unit}`; }
           for (const x of r.demand) x.val.textContent = pw.demandText(entities[x.entity], x.isVA);
           for (const x of r.maxes) {
             const e = entities[x.entity];

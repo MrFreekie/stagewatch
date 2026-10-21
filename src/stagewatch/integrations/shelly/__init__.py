@@ -1,8 +1,9 @@
 """Shelly power meters: watts, volts, amps, frequency and energy from Shelly meters on the local
 network, shown on the Power card.
 
-Read-only. Stagewatch asks a meter for its readings (two requests only: Shelly.GetDeviceInfo and
-Shelly.GetStatus, or /shelly and /status for a first-generation meter, see http.py) and never sends anything that changes it. It cannot switch a relay,
+Read-only. Stagewatch asks a meter for its readings (Shelly.GetDeviceInfo and Shelly.GetStatus, or /shelly
+and /status for a first-generation meter, plus one read of the names typed into it: Shelly.GetConfig or
+/settings, see http.py) and never sends anything that changes it. It cannot switch a relay,
 change a setting, restart, update or reset a meter. A Shelly that has a relay (a Plug or a Plus 1PM,
 for example) is read for its power only; its relay is never touched, and Stagewatch cannot stop the
 Shelly's own button, schedule or app from switching it.
@@ -40,7 +41,7 @@ from . import readings as rd
 from .emulate import (DEMO1_HOST, DEMO1_NAME, DEMO3_HOST, DEMO3_NAME, DEMO4_HOST, DEMO4_NAME, DEMO5_HOST, DEMO5_NAME,
                       DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac)
 from .http import Fetch, ShellyError, get_json
-from .transport import DeviceInfo, HttpPollTransport, Target, Transport, identify, read_status
+from .transport import DeviceInfo, DeviceNames, HttpPollTransport, Target, Transport, identify, read_names, read_status
 
 log = logging.getLogger(__name__)
 
@@ -124,8 +125,8 @@ def public_extra(cfg: ShellyDeviceConfig) -> dict:
         out["rating_a"] = cfg.rating_a
     if cfg.breaker_a:
         out["breaker_a"] = cfg.breaker_a
-    if cfg.combined_bar and (cfg.rating_a or cfg.breaker_a):
-        out["combined_bar"] = True
+    if cfg.combined_bar:
+        out["combined_bar"] = True      # "All circuits, total": the summary line, and the combined bar when a limit is set
     chans = {}
     for c in cfg.channels:
         d = {k: v for k, v in (("label", c.label), ("phase", c.phase), ("rating_a", c.rating_a), ("breaker_a", c.breaker_a), ("in_total", c.in_total)) if v}
@@ -158,6 +159,7 @@ class InUse(Exception):
 class _Meter:
     cfg: ShellyDeviceConfig
     info: DeviceInfo | None = None
+    names: DeviceNames | None = None                  # the names typed into the meter itself (admin page only)
     entities: set = field(default_factory=set)
     last: dict = field(default_factory=dict)         # object_id -> (value, recorded at)
     energy: dict = field(default_factory=dict)       # object_id -> last energy total seen
@@ -275,6 +277,11 @@ class ShellyIntegration(Integration):
         dev = self.hub.devices.get(m.cfg.id)
         if dev is not None and dev.model != (info.app or info.model):
             self.hub.register_device(self._device(m.cfg, info, dev.status))
+
+    def names(self, mac: str, names: DeviceNames) -> None:
+        m = self._meter_of(mac)
+        if m is not None:
+            m.names = names
 
     def status(self, mac: str, status: dict, ts: float) -> None:
         m = self._meter_of(mac)
@@ -510,8 +517,9 @@ class ShellyIntegration(Integration):
             log.exception("Shelly: could not work out the neutral current")
 
     # -------------------------------------------------------------------- admin
-    async def _identify(self, host: str) -> tuple[DeviceInfo, dict]:
-        """Ask a meter who it is and what it reads (the two allowed requests). Raises ShellyError."""
+    async def _identify(self, host: str) -> tuple[DeviceInfo, dict, DeviceNames]:
+        """Ask a meter who it is, what it reads and (one more read-only request, never failing) the names typed
+        into it. Raises ShellyError."""
         ip = validate_host(host)
         info, gen1 = await identify(self._fetch, ip)
         if info.auth_enabled:
@@ -519,7 +527,18 @@ class ShellyIntegration(Integration):
         status = await read_status(self._fetch, ip, gen1)
         if not isinstance(status, dict) or not rd.readings_from_status(status):
             raise ShellyError("no_power")
-        return info, status
+        return info, status, await read_names(self._fetch, ip, gen1)
+
+    async def read_device_names(self, device_id: str) -> dict:
+        """Admin "Use the device's name": read the names typed into the meter now. Suggests only: nothing is saved
+        and nothing is sent to the meter. Raises LookupError."""
+        cfg = next((c for c in self.hub.config.shelly_devices if c.id == device_id), None)
+        m = self._meters.get(cfg.mac) if cfg else None
+        if cfg is None or m is None:
+            raise LookupError
+        names = await read_names(self._fetch, validate_host(cfg.host), bool(m.info and m.info.gen1))
+        m.names = names
+        return {"device": names.device, "channels": dict(names.channels)}
 
     def _by_mac(self, mac: str) -> ShellyDeviceConfig | None:
         return next((c for c in self.hub.config.shelly_devices if c.mac == mac), None)
@@ -527,7 +546,7 @@ class ShellyIntegration(Integration):
     async def test(self, host: str) -> dict:
         """Admin "Test": what is at this address. Never changes anything. Raises ShellyError."""
         async with self._lock:
-            info, status = await self._identify(host)
+            info, status, names = await self._identify(host)
         found = rd.readings_from_status(status)
         channels = rd.channel_counts(found)
         known = self._by_mac(info.mac)
@@ -538,6 +557,9 @@ class ShellyIntegration(Integration):
                           "unit": UNITS.get(r.kind, ""), "decimals": r.decimals}
                          for r in found if r.value is not None],
             "already_added": known.id if known else None,
+            "device_name": names.device,
+            # circuit names typed into the meter: Add uses them as the circuits' labels
+            "circuit_names": [{"key": k, "name": n} for k, n in sorted(names.channels.items())],
         }
 
     async def add(self, host: str, name: str, area: str, interval_s: float) -> ShellyDeviceConfig:
@@ -546,18 +568,22 @@ class ShellyIntegration(Integration):
         async with self._lock:
             if len(self.hub.config.shelly_devices) >= SHELLY_MAX_METERS:
                 raise InUse("There is room for 16 power meters. Remove one first")
-            info, _status = await self._identify(host)
+            info, status, names = await self._identify(host)
             if self._by_mac(info.mac) is not None:
                 raise InUse("That meter has already been added")
             device_id = slugify(name)
             if device_id in ("site", SITE_ID) or device_id in self.hub.devices:
                 raise InUse("That name is already in use. Choose another")
+            # a circuit named on the meter starts with that name as its label; the admin can change it at once
+            keys = {r.channel for r in rd.readings_from_status(status)}
+            channels = [ShellyChannelConfig(key=k, label=n) for k, n in sorted(names.channels.items()) if k in keys]
             cfg = ShellyDeviceConfig(id=device_id, host=validate_host(host), mac=info.mac, name=name.strip(),
-                                     area=area.strip(), poll_interval_s=interval_s)
+                                     area=area.strip(), poll_interval_s=interval_s, channels=channels)
             self.hub.config.shelly_devices.append(cfg)
             self.hub.save_config()
             self._attach(cfg)
             self.identified(cfg.mac, info)
+            self.names(cfg.mac, names)
             return cfg
 
     async def update(self, device_id: str, name: str | None, area: str | None, interval_s: float | None,
@@ -659,8 +685,15 @@ class ShellyIntegration(Integration):
             self.hub.remove_device(cfg.id)      # its history stays
             self._update_neutral(self._clock())
 
+    @staticmethod
+    def _differs(names: DeviceNames | None, key: str, typed: str) -> str:
+        """The name the meter holds for a circuit, only when it differs from what the admin typed (a hint)."""
+        n = names.channels.get(key, "") if names else ""
+        return n if n and n != typed else ""
+
     def _admin_channels(self, cfg: ShellyDeviceConfig) -> list[dict]:
         """The circuits Stagewatch has seen on a meter, with what the admin typed about each."""
+        held_names = self._meters[cfg.mac].names if cfg.mac in self._meters else None
         seen: dict[str, bool] = {}
         for e in self.hub.entities.values():
             key = e.labels.get("channel") if e.device_id == cfg.id and not e.labels.get("derived") else None
@@ -672,6 +705,7 @@ class ShellyIntegration(Integration):
             name = f"Channel {int(m.group(1)) + 1}" if (m and len(seen) > 1) else ("Three-phase" if three else "Circuit")
             c = next((x for x in cfg.channels if x.key == key), None)
             out.append({"key": key, "name": name, "three_phase": three, "label": c.label if c else "",
+                        "device_name": self._differs(held_names, key, c.label if c else ""),
                         "phase": c.phase if c else "", "rating_a": c.rating_a if c else None,
                         "breaker_a": c.breaker_a if c else None, "in_total": bool(c and c.in_total),
                         "role": c.role if c else "", "unit_no": c.unit_no if c else None,
@@ -692,6 +726,9 @@ class ShellyIntegration(Integration):
                 "interval_s": cfg.poll_interval_s, "rating_a": held.rating_a, "breaker_a": held.breaker_a, "combined_bar": cfg.combined_bar,
                 "role": held.role, "unit_no": held.unit_no, "upstream": held.upstream, "way": held.way,
                 "single": bool(key), "circuit_key": key,
+                # what the meter itself holds (admin page only), shown as a hint only when it differs from what was typed
+                "device_name": m.names.device if m and m.names and m.names.device and m.names.device != cfg.name else "",
+                "circuit_device_name": self._differs(m.names, key, held.label) if m and key else "",
                 "three_phase": bool(key) and power_tree.is_three_phase(cfg, key),
                 "phase": held.phase if key else "", "label": held.label if key else "", "in_total": bool(held.in_total) if key else False,
                 "channels": self._admin_channels(cfg),

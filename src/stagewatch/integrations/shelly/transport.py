@@ -16,18 +16,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from ...core.model import normalise_mac
 from . import readings as rd
-from .http import GEN1_INFO, GEN1_STATUS, GET_DEVICE_INFO, GET_STATUS, Fetch, ShellyError, get_json
+from .http import GEN1_INFO, GEN1_SETTINGS, GEN1_STATUS, GET_CONFIG, GET_DEVICE_INFO, GET_STATUS, Fetch, ShellyError, get_json
 
 log = logging.getLogger(__name__)
 
 BACKOFF_MAX_S = 60.0
+NAMES_TIMEOUT_S = 1.5
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,7 @@ class DeviceInfo:
     firmware: str
     name: str
     auth_enabled: bool
+    gen1: bool = False
 
 
 def parse_device_info(data: object) -> DeviceInfo:
@@ -82,7 +85,7 @@ def parse_gen1_info(data: object) -> DeviceInfo:
         return "".join(ch for ch in v if ch.isprintable())[:60] if isinstance(v, str) else ""
 
     return DeviceInfo(mac=mac, model=text("type"), app="", firmware=text("fw"), name="",
-                      auth_enabled=data.get("auth") is True)
+                      auth_enabled=data.get("auth") is True, gen1=True)
 
 
 async def identify(fetch: Fetch, host: str) -> tuple[DeviceInfo, bool]:
@@ -101,6 +104,52 @@ async def read_status(fetch: Fetch, host: str, gen1: bool) -> dict:
     if gen1:
         return rd.gen1_status(await fetch(host, GEN1_STATUS))
     return await fetch(host, GET_STATUS)
+
+
+NAME_LIMIT = 40     # the longest circuit label the card takes
+_NAMED = re.compile(r"^(switch|em1|em|pm1):([0-7])$")
+
+
+@dataclass(frozen=True)
+class DeviceNames:
+    """The names typed into a meter itself (read only). Untrusted text: printable characters only, cut to
+    NAME_LIMIT. ``channels`` is keyed like the reading channels ("em1_0", "switch_1", "em0")."""
+    device: str = ""
+    channels: dict = field(default_factory=dict)
+
+
+def _name(v: object) -> str:
+    if not isinstance(v, str):
+        return ""
+    return " ".join("".join(ch for ch in v if ch.isprintable()).split())[:NAME_LIMIT]
+
+
+def parse_names(config: object, gen1: bool) -> DeviceNames:
+    """Names from a ``Shelly.GetConfig`` reply (Gen2+) or a ``/settings`` reply (Gen1). Anything odd gives no name."""
+    if not isinstance(config, dict):
+        return DeviceNames()
+    if gen1:
+        return DeviceNames(_name(config.get("name")))
+    out = {}
+    for key, comp in config.items():
+        m = _NAMED.match(key) if isinstance(key, str) else None
+        name = _name(comp.get("name")) if m and isinstance(comp, dict) else ""
+        if name:
+            out[f"em{m.group(2)}" if m.group(1) == "em" else f"{m.group(1)}_{m.group(2)}"] = name
+    sys_ = config.get("sys")
+    dev = sys_.get("device") if isinstance(sys_, dict) else None
+    return DeviceNames(_name(dev.get("name")) if isinstance(dev, dict) else "", out)
+
+
+async def read_names(fetch: Fetch, host: str, gen1: bool) -> DeviceNames:
+    """One read-only request for the names typed into the meter. Never raises: a meter that does not answer, or
+    has no names, gives no names and the default labels stay."""
+    try:
+        return parse_names(await asyncio.wait_for(fetch(host, GEN1_SETTINGS if gen1 else GET_CONFIG), NAMES_TIMEOUT_S), gen1)
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - names are a convenience
+        return DeviceNames()
 
 
 class Sink(Protocol):
@@ -181,6 +230,7 @@ class HttpPollTransport(Transport):
         failures = 0
         verified = False
         gen1 = False
+        named = False
         while True:
             try:
                 if not verified:
@@ -191,9 +241,15 @@ class HttpPollTransport(Transport):
                         raise ShellyError("other_meter")
                     sink.identified(target.mac, info)
                     verified = True
+                    named = False
                 status = await read_status(self._request, target.host, gen1)
                 failures = 0
                 sink.status(target.mac, status, self._clock())
+                if not named:       # once per connection, after the first reading, so it never delays one
+                    named = True
+                    names = await read_names(self._request, target.host, gen1)
+                    if hasattr(sink, "names"):
+                        sink.names(target.mac, names)
                 delay = target.interval_s
             except asyncio.CancelledError:
                 raise

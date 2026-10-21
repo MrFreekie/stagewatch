@@ -644,6 +644,21 @@
   // Shelly power meters for the Power card. Read-only: Stagewatch only asks a meter for its readings and
   // never switches a relay, changes a setting, restarts or resets it. Addresses and MACs are shown here
   // and nowhere public. Phase 1 reads by HTTP polling only and has been tried on one Shelly PM Mini Gen3.
+  // "Use the device's name": asks the meter (one read-only request) for the names typed into it and puts one in the
+  // box. It only fills the box: nothing is saved until Save, and nothing is ever sent to the meter. Names are text.
+  function useNameButton(m, input, pick, what) {
+    const note = h("span", { class: "muted", role: "status" });
+    const btn = h("button", { type: "button", class: "small", title: "Read the name typed into the meter itself and put it here. Nothing is changed on the meter.",
+      onclick: async () => {
+        note.textContent = "Asking the meter…";
+        try {
+          const r = await api("POST", `/api/admin/shelly/${encodeURIComponent(m.id)}/names`);
+          const n = pick(r);
+          if (n) { input.value = n; note.textContent = "Filled in. Press Save to keep it."; } else note.textContent = `The meter has no ${what} name.`;
+        } catch (err) { note.textContent = "Could not read the meter."; }
+      } }, "Use the device's name");
+    return [btn, note];
+  }
   // Add a Shelly meter (the Add integration pop-out). onDone runs after the meter is added.
   function shellyAddForm(onDone) {
     // Add a meter: type the address, press Test to see what is there, then Save.
@@ -661,6 +676,8 @@
       const lines = [h("p", {}, `Found ${r.model || "a Shelly"}${r.firmware ? `, firmware ${r.firmware}` : ""}. It measures: ${r.components.join(", ") || "power"}.`)];
       if (r.already_added) lines.push(h("p", { class: "warn-text" }, "▲ This meter has already been added."));
       lines.push(h("ul", { class: "shelly-readings" }, r.readings.map((x) => h("li", {}, `${x.name}: ${SW.num(x.value, Math.min(3, x.decimals))}${x.unit ? " " + x.unit : ""}`))));
+      if (r.device_name && (val(name) === "" || val(name) === "Power meter")) name.value = r.device_name;
+      if (r.circuit_names && r.circuit_names.length) lines.push(h("p", {}, `Names found on the meter, used as the circuit labels (you can change them later): ${r.circuit_names.map((x) => x.name).join(", ")}.`));
       lines.push(h("p", { class: "muted" }, "These are live readings from the meter. Nothing has been changed on it."));
       result.replaceChildren(...lines);
       setSave(!!r.already_added);
@@ -700,7 +717,9 @@
       const every = h("input", { class: "num", type: "number", min: "2", max: "5", step: "0.5", value: m.interval_s, "aria-label": `${m.name} reads every (seconds)` });
       const facts = [m.model, m.firmware ? `firmware ${m.firmware}` : "", `MAC ${m.mac}`].filter(Boolean).join(" · ");
       return h("tr", {},
-        h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, m.id)),
+        h("td", {}, name, h("div", { class: "muted", style: "font-size:12px" }, m.id),
+          h("div", { class: "row", style: "font-size:12px" }, ...useNameButton(m, name, (r) => r.device, "device")),
+          m.device_name ? h("div", { class: "muted", style: "font-size:12px" }, `Name on the meter: ${m.device_name}`) : null),
         h("td", {}, area),
         h("td", {}, statusPill(m), m.detail ? h("div", { class: "muted", style: "font-size:12px" }, m.detail) : null,
           m.problem ? h("div", { class: "warn-text", style: "font-size:12px" }, m.problem) : null,
@@ -883,7 +902,8 @@
         em.body = () => ({ id: m.id, role: em.role.value, unit_no: noOf(em), upstream: em.up.value, way: wayOf(em), label: val(label),
           ...(m.three_phase ? {} : { phase: line.value }), rating_a: Number(ratingIn.value) || 0, breaker_a: Number(breakerIn.value) || 0, in_total: inTotal.checked, channels: [] });
         em.basic.append(h("label", { class: "row", style: "min-height:44px", title: "Adds this meter's watts into one site total on the Power card" }, inTotal, " Include in site total"));
-        em.addMore(...em.wayField(), m.three_phase ? h("span", { class: "muted" }, "Line: 3P (all three lines)") : field("Line", line), ...limitFields(ratingIn, breakerIn), field("Name on the Power card", label));
+        em.addMore(...em.wayField(), m.three_phase ? h("span", { class: "muted" }, "Line: 3P (all three lines)") : field("Line", line), ...limitFields(ratingIn, breakerIn), field("Name on the Power card", label),
+          ...useNameButton(m, label, (r) => (r.channels || {})[m.circuit_key], "circuit"), m.circuit_device_name ? h("span", { class: "muted" }, `Name on the meter: ${m.circuit_device_name}`) : null);
       } else {
         const chans = (m.channels || []);
         const singles = chans.filter((c) => !c.three_phase).length;
@@ -892,8 +912,8 @@
           rating_a: Number(ratingIn.value) || 0, breaker_a: Number(breakerIn.value) || 0, ...(singles >= 2 ? { combined_bar: combined.checked } : {}),
           channels: rows.filter((r) => r.kind === "circuit" && r.meterId === m.id).map((r) => r.body()) });
         em.addMore(...em.wayField(), ...limitFields(ratingIn, breakerIn));
-        if (singles >= 2) em.addMore(h("label", { class: "row", style: "min-height:44px", title: "One extra bar on the Power card: the amps of all this meter's circuits added together, against the lower of the limits above" },
-          combined, " Combined load bar (circuits added together, against the limits above; needs a limit)"));
+        if (singles >= 2) em.addMore(h("label", { class: "row", style: "min-height:44px", title: "Adds one summary line to the Power card, 'All circuits, total', and its demand figures. With a limit set above, also one bar: the amps of all this meter's circuits added together" },
+          combined, " All circuits, total (summary line; with a limit above, also a combined load bar)"));
       }
       rows.push(em); box.append(em.el);
       kinds.slice(1).forEach((k) => {
@@ -911,7 +931,8 @@
           ...(c.three_phase ? {} : { phase: line.value }), rating_a: Number(cr.value) || 0, breaker_a: Number(cb.value) || 0, in_total: inTotal.checked });
         ec.basic.prepend(label);
         ec.basic.append(h("label", { class: "row", style: "min-height:44px" }, inTotal, " Include in site total"));
-        ec.addMore(...ec.wayField(), c.three_phase ? h("span", { class: "muted" }, "Line: 3P (all three lines)") : field("Line", line), ...limitFields(cr, cb));
+        ec.addMore(...ec.wayField(), c.three_phase ? h("span", { class: "muted" }, "Line: 3P (all three lines)") : field("Line", line), ...limitFields(cr, cb),
+          ...useNameButton(m, label, (r) => (r.channels || {})[c.key], "circuit"), c.device_name ? h("span", { class: "muted" }, `Name on the meter: ${c.device_name}`) : null);
         rows.push(ec); box.append(ec.el);
       });
       metersBox.append(box);

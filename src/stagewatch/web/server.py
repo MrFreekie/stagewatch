@@ -2103,6 +2103,18 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(422, f"{SHELLY_TEXT.get(exc.category, SHELLY_TEXT['unreachable'])} Nothing has been changed.") from None
         return {"ok": True}
 
+    @app.post("/api/admin/shelly/{device_id}/names", dependencies=admin_deps)
+    async def shelly_names(device_id: str):
+        """Read the names typed into the meter (one read-only request) and return them as suggestions. Nothing is
+        saved and nothing is sent to the meter; an unreachable meter or one with no names gives empty names."""
+        shelly_rate_limit()
+        try:
+            return {"ok": True, **await shelly_integ().read_device_names(device_id)}
+        except LookupError:
+            raise HTTPException(404, "No such power meter") from None
+        except ShellyError as exc:
+            raise HTTPException(422, f"{SHELLY_TEXT.get(exc.category, SHELLY_TEXT['unreachable'])} Nothing has been changed.") from None
+
     @app.post("/api/admin/shelly/{device_id}/warnings", dependencies=admin_deps)
     async def shelly_warnings(device_id: str):
         """Make the 80 % and 100 % load warnings from the rating typed in (ordinary thresholds)."""
