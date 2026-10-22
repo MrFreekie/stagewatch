@@ -13,7 +13,7 @@ Both cards are switched off until your tech sets them up and adds them to a dash
 > measurement, not a hearing-safety tool and not a noise-limit tool. Check with your own
 > measurement tools and your ears before you change anything.
 >
-> **Tested on hardware: pending.** Checked in emulate mode and against hand-calculated figures.
+> **Tested on hardware:** works with a BME280 node and a real marker pair. Also checked in emulate mode and against hand-calculated figures.
 > Not yet tried through a real show.
 
 ## Use the cards on the day

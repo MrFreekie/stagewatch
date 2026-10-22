@@ -15,8 +15,8 @@ Readings are stored once a second (the latest roll and pitch, and the peak accel
 second), not at the sensor's 10 Hz.
 
 STATUS: written from WitMotion's BLE 5.0 protocol page and checked against real captures of one
-WT901BLECL (advertising as WT901BLE67, firmware 10080.1.8). The Bluetooth link itself (bleak) has not
-yet been run on a Raspberry Pi; Windows (including the SYSTEM boot task) is untested. Use ``--emulate``
+WT901BLECL (advertising as WT901BLE67, firmware 10080.1.8). The Bluetooth link itself (bleak) has been
+run on a Raspberry Pi with real sensors (owner, 22/10/2026); Windows (including the SYSTEM boot task) is untested. Use ``--emulate``
 to see it with no hardware.
 """
 
@@ -58,8 +58,8 @@ MANIFEST = Manifest(
                 "asks for the battery and temperature); it never changes a setting and never pairs. When "
                 "the link is lost every reading is a gap and a marker is made, with nothing filled in. "
                 "The battery percentage is approximate; the temperature is the sensor chip's, not the "
-                "air's. Checked against real captures of one WT901BLECL; the Bluetooth link has not yet "
-                "been run on a Raspberry Pi and Windows is untested. Needs the 'bleak' package. "
+                "air's. Checked against real captures of one WT901BLECL; the Bluetooth link works on a "
+                "Raspberry Pi; Windows is untested. Needs the 'bleak' package. "
                 "Equipment: never part of the site averages.",
     tier="experimental",
     direction="in",

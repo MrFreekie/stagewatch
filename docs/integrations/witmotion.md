@@ -138,8 +138,8 @@ See [Troubleshooting: WitMotion tilt sensor](../troubleshooting.md#witmotion-til
 
 ## Known limits
 
-* The Bluetooth link has been tried against real captures only. It has **not yet been run on a Raspberry Pi** with a real sensor.
+* The Bluetooth link works on a Raspberry Pi with real sensors. It has **not yet been run on Windows**.
 * Whether the sensor puts its Bluetooth service in its advertisement is not known, so Stagewatch does not scan by service.
 * The battery voltage is read as the raw number divided by 100 (411 means 4.11 V). That is worked out from one sensor, not documented by WitMotion. The percentage is a rough lithium-cell curve.
 * Up to four sensors. More than two or three has not been tried.
-* The Admin card and **Find sensors** have been tried against a simulated Bluetooth scanner and in --emulate only. The real Bluetooth search has not yet been run on a Raspberry Pi or Windows.
+* The Admin card and **Find sensors** have been tried against a simulated Bluetooth scanner and in --emulate only. The real Bluetooth search works on a Raspberry Pi; it has not yet been run on Windows.
