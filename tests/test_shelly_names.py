@@ -210,5 +210,5 @@ def test_card_shows_the_device_total_only_when_asked_for():
     assert "const showTotal = multi && !!device.combined_bar;" in js
     assert 'if (multi && !showTotal) return "";' in js            # the meter's demand rows go with it
     assert "All circuits, total (calculated)" in js
-    adm = (STATIC / "admin.js").read_text(encoding="utf-8")
+    adm = (STATIC / "admin.js").read_text(encoding="utf-8") + (STATIC / "power-distribution.js").read_text(encoding="utf-8")
     assert "All circuits, total (summary line" in adm and "Use the device's name" in adm
