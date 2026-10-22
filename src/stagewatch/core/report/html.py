@@ -25,11 +25,19 @@ def _cell(v: object) -> str:
     return str(v) if isinstance(v, Raw) else e(v)
 
 
-def table(headers: list[str], rows: list[list], cls: str = "") -> str:
+CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"
+ROW_CAP = 200   # rows shown in one table; the rest are in the CSV
+
+
+def table(headers: list[str], rows: list[list], cls: str = "", cap: int | None = None) -> str:
+    more = 0
+    if cap is not None and len(rows) > cap:
+        more, rows = len(rows) - cap, rows[:cap]
     head = "".join(f"<th>{e(h)}</th>" for h in headers)
     body = "".join("<tr>" + "".join(f"<td>{_cell(c)}</td>" for c in r) + "</tr>" for r in rows)
+    note = f'<p class="mut">... {more} more, in the CSV</p>' if more else ""
     return (f'<div class="scroll"><table class="{e(cls)}"><thead><tr>{head}</tr></thead>'
-            f"<tbody>{body}</tbody></table></div>")
+            f"<tbody>{body}</tbody></table></div>{note}")
 
 
 def _section(key: str, body: str) -> str:
@@ -109,6 +117,7 @@ def render_html(data: ReportData) -> str:
     return ("<!doctype html>\n<html lang=\"en-GB\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
             "<meta name=\"referrer\" content=\"no-referrer\">"
+            f"<meta http-equiv=\"Content-Security-Policy\" content=\"{CSP}\">"
             f"<title>{e(title)}</title><style>{CSS}</style></head><body><main>" + "".join(parts) +
             "</main></body></html>")
 
@@ -152,14 +161,14 @@ def _gaps(g: dict, data: ReportData) -> str:
     if g["down"]:
         rows = [[_d(d["start"], data), _d(d["end"], data), fmt.duration(d["length_s"]), d["how_ended"], d["note"]]
                 for d in g["down"]]
-        out.append("<h3>Stagewatch not recording</h3>" + table(["From", "To", "Length", "How it ended", "Note"], rows))
+        out.append("<h3>Stagewatch not recording</h3>" + table(["From", "To", "Length", "How it ended", "Note"], rows, cap=ROW_CAP))
     else:
         out.append("<p>Stagewatch was recording for the whole range.</p>")
     if g["sensor"]:
         rows = [[x["sensor"], _d(x["start"], data), _d(x["end"], data), fmt.duration(x["length_s"]), x["outage"]]
                 for x in g["sensor"]]
         out.append("<h3>Sensors with no readings while Stagewatch was recording</h3>"
-                   + table(["Sensor", "From", "To", "Length", "Linked to"], rows))
+                   + table(["Sensor", "From", "To", "Length", "Linked to"], rows, cap=ROW_CAP))
     for j in g["clock_jumps"]:
         out.append(f'<p class="warn">The computer clock moved backwards when Stagewatch started at {e(_d(j["ts"], data))}.</p>')
     for n in g["notes"]:
@@ -289,7 +298,7 @@ def _devices(d: dict, data: ReportData) -> str:
                _t(r["end"], data), fmt.duration(r["duration_s"]), r["status"] + ("" if hide or not r["detail"] else f' ({r["detail"]})'),
                r["end_text"]]
         rows.append(row)
-    return table(["Device", "Area", "From", "To", "Duration", "Status", "Ended"], rows)
+    return table(["Device", "Area", "From", "To", "Duration", "Status", "Ended"], rows, cap=ROW_CAP)
 
 
 def _markers(m: dict, data: ReportData) -> str:
@@ -306,16 +315,16 @@ def _markers(m: dict, data: ReportData) -> str:
         rows.append(base)
     hdr = ["No.", "Time", "Label"] if m.get("minimal") else \
         ["No.", "Time", "Label", "Source", "Site °C", "Site %RH", "Travel change vs first (ms)", "vs previous (ms)"]
-    return table(hdr, rows)
+    return table(hdr, rows, cap=ROW_CAP)
 
 
 def _schedule(s: dict, data: ReportData) -> str:
     if not s["rows"]:
         return "<p>No planned items in this range.</p>"
-    return table(["Time", "Stage", "Kind", "Title"], [[_t(r["start"], data), r["stage"], r["kind"], r["title"]] for r in s["rows"]])
+    return table(["Time", "Stage", "Kind", "Title"], [[_t(r["start"], data), r["stage"], r["kind"], r["title"]] for r in s["rows"]], cap=ROW_CAP)
 
 
 def _system(s: dict, data: ReportData) -> str:
     if not s["rows"]:
         return "<p>No updates, rollbacks or restarts in this range.</p>"
-    return table(["Time", "Source", "Event", "Detail"], [[_t(r["ts"], data), r["source"], r["event"], r["message"]] for r in s["rows"]])
+    return table(["Time", "Source", "Event", "Detail"], [[_t(r["ts"], data), r["source"], r["event"], r["message"]] for r in s["rows"]], cap=ROW_CAP)

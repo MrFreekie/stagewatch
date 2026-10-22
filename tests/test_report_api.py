@@ -188,3 +188,34 @@ def test_sharing_with_system_or_schedule_sections_is_refused(client):
     assert r.status_code == 200
     r = client.get(REPORT, params={"show_id": client.show, "sections": "system"})     # a full report may have them
     assert r.status_code == 200
+
+
+def test_csp_in_the_page_and_in_the_header(client):
+    r = client.get(REPORT, params={"show_id": client.show})
+    assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+    meta = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)"', r.text)
+    assert meta, "the page carries its own policy"
+    for part in ("default-src 'none'", "style-src 'unsafe-inline'", "img-src data:", "base-uri 'none'", "form-action 'none'"):
+        assert part in meta.group(1)
+    z = zipfile.ZipFile(io.BytesIO(client.get(ZIP, params={"show_id": client.show}).content))
+    assert "Content-Security-Policy" in z.read("report.html").decode("utf-8")
+
+
+def test_demo_day_waits_for_the_report_lock(client):
+    started, release = threading.Event(), threading.Event()
+    real = client.hub.recorder.flush
+
+    def slow_flush():
+        started.set()
+        release.wait(5)
+        real()
+    client.hub.recorder.flush = slow_flush
+    t = threading.Thread(target=lambda: client.get(REPORT, params={"show_id": client.show}))
+    t.start()
+    assert started.wait(5)
+    second = TestClient(client.app)
+    second.cookies.update(client.cookies)
+    r = second.post(DEMO)
+    release.set()
+    t.join(10)
+    assert r.status_code == 429 and r.json()["detail"].startswith("A report is already being made")

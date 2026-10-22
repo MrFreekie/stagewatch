@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 from ..core.report import ALL_SECTIONS, ReportError, ReportScope, build_report, make_zip, open_readonly, render_html
 from ..core.report import demo as report_demo
 from ..core.report import redact
+from ..core.report.html import CSP
 from ..core.report.fmt import file_name, slug, span_label  # noqa: F401  (file_name is shared with the command line)
 from ..core.report.query import DEFAULT_DEADLINE_S, TOO_LONG_TEXT, columns, get_show, list_shows
 
@@ -163,7 +164,7 @@ def register(app: FastAPI, hub, admin_deps: list) -> None:
         disp = "attachment" if download else "inline"
         return Response(text.encode("utf-8"), media_type="text/html; charset=utf-8", headers={
             **headers, "Content-Disposition": f'{disp}; filename="{name}"',
-            "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'"})
+            "Content-Security-Policy": CSP + "; frame-ancestors 'none'"})
 
     @app.get("/api/admin/report/data.zip", dependencies=admin_deps)
     async def report_zip(scope: ReportScope = Depends(scope_params)):
@@ -179,7 +180,10 @@ def register(app: FastAPI, hub, admin_deps: list) -> None:
     async def report_demo_day():
         if not hub.emulate:
             raise HTTPException(409, "The demo day only works in emulate mode. Nothing has been changed.")
-        hub.recorder.flush()
-        show_id = await asyncio.to_thread(report_demo.seed_demo_day, hub.recorder, time.time(), hub.config.site)
+        if lock.locked():
+            raise HTTPException(429, BUSY, headers={"Retry-After": "5"})
+        async with lock:                 # not while a report is being read
+            hub.recorder.flush()
+            show_id = await asyncio.to_thread(report_demo.seed_demo_day, hub.recorder, time.time(), hub.config.site)
         hub.bus.publish("config", None)
         return {"ok": True, "show_id": show_id}

@@ -330,7 +330,7 @@ def test_html_escapes_hostile_names(tmp_path):
     assert "<script" not in page.lower()
     assert '"><svg' not in page and "<img src=x" not in page and "<b>Show" not in page and "<i>Area" not in page
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
-    assert "http" not in page.replace("http://www.w3.org/2000/svg", "")
+    assert "http" not in page.replace("http://www.w3.org/2000/svg", "").replace("http-equiv", "")
 
 
 def test_sharing_excerpt_defaults_and_no_leak(dbfile):
@@ -592,3 +592,22 @@ def test_report_removes_config_secrets_from_marker_labels(dbfile):
     finally:
         conn.close()
     assert "SeCrEt-Value-9" not in render_html(d)
+
+
+# ------------------------------------------------------------------ table row caps (security review L7)
+def test_html_tables_are_capped_with_a_pointer_to_the_csv(dbfile):
+    db = sqlite3.connect(str(dbfile))
+    db.executemany("INSERT INTO markers (show_id, ts, label, source) VALUES (1, ?, ?, 'admin')",
+                   [(T0 + 400 + i, f"bulk marker {i}") for i in range(250)])
+    db.executemany("INSERT INTO alarm_log (show_id, ts, alarm_id, event, level, message) VALUES (1,?,?,?,?,?)",
+                   [(T0 + 400 + i, "hub", "restart", 0, f"event {i}") for i in range(250)])
+    db.commit()
+    db.close()
+    d = report(dbfile)
+    html = render_html(d)
+    assert len(d.sections["markers"]["rows"]) > 250                 # all of them are in the data (and the CSV)
+    assert "bulk marker 100" in html and "bulk marker 249" not in html
+    assert re.search(r"\.\.\. \d+ more, in the CSV", html)
+    assert html.count("more, in the CSV") >= 2                      # markers and system events
+    csv_blob = csv_zip.csv_files(d)["markers.csv"].decode("utf-8")
+    assert "bulk marker 249" in csv_blob
