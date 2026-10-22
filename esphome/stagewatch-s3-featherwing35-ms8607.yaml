@@ -49,11 +49,12 @@
 # Secrets used: wifi_ssid, wifi_password, ota_password, api_encryption_key (a different
 # key per node) and wifi_ap_password (the fallback access point).
 #
-# Status: validated with `esphome config` on ESPHome 2026.9.1; UNTESTED on hardware.
-# ESPHome has no ready-made HX8357D model, so the panel start-up commands below are the
-# ones from Adafruit's HX8357 library, typed in by hand: if the screen stays white or
-# shows noise, that sequence is the first suspect. If the picture is upside down use
-# rotation: 270°; if the colours look wrong, flip invert_colors or color_order.
+# Status: validated with `esphome config` on ESPHome 2026.9.1 and tested on hardware:
+# the screen works and the node runs in ESPHome. The battery readings have not been
+# seen on a real board yet. ESPHome has no ready-made HX8357D model, so the panel
+# start-up commands below are the ones from Adafruit's HX8357 library. If the picture
+# is upside down use rotation: 270°; if the colours look wrong, flip invert_colors
+# or color_order.
 
 substitutions:
   node_name: stagewatch-s3-wing-ms8607-1   # unique per node: becomes <name>.local
