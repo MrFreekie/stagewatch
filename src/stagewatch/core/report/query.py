@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import math
 import sqlite3
-import statistics
 import time
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,6 +21,10 @@ HOLD_S = 120.0          # a reading counts for this long at most; after that it 
 BUCKET_S = 60.0         # means are the mean of one-minute bucket means
 MAX_CUSTOM_S = 24 * 3600
 DEFAULT_DEADLINE_S = 30.0
+MAX_DAY_S = 48 * 3600   # the "whole day" range stops here: more than this is too much to read
+TOO_LONG_TEXT = ("That range is too long to report on. A chosen range can be at most 24 hours, and a whole day "
+                 "at most 48 hours. Choose a shorter range.")
+MAX_ROWS = 4_000_000    # readings one report may read in total
 
 
 class ReportError(Exception):
@@ -130,8 +134,6 @@ def resolve_window(conn: sqlite3.Connection, site, scope: ReportScope, now: floa
     label = "whole show day"
     if preset == "day":
         start, end = s_start, s_end
-        if s_end - s_start > 7 * 86400:
-            notes.append("This show was left open for several days; the whole of it is reported.")
     elif preset == "show_time":
         if "schedule_items" not in tables(conn):
             raise ReportError("no_doors_curfew", "No doors/curfew in the schedule.")
@@ -169,8 +171,10 @@ def resolve_window(conn: sqlite3.Connection, site, scope: ReportScope, now: floa
     if end <= start:
         raise ReportError("empty_range", "That range is empty.")
     if preset != "day" and end - start > MAX_CUSTOM_S:
-        raise ReportError("too_long", "A range can be at most 24 hours. Use the whole day for longer.")
+        raise ReportError("too_long", TOO_LONG_TEXT)
     clipped = False
+    if preset == "day" and end - start > MAX_DAY_S:
+        raise ReportError("too_long", TOO_LONG_TEXT)
     if start < s_start or end > s_end:
         start, end, clipped = max(start, s_start), min(end, s_end), True
         if end <= start:
@@ -209,34 +213,70 @@ class SeriesStats:
     buckets: list[tuple[float, float, float, float]] = field(default_factory=list)  # (t, mean, min, max)
 
 
-def summarise(rows: list[tuple[float, float | None]], start: float, end: float,
-              hold: float = HOLD_S, bucket: float = BUCKET_S) -> SeriesStats:
-    """Statistics of one entity over [start, end].  ``rows`` are (ts, value) in time order; a None
-    value means "no reading" and is a gap.  A reading holds until the next one but never longer
-    than ``hold``; the rest is a gap and is never filled in."""
+class Budget:
+    """What one report may use: a cap on the rows read and a deadline checked inside the Python
+    loops (SQLite's own progress handler only sees time spent inside SQLite)."""
+
+    def __init__(self, max_rows: int | None = None, deadline_s: float | None = DEFAULT_DEADLINE_S) -> None:
+        self.max_rows = MAX_ROWS if max_rows is None else max_rows
+        self.rows = 0
+        self.limit = None if not deadline_s else time.monotonic() + deadline_s
+
+    def tick(self, n: int = 1) -> None:
+        before = self.rows
+        self.rows += n
+        if self.rows > self.max_rows:
+            raise ReportError("too_big", "There is too much data in that range to report on. Try a shorter range.")
+        if self.limit is not None and (before >> 12) != (self.rows >> 12) and time.monotonic() > self.limit:
+            raise ReportError("deadline", "The report took too long. Try a shorter range.")
+
+    def check(self) -> None:
+        if self.limit is not None and time.monotonic() > self.limit:
+            raise ReportError("deadline", "The report took too long. Try a shorter range.")
+
+
+def _median_of(counts: dict[float, int], n: int) -> float | None:
+    if n <= 0:
+        return None
+    keys = sorted(counts)
+    lo_i, hi_i = (n - 1) // 2, n // 2
+    seen = 0
+    lo = hi = None
+    for k in keys:
+        seen += counts[k]
+        if lo is None and seen > lo_i:
+            lo = k
+        if seen > hi_i:
+            hi = k
+            break
+    return (lo + hi) / 2.0 if lo is not None and hi is not None else None
+
+
+def summarise(rows: Iterable[tuple[float, float | None]], start: float, end: float,
+              hold: float = HOLD_S, bucket: float = BUCKET_S, budget: Budget | None = None) -> SeriesStats:
+    """Statistics of one entity over [start, end].  ``rows`` are (ts, value) in time order (a list or
+    a cursor: it is read once and never held); a None value means "no reading" and is a gap.  A
+    reading holds until the next one but never longer than ``hold``; the rest is a gap and is never
+    filled in.  Only running figures and the one-minute buckets are kept."""
     st = SeriesStats()
     span = max(end - start, 1e-9)
-    pts = [(t, v) for t, v in rows if start <= t <= end]
-    if not pts:
-        st.gaps = [(start, end)]
-        return st
     nb = int(math.ceil(span / bucket))
     wsum = [0.0] * nb
     cov = [0.0] * nb
     bmin: list[float | None] = [None] * nb
     bmax: list[float | None] = [None] * nb
     gaps: list[tuple[float, float]] = []
-    if pts[0][0] - start > hold:
-        gaps.append((start, pts[0][0]))
-    dts = []
-    for i, (t, v) in enumerate(pts):
-        nxt = pts[i + 1][0] if i + 1 < len(pts) else end
-        if i + 1 < len(pts):
-            dts.append(nxt - t)
+    dts: dict[float, int] = {}
+    ndt = 0
+    seen_any = False
+    prev: tuple[float, float | None] | None = None
+
+    def finish(t: float, v: float | None, nxt: float) -> None:
+        nonlocal gaps
         good = v is not None and v == v and abs(v) != math.inf
         if not good:
             gaps.append((t, nxt))
-            continue
+            return
         st.n += 1
         if st.min is None or v < st.min:
             st.min, st.min_ts = v, t
@@ -258,6 +298,29 @@ def summarise(rows: list[tuple[float, float | None]], start: float, end: float,
             st.integral += v * w
             st.covered_s += w
             a = b
+        if len(gaps) > 20000:
+            gaps = merge_spans(gaps)
+
+    for t, v in rows:
+        if t < start or t > end:
+            continue
+        if budget is not None:
+            budget.tick()
+        if prev is None:
+            if t - start > hold:
+                gaps.append((start, t))
+        else:
+            dt = t - prev[0]
+            key = round(dt, 3)
+            dts[key] = dts.get(key, 0) + 1
+            ndt += 1
+            finish(prev[0], prev[1], t)
+        seen_any = True
+        prev = (t, v)
+    if not seen_any:
+        st.gaps = [(start, end)]
+        return st
+    finish(prev[0], prev[1], end)
     st.coverage = min(1.0, st.covered_s / span)
     means = []
     for i in range(nb):
@@ -267,8 +330,7 @@ def summarise(rows: list[tuple[float, float | None]], start: float, end: float,
             st.buckets.append((start + i * bucket, m, bmin[i] if bmin[i] is not None else m,
                                bmax[i] if bmax[i] is not None else m))
     st.mean = sum(means) / len(means) if means else None
-    if dts:
-        st.interval_s = statistics.median(dts)
+    st.interval_s = _median_of(dts, ndt)
     st.gaps = merge_spans(gaps)
     return st
 
@@ -332,16 +394,30 @@ def counter_delta(rows: list[tuple[float, float | None]], start: float, end: flo
     return res
 
 
+def iter_rows(conn: sqlite3.Connection, show_id: int, entity_id: str, start: float, end: float,
+              budget: Budget | None = None) -> Iterator[tuple[float, float | None]]:
+    """The readings of one entity in time order, one at a time (a cursor, never a list)."""
+    cur = conn.execute("SELECT ts, value FROM states WHERE show_id = ? AND entity_id = ? "
+                       "AND ts >= ? AND ts <= ? ORDER BY ts", (show_id, entity_id, start, end))
+    try:
+        for row in cur:
+            if budget is not None:
+                budget.tick()
+            yield row
+    finally:
+        cur.close()
+
+
 def read_rows(conn: sqlite3.Connection, show_id: int, entity_id: str, start: float, end: float
               ) -> list[tuple[float, float | None]]:
-    return conn.execute("SELECT ts, value FROM states WHERE show_id = ? AND entity_id = ? "
-                        "AND ts >= ? AND ts <= ? ORDER BY ts", (show_id, entity_id, start, end)).fetchall()
+    return list(iter_rows(conn, show_id, entity_id, start, end))
 
 
 def entities_with_data(conn: sqlite3.Connection, show_id: int, start: float, end: float) -> list[str]:
-    return [r[0] for r in conn.execute(
+    cur = conn.execute(
         "SELECT DISTINCT entity_id FROM states WHERE show_id = ? AND ts >= ? AND ts <= ? ORDER BY entity_id",
-        (show_id, start, end))]
+        (show_id, start, end))
+    return [r[0] for r in cur]
 
 
 def value_near(conn, show_id: int, entity_id: str, ts: float, lo: float, max_age_s: float = 600.0) -> float | None:

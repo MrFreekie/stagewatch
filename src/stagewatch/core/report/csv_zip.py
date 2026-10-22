@@ -161,12 +161,19 @@ def csv_files(data: ReportData) -> dict[str, bytes]:
 
 
 def make_zip(data: ReportData, max_bytes: int = MAX_ZIP_BYTES) -> bytes:
-    """report.html plus one CSV per section, as ZIP bytes.  Refuses a result over ``max_bytes``."""
+    """report.html plus one CSV per section, as ZIP bytes.  The size is checked as each file is
+    added, so a huge result stops early; refuses a result over ``max_bytes`` (``too_big``)."""
+    too_big = ReportError("too_big", "The data is too large to download. Try a shorter range.")
     buf = io.BytesIO()
+    raw = 0
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("report.html", render_html(data).encode("utf-8"))
-        for name, blob in csv_files(data).items():
+        files = {"report.html": render_html(data).encode("utf-8")}
+        files.update(csv_files(data))
+        for name, blob in files.items():
+            raw += len(blob)
+            if raw > max_bytes * 4:
+                raise too_big
             z.writestr(name, blob)
-    if buf.tell() > max_bytes:
-        raise ReportError("too_big", "The data is too large to download. Try a shorter range.")
+            if buf.tell() > max_bytes:
+                raise too_big
     return buf.getvalue()

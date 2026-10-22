@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 from ..core.report import ALL_SECTIONS, ReportError, ReportScope, build_report, make_zip, open_readonly, render_html
 from ..core.report import demo as report_demo
 from ..core.report import redact
-from ..core.report.query import DEFAULT_DEADLINE_S, get_show, list_shows
+from ..core.report.query import DEFAULT_DEADLINE_S, TOO_LONG_TEXT, get_show, list_shows
 
 log = logging.getLogger("stagewatch.report")
 
@@ -41,7 +41,7 @@ ERRORS = {
     "bad_time": (422, "Times must be written as HH:MM, for example 19:30."),
     "end_before_start": (422, "The end is before the start. Times before 06:00 count as the next morning."),
     "empty_range": (422, "That range is empty."),
-    "too_long": (422, "A range can be at most 24 hours. Use the whole day for longer."),
+    "too_long": (422, TOO_LONG_TEXT),
     "outside_show": (422, "That range is outside this show."),
     "bad_preset": (422, "Unknown range."),
     "bad_sections": (422, "Unknown section."),
@@ -97,7 +97,8 @@ def register(app: FastAPI, hub, admin_deps: list) -> None:
         live = hub.recorder.run_id is not None
         conn = open_readonly(hub.recorder.path, app.state.report_deadline_s)
         try:
-            data = build_report(conn, hub.config, scope, time.time(), "this hub", live)
+            data = build_report(conn, hub.config, scope, time.time(), "this hub", live,
+                               deadline_s=app.state.report_deadline_s)
             show = data.window.show
             span = ""
             if data.window.preset != "day":

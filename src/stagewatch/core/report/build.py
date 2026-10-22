@@ -20,8 +20,8 @@ from typing import Any
 from ... import acoustics
 from ...version import __version__
 from . import fmt, redact
-from .query import (HOLD_S, ReportError, ReportScope, SeriesStats, Window, columns, counter_delta,
-                    down_periods, dst_changes, entity_meta, is_deadline, merge_spans, read_rows,
+from .query import (DEFAULT_DEADLINE_S, HOLD_S, Budget, CounterResult, ReportError, ReportScope, SeriesStats, Window,
+                    columns, counter_delta, down_periods, dst_changes, entity_meta, is_deadline, iter_rows, merge_spans,
                     resolve_window, run_spans, silent_periods, subtract_spans, summarise, tables,
                     value_near)
 from .. import sitetime
@@ -35,6 +35,7 @@ SECTION_NAMES = {
 }
 LEVEL_NAMES = {1: "advisory", 2: "alert", 3: "stop"}
 ALARM_ROW_CAP = 500
+MAX_MARKERS = 5000
 MIN_SENSOR_GAP_S = 60.0
 
 ENV_KINDS = (  # kind, title, unit shown, decimals, scale from the stored unit
@@ -67,28 +68,39 @@ class ReportData:
 
 
 class _Ctx:
-    def __init__(self, conn, cfg, site, win: Window, scope: ReportScope, now: float, live: bool) -> None:
+    def __init__(self, conn, cfg, site, win: Window, scope: ReportScope, now: float, live: bool,
+                 budget: Budget | None = None) -> None:
+        self.budget = budget or Budget()
         self.conn, self.cfg, self.site, self.win, self.scope, self.now = conn, cfg, site, win, scope, now
         self.S, self.E, self.show_id = win.start, win.end, win.show["id"]
         self.meta = entity_meta(conn)
         self.runs = run_spans(conn, self.show_id, now, live)
-        self._series: dict[str, tuple[list, SeriesStats]] = {}
+        self._series: dict[str, SeriesStats] = {}
         self.sensor_gaps: list[tuple[str, str, float, float]] = []   # label, device_id, a, b
         self.tables = tables(conn)
         self.distance_m = float(getattr(getattr(cfg, "site", None), "reference_distance_m", 30.0) or 30.0)
 
-    def series(self, entity_id: str) -> tuple[list, SeriesStats]:
+    def series(self, entity_id: str) -> SeriesStats:
+        """Running statistics and one-minute buckets of one entity.  The readings themselves are
+        read from a cursor and never kept."""
         if entity_id not in self._series:
-            rows = read_rows(self.conn, self.show_id, entity_id, self.S, self.E)
-            self._series[entity_id] = (rows, summarise(rows, self.S, self.E))
+            rows = iter_rows(self.conn, self.show_id, entity_id, self.S, self.E, self.budget)
+            self._series[entity_id] = summarise(rows, self.S, self.E)
         return self._series[entity_id]
+
+    def counter(self, entity_id: str) -> CounterResult:
+        """The increases of a cumulative counter, read from a cursor."""
+        return counter_delta(iter_rows(self.conn, self.show_id, entity_id, self.S, self.E, self.budget),
+                             self.S, self.E)
 
 
 # ------------------------------------------------------------------ entry point
 def build_report(conn, cfg, scope: ReportScope, now: float, source_label: str = "this hub",
-                 live: bool = False, notes: list[str] | None = None) -> ReportData:
+                 live: bool = False, notes: list[str] | None = None,
+                 deadline_s: float | None = DEFAULT_DEADLINE_S) -> ReportData:
     """Make the report for ``scope``.  ``conn`` comes from ``query.open_readonly``.  ``live`` says the
-    newest hub run is still going (the running hub is making the report)."""
+    newest hub run is still going (the running hub is making the report).  ``deadline_s`` bounds the
+    time spent in Python loops as well as in SQLite (None = no limit, for the command line)."""
     cfg_site = getattr(cfg, "site", None)
     warnings: list[str] = list(notes or [])    # e.g. the command line could not read the config
     tz = (getattr(cfg_site, "timezone", "") or "").strip()
@@ -110,7 +122,7 @@ def build_report(conn, cfg, scope: ReportScope, now: float, source_label: str = 
         warnings.append("Time zone not set; times are shown in this computer's zone.")
     del probe
     win = resolve_window(conn, site, scope, now)
-    ctx = _Ctx(conn, cfg, site, win, scope, now, live)
+    ctx = _Ctx(conn, cfg, site, win, scope, now, live, Budget(deadline_s=deadline_s))
     wanted = _wanted_sections(scope)
     sections: dict[str, Any] = {}
     charts: dict = {}
@@ -149,6 +161,8 @@ def build_report(conn, cfg, scope: ReportScope, now: float, source_label: str = 
     if "markers" in wanted:
         try:
             markers = _markers(ctx)
+        except ReportError:
+            raise
         except Exception as e:  # noqa: BLE001
             if is_deadline(e):
                 raise ReportError("deadline", "The report took too long. Try a shorter range.") from None
@@ -239,11 +253,12 @@ def _alarms_all(ctx: _Ctx) -> dict:
     active shows no raise time, and an earlier acknowledge is only "acknowledged before this range"."""
     S, E = ctx.S, ctx.E
     rows = ctx.conn.execute("SELECT ts, alarm_id, event, level, message FROM alarm_log "
-                            "WHERE show_id = ? AND ts <= ? ORDER BY id", (ctx.show_id, E)).fetchall()
+                            "WHERE show_id = ? AND ts <= ? ORDER BY id", (ctx.show_id, E))
     cur: dict[str, dict] = {}
     done: list[dict] = []
     system: list[dict] = []
     for ts, aid, ev, level, msg in rows:
+        ctx.budget.tick()
         silent = str(msg).endswith(" (silent)")
         msg = str(msg)[:-9] if silent else str(msg)
         if aid in ("hub", "software"):
@@ -388,7 +403,7 @@ def _gaps(ctx: _Ctx, downs: dict, outages: list[dict]) -> dict:
 
 # ------------------------------------------------------------------ environment
 def _stat_row(ctx: _Ctx, entity_id: str, scale: float, label: str | None = None) -> dict | None:
-    rows, st = ctx.series(entity_id)
+    st = ctx.series(entity_id)
     if st.n == 0:
         return None
     lab, area = _label(ctx, entity_id)
@@ -416,7 +431,7 @@ def _env(ctx: _Ctx, charts: dict) -> dict | None:
             if row is None:
                 continue
             sensor_rows.append(row)
-            st = ctx.series(eid)[1]
+            st = ctx.series(eid)
             lines.append({"label": row["label"], "points": _line(st, scale)})
             for a, b in st.gaps:
                 ctx.sensor_gaps.append((row["label"], m["device_id"], a, b))
@@ -425,7 +440,7 @@ def _env(ctx: _Ctx, charts: dict) -> dict | None:
         kinds.append({"kind": kind, "title": title, "unit": unit, "decimals": dec, "site": site_row,
                       "sensors": sensor_rows})
         chart_list.append({"kind": kind, "title": f"{title} ({unit})", "unit": unit,
-                           "band": _line(ctx.series(site_id)[1], scale) if site_row else [], "lines": lines[:8],
+                           "band": _line(ctx.series(site_id), scale) if site_row else [], "lines": lines[:8],
                            "more": max(0, len(lines) - 8)})
     charts["env"] = chart_list
     extra = {}
@@ -455,7 +470,7 @@ def _wind(ctx: _Ctx) -> dict | None:
             r["gust"] = eid in gust
             r["unit"] = ctx.meta[eid].get("unit") or "m/s"
             rows.append(r)
-            for a, b in ctx.series(eid)[1].gaps:
+            for a, b in ctx.series(eid).gaps:
                 ctx.sensor_gaps.append((r["label"], ctx.meta[eid]["device_id"], a, b))
     if not rows:
         return None
@@ -476,7 +491,7 @@ def _spl(ctx: _Ctx) -> dict | None:
         r["labels"] = ", ".join(f"{v}" for v in ((m.get("doc") or {}).get("labels") or {}).values()) \
             if isinstance((m.get("doc") or {}).get("labels"), dict) else ""
         rows.append(r)
-        for a, b in ctx.series(eid)[1].gaps:
+        for a, b in ctx.series(eid).gaps:
             ctx.sensor_gaps.append((r["label"], m["device_id"], a, b))
     revisions, at_start = [], []
     if "spl_limit_revisions" in ctx.tables:
@@ -521,16 +536,19 @@ def _power(ctx: _Ctx) -> dict | None:
         kind = m["kind"]
         if kind not in POWER_KINDS and kind != "energy":
             continue
-        rows, st = ctx.series(eid)
-        if st.n == 0:
-            continue
-        lab, _area = _label(ctx, eid)
         if kind == "energy":
-            res = counter_delta(rows, ctx.S, ctx.E)
+            res = ctx.counter(eid)
+            if res.n == 0:
+                continue
+            lab, _area = _label(ctx, eid)
             per_device_energy[m["device_id"]] = per_device_energy.get(m["device_id"], 0) + 1
             energy.append({"label": lab, "device_id": m["device_id"], "kwh": res.delta / 1000.0, "method": "meter counter",
                            "estimated": False, "resets": res.resets, "gap_s": res.gap_s})
             continue
+        st = ctx.series(eid)
+        if st.n == 0:
+            continue
+        lab, _area = _label(ctx, eid)
         row = _stat_row(ctx, eid, 1.0)
         row["unit"] = m["unit"] or POWER_KINDS[kind]
         row["kind"] = kind
@@ -549,7 +567,7 @@ def _power(ctx: _Ctx) -> dict | None:
     have_counter = {e["device_id"] for e in energy}
     for eid, m in sorted(ctx.meta.items()):
         if m["kind"] == "power" and m["device_id"] not in have_counter:
-            rows, st = ctx.series(eid)
+            st = ctx.series(eid)
             if st.n:
                 lab, _a = _label(ctx, eid)
                 energy.append({"label": lab, "device_id": m["device_id"], "kwh": st.integral / 3600.0 / 1000.0,
@@ -574,10 +592,14 @@ def _markers(ctx: _Ctx) -> list[dict]:
     cols = columns(ctx.conn, "markers")
     note = "note" if "note" in cols else "''"
     rows = ctx.conn.execute(f"SELECT id, ts, label, source, {note} FROM markers WHERE show_id = ? "
-                            "AND ts >= ? AND ts <= ? ORDER BY ts, id", (ctx.show_id, ctx.S, ctx.E)).fetchall()
+                            "AND ts >= ? AND ts <= ? ORDER BY ts, id LIMIT ?",
+                            (ctx.show_id, ctx.S, ctx.E, MAX_MARKERS + 1)).fetchall()
+    if len(rows) > MAX_MARKERS:
+        raise ReportError("too_big", "There are too many markers in that range to report on. Try a shorter range.")
     out = []
     first_c = prev_c = None
     for i, (mid, ts, label, source, _note) in enumerate(rows):
+        ctx.budget.check()
         vals = {k: value_near(ctx.conn, ctx.show_id, f"site.{k}", ts, ctx.S)
                 for k in ("temperature", "humidity", "speed_of_sound")}
         c = vals["speed_of_sound"]

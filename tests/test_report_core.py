@@ -408,3 +408,57 @@ def test_report_core_does_not_import_the_hub():
     import sys
     code = "import sys, stagewatch.core.report; sys.exit(1 if 'stagewatch.core.hub' in sys.modules else 0)"
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+
+
+# ------------------------------------------------------------------ limits (security review M1)
+def test_summarise_reads_a_cursor_once_and_matches_the_list_result():
+    rows = [(0.0, 10.0), (10.0, 20.0), (130.0, 5.0)]
+    a = summarise(rows, 0.0, 300.0)
+    b = summarise(iter(rows), 0.0, 300.0)
+    assert (a.n, a.min, a.max, a.mean, a.interval_s, a.gaps) == (b.n, b.min, b.max, b.mean, b.interval_s, b.gaps)
+    assert a.interval_s == 65.0          # median of 10 and 120
+
+
+def test_row_cap_refuses_with_too_big(dbfile, monkeypatch):
+    from stagewatch.core.report import query
+    monkeypatch.setattr(query, "MAX_ROWS", 3)
+    conn = open_readonly(dbfile)
+    try:
+        with pytest.raises(ReportError) as ei:
+            build_report(conn, CFG, ReportScope(1), T0 + 5 * 3600)
+    finally:
+        conn.close()
+    assert ei.value.code == "too_big"
+
+
+def test_deadline_is_checked_in_the_python_loop(dbfile):
+    conn = open_readonly(dbfile, None)
+    try:
+        with pytest.raises(ReportError) as ei:
+            build_report(conn, CFG, ReportScope(1), T0 + 5 * 3600, deadline_s=-1)
+    finally:
+        conn.close()
+    assert ei.value.code == "deadline"
+
+
+def test_whole_day_longer_than_48_hours_is_refused(dbfile):
+    db = sqlite3.connect(str(dbfile))
+    db.execute("UPDATE shows SET ended = ? WHERE id = 1", (T0 + 49 * 3600,))
+    db.commit()
+    db.close()
+    conn = open_readonly(dbfile)
+    try:
+        with pytest.raises(ReportError) as ei:
+            build_report(conn, CFG, ReportScope(1), T0 + 60 * 3600)
+        assert ei.value.code == "too_long"
+        # a range inside it is still fine
+        assert build_report(conn, CFG, ReportScope(1, **CUSTOM), T0 + 60 * 3600).window.preset == "custom"
+    finally:
+        conn.close()
+
+
+def test_zip_size_is_checked_while_building(dbfile):
+    data = report(dbfile)
+    with pytest.raises(ReportError) as ei:
+        make_zip(data, max_bytes=100)
+    assert ei.value.code == "too_big"
