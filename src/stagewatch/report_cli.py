@@ -51,7 +51,7 @@ def _fail(text: str) -> int:
 
 def _flag(conn, show: dict, now: float) -> str:
     end = show["ended"] if show["ended"] is not None else now
-    runs = [r for r in run_spans(conn, show["id"], now) if r.end >= show["started"] and r.started <= end]
+    runs = [r for r in run_spans(conn, show["id"], now, False, show["started"], end) if r.end >= show["started"] and r.started <= end]
     if show["ended"] is None:
         if runs and not runs[-1].clean:
             return "open - recording stopped unexpectedly"

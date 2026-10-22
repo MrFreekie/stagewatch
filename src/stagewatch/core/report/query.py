@@ -456,37 +456,68 @@ class RunSpan:
     live: bool = False
 
 
-def run_spans(conn: sqlite3.Connection, show_id: int, now: float, live: bool = False) -> list[RunSpan]:
+def _entity_ids(conn: sqlite3.Connection, show_id: int) -> list[str]:
+    """Every entity the show has readings for, found by hopping along the (show, entity, ts) index
+    one entity at a time, so the cost is the number of entities and not the number of readings."""
+    return [r[0] for r in conn.execute(
+        "WITH RECURSIVE e(id) AS (SELECT MIN(entity_id) FROM states WHERE show_id = ? "
+        "UNION ALL SELECT (SELECT MIN(entity_id) FROM states WHERE show_id = ? AND entity_id > e.id) "
+        "FROM e WHERE e.id IS NOT NULL) SELECT id FROM e WHERE id IS NOT NULL", (show_id, show_id))]
+
+
+def _last_row_between(conn: sqlite3.Connection, show_id: int, lo: float, hi: float, entities: list[str]) -> float | None:
+    """The latest reading, marker or alarm-log row of the show with ``lo <= ts < hi``.  Each reading
+    search is one index lookup per entity, inside the run's own time window."""
+    best: float | None = None
+    for eid in entities:
+        v = conn.execute("SELECT MAX(ts) FROM states WHERE show_id = ? AND entity_id = ? AND ts >= ? AND ts < ?",
+                         (show_id, eid, lo, hi)).fetchone()[0]
+        if v is not None and (best is None or v > best):
+            best = v
+    for table in ("markers", "alarm_log"):
+        v = conn.execute(f"SELECT MAX(ts) FROM {table} WHERE show_id = ? AND ts >= ? AND ts < ?",  # literal table names
+                         (show_id, lo, hi)).fetchone()[0]
+        if v is not None and (best is None or v > best):
+            best = v
+    return best
+
+
+def run_spans(conn: sqlite3.Connection, show_id: int, now: float, live: bool = False,
+              start: float | None = None, end: float | None = None) -> list[RunSpan]:
     """Every hub run, oldest first, with the time each one ended.  A run with no clean stop ends at
-    the later of its last heartbeat and the last row the show has before the next run.  ``live``
-    says the newest run is still going (the report is being made by the running hub)."""
+    the later of its last heartbeat and the last row the show has inside that run's own time window.
+    That search is only made for runs that overlap [start, end] (the show or the range), so a long
+    history costs nothing extra.  ``live`` says the newest run is still going (the report is being
+    made by the running hub)."""
     import json
     if "hub_runs" not in tables(conn):
         return []
     rows = conn.execute("SELECT id, started, last_seen, stopped, stop_reason, version, doc FROM hub_runs "
                         "ORDER BY id").fetchall()
     out: list[RunSpan] = []
+    entities: list[str] | None = None
     for i, r in enumerate(rows):
         nxt_start = rows[i + 1][1] if i + 1 < len(rows) else None
         is_live = live and i == len(rows) - 1 and r[3] is None
         if r[3] is not None:
-            end, clean = r[3], True
+            end_t, clean = r[3], True
         elif is_live:
-            end, clean = max(now, r[2]), False
+            end_t, clean = max(now, r[2]), False
         else:
-            end, clean = r[2], False
-            hi = nxt_start if nxt_start is not None else float("inf")
-            for sql in ("SELECT MAX(ts) FROM states WHERE show_id = ? AND ts >= ? AND ts < ?",
-                        "SELECT MAX(ts) FROM markers WHERE show_id = ? AND ts >= ? AND ts < ?",
-                        "SELECT MAX(ts) FROM alarm_log WHERE show_id = ? AND ts >= ? AND ts < ?"):
-                v = conn.execute(sql, (show_id, r[1], hi)).fetchone()[0]
-                if v is not None and v > end:
-                    end = v
+            end_t, clean = r[2], False
+            hi = nxt_start if nxt_start is not None else max(now, r[2]) + 1.0
+            overlaps = (end is None or r[1] <= end) and (start is None or nxt_start is None or nxt_start > start)
+            if overlaps and hi > r[1]:
+                if entities is None:
+                    entities = _entity_ids(conn, show_id)
+                v = _last_row_between(conn, show_id, r[1], hi, entities)
+                if v is not None and v > end_t:
+                    end_t = v
         try:
             doc = json.loads(r[6]) if r[6] else {}
         except ValueError:
             doc = {}
-        out.append(RunSpan(r[0], r[1], max(end, r[1]), clean, r[4] or "", r[5] or "",
+        out.append(RunSpan(r[0], r[1], max(end_t, r[1]), clean, r[4] or "", r[5] or "",
                            doc if isinstance(doc, dict) else {}, live=is_live))
     for i in range(1, len(out)):
         if out[i].started < out[i - 1].end - 1.0:

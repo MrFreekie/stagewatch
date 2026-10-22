@@ -74,7 +74,7 @@ class _Ctx:
         self.conn, self.cfg, self.site, self.win, self.scope, self.now = conn, cfg, site, win, scope, now
         self.S, self.E, self.show_id = win.start, win.end, win.show["id"]
         self.meta = entity_meta(conn)
-        self.runs = run_spans(conn, self.show_id, now, live)
+        self.runs = run_spans(conn, self.show_id, now, live, win.start, win.end)
         self._series: dict[str, SeriesStats] = {}
         self.sensor_gaps: list[tuple[str, str, float, float]] = []   # label, device_id, a, b
         self.tables = tables(conn)

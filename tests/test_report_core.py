@@ -462,3 +462,28 @@ def test_zip_size_is_checked_while_building(dbfile):
     with pytest.raises(ReportError) as ei:
         make_zip(data, max_bytes=100)
     assert ei.value.code == "too_big"
+
+
+# ------------------------------------------------------------------ run_spans stays local (security review M2)
+def test_run_spans_only_searches_runs_that_overlap_the_range(tmp_path):
+    from stagewatch.core.report.query import run_spans
+
+    def fill(db):
+        db.execute("INSERT INTO hub_runs (started, last_seen, stopped, stop_reason, version, doc) VALUES (?,?,?,?,?,?)",
+                   (T0 - 10 * 86400, T0 - 10 * 86400 + 100, None, "", "1", "{}"))
+        db.execute("INSERT INTO hub_runs (started, last_seen, stopped, stop_reason, version, doc) VALUES (?,?,?,?,?,?)",
+                   (T0, T0 + 100, None, "", "1", "{}"))
+        meta(db, "a.temp", "a", "temperature", "C", "Temperature", "A")
+        # a reading well after the old run's last heartbeat, inside the old run's own window
+        states(db, 1, "a.temp", [(-10 * 86400 + 5000, 1.0), (500, 2.0)])
+        states(db, 1, "z.other", [(700, 3.0)])
+    path = make_db(tmp_path / "stagewatch.sqlite3", fill)
+    conn = open_readonly(path)
+    try:
+        runs = run_spans(conn, 1, T0 + 9999, False, T0, T0 + 3600)
+        assert runs[0].end == T0 - 10 * 86400 + 100            # the old run was not searched
+        assert runs[1].end == T0 + 700                         # the overlapping one ends at its last row, any entity
+        runs_all = run_spans(conn, 1, T0 + 9999)
+        assert runs_all[0].end == T0 - 10 * 86400 + 5000
+    finally:
+        conn.close()
