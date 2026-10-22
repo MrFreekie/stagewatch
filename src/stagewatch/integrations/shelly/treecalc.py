@@ -180,7 +180,10 @@ def rollup(nodes: list[TNode]) -> Rollup:
         vals = [p.watts for p in parts if p.watts is not None]
         r.unassigned = Total(sum(vals) if vals else None, all(p.complete for p in parts), sum(p.unmonitored for p in parts))
         r.unassigned_refs = [n.ref for n in loose]
-    groups = list(r.sources.values()) + ([r.unassigned] if r.unassigned else [])
+    # A supply placed under another supply is already counted inside its upstream's total: only top-level supplies
+    # (no upstream in the tree) go into the site total, so nothing is counted twice.
+    top = [r.sources[n.ref] for n in nodes if n.role == "source" and (not n.upstream or n.upstream not in node_by)]
+    groups = top + ([r.unassigned] if r.unassigned else [])
     if groups:
         vals = [g.watts for g in groups if g.watts is not None]
         r.site = Total(sum(vals) if vals else None, all(g.complete for g in groups), sum(g.unmonitored for g in groups))
