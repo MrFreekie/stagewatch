@@ -7,9 +7,6 @@ Messages (sent at osc_out.rate_hz):
   /stagewatch/alarm      max_level(0-3) sounding(0/1)
 Only with osc_out.include_advice (FOH advice; values, not commands):
   /stagewatch/path/<id>/drift            ms since the reference marker (+ = sound arrives later)
-  /stagewatch/path/<id>/suggested_delay  ms (current delay plus drift). A number to read and show,
-                                         never to map onto a processor's delay: Stagewatch advises,
-                                         the engineer decides
   /stagewatch/position/<id>/change_db    dB since the reference marker, one float per band in band
                                          order (4k, 8k, 16k or 4k ... 16k), + = more top end lost
 NaN means "not measured" (or unknown, or stale).
@@ -64,8 +61,6 @@ def advice_messages(advice: dict) -> list[tuple[str, list]]:
             continue
         base = f"/stagewatch/path/{p['id']}"
         msgs.append((f"{base}/drift", [_live(p.get("drift_ms"), p.get("stale", False))]))
-        msgs.append((f"{base}/suggested_delay",
-                     [_live(p.get("suggested_delay_ms"), p.get("stale", False))]))
     for pos in advice.get("positions", []):
         if not ADVICE_ID_RE.fullmatch(str(pos.get("id", ""))):
             continue

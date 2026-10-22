@@ -528,7 +528,7 @@ def test_osc_sends_the_advice_numbers_with_slug_addresses(tmp_path):
     hub.advice.tick(now)
     msgs = dict(OscOutIntegration(hub).build_messages())
     assert msgs["/stagewatch/path/tower_l/drift"] == [pytest.approx(-1.892, abs=0.001)]
-    assert msgs["/stagewatch/path/tower_l/suggested_delay"] == [pytest.approx(100 - 1.892, abs=0.001)]
+    assert not any(a.endswith("suggested_delay") for a in msgs)                  # on screen only, never sent
     foh = msgs["/stagewatch/position/foh/change_db"]
     assert len(foh) == 3 and all(math.isfinite(v) for v in foh)                  # 4k, 8k, 16k in order
     assert foh[0] < foh[1] < foh[2] or foh[0] > foh[1] > foh[2]                  # grows with the band
@@ -541,14 +541,12 @@ def test_osc_sends_the_advice_numbers_with_slug_addresses(tmp_path):
 def test_osc_sends_nan_for_what_is_unknown(tmp_path):
     hub, now = osc_hub(tmp_path, include_advice=True)
     msgs = dict(OscOutIntegration(hub).build_messages())
-    assert math.isnan(msgs["/stagewatch/path/no_ref/suggested_delay"][0])        # no current delay set
     assert not math.isnan(msgs["/stagewatch/path/no_ref/drift"][0])
     configure(hub, [path("lonely", 10, current_delay_ms=5)], [AdvicePosition(id="foh", name="FOH", distance_m=40)])
     hub.delete_marker(next(m.id for m in hub.recorder.markers() if m.label == "Aligned"))
     hub.delete_marker(next(m.id for m in hub.recorder.markers() if m.label == "Soundcheck"))
     msgs = dict(OscOutIntegration(hub).build_messages())
     assert math.isnan(msgs["/stagewatch/path/lonely/drift"][0])                  # no reference marker
-    assert math.isnan(msgs["/stagewatch/path/lonely/suggested_delay"][0])
     assert all(math.isnan(v) for v in msgs["/stagewatch/position/foh/change_db"])
     assert len(msgs["/stagewatch/position/foh/change_db"]) == 3
 
@@ -559,7 +557,8 @@ def test_osc_sends_nan_for_stale_numbers_and_one_float_per_third_octave_band():
                   {"band": b, "change_db": None if b == "10k" else 0.25}
                   for b in ("4k", "5k", "6.3k", "8k", "10k", "12.5k", "16k")]}]}
     msgs = dict(advice_messages(advice))
-    assert math.isnan(msgs["/stagewatch/path/a/drift"][0]) and math.isnan(msgs["/stagewatch/path/a/suggested_delay"][0])
+    assert math.isnan(msgs["/stagewatch/path/a/drift"][0])
+    assert "/stagewatch/path/a/suggested_delay" not in msgs
     foh = msgs["/stagewatch/position/foh/change_db"]
     assert len(foh) == 7 and math.isnan(foh[4]) and foh[3] == 0.25
 
