@@ -15,6 +15,11 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Changed
+
+- **Power distribution has its own Admin page.** The card on the Integrations tab is now a short one: a line of explanation, how many points and meters there are, how many things need a look, and an **Open Power distribution** button. The page (`/power-distribution`, admin login as for Edit cards, with a Back to Admin link and Day / Night) holds everything the card did, and is built for big systems: units are grouped under the supply that feeds them (units not fed from anything yet come last), each group folds away, with **Expand all** and **Collapse all**, a **Find** box, a **Show only** kind (for example only final distribution units) and a count of the units shown. The Save bar stays on screen, says when there are unsaved changes, and the page warns before you leave with them.
+- **Removed two power settings that did nothing.** The "Nothing measures it (no meter)" tick box and the typed allowance on a point had no effect on any figure, so they are gone from the page. Saved settings still load and nothing needs changing.
+
 ## [0.5.0] - 2026-10-22
 
 ### Added

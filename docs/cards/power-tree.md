@@ -4,7 +4,7 @@ Shows how power flows through the site: each supply (a generator or the grid) at
 
 Stagewatch is a guide. These figures do not replace the electrician's inspection and testing. Stagewatch only reads the meters. It never switches anything.
 
-Part of the [dashboard cards](README.md). It uses the same [Shelly](../integrations/shelly.md) meters as the [Power](power.md) card. Add it to a dashboard in **Edit cards**; it is never added by default. Who feeds whom is set up in Admin, under **Power distribution**. Until that is done the card says "No power distribution set up".
+Part of the [dashboard cards](README.md). It uses the same [Shelly](../integrations/shelly.md) meters as the [Power](power.md) card. Add it to a dashboard in **Edit cards**; it is never added by default. Who feeds whom is set up on the **Power distribution** page, opened from Admin → Integrations. Until that is done the card says "No power distribution set up".
 
 ## What you see
 
@@ -28,7 +28,7 @@ Above the card, **List** and **Diagram** switch between the tree and a block dia
 - **Fit** fits the whole diagram to the screen (the wall display does this on its own). On a phone it scrolls sideways; pinch, or use **+** and **−**, to zoom.
 - **Save as image** downloads an SVG file; **Print** gives one clean landscape page. Up to 200 units are drawn; if there are more, a note says so.
 
-The same diagram appears in Admin, under Power distribution, as **Diagram preview**. It shows what you have typed before you press Save, so a missing link or a wrong feed is easy to spot. It appears once you have given something a role or a feed.
+The same diagram appears on the Power distribution page as **Diagram preview**. It shows what you have typed before you press Save, so a missing link or a wrong feed is easy to spot. It appears once you have given something a role or a feed.
 
 ## Not yet tested on hardware
 
@@ -36,4 +36,4 @@ The unmonitored gap, the CHECK warning, the UPS loss and efficiency and the tota
 
 ## What it is not
 
-The calculated figures are worked out by Stagewatch from the meters, saved with the other readings, and always marked as calculated. Loads that have no meter are not guessed. The typed allowances in Admin are not used here yet. Voltage drop, cable loss and the supply frequency are not shown yet.
+The calculated figures are worked out by Stagewatch from the meters, saved with the other readings, and always marked as calculated. Loads that have no meter are not guessed. Voltage drop, cable loss and the supply frequency are not shown yet.

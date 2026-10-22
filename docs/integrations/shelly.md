@@ -108,7 +108,7 @@ wait a minute.
 
 ### Name each circuit and set the limits
 
-The **Shelly power meters** card is only about the connection: name, area, address and how often Stagewatch asks. Everything about what a meter feeds is in **Admin → Power distribution**. All of it is optional, and none of it changes the meter.
+The **Shelly power meters** card is only about the connection: name, area, address and how often Stagewatch asks. Everything about what a meter feeds is on the **Power distribution** page (**Admin → Integrations → Power distribution → Open Power distribution**). All of it is optional, and none of it changes the meter.
 
 1. Find the meter in **Power distribution**. A meter with one circuit (a PM Mini, a 1PM, a Plug, a three-phase meter) is **one row**. A meter with two circuits (a 2PM, a first-generation EM) has a header row for the meter and a row for each circuit.
 2. On a circuit, type a **Label**, for example `Amp rack 3`, and tick **Include in site total** if its watts should go into the one **Site total power** figure on the Power card.
@@ -183,14 +183,14 @@ seconds every 5 minutes, to show the frozen state.
 
 ## Power distribution (who feeds whom)
 
-**Admin → Power distribution** records how your power is laid out, ready for a power flow view in a later version. The [Power tree](../cards/power-tree.md) card draws it.
+The **Power distribution** page (open it from the card of the same name in **Admin → Integrations**) records how your power is laid out, ready for a power flow view in a later version. The [Power tree](../cards/power-tree.md) card draws it.
 
 1. Add a **point** for anything that has no meter: the generator, the grid supply, an intake unit. Give it a role, a number and, if it is fed from something else, its Upstream. A generator or supply has nothing above it. Several separate supplies are fine, for example a delay tower with its own generator.
 2. For each power meter, choose what it is (a role). Stagewatch fills in the next free number for that role and suggests what feeds it (for example the only CDU for a final distribution unit); change either if it is wrong. A meter with two circuits has a row for each circuit if they feed different things.
-3. Under **More options** (or switch on **Show advanced power options** to open them on every row): the **Way** is the circuit number on the unit above, so a unit on way 2 of CDU02 on line 1 reads **CDU02-C2-L1** (**CDU01-C1-3P** for a three-phase feed). Each way of a unit feeds one thing, and Stagewatch tells you if you use one twice. With no way set, the card shows just the unit above. Also here: line, breaker or fuse rating, device limit, and the typed allowance for a point nothing measures.
+3. Under **More options** (or switch on **Show advanced power options** to open them on every row): the **Way** is the circuit number on the unit above, so a unit on way 2 of CDU02 on line 1 reads **CDU02-C2-L1** (**CDU01-C1-3P** for a three-phase feed). Each way of a unit feeds one thing, and Stagewatch tells you if you use one twice. With no way set, the card shows just the unit above. Also here: line, breaker or fuse rating and device limit.
 4. Save. Stagewatch refuses a loop, a unit fed from itself, a unit fed from the same level or from below, and a number used twice in the same role. Nothing is changed when it refuses, and it says why.
 
-The order is supply, intake switch unit (ISU), central distribution unit (CDU), final distribution unit (FDU), then equipment. A unit may skip a level. A UPS can sit anywhere; choose its type if you know it. A point you mark **Not monitored** can carry a figure you type in: that is a guess, kept apart from measurements, and not used yet. The names ISU, CDU and FDU are the ones many crews use. Check them against your own paperwork.
+The order is supply, intake switch unit (ISU), central distribution unit (CDU), final distribution unit (FDU), then equipment. A unit may skip a level. A UPS can sit anywhere; choose its type if you know it. A point with no meter shows as not monitored on the Power tree card; there is nothing to tick for that. The names ISU, CDU and FDU are the ones many crews use. Check them against your own paperwork.
 
 Removing a point asks what to do with the units fed from it: move them up a level, or leave them with no Upstream. Removing a meter leaves whatever it fed with no Upstream.
 
