@@ -218,7 +218,7 @@ def test_admin_login_uses_only_the_allow_listed_next():
     assert "SW.adminNext(location.search)" in admin and "location.assign(next)" in admin
     # the login code never reads the query string itself, so nothing bypasses the allow-list
     assert "location.search" not in admin.replace("SW.adminNext(location.search)", "")
-    assert 'SW.ADMIN_NEXT = ["/schedule", "/dashboard-editor"];' in _js("common.js")
+    assert 'SW.ADMIN_NEXT = ["/schedule", "/dashboard-editor", "/power-distribution"];' in _js("common.js")
     assert 'location.replace("/admin?next=/dashboard-editor")' in _js("dashboard-editor.js")
     # the Schedule page sends a logged-out user to that exact URL
     assert 'location.replace("/admin?next=/schedule")' in _js("schedule-editor.js")

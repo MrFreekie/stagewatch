@@ -1336,6 +1336,12 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         # as on /schedule.
         return versioned_page("dashboard-editor.html")
 
+    @app.get("/power-distribution", include_in_schema=False)
+    async def power_distribution_page():
+        # Static page (Power distribution: what feeds what); every API call it makes needs the admin
+        # session, as on /schedule.
+        return versioned_page("power-distribution.html")
+
     # -------------------------------------------------------- public API
     @app.get("/api/info")
     async def info(request: Request):

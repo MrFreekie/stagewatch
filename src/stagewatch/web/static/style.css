@@ -1610,3 +1610,17 @@ body.layout-wall .adv-list > li.adv-line { flex-wrap: nowrap; align-items: cente
   body.pd-printing .pd-scroll { overflow: visible; border: 0; background: #fff; }
   body.pd-printing .pd-svg { width: 100% !important; height: auto !important; max-width: none !important; max-height: 185mm !important; }
 }
+
+/* Power distribution page (/power-distribution) */
+.pdp-tools { align-items: flex-end; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.pdp-tools input[type="search"] { min-width: 220px; }
+.pdp-basic { margin: 4px 0; flex-wrap: wrap; }
+.pdp-sub { font-size: 12px; }
+.pdp-tick { min-height: 44px; }
+.pdp-group { border: 1px solid var(--grid, rgba(128,128,128,.25)); border-radius: var(--radius, 6px); margin: 8px 0; padding: 0 10px; }
+.pdp-group > summary { cursor: pointer; display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; }
+.pdp-title { flex: 1 1 auto; }
+.pdp-bar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; background: var(--panel-2, var(--bg)); border-top: 1px solid var(--grid, rgba(128,128,128,.4)); }
+.pdp-unsaved { font-weight: 700; color: var(--warn, #e0a030); }
+.pdp-page input, .pdp-page select, .pdp-page button { min-height: 44px; }
+.pdp-summary-counts { display: flex; gap: 14px; flex-wrap: wrap; }

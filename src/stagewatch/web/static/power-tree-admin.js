@@ -91,5 +91,58 @@ SW.ptAdmin = (function () {
     while (taken.has(id)) id = `${base}_${n++}`;
     return id;
   };
+  // ---- the Power distribution page: filter and grouping rules (no DOM) ----
+  // Every word typed in the filter box must appear somewhere in the row's text (any case, any order).
+  pa.matches = function (text, query) {
+    const hay = String(text || "").toLowerCase();
+    return String(query || "").toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.indexOf(w) >= 0);
+  };
+  // Is a row shown? `roleFilter` is "" (every kind), "__none" (no role chosen yet) or a role key.
+  pa.rowVisible = function (text, role, query, roleFilter) {
+    if (roleFilter === "__none" && role) return false;
+    if (roleFilter && roleFilter !== "__none" && role !== roleFilter) return false;
+    return pa.matches(text, query);
+  };
+  // Group rows under the supply (the top of their upstream chain). `entries` is [{ref, role, upstream}].
+  // Returns [{key, unassigned, refs}]: groups in the order their top unit first appears, each listing the top
+  // unit first and what it feeds below it. Units with nothing above or below them and no supply role make
+  // the last group (unassigned: true, key "").
+  pa.groupRows = function (entries) {
+    const by = new Map(entries.map((e) => [e.ref, e]));
+    const kids = new Set(entries.map((e) => e.upstream).filter((u) => u && by.has(u)));
+    const rootOf = (ref) => {
+      const seen = [];
+      let cur = ref;
+      while (by.has(cur) && seen.indexOf(cur) < 0) {
+        seen.push(cur);
+        const up = by.get(cur).upstream;
+        if (!up || !by.has(up)) return cur;
+        cur = up;
+      }
+      return seen.slice(seen.indexOf(cur)).sort()[0];   // a loop: the same unit whichever way you enter it
+    };
+    const groups = new Map(), loose = [];
+    entries.forEach((e) => {
+      const root = rootOf(e.ref);
+      if (root === e.ref && e.role !== "source" && !kids.has(e.ref)) { loose.push(e.ref); return; }
+      if (!groups.has(root)) groups.set(root, []);
+      groups.get(root).push(e.ref);
+    });
+    const order = (root, members) => {
+      const out = [];
+      const walk = (ref) => {
+        if (out.indexOf(ref) >= 0) return;
+        out.push(ref);
+        members.forEach((m) => { if (by.get(m).upstream === ref) walk(m); });
+      };
+      walk(root);
+      members.forEach((m) => { if (out.indexOf(m) < 0) out.push(m); });
+      return out;
+    };
+    const out = [];
+    groups.forEach((members, root) => out.push({ key: root, unassigned: false, refs: order(root, members) }));
+    if (loose.length) out.push({ key: "", unassigned: true, refs: loose });
+    return out;
+  };
   return pa;
 })();

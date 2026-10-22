@@ -90,5 +90,29 @@ eq(PA.meterRows({ id: "m", single: false, channels: [{ key: "a" }, { key: "b" }]
 eq(PA.meterRows({ id: "m", single: false, channels: [{ key: "em0", three_phase: true }] }).map((r) => r.ref), ["m:m"], "a meter not yet known as single shows its header only");
 eq(PA.meterRows({ id: "m", single: false, channels: [] }).map((r) => r.ref), ["m:m"], "no circuits seen yet: the header only");
 
+// filter: every word must be found, any case, any order
+eq(PA.matches("FDU02 Stage left racks", "stage FDU"), true, "words in any order");
+eq(PA.matches("FDU02 Stage left racks", "fdu03"), false, "a word that is missing");
+eq(PA.matches("anything", "   "), true, "blank filter shows all");
+eq(PA.rowVisible("FDU01", "fdu", "", "fdu"), true, "kind filter keeps its kind");
+eq(PA.rowVisible("CDU01", "cdu", "", "fdu"), false, "kind filter hides others");
+eq(PA.rowVisible("x", "", "", "__none"), true, "no-role filter keeps roleless");
+eq(PA.rowVisible("x", "cdu", "", "__none"), false, "no-role filter hides roles");
+eq(PA.rowVisible("FDU01 foh", "fdu", "bar", "fdu"), false, "kind and text both apply");
+// grouping under the supply
+const ent = [
+  { ref: "p:g1", role: "source", upstream: "" }, { ref: "p:g2", role: "source", upstream: "" },
+  { ref: "m:a", role: "cdu", upstream: "p:g1" }, { ref: "m:b", role: "fdu", upstream: "m:a" },
+  { ref: "m:c", role: "fdu", upstream: "p:g2" }, { ref: "m:lone", role: "", upstream: "" },
+  { ref: "m:d", role: "equipment", upstream: "m:b" }];
+eq(PA.groupRows(ent), [
+  { key: "p:g1", unassigned: false, refs: ["p:g1", "m:a", "m:b", "m:d"] },
+  { key: "p:g2", unassigned: false, refs: ["p:g2", "m:c"] },
+  { key: "", unassigned: true, refs: ["m:lone"] }], "grouped by top supply, unassigned last, children under parents");
+eq(PA.groupRows([{ ref: "a", role: "cdu", upstream: "ghost" }]), [{ key: "a", unassigned: true, refs: ["a"] }].map((g) => ({ key: "", unassigned: true, refs: ["a"] })), "an upstream that is not there leaves it unassigned");
+eq(PA.groupRows([{ ref: "x", role: "cdu", upstream: "y" }, { ref: "y", role: "cdu", upstream: "x" }]).map((g) => g.key), ["x"], "a loop makes one group, not a crash");
+eq(PA.groupRows([{ ref: "isu", role: "isu", upstream: "" }, { ref: "k", role: "cdu", upstream: "isu" }]), [{ key: "isu", unassigned: false, refs: ["isu", "k"] }], "a top unit that is not a supply still heads its group");
+eq(PA.groupRows([]), [], "nothing");
+
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log("ok");

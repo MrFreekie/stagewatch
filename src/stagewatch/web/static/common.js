@@ -355,9 +355,9 @@ SW.linkButton = function (text, href, primary) {
       + (primary ? "background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);" : "background:var(--panel-2);color:inherit;border:1px solid var(--grid);") }, text);
 };
 // Where Admin sends you after logging in. An allow-list of fixed paths: the value of ?next=
-// must equal "/schedule" or "/dashboard-editor" exactly (after decoding, no query), never any other
+// must equal "/schedule", "/dashboard-editor" or "/power-distribution" exactly (after decoding, no query), never any other
 // path or URL, so the login page can't be used to bounce someone to another site.
-SW.ADMIN_NEXT = ["/schedule", "/dashboard-editor"];
+SW.ADMIN_NEXT = ["/schedule", "/dashboard-editor", "/power-distribution"];
 SW.adminNext = function (search) {
   const m = /^(?:\?)?(?:[^&]*&)*?next=([^&]*)/.exec(String(search || ""));
   if (!m) return "";

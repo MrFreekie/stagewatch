@@ -495,3 +495,41 @@ def test_power_diagram_layout_js():
     r = subprocess.run([node, str(Path(__file__).resolve().parent / "js" / "power_diagram_test.js")],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ------------------------------------------------- the Power distribution page (moved out of Admin)
+def test_power_distribution_page_is_static_and_its_data_needs_admin(client):
+    anon = TestClient(client.app)
+    r = anon.get("/power-distribution")
+    assert r.status_code == 200 and "power-distribution.js" in r.text
+    # the page itself holds no data: what it loads and saves is admin-only (and same-origin for writes)
+    assert anon.get("/api/admin/state").status_code == 401
+    assert anon.put("/api/admin/power-tree", json=GOOD).status_code == 401
+    assert client.put("/api/admin/power-tree", json=GOOD, headers={"Origin": "http://evil.example"}).status_code == 403
+
+
+def test_page_script_sends_monitored_true_and_no_allowance():
+    from pathlib import Path
+    js = (Path(__file__).resolve().parent.parent / "src" / "stagewatch" / "web" / "static" / "power-distribution.js").read_text(encoding="utf8")
+    assert "monitored: true" in js
+    assert "innerHTML" not in js
+    assert 'location.replace("/admin?next=/power-distribution")' in js
+
+
+def test_old_config_with_allowance_still_loads_and_saves(client):
+    r = client.put("/api/admin/power-tree", json=GOOD)
+    assert r.status_code == 200
+    body = {**GOOD, "points": [{k: v for k, v in p.items() if k != "allowance"} | {"monitored": True} for p in GOOD["points"]]}
+    assert client.put("/api/admin/power-tree", json=body).status_code == 200
+
+
+def test_power_tree_admin_node_test_passes():
+    import shutil
+    import subprocess
+    from pathlib import Path
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    root = Path(__file__).resolve().parent
+    r = subprocess.run([node, str(root / "js" / "power_tree_admin_test.js")], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr

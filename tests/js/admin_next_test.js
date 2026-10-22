@@ -24,6 +24,8 @@ for (const ok of ["?next=/schedule", "next=/schedule", "?next=%2Fschedule", "?a=
   eq(SW.adminNext(ok), "/schedule", `accepts ${ok}`);
 }
 for (const ok of ["?next=/dashboard-editor", "?next=%2Fdashboard-editor"]) eq(SW.adminNext(ok), "/dashboard-editor", `accepts ${ok}`);
+for (const ok of ["?next=/power-distribution", "?next=%2Fpower-distribution"]) eq(SW.adminNext(ok), "/power-distribution", `accepts ${ok}`);
+eq(SW.adminNext("?next=/power-distribution/x"), "", "rejects a longer path");
 const bad = [
   "?next=/dashboard-editor?d=foh", "?next=/dashboard-editor/", "?next=/dashboard-editor%3Fd%3Dfoh", "?next=//evil.example/dashboard-editor",
   "", "?", "?next=", "?next=/", "?next=/admin", "?next=/schedule/", "?next=/schedule/x", "?next=/Schedule",
