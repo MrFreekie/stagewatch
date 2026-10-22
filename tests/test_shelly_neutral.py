@@ -199,3 +199,14 @@ async def test_a_three_phase_meter_is_left_out(hub):
     feed(integ, "b", pm(10.0), now)
     feed(integ, "c", em, now)
     assert neutral(hub).value is None and "Line 3" in hub.devices[NEUTRAL_ID].public["calc_note"]
+
+
+async def test_the_calculated_note_reaches_the_public_device_dict(hub):
+    """The note is set on .public; the card reads it from the device dict the dashboards get."""
+    integ = await rig(hub)
+    now = time.time()
+    for k, a in (("a", 10.0), ("b", 6.0), ("c", 8.0)):
+        feed(integ, k, pm(a), now)
+    assert "not measured" in hub.devices[NEUTRAL_ID].to_dict()["calc_note"]
+    snap = [d for d in hub.snapshot()["devices"] if d["id"] == NEUTRAL_ID]
+    assert snap and "not measured" in snap[0]["calc_note"]
