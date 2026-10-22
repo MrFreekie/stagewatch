@@ -14,6 +14,7 @@
   <span class="title">Stagewatch</span>
   <span class="sub" id="site"></span>
   <span class="spacer"></span>
+  <button class="theme-toggle" id="theme-toggle" type="button"></button>
   <a href="/admin">Admin</a>
 </header>
 <main>
@@ -25,6 +26,32 @@
 </main>
 <footer class="site-footer">Stagewatch is free, open-source and 100% vibe coded. If it helps your shows: <a href="https://buymeacoffee.com/fohengineer" target="_blank" rel="noopener noreferrer">buy me a coffee ☕</a></footer>
 <script src="/static/common.js"></script>
+<script>
+// Day / Night, as on the dashboards and Admin: follows the device until tapped, then this browser
+// remembers the choice (the same setting the dashboards on this device use).
+(function () {
+  const KEY = "stagewatch.theme", btn = document.getElementById("theme-toggle");
+  const isDay = () => {
+    const t = document.documentElement.getAttribute("data-theme");
+    return t ? t === "light" : !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches);
+  };
+  const apply = (pick) => {
+    if (pick === "day" || pick === "night") document.documentElement.setAttribute("data-theme", pick === "day" ? "light" : "dark");
+    else document.documentElement.removeAttribute("data-theme");
+    const day = isDay();
+    btn.textContent = day ? "☾ Night" : "☀ Day";   // what a tap switches to
+    btn.setAttribute("aria-label", day ? "Switch to night mode (dark)" : "Switch to day mode (light)");
+  };
+  btn.addEventListener("click", () => {
+    const pick = isDay() ? "night" : "day";
+    try { localStorage.setItem(KEY, pick); } catch (_) { /* not remembered; still switches */ }
+    apply(pick);
+  });
+  let saved = "";
+  try { saved = localStorage.getItem(KEY) || ""; } catch (_) { /* private mode: follow the device */ }
+  apply(saved);
+})();
+</script>
 <script>
 (async () => {
   const info = await SW.api("GET", "/api/info");
