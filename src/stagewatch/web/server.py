@@ -71,6 +71,7 @@ STATIC = Path(__file__).parent / "static"
 STATE_FLUSH_S = 0.5
 MIN_PIN_LEN = 4
 # HTTP status per updater error category (default 409: "the request is fine, the state isn't")
+TREND_CACHE_S = 10.0   # the trend answer is reused for this long, per window length
 TREND_SERIES = 60       # most nodes one trend request reads
 TREND_POINTS = 60       # points per line (averaged on the server)
 UPDATER_STATUS = {"rate_limited": 429, "history_not_found": 404, "bad_channel": 422, "bad_sha": 422}
@@ -2033,6 +2034,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         # here it is the list that counts, so the old address is cleared (or a removed sensor would come back).
         new = old.model_copy(update={"enabled": body.enabled, "markers": body.markers, "temp_on_equipment": body.temp_on_equipment, "sensors": rows, "address": ""})
         hub.config.witmotion = new
+        hub.save_config()                      # saved first: the settings are kept even if applying them fails
         applied = False
         integ = hub.integrations.get("witmotion")
         if integ is not None:
@@ -2041,7 +2043,6 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 applied = True
             except Exception:  # noqa: BLE001 - the settings are saved either way
                 log.exception("Could not apply the WitMotion settings")
-        hub.save_config()
         log.info("WitMotion settings saved (%s, %d sensor%s)", "on" if new.enabled else "off", len(rows), "" if len(rows) == 1 else "s")
         return {"ok": True, "changed": old != new, "applied": applied}
 
@@ -2173,12 +2174,24 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         ratings only: no addresses and none of the typed allowances."""
         return ptree.public_structure(hub.config)
 
+    trend_cache: dict[int, tuple[float, dict]] = {}     # minutes -> (when worked out, the answer)
+    trend_lock = asyncio.Lock()                          # one computation at a time
+
     @app.get("/api/power-tree/trend")
     async def get_power_tree_trend(minutes: int = 30):
         """Public: one small recorded-watts line per metered node of the power tree, for the tiles' trend lines.
         Reads only what was already recorded (no new values): at most TREND_SERIES nodes, 15 to 60 minutes,
         TREND_POINTS points each, averaged on a worker thread. A node with no meter or no history is absent."""
         minutes = max(15, min(minutes, 60))
+        async with trend_lock:
+            hit = trend_cache.get(minutes)
+            if hit is not None and time.monotonic() - hit[0] < TREND_CACHE_S:
+                return hit[1]
+            answer = await _power_tree_trend(minutes)
+            trend_cache[minutes] = (time.monotonic(), answer)
+            return answer
+
+    async def _power_tree_trend(minutes: int) -> dict:
         until = time.time()
         since = until - minutes * 60.0
         ids: dict[str, str] = {}
@@ -2193,7 +2206,6 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                     break
         if not ids:
             return {"minutes": minutes, "since": since, "until": until, "bucket_s": 0, "series": {}}
-        hub.recorder.flush()
         data = await asyncio.to_thread(hub.recorder.trend_threaded, list(ids.values()), since, until, TREND_POINTS)
         return {"minutes": minutes, "since": since, "until": until, "bucket_s": (until - since) / TREND_POINTS,
                 "series": {ref: data[eid] for ref, eid in ids.items() if data.get(eid)}}
