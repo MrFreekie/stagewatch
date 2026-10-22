@@ -42,6 +42,7 @@ from ..core.hub import Hub
 from ..core.model import Device, Entity, Kind, Marker, slugify
 from ..core.recorder import clean_note, valid_day
 from .. import diagnostics, netinfo
+from . import report_api
 from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
 from ..core import power_tree as ptree
@@ -3201,6 +3202,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                     logs[name] = lines
                     break
         return diagnostics.assemble_zip(files, logs, known)
+
+    report_api.register(app, hub, admin_deps)
 
     @app.get("/api/admin/diagnostics", dependencies=admin_deps)
     async def download_diagnostics():
