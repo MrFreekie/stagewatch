@@ -15,6 +15,8 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
 ### Added
 
 - **Windows: a clean-stop helper.** New `deploy/windows/stop-stagewatch.ps1` stops Stagewatch properly before you copy the data folder, and the backup and restore steps in the updating guide now use it.
@@ -744,7 +746,8 @@ The sections below list every change in detail.
 - Version tracking: build info (version, git commit, schema versions) in the API,
   admin UI and logs; config and database schema versions with migration hooks.
 
-[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/MrFreekie/stagewatch/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MrFreekie/stagewatch/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/MrFreekie/stagewatch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/MrFreekie/stagewatch/compare/v0.1.0...v0.2.0
