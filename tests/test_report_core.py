@@ -487,3 +487,50 @@ def test_run_spans_only_searches_runs_that_overlap_the_range(tmp_path):
         assert runs_all[0].end == T0 - 10 * 86400 + 5000
     finally:
         conn.close()
+
+
+
+# ------------------------------------------------------------------ hidden markers and sharing (security review L1, L5)
+def test_hidden_markers_are_never_reported(dbfile):
+    db = sqlite3.connect(str(dbfile))
+    db.execute("INSERT INTO markers (show_id, ts, label, source, hidden) VALUES (1, ?, 'HIDDEN_MARKER_LABEL', 'admin', 1)",
+               (T0 + 100,))
+    hid = db.execute("SELECT id FROM markers WHERE label = 'HIDDEN_MARKER_LABEL'").fetchone()[0]
+    vis = db.execute("SELECT id FROM markers WHERE label = 'Line check'").fetchone()[0]
+    db.commit()
+    db.close()
+    d = report(dbfile)
+    assert "HIDDEN_MARKER_LABEL" not in render_html(d)
+    assert all("HIDDEN" not in r["label"] for r in d.sections["markers"]["rows"])
+    assert "HIDDEN_MARKER_LABEL" not in b"".join(csv_zip.csv_files(d).values()).decode("utf-8")
+    with pytest.raises(ReportError) as ei:                 # a hidden marker cannot be picked as a range end either
+        report(dbfile, preset="markers", from_marker=hid, to_marker=vis)
+    assert ei.value.code == "no_marker"
+
+
+def test_sharing_drops_the_spl_change_note(dbfile):
+    db = sqlite3.connect(str(dbfile))
+    db.execute("INSERT INTO spl_limit_revisions (event_id, show_id, rev, saved_at, entered_by, change_note, doc) "
+               "VALUES (1, 1, 1, ?, 'Pat', 'PRIVATE_CHANGE_NOTE', '{}')", (T0 + 100,))
+    db.commit()
+    db.close()
+    full = report(dbfile)
+    assert full.sections["spl"]["revisions"][0]["note"] == "PRIVATE_CHANGE_NOTE"
+    shared = report(dbfile, share=True)
+    assert "PRIVATE_CHANGE_NOTE" not in render_html(shared)
+    assert "PRIVATE_CHANGE_NOTE" not in b"".join(csv_zip.csv_files(shared).values()).decode("utf-8")
+
+
+def test_sharing_refuses_system_and_schedule_sections(dbfile):
+    for sec in ({"system"}, {"schedule", "alarms"}):
+        with pytest.raises(ReportError) as ei:
+            report(dbfile, share=True, sections=sec)
+        assert ei.value.code == "share_sections"
+    assert "alarms" in report(dbfile, share=True, sections={"alarms"}).sections
+
+
+def test_completeness_never_shows_a_time_outside_the_range(dbfile):
+    d = report(dbfile, preset="custom", from_hhmm="22:55", to_hhmm="23:00")
+    text = d.header["completeness"]
+    assert text.startswith("Partial: recording stopped unexpectedly")
+    assert not re.search(r"\d\d:\d\d", text)

@@ -7,7 +7,7 @@ SW.reportCard = (function () {
   const SECTIONS = [["summary", "Summary"], ["env", "Environment"], ["wind", "Wind"], ["spl", "Sound level"],
     ["power", "Power"], ["alarms", "Alarms"], ["devices", "Device outages"], ["markers", "Markers"],
     ["schedule", "Running order"], ["system", "System events"]];
-  const SHARE_OFF = ["system", "schedule"];     // left out of a Sharing excerpt unless ticked again
+  const SHARE_OFF = ["system", "schedule"];     // never in a Sharing excerpt (the server refuses them)
   const PRESETS = [["day", "Full day"], ["show_time", "Show time (doors to curfew)"], ["markers", "Between two markers"], ["custom", "Choose times"]];
   const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -46,8 +46,9 @@ SW.reportCard = (function () {
       if (!st.fromMarker || !st.toMarker || st.fromMarker === st.toMarker) return { error: "Pick two different markers." };
       p.set("from_marker", String(st.fromMarker)); p.set("to_marker", String(st.toMarker));
     }
-    if (!st.sections.length) return { error: "Tick at least one section." };
-    p.set("sections", st.sections.join(","));
+    const sent = st.share ? st.sections.filter((k) => !SHARE_OFF.includes(k)) : st.sections;
+    if (!sent.length) return { error: "Tick at least one section." };
+    p.set("sections", sent.join(","));
     if (st.share) p.set("share", "true");
     Object.entries(extra || {}).forEach(([k, v]) => p.set(k, v));
     return { params: p };
@@ -108,10 +109,12 @@ SW.reportCard = (function () {
     shareBox.addEventListener("change", () => {
       st.share = shareBox.checked;
       if (st.share) SHARE_OFF.forEach((k) => { boxes[k].checked = false; });
+      SHARE_OFF.forEach((k) => { boxes[k].disabled = st.share; });
       st.sections = SECTIONS.map((s) => s[0]).filter((k) => boxes[k].checked);
       save(st);
     });
 
+    SHARE_OFF.forEach((k) => { boxes[k].disabled = st.share; });
     showSel.addEventListener("change", () => { st.show = Number(showSel.value); st.markersFor = 0; sync(); });
     presetSel.addEventListener("change", () => { st.preset = presetSel.value; save(st); sync(); });
     fromIn.addEventListener("input", () => { st.from = fromIn.value.trim(); save(st); });

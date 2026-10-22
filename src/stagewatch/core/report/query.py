@@ -147,10 +147,11 @@ def resolve_window(conn: sqlite3.Connection, site, scope: ReportScope, now: floa
         label = "planned doors to planned curfew"
     elif preset == "markers":
         ids = [scope.from_marker, scope.to_marker]
+        hidden_clause = " AND hidden = 0" if "hidden" in columns(conn, "markers") else ""
         ts = []
         for mid in ids:
-            r = conn.execute("SELECT ts FROM markers WHERE id = ? AND show_id = ?", (mid, show["id"])).fetchone() \
-                if isinstance(mid, int) else None
+            r = conn.execute("SELECT ts FROM markers WHERE id = ? AND show_id = ?" + hidden_clause,
+                             (mid, show["id"])).fetchone() if isinstance(mid, int) else None
             if r is None:
                 raise ReportError("no_marker", "Pick two markers from this show.")
             ts.append(r[0])

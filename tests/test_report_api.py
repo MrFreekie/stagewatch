@@ -177,3 +177,14 @@ def test_admin_card_uses_no_innerhtml():
     assert "localStorage" in js and "try" in js
     html = (ROOT / "src/stagewatch/web/static/admin.html").read_text(encoding="utf-8")
     assert "report-card.js" in html
+
+
+def test_sharing_with_system_or_schedule_sections_is_refused(client):
+    for sec in ("system", "summary,schedule"):
+        r = client.get(REPORT, params={"show_id": client.show, "share": "true", "sections": sec})
+        assert r.status_code == 422
+        assert r.json()["detail"] == "A Sharing excerpt never includes system events or the running order."
+    r = client.get(REPORT, params={"show_id": client.show, "share": "true", "sections": "summary"})
+    assert r.status_code == 200
+    r = client.get(REPORT, params={"show_id": client.show, "sections": "system"})     # a full report may have them
+    assert r.status_code == 200

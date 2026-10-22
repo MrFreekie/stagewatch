@@ -210,6 +210,8 @@ def _wanted_sections(scope: ReportScope) -> set[str]:
     unknown = set(scope.sections) - set(ALL_SECTIONS)
     if unknown:
         raise ReportError("bad_sections", "Unknown section.")
+    if scope.share and set(scope.sections) & set(SHARING_DEFAULT_OFF):
+        raise ReportError("share_sections", "A Sharing excerpt never includes system events or the running order.")
     return set(scope.sections)
 
 
@@ -591,8 +593,9 @@ def _power(ctx: _Ctx) -> dict | None:
 def _markers(ctx: _Ctx) -> list[dict]:
     cols = columns(ctx.conn, "markers")
     note = "note" if "note" in cols else "''"
+    shown = " AND hidden = 0" if "hidden" in cols else ""          # hidden markers are never reported
     rows = ctx.conn.execute(f"SELECT id, ts, label, source, {note} FROM markers WHERE show_id = ? "
-                            "AND ts >= ? AND ts <= ? ORDER BY ts, id LIMIT ?",
+                            f"AND ts >= ? AND ts <= ?{shown} ORDER BY ts, id LIMIT ?",
                             (ctx.show_id, ctx.S, ctx.E, MAX_MARKERS + 1)).fetchall()
     if len(rows) > MAX_MARKERS:
         raise ReportError("too_big", "There are too many markers in that range to report on. Try a shorter range.")
@@ -661,7 +664,7 @@ def _header(ctx: _Ctx, site, win: Window, source_label: str, omitted: list[str],
     if downs["fallback"]:
         notes.append("This day was recorded before Stagewatch kept a record of when it was running.")
     if ctx.runs:
-        zones = {str(r.doc.get("tz", "")) for r in ctx.runs if r.doc.get("tz")}
+        zones = {str(r.doc.get("tz", "")) for r in ctx.runs if r.doc.get("tz") and r.end > S and r.started < E}
         if len(zones) > 1 or (zones and site.timezone and site.timezone not in zones):
             notes.append("The time zone setting changed while this was recorded. Times use the current setting.")
     off = sitetime.utc_offset_s(S, site)
@@ -681,6 +684,11 @@ def _header(ctx: _Ctx, site, win: Window, source_label: str, omitted: list[str],
 
 def _completeness(ctx: _Ctx, win: Window, live: bool, site) -> str:
     show = win.show
+
+    def at(t: float) -> str:
+        """" at HH:MM", but only for a time inside the chosen range."""
+        return f" at {sitetime.local_hhmm(t, site)}" if win.start <= t <= win.end else ""
+
     last = ctx.runs[-1] if ctx.runs else None
     if win.end < (show["ended"] if show["ended"] is not None else ctx.now) - 1.0:
         return "Complete for this range"
@@ -688,12 +696,12 @@ def _completeness(ctx: _Ctx, win: Window, live: bool, site) -> str:
         if live or (last is not None and last.live):
             return f"Partial: show still running, up to {sitetime.local_hhmm(win.end, site)}"
         if last is not None and not last.clean:
-            return f"Partial: recording stopped unexpectedly at {sitetime.local_hhmm(last.end, site)}"
+            return f"Partial: recording stopped unexpectedly{at(last.end)}"
         if last is not None:
-            return f"Partial: Stagewatch was shut down at {sitetime.local_hhmm(last.end, site)}"
+            return f"Partial: Stagewatch was shut down{at(last.end)}"
         return f"Partial: show still open, up to {sitetime.local_hhmm(win.end, site)}"
     if last is not None and not last.clean and last.started <= win.end:
-        return f"Partial: recording stopped unexpectedly at {sitetime.local_hhmm(last.end, site)}"
+        return f"Partial: recording stopped unexpectedly{at(last.end)}"
     return "Complete"
 
 
@@ -721,3 +729,4 @@ def _apply_sharing(data: ReportData) -> None:
     if isinstance(spl, dict):
         for r in spl.get("revisions", []):
             r["by"] = ""
+            r["note"] = ""

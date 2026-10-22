@@ -23,7 +23,7 @@ from ..core.report import ALL_SECTIONS, ReportError, ReportScope, build_report, 
 from ..core.report import demo as report_demo
 from ..core.report import redact
 from ..core.report.fmt import file_name, slug, span_label  # noqa: F401  (file_name is shared with the command line)
-from ..core.report.query import DEFAULT_DEADLINE_S, TOO_LONG_TEXT, get_show, list_shows
+from ..core.report.query import DEFAULT_DEADLINE_S, TOO_LONG_TEXT, columns, get_show, list_shows
 
 log = logging.getLogger("stagewatch.report")
 
@@ -46,6 +46,7 @@ ERRORS = {
     "outside_show": (422, "That range is outside this show."),
     "bad_preset": (422, "Unknown range."),
     "bad_sections": (422, "Unknown section."),
+    "share_sections": (422, "A Sharing excerpt never includes system events or the running order."),
 }
 BUSY = "A report is already being made. Try again in a moment."
 
@@ -142,8 +143,9 @@ def register(app: FastAPI, hub, admin_deps: list) -> None:
             conn = open_readonly(hub.recorder.path, app.state.report_deadline_s)
             try:
                 get_show(conn, show_id, hub.config.site)
-                return conn.execute("SELECT id, ts, label FROM markers WHERE show_id = ? ORDER BY ts LIMIT 500",
-                                    (show_id,)).fetchall()
+                shown = " AND hidden = 0" if "hidden" in columns(conn, "markers") else ""
+                return conn.execute("SELECT id, ts, label FROM markers WHERE show_id = ?" + shown +
+                                    " ORDER BY ts LIMIT 500", (show_id,)).fetchall()
             finally:
                 conn.close()
         hub.recorder.flush()
