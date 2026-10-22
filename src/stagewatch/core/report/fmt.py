@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from .. import sitetime
 
 
@@ -52,3 +54,20 @@ def num(v: float | None, decimals: int = 1) -> str:
 
 def pct(v: float | None) -> str:
     return "" if v is None else f"{v * 100:.0f}%"
+
+
+def slug(text: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")[:30].strip("-")
+    return s or "show"
+
+
+def file_name(show: dict, win_start_label: str, ext: str) -> str:
+    """The default file name for a report: only letters, digits and hyphens from the show, and the
+    day only if it is written YYYY-MM-DD."""
+    day = show.get("day") or "day"
+    day = day if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(day)) else "day"
+    return f"stagewatch-report-{slug(show.get('event_name') or show.get('name') or '')}-{day}{win_start_label}.{ext}"
+
+
+def span_label(preset: str) -> str:
+    return "" if preset == "day" else "-" + preset.replace("_", "")

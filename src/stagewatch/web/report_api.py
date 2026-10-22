@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 from ..core.report import ALL_SECTIONS, ReportError, ReportScope, build_report, make_zip, open_readonly, render_html
 from ..core.report import demo as report_demo
 from ..core.report import redact
+from ..core.report.fmt import file_name, slug, span_label  # noqa: F401  (file_name is shared with the command line)
 from ..core.report.query import DEFAULT_DEADLINE_S, TOO_LONG_TEXT, get_show, list_shows
 
 log = logging.getLogger("stagewatch.report")
@@ -34,7 +35,7 @@ ERRORS = {
     "no_show": (404, "No such show."),
     "no_database": (503, "The history is not available."),
     "damaged": (503, "The history file could not be read. Try a backup."),
-    "deadline": (503, "The report took too long. Try a shorter range, or make it on the hub PC with `stagewatch report`."),
+    "deadline": (503, "The report took too long. Try a shorter range, or make it on the hub PC with `stagewatch report` (it has no time limit unless you set one)."),
     "too_big": (422, "The data is too large to download. Try a shorter range."),
     "no_doors_curfew": (422, "No doors and curfew in the schedule for this show."),
     "no_marker": (422, "Pick two markers from this show."),
@@ -52,17 +53,6 @@ BUSY = "A report is already being made. Try again in a moment."
 def error_for(exc: ReportError) -> HTTPException:
     status, text = ERRORS.get(exc.code, (422, "The report could not be made."))
     return HTTPException(status, text)
-
-
-def slug(text: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")[:30].strip("-")
-    return s or "show"
-
-
-def file_name(show: dict, win_start_label: str, ext: str) -> str:
-    day = show.get("day") or "day"
-    day = day if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(day)) else "day"
-    return f"stagewatch-report-{slug(show.get('event_name') or show.get('name') or '')}-{day}{win_start_label}.{ext}"
 
 
 def parse_sections(raw: str) -> set[str] | None:
@@ -100,9 +90,7 @@ def register(app: FastAPI, hub, admin_deps: list) -> None:
             data = build_report(conn, hub.config, scope, time.time(), "this hub", live,
                                deadline_s=app.state.report_deadline_s)
             show = data.window.show
-            span = ""
-            if data.window.preset != "day":
-                span = "-" + data.window.preset.replace("_", "")
+            span = span_label(data.window.preset)
             if kind == "zip":
                 return make_zip(data), file_name(show, span, "zip"), show["id"]
             return render_html(data), file_name(show, span, "html"), show["id"]

@@ -3,6 +3,7 @@ a data folder with a running server's lock, and proof that the originals are nev
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 import subprocess
 import sys
@@ -123,3 +124,83 @@ def test_unreadable_config_is_a_warning_not_a_change(folder, tmp_path):
     assert r.returncode == 0, r.stderr
     assert "could not be read" in (tmp_path / "w.html").read_text(encoding="utf-8")
     assert hashes(d) == before          # no .bak, no renamed copy
+
+
+# ------------------------------------------------------------------ output files, --list, copies (security review)
+def test_output_inside_the_data_folder_is_refused(folder, tmp_path):
+    d, sid = folder
+    before = hashes(d)
+    r = cli("--data-dir", d, "--show", sid, "--out", d / "report.html")
+    assert r.returncode == 1 and "outside the Stagewatch data folder" in r.stderr
+    r = cli("--data-dir", d, "--show", sid, "--csv", d / "sub" / ".." / "r.zip")
+    assert r.returncode == 1 and "outside the Stagewatch data folder" in r.stderr
+    r = cli("--data-dir", d, "--show", sid, cwd=d)       # the default name lands in the cwd: also refused
+    assert r.returncode == 1 and "outside the Stagewatch data folder" in r.stderr
+    assert hashes(d) == before
+
+
+def test_existing_file_needs_force(folder, tmp_path):
+    d, sid = folder
+    out = tmp_path / "keep.html"
+    out.write_text("old", encoding="utf-8")
+    r = cli("--data-dir", d, "--show", sid, "--out", out)
+    assert r.returncode == 1 and "--force" in r.stderr
+    assert out.read_text(encoding="utf-8") == "old"
+    r = cli("--data-dir", d, "--show", sid, "--out", out, "--force")
+    assert r.returncode == 0, r.stderr
+    assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
+
+
+def test_default_name_comes_from_the_shared_file_name(folder, tmp_path):
+    d, sid = folder
+    work = tmp_path / "work"
+    work.mkdir()
+    r = cli("--data-dir", d, "--show", sid, "--show-time", cwd=work)
+    assert r.returncode == 0, r.stderr
+    names = [p.name for p in work.iterdir()]
+    assert len(names) == 1 and re.fullmatch(r"stagewatch-report-[a-z0-9-]+-\d{4}-\d{2}-\d{2}-showtime\.html", names[0])
+
+
+def test_list_scrubs_names_and_control_characters(folder):
+    import sqlite3
+    d, sid = folder
+    db = sqlite3.connect(str(d / "stagewatch.sqlite3"))
+    db.execute("UPDATE shows SET name = ? WHERE id = ?", ("Hall \x1b[31mred\x07 10.1.2.3\nFAKE LINE", sid))
+    db.commit()
+    db.close()
+    r = cli("--data-dir", d, "--list")
+    assert r.returncode == 0, r.stderr
+    assert "\x1b" not in r.stdout and "\x07" not in r.stdout and "10.1.2.3" not in r.stdout
+    assert "FAKE LINE" in r.stdout and "\nFAKE LINE" not in r.stdout
+
+
+def test_timeout_option_is_accepted(folder, tmp_path):
+    d, sid = folder
+    r = cli("--data-dir", d, "--show", sid, "--timeout", "120", "--out", tmp_path / "t.html")
+    assert r.returncode == 0, r.stderr
+
+
+def test_stale_working_copies_are_removed_and_fresh_ones_kept(tmp_path):
+    import os
+    from stagewatch.core.report.readonly import remove_stale_copies
+    old, new, other = tmp_path / "stagewatch-report-old", tmp_path / "stagewatch-report-new", tmp_path / "other-old"
+    for p in (old, new, other):
+        p.mkdir()
+        (p / "stagewatch.sqlite3").write_bytes(b"x")
+    two_days = time.time() - 2 * 86400
+    os.utime(old, (two_days, two_days))
+    os.utime(other, (two_days, two_days))
+    assert remove_stale_copies(temp_root=tmp_path) == 1
+    assert not old.exists() and new.exists() and other.exists()
+
+
+def test_not_enough_free_space_is_a_plain_message(folder, tmp_path, monkeypatch):
+    from collections import namedtuple
+    from stagewatch.core.report import readonly
+    from stagewatch.core.report.query import ReportError
+    d, _ = folder
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(readonly.shutil, "disk_usage", lambda p: usage(10, 10, 0))
+    with pytest.raises(ReportError) as ei:
+        readonly.prepare_copy(d, tmp_path, False)
+    assert ei.value.code == "no_space" and "free space" in ei.value.message

@@ -10,15 +10,15 @@ import argparse
 import re
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 from . import updater_common
 from .core import sitetime
-from .core.report import ALL_SECTIONS, ReportError, ReportScope, build_report, make_zip, render_html
+from .core.report import ALL_SECTIONS, ReportError, ReportScope, build_report, make_zip, redact, render_html
+from .core.report.fmt import file_name, span_label
 from .core.report.query import get_show, list_shows, run_spans
-from .core.report.readonly import load_config_readonly, open_history_copy
-
-PROTECTED = ("stagewatch.sqlite3", "config.yaml", "secret.key")
+from .core.report.readonly import load_config_readonly, open_history_copy, remove_stale_copies
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -41,6 +41,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--sections", default="", help="comma list of: " + ", ".join(ALL_SECTIONS))
     p.add_argument("--out", type=Path, default=None, help="write the report page here (.html)")
     p.add_argument("--csv", type=Path, default=None, help="write the ZIP of data files here (.zip)")
+    p.add_argument("--force", action="store_true", help="replace the output file if it already exists")
+    p.add_argument("--timeout", type=float, default=None, metavar="SECONDS",
+                   help="stop if the report takes longer than this (default: no limit)")
     return p
 
 
@@ -61,6 +64,13 @@ def _flag(conn, show: dict, now: float) -> str:
     return "had an unexpected stop" if any(not r.clean for r in runs) else ""
 
 
+def _clean(text: object) -> str:
+    """Text from the history made safe to print: addresses and secrets scrubbed, control and
+    formatting characters (escape codes, new lines, direction marks) removed."""
+    s = redact.scrub(text)
+    return "".join(c for c in s if not unicodedata.category(c).startswith("C")).strip()
+
+
 def _hhmm(ts: float | None, site) -> str:
     return sitetime.local_hhmm(ts, site) if ts is not None else "open"
 
@@ -74,11 +84,11 @@ def _list(conn, site) -> None:
     last_event = object()
     for s in sorted(shows, key=lambda x: (x["event_id"] or 0, x["id"])):
         if s["event_id"] != last_event:
-            print(f"Event {s['event_id'] if s['event_id'] is not None else '-'}: {s['event_name'] or '(no name)'}")
+            print(f"Event {s['event_id'] if s['event_id'] is not None else '-'}: {_clean(s['event_name']) or '(no name)'}")
             last_event = s["event_id"]
         flag = _flag(conn, s, now)
-        print(f"  show {s['id']:<4} {s['day']}  {_hhmm(s['started'], site)} to {_hhmm(s['ended'], site)}  "
-              f"{s['name']}{'  [' + flag + ']' if flag else ''}")
+        print(f"  show {s['id']:<4} {_clean(s['day'])}  {_hhmm(s['started'], site)} to {_hhmm(s['ended'], site)}  "
+              f"{_clean(s['name'])}{'  [' + flag + ']' if flag else ''}")
 
 
 def _pick_show(conn, site, args) -> int:
@@ -114,11 +124,24 @@ def _scope(show_id: int, args) -> ReportScope:
     return ReportScope(show_id, preset, share=args.share, sections=sections, **kw)
 
 
-def _check_out(path: Path, suffix: str) -> None:
+def _check_out(path: Path, suffix: str, data_dir: Path, force: bool) -> None:
     if path.suffix.lower() != suffix:
         raise ReportError("bad_preset", f"The file name must end in {suffix}.")
-    if path.name in PROTECTED:
-        raise ReportError("bad_preset", "That would overwrite a Stagewatch data file. Choose another name.")
+    target = path.resolve()
+    root = data_dir.resolve()
+    if target == root or root in target.parents:
+        raise ReportError("bad_preset", "Choose a place outside the Stagewatch data folder. "
+                                        "The report never writes into it.")
+    if path.is_dir():
+        raise ReportError("bad_preset", "That is a folder. Give a file name.")
+    if path.exists() and not force:
+        raise ReportError("bad_preset", "That file already exists. Choose another name, or add --force to replace it.")
+
+
+def _write(path: Path, blob: bytes, force: bool) -> None:
+    """Write a new file (never over an existing one unless --force)."""
+    with open(path, "wb" if force else "xb") as f:
+        f.write(blob)
 
 
 def run(argv: list[str], resolve_data_dir) -> int:
@@ -126,14 +149,18 @@ def run(argv: list[str], resolve_data_dir) -> int:
     data_dir = resolve_data_dir(args.data_dir, args.emulate)
     if not data_dir.is_dir():
         return _fail("That data folder does not exist.")
+    remove_stale_copies()
     try:
         if args.out:
-            _check_out(args.out, ".html")
+            _check_out(args.out, ".html", data_dir, args.force)
         if args.csv:
-            _check_out(args.csv, ".zip")
+            _check_out(args.csv, ".zip", data_dir, args.force)
+        if args.out and args.csv and args.out.resolve() == args.csv.resolve():
+            raise ReportError("bad_preset", "--out and --csv must be different files.")
         cfg, warning = load_config_readonly(data_dir)
         running = updater_common.server_running(data_dir)
-        with open_history_copy(data_dir, running) as conn:
+        deadline = args.timeout if args.timeout and args.timeout > 0 else None
+        with open_history_copy(data_dir, running, deadline) as conn:
             if args.list:
                 _list(conn, cfg.site)
                 return 0
@@ -141,10 +168,12 @@ def run(argv: list[str], resolve_data_dir) -> int:
             scope = _scope(show_id, args)
             source = ("the history files of a running Stagewatch (read as a copy)" if running
                       else "the history files in a data folder (read as a copy, Stagewatch not needed)")
-            data = build_report(conn, cfg, scope, time.time(), source, False, [warning] if warning else None)
+            data = build_report(conn, cfg, scope, time.time(), source, False, [warning] if warning else None,
+                                deadline_s=deadline)
             html = render_html(data)
             blob = make_zip(data) if args.csv else None
             show = data.window.show
+            window_preset = data.window.preset
     except ReportError as e:
         if e.code == "damaged":
             return _fail("The history file is damaged. Try a backup: --data-dir <your data folder>/backups/<id> "
@@ -154,14 +183,17 @@ def run(argv: list[str], resolve_data_dir) -> int:
         return _fail("A file could not be read or written. Check the folder and the file name.")
     out = args.out
     if out is None and blob is None:
-        slug = re.sub(r"[^a-z0-9]+", "-", (show.get("event_name") or show["name"]).lower()).strip("-")[:30] or "show"
-        out = Path(f"stagewatch-report-{slug}-{show['day']}.html")
+        out = Path(file_name(show, span_label(window_preset), "html"))
+        try:
+            _check_out(out, ".html", data_dir, args.force)
+        except ReportError as e:
+            return _fail(e.message)
     try:
         if out is not None:
-            out.write_text(html, encoding="utf-8")
+            _write(out, html.encode("utf-8"), args.force)
             print(f"Report written: {out}")
         if blob is not None:
-            args.csv.write_bytes(blob)
+            _write(args.csv, blob, args.force)
             print(f"Data files written: {args.csv}")
     except OSError:
         return _fail("The report could not be saved there. Check the folder and the file name.")
