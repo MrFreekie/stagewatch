@@ -534,3 +534,61 @@ def test_completeness_never_shows_a_time_outside_the_range(dbfile):
     text = d.header["completeness"]
     assert text.startswith("Partial: recording stopped unexpectedly")
     assert not re.search(r"\d\d:\d\d", text)
+
+
+# ------------------------------------------------------------------ redaction (security review L4)
+@pytest.mark.parametrize("text,gone", [
+    ("Node foh-node-a1b2c3 lost", "a1b2c3"),
+    ("Node foh-node-A1B2C3 lost", "A1B2C3"),
+    ("mac 001122334455 seen", "001122334455"),
+    ("call 07700 900123 now", "900123"),
+    ("call 07700900123 now", "07700900123"),
+    ("call +44 7700 900123 now", "900123"),
+    ("call +447700900123 now", "7700900123"),
+    ("landline 01632 960123 now", "960123"),
+    ("reached host.example.com ok", "host.example.com"),
+    ("reached example.com ok", "example.com"),
+    ("reached NODE-1.Site.Example.Co.UK ok", "Example"),
+])
+def test_scrub_removes_identifying_text(text, gone):
+    out = redact.scrub(text)
+    assert gone not in out, out
+
+
+def test_scrub_exact_examples():
+    assert redact.scrub("foh-node-a1b2c3") == "foh-node"
+    assert redact.scrub("001122334455") == "[address]"
+    assert redact.scrub("07700 900123") == "[phone]"
+    assert redact.scrub("host.example.com") == "[address]"
+
+
+@pytest.mark.parametrize("text", [
+    "Temperature high 31.5 C", "version 0.3.0 -> 0.4.0", "report.html written", "show 2026-10-03 at 19:30:00",
+    "Line check", "Headliner on", "stage-left-2", "e.g. later", "1234 people", "Node A: missing",
+    "demo-festival-2026-10-03",
+])
+def test_scrub_leaves_ordinary_text_alone(text):
+    assert redact.scrub(text) == text
+
+
+def test_known_secrets_from_the_config_are_removed():
+    assert "hunter22secret" not in redact.scrub("pin was hunter22secret today", ("hunter22secret",))
+    cfg = SimpleNamespace(model_dump=lambda mode="json": {"admin": {"pin_hash": "pbkdf2$abcdefgh"},
+                                                             "node": {"api_key": "SeCrEt-Value-9"}})
+    assert "SeCrEt-Value-9" in redact.known_secrets(cfg)
+    assert redact.known_secrets(object()) == ()
+
+
+def test_report_removes_config_secrets_from_marker_labels(dbfile):
+    db = sqlite3.connect(str(dbfile))
+    db.execute("INSERT INTO markers (show_id, ts, label, source) VALUES (1, ?, 'typed SeCrEt-Value-9 by mistake', 'admin')",
+               (T0 + 120,))
+    db.commit()
+    db.close()
+    cfg = SimpleNamespace(site=CFG.site, dashboards=[], model_dump=lambda mode="json": {"node": {"api_key": "SeCrEt-Value-9"}})
+    conn = open_readonly(dbfile)
+    try:
+        d = build_report(conn, cfg, ReportScope(1), T0 + 5 * 3600)
+    finally:
+        conn.close()
+    assert "SeCrEt-Value-9" not in render_html(d)

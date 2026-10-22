@@ -187,17 +187,18 @@ def build_report(conn, cfg, scope: ReportScope, now: float, source_label: str = 
                       win, scope.share, charts)
     if scope.share:
         _apply_sharing(data)
-    data.sections = redact.scrub_tree(data.sections)
-    data.header = redact.scrub_tree(data.header)
-    data.charts = _scrub_charts(data.charts)
+    known = redact.known_secrets(cfg)
+    data.sections = redact.scrub_tree(data.sections, known)
+    data.header = redact.scrub_tree(data.header, known)
+    data.charts = _scrub_charts(data.charts, known)
     return data
 
 
-def _scrub_charts(charts: dict) -> dict:
+def _scrub_charts(charts: dict, known: tuple[str, ...] = ()) -> dict:
     for s in charts.get("env", []):
-        s["title"] = redact.scrub(s.get("title", ""))
+        s["title"] = redact.scrub(s.get("title", ""), known)
         for line in s.get("lines", []):
-            line["label"] = redact.scrub(line.get("label", ""))
+            line["label"] = redact.scrub(line.get("label", ""), known)
     return charts
 
 
