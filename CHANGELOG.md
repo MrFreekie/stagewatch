@@ -15,6 +15,10 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+
+- **Power distribution: Save to a file and Read a file.** Two buttons on the Power distribution page. **Save to a file** downloads your layout (points, roles, numbers, what feeds what, ways, lines, breaker and device limits, labels, the site-total ticks and the power demand settings) as `stagewatch-power-distribution-<date>.json`: a backup, a way to move the layout to another hub, or a start for the next event. Meters are matched by MAC, and the file has no addresses, passwords or tokens. **Read a file** shows a preview first (new, changed, already the same, and meters the file has that this hub does not, which are skipped and listed), and only **Apply to this hub** changes anything. It uses the same checks as Save, so a loop or a clash refuses the whole file with "Nothing has been changed". A file from a newer Stagewatch is refused with a clear message. Reading a file never removes a point or a meter. Admin only.
+
 ### Changed
 
 - **Power distribution has its own Admin page.** The card on the Integrations tab is now a short one: a line of explanation, how many points and meters there are, how many things need a look, and an **Open Power distribution** button. The page (`/power-distribution`, admin login as for Edit cards, with a Back to Admin link and Day / Night) holds everything the card did, and is built for big systems: units are grouped under the supply that feeds them (units not fed from anything yet come last), each group folds away, with **Expand all** and **Collapse all**, a **Find** box, a **Show only** kind (for example only final distribution units) and a count of the units shown. The Save bar stays on screen, says when there are unsaved changes, and the page warns before you leave with them.
