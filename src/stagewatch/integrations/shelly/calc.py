@@ -22,7 +22,7 @@ GEN_LOADING_RANGE = (50.0, 100.0)   # generator loading limit, % (default 80)
 GEN_LOADING_DEFAULT = 80.0
 GEN_PF_RANGE = (0.5, 1.0)           # the generator's assumed power factor (default 0.8)
 GEN_PF_DEFAULT = 0.8
-# Common standard generator sizes, kVA (prime/standby ratings differ: the supplier's rating applies).
+# Example generator sizes, kVA (not from any source; prime/standby ratings differ: the supplier's rating applies).
 GEN_SIZES_KVA = (20, 30, 40, 50, 60, 80, 100, 125, 150, 200, 250, 300, 400, 500, 630, 800, 1000)
 
 
