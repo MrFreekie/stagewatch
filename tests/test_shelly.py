@@ -1572,3 +1572,10 @@ async def test_the_circuits_a_meter_reports_are_remembered_and_a_one_circuit_met
     assert cfg.circuit_keys == ["pm1_0"]
     adm = integ.admin_status()["meters"][0]
     assert adm["single"] is True and adm["role"] == "equipment" and adm["way"] == 3
+
+
+def test_effective_limit_ignores_booleans_and_non_finite_numbers():
+    assert _pt.effective_limit(True, 16) == (16.0, "device")
+    assert _pt.effective_limit(float("inf"), 16) == (16.0, "device")
+    assert _pt.effective_limit(16, float("nan")) == (16.0, "breaker")
+    assert _pt.effective_limit(True, float("inf")) == (None, "")

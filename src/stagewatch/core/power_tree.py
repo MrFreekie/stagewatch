@@ -10,6 +10,7 @@ meter), a Shelly meter, or one circuit of a meter. Each node has a role, a numbe
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, replace
 
 log = logging.getLogger("stagewatch.power_tree")
@@ -436,8 +437,10 @@ def effective_limit(breaker_a, device_a) -> tuple[float | None, str]:
     are set, the one that is set when only one is, none when neither. Returns (amps, "breaker" | "device"
     | ""): which of the two is limiting. A tie counts as the breaker (the breaker trips first in practice).
     Advisory only; the same rule is in static/power.js (SW.pw.limit), kept equal by a test."""
-    b = breaker_a if isinstance(breaker_a, (int, float)) and breaker_a > 0 else None
-    d = device_a if isinstance(device_a, (int, float)) and device_a > 0 else None
+    def ok(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+    b = breaker_a if ok(breaker_a) else None
+    d = device_a if ok(device_a) else None
     if b is not None and (d is None or b <= d):
         return float(b), "breaker"
     if d is not None:
