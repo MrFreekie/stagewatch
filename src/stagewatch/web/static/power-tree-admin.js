@@ -144,5 +144,27 @@ SW.ptAdmin = (function () {
     if (loose.length) out.push({ key: "", unassigned: true, refs: loose });
     return out;
   };
+  // ---- Read a file: the preview (no DOM). `r` is the answer of POST /api/admin/power-tree/import (a preview).
+  // The page builds the elements from this with text only, never HTML. Kept in step with core/power_tree_io.py.
+  pa.FILE_MAX_BYTES = 512 * 1024;
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  pa.previewHeadline = function (r) {
+    const added = (r.new || []).length, changed = (r.changed || []).length, same = (r.unchanged || []).length, skipped = (r.skipped || []).length;
+    const site = r.site_changed ? " The site settings would change too." : "";
+    if (!added && !changed && !r.site_changed) return `Nothing to apply: everything in this file already matches.${skipped ? ` ${n(skipped, "item was", "items were")} skipped.` : ""}`;
+    return `Nothing has been changed yet. Applying this file would add ${added} and change ${changed}; ${same} already match${same === 1 ? "es" : ""}.${site}${skipped ? ` ${n(skipped, "item is", "items are")} skipped.` : ""}`;
+  };
+  // Sections of plain lines: [{title, lines}], empty ones left out.
+  pa.previewSections = function (r) {
+    const kindWord = (k) => (k === "meter" ? "Meter" : "Point");
+    const out = [
+      { title: "New", lines: (r.new || []).map((x) => `${kindWord(x.kind)}: ${x.name}`) },
+      { title: "Changed", lines: (r.changed || []).map((x) => `${kindWord(x.kind)} ${x.name}: ${(x.fields || []).join("; ")}`) },
+      { title: "Skipped (not on this hub)", lines: (r.skipped || []).map((x) => `${x.name}. ${x.why}`) },
+      { title: "Already the same", lines: (r.unchanged || []).map((x) => `${kindWord(x.kind)}: ${x.name}`) }];
+    return out.filter((s) => s.lines.length);
+  };
+  // Can this answer be applied? True when something would be added or changed.
+  pa.canApply = function (r) { return !!r && ((r.new || []).length + (r.changed || []).length > 0 || !!r.site_changed); };
   return pa;
 })();

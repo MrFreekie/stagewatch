@@ -194,6 +194,14 @@ The order is supply, intake switch unit (ISU), central distribution unit (CDU), 
 
 Removing a point asks what to do with the units fed from it: move them up a level, or leave them with no Upstream. Removing a meter leaves whatever it fed with no Upstream.
 
+### Save to a file, Read a file
+
+On the Power distribution page, **Save to a file** downloads your saved layout as `stagewatch-power-distribution-<date>.json`. Use it as a backup, to move the layout to another hub, or to start the next event from the same setup. Changes still on the page that you have not saved with **Save** are not in the file.
+
+The file holds the points, the roles and numbers, what feeds what, the ways, lines, breaker or fuse ratings, device limits, labels and the "include in site total" and "all circuits" ticks, plus the power demand settings. Meters are matched by their MAC, so the layout lands on the right meter even if its address or its name here is different. The file has no addresses, passwords or tokens.
+
+**Read a file** shows you a preview first and changes nothing: what is new, what would change, what already matches, and any meter in the file that this hub does not have (skipped, listed by name; anything that was fed from a skipped meter is left with no Upstream). Press **Apply to this hub** to go ahead. Reading a file never removes a point or a meter. The same checks as **Save** apply: if the result would break a rule (a loop, a number used twice, a unit fed from the wrong level) nothing is changed and it says why. A file saved by a newer Stagewatch is refused with a message to update this hub. If you have unsaved changes on the page, it asks before you choose a file, because applying reloads the page.
+
 Related: [Notices](README.md#notices), [Equipment](../cards/equipment.md), [Troubleshooting](../troubleshooting.md).
 
 Back to [Integrations](README.md).

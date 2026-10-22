@@ -15,6 +15,10 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+
+- **Power distribution: Save to a file and Read a file.** Two buttons on the Power distribution page. **Save to a file** downloads your layout (points, roles, numbers, what feeds what, ways, lines, breaker and device limits, labels, the site-total ticks and the power demand settings) as `stagewatch-power-distribution-<date>.json`: a backup, a way to move the layout to another hub, or a start for the next event. Meters are matched by MAC, and the file has no addresses, passwords or tokens. **Read a file** shows a preview first (new, changed, already the same, and meters the file has that this hub does not, which are skipped and listed), and only **Apply to this hub** changes anything. It uses the same checks as Save, so a loop or a clash refuses the whole file with "Nothing has been changed". A file from a newer Stagewatch is refused with a clear message. Reading a file never removes a point or a meter. Admin only.
+
 ### Changed
 
 - **The start page has a Day / Night button too.** The page with the list of dashboards now has the same **☀ Day** / **☾ Night** button as the dashboards and Admin. It follows the device until tapped, then remembers your choice in that browser, shared with the dashboards on that device.
