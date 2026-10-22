@@ -45,6 +45,7 @@ from .. import diagnostics, netinfo
 from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
 from ..core import power_tree as ptree
+from ..core import power_tree_io
 from ..core import device_errors as errors_mod
 from ..core import actions as actions_mod
 from ..core import schedule as sched
@@ -85,6 +86,8 @@ DEFAULT_BODY_OVERRIDES: dict[str, int] = {
     # Calibration import (plan §1.9): read by the browser's FileReader and sent as JSON without
     # the file's history (the page strips it), so 500 records fit well inside this.
     "/api/admin/calibrations/import": 1024 * 1024,
+    # Power distribution file (a few dozen points and meters: well under 100 KB in practice).
+    "/api/admin/power-tree/import": 512 * 1024,
     # Vendor log import: the file's text as JSON. A real LA Network Manager session is well under 1 MB.
     "/api/admin/logs/import": 6 * 1024 * 1024,
 }
@@ -241,6 +244,14 @@ class ResolveBody(BaseModel):
 class CalibrationImportBody(BaseModel):
     """POST /api/admin/calibrations/import: the parsed export file, and whether to only look."""
     model_config = ConfigDict(extra="forbid")
+
+    data: dict
+    dry_run: bool = True   # the safe way round: a caller that forgets it changes nothing
+
+
+class PowerFileImportBody(BaseModel):
+    """POST /api/admin/power-tree/import: the parsed power distribution file, and whether to only look."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     data: dict
     dry_run: bool = True   # the safe way round: a caller that forgets it changes nothing
@@ -2160,6 +2171,42 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         apply_power_tree(hub.config, body)
         hub.save_config()
         return {"ok": True, "power_tree": ptree.admin_view(hub.config)}
+
+    @app.get("/api/admin/power-tree/export", dependencies=[Depends(require_admin)])
+    async def export_power_tree():
+        """Admin only: the power distribution layout as a downloadable file. Meters by MAC; no addresses or secrets."""
+        data = json.dumps(power_tree_io.build_export(hub.config, __version__), indent=2).encode()
+        day = time.strftime("%Y-%m-%d", time.localtime())
+        return Response(data, media_type="application/json", headers={
+            "Content-Disposition": f'attachment; filename="stagewatch-power-distribution-{day}.json"',
+            "Content-Length": str(len(data)), "Cache-Control": "no-store"})
+
+    @app.post("/api/admin/power-tree/import", dependencies=admin_deps)
+    async def import_power_tree(body: PowerFileImportBody):
+        """Read a power distribution file. ``dry_run`` (the default) only reports what would change. Applying runs
+        the normal power-tree rules on a copy first: any breach refuses everything, with nothing changed."""
+        try:
+            plan = power_tree_io.plan_import(hub.config, body.data)
+        except power_tree_io.ImportError_ as exc:
+            raise HTTPException(422, str(exc)) from None
+        result = {"dry_run": body.dry_run, **plan.summary()}
+        trial = hub.config.model_copy(deep=True)
+        try:
+            tree = PowerTreeBody.model_validate(plan.body)
+            apply_power_tree(trial, tree)
+            if not {p["id"] for p in plan.body["points"]} <= {p.id for p in trial.power_points}:
+                raise ptree.TreeError("A point could not be added.")
+        except ptree.TreeError as exc:
+            raise HTTPException(422, f"{exc.message} Nothing has been changed.") from None
+        except ValueError:      # pydantic's ValidationError: fixed text, nothing from the file
+            raise HTTPException(422, power_tree_io.BAD_RECORD) from None
+        if body.dry_run or not plan.has_changes:
+            return result
+        apply_power_tree(hub.config, tree)
+        hub.config.power_site = PowerSiteConfig(**plan.site)
+        hub.save_config()
+        hub.add_marker(f"Power distribution read from a file: {len(plan.new)} new, {len(plan.changed)} changed", "hub")
+        return {**result, "power_tree": ptree.admin_view(hub.config)}
 
     @app.delete("/api/admin/power-points/{point_id}", dependencies=admin_deps)
     async def delete_power_point(point_id: str, children: Literal["reparent", "detach"] | None = Query(None)):
