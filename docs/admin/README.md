@@ -24,6 +24,7 @@ Admin has four tabs: **Show day**, **Sensors and nodes**, **Integrations** and *
 |---|---|---|
 | **Event & show** | Start a new day or event, rename, previous shows, event logo | [Site and shows](site-and-shows.md) |
 | **Schedule** | The running order for the day | [Schedule card](../cards/schedule.md) |
+| **Show report** | Make a printable end-of-day report, or an excerpt to share, from what was recorded | [Show report](show-report.md) |
 | **Alarm log (this show)** | What alarmed, and when | [Sensors and alarms](sensors-and-alarms.md) |
 | **Alarm notices** | How long notices stay on screen | [Sensors and alarms](sensors-and-alarms.md) |
 | **User dashboards** | Add dashboards, choose cards, order and size | [Dashboards](dashboards.md) |

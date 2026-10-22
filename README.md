@@ -26,6 +26,9 @@ rather than copying it), or a cloud service (it runs on your show network, offli
 - **Helps.** The speed of sound, how far your alignment has drifted since you set an
   **Aligned** marker, a barometer with a "weather may turn" hint, threshold alarms, and the
   day's schedule.
+- **Reports.** At the end of the day, one printable report of the readings, alarms, markers and any
+  time Stagewatch was not recording, or an excerpt to share. It can also be made after a crash. See
+  [Show report](docs/admin/show-report.md).
 - **Starts itself.** On Windows, a Raspberry Pi or a Debian PC, it starts at boot, restarts if it
   stops, and can update itself with a backup and a rollback.
 
