@@ -1,0 +1,382 @@
+# Stagewatch environment node: Adafruit ESP32-S3 Feather (product 5477, 4MB flash,
+# 2MB PSRAM, plain Feather with no screen) + Adafruit 3.5" 480x320 TFT FeatherWing
+# (product 3651, HX8357D) + Adafruit TE MS8607 PHT sensor (product 4716, STEMMA QT).
+# Wi-Fi. Role: Environment (air conditions).
+#
+# The screen is a local read-out only (it shows no Stagewatch data). Three rows, one
+# per reading: a large live value on the left and a one-hour graph on the right, with
+# the lowest and highest value of the last hour. The header has the node name and the
+# Wi-Fi and hub dots; the footer has the IP address and the Wi-Fi signal.
+#
+# Hardware (no soldering if the Feather has its headers fitted):
+#   - Adafruit ESP32-S3 Feather 5477, with female or stacking headers soldered on
+#     (the plain Feather is sold with loose male headers, so either way the wing and
+#     the Feather need headers fitted; the FeatherWing plugs on top)
+#   - Adafruit 3.5" TFT FeatherWing 3651
+#   - MS8607 on a STEMMA QT cable of 150-200 mm or longer (see Mounting)
+#   - USB-C data cable and a stable 5 V supply (the wing's backlight is bright)
+#
+# Pins (Adafruit pinouts; the wing's CS/DC are D9/D10 on the Feather):
+#   STEMMA QT: SDA = GPIO3, SCL = GPIO4, 3V3 switched by GPIO7 (I2C_POWER: driven
+#     HIGH below, or the sensor has no power)
+#   TFT FeatherWing (HX8357D, SPI): SCK GPIO36, MOSI GPIO35, TFT_CS D9 = GPIO9,
+#     TFT_DC D10 = GPIO10. Reset is tied to the Feather's reset. Backlight is always on
+#     (no software dimming on this wing).
+#   Not used here: touch controller (STMPE610, CS D6 = GPIO6), SD card (CS D5 = GPIO5),
+#     MISO GPIO37. Those pins are left alone.
+#   On-board NeoPixel: data GPIO33, power-enable GPIO21 (driven HIGH below)
+#
+# MS8607 addresses: temperature/pressure at 0x76 and humidity at 0x40 (the i2c scan
+# below should log both). Neither can be changed. Accuracy is about +/-0.5 C, +/-3 %RH,
+# +/-2 hPa: check it against a reference and use the per-sensor offset in Stagewatch
+# admin (pressure in Pa).
+#
+# Mounting: the Feather, regulator and the wing's backlight all make heat. Put the
+# sensor on its cable in free air, well away from the stack (not lying on it), away
+# from amps, lamps, dimmers, haze outlets and direct sun. Hang it where the air matches
+# the air the sound travels through. The screen is for the crew at the node; it is not
+# weatherproof.
+#
+# First flash (USB): install ESPHome (uv tool install esphome), copy
+# secrets.example.yaml to secrets.yaml and fill it in, plug the board in, hold BOOT,
+# tap RESET, release BOOT, then run
+#     esphome run stagewatch-s3-featherwing35-ms8607.yaml
+# and choose the COM port; tap RESET afterwards. This replaces Adafruit's UF2
+# bootloader. Later updates go over Wi-Fi with the same command. The fonts are fetched
+# from Google Fonts at compile time (needs internet). Then adopt the node in Stagewatch
+# admin with the key from api_encryption_key.
+#
+# Secrets used: wifi_ssid, wifi_password, ota_password, api_encryption_key (a different
+# key per node) and wifi_ap_password (the fallback access point).
+#
+# Status: validated with `esphome config` on ESPHome 2026.9.1; UNTESTED on hardware.
+# ESPHome has no ready-made HX8357D model, so the panel start-up commands below are the
+# ones from Adafruit's HX8357 library, typed in by hand: if the screen stays white or
+# shows noise, that sequence is the first suspect. If the picture is upside down use
+# rotation: 270°; if the colours look wrong, flip invert_colors or color_order.
+
+substitutions:
+  node_name: stagewatch-s3-wing-ms8607-1   # unique per node: becomes <name>.local
+  friendly_name: "Stagewatch S3 Wing MS8607 1"
+  screen_title: "Stagewatch S3 Wing 1"     # top-left of the screen
+
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: -100
+    then:
+      - light.turn_on:                  # NeoPixel amber = booting, no hub yet
+          id: status_led
+          brightness: 15%
+          red: 100%
+          green: 55%
+          blue: 0%
+
+esp32:
+  board: adafruit_feather_esp32s3       # 4MB flash, 2MB PSRAM (5477)
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+# 2MB quad PSRAM holds the 480x320 screen buffer (300 kB).
+psram:
+  mode: quad
+  speed: 80MHz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG        # native USB; drop if you see no logs
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+  reboot_timeout: 15min                 # recovers a stuck Wi-Fi stack
+  on_client_connected:
+    - light.turn_on:
+        id: status_led
+        brightness: 8%
+        red: 0%
+        green: 100%
+        blue: 0%
+  on_client_disconnected:
+    - light.turn_on:
+        id: status_led
+        brightness: 15%
+        red: 100%
+        green: 55%
+        blue: 0%
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Uncomment for a fixed address on the show control network:
+  # manual_ip:
+  #   static_ip: 192.168.1.50
+  #   gateway: 192.168.1.1
+  #   subnet: 255.255.255.0
+  # Several networks: replace ssid and password above with a `networks:` list of
+  # ssid / password pairs.
+  ap:
+    ssid: "${node_name}"
+    password: !secret wifi_ap_password
+  on_disconnect:
+    - light.turn_on:
+        id: status_led
+        brightness: 15%
+        red: 100%
+        green: 55%
+        blue: 0%
+
+captive_portal:
+
+# Power enables, applied at switch setup (before the sensors).
+switch:
+  - platform: gpio
+    id: i2c_power
+    pin: GPIO7                          # I2C_POWER: STEMMA QT port 3V3
+    restore_mode: ALWAYS_ON
+    internal: true
+  - platform: gpio
+    id: neopixel_power
+    pin: GPIO21                         # NEOPIXEL_POWER
+    restore_mode: ALWAYS_ON
+    internal: true
+
+i2c:
+  sda: GPIO3
+  scl: GPIO4
+  frequency: 100kHz                     # gentle on a long STEMMA QT cable
+  scan: true
+
+spi:
+  clk_pin: GPIO36
+  mosi_pin: GPIO35
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: status_led
+    internal: true
+    pin: GPIO33
+    num_leds: 1
+    chipset: ws2812
+    rgb_order: GRB
+    restore_mode: ALWAYS_OFF
+
+globals:
+  - id: last_reading_ms                 # millis() of the last good temperature
+    type: uint32_t
+    initial_value: '0'
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 18
+    glyphs: "!\"%()+,-./0123456789:<>? ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+  - file: "gfonts://Roboto"
+    id: font_big
+    size: 52
+    glyphs: "0123456789.-"
+  - file: "gfonts://Roboto"
+    id: font_unit
+    size: 28
+    glyphs: "°C%hPa"
+  - file: "gfonts://Roboto"
+    id: font_nosensor
+    size: 40
+    glyphs: " NOSER"
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: ip_addr
+      name: "IP address"
+      internal: true                    # shown on screen only
+
+sensor:
+  # Temperature + pressure at 0x76, humidity at 0x40. Environment: every 15 s, so the
+  # one-hour graphs hold 240 readings.
+  - platform: ms8607
+    address: 0x76
+    update_interval: 15s
+    temperature:
+      name: "Temperature"
+      id: temp_c
+      device_class: temperature
+      unit_of_measurement: "°C"
+      accuracy_decimals: 1
+      on_value:
+        then:
+          - lambda: 'id(last_reading_ms) = millis();'
+    humidity:
+      name: "Humidity"
+      id: rh
+      address: 0x40
+      device_class: humidity
+      unit_of_measurement: "%"
+      accuracy_decimals: 0
+    pressure:
+      name: "Pressure"                  # hPa; Stagewatch converts to Pa
+      id: press_hpa
+      device_class: atmospheric_pressure
+      unit_of_measurement: "hPa"
+      accuracy_decimals: 1
+
+  # Lowest and highest of the last hour (240 readings), for the screen only.
+  - { platform: copy, source_id: temp_c, id: temp_min, internal: true, filters: [{min: {window_size: 240, send_every: 4}}] }
+  - { platform: copy, source_id: temp_c, id: temp_max, internal: true, filters: [{max: {window_size: 240, send_every: 4}}] }
+  - { platform: copy, source_id: rh, id: rh_min, internal: true, filters: [{min: {window_size: 240, send_every: 4}}] }
+  - { platform: copy, source_id: rh, id: rh_max, internal: true, filters: [{max: {window_size: 240, send_every: 4}}] }
+  - { platform: copy, source_id: press_hpa, id: press_min, internal: true, filters: [{min: {window_size: 240, send_every: 4}}] }
+  - { platform: copy, source_id: press_hpa, id: press_max, internal: true, filters: [{max: {window_size: 240, send_every: 4}}] }
+
+  # Battery gauge (informational). MAX17048 at 0x36; there is no max17048 platform, so
+  # max17043 (same registers and address) is used: check the values look sane
+  # (about 3.0-4.2 V). With no battery fitted the readings may be odd or absent.
+  - platform: max17043
+    update_interval: 60s
+    battery_voltage:
+      name: "Battery voltage"
+    battery_level:
+      name: "Battery"
+
+  # The ESP32-S3 die temperature is deliberately not enabled: it reads the chip, not
+  # the air, and Stagewatch would treat it as a site temperature.
+
+  - platform: wifi_signal
+    name: "WiFi signal"
+    id: wifi_dbm
+    update_interval: 30s
+
+# One-hour graphs, drawn by the display below. The range grows to fit but never
+# shrinks below min_range, so sensor noise does not look like a trend.
+graph:
+  - id: graph_temp
+    sensor: temp_c
+    duration: 1h
+    width: 250
+    height: 80
+    border: true
+    min_range: 4.0
+    x_grid: 15min
+    y_grid: 2.0
+    line_thickness: 2
+    line_type: SOLID
+  - id: graph_rh
+    sensor: rh
+    duration: 1h
+    width: 250
+    height: 80
+    border: true
+    min_range: 20.0
+    x_grid: 15min
+    y_grid: 10.0
+    line_thickness: 2
+    line_type: SOLID
+  - id: graph_press
+    sensor: press_hpa
+    duration: 1h
+    width: 250
+    height: 80
+    border: true
+    min_range: 4.0
+    x_grid: 15min
+    y_grid: 2.0
+    line_thickness: 2
+    line_type: SOLID
+
+display:
+  - platform: mipi_spi
+    id: tft
+    model: CUSTOM
+    cs_pin: GPIO9
+    dc_pin: GPIO10
+    data_rate: 20MHz
+    # The panel's native frame is portrait (320x480); ESPHome rotates to landscape.
+    dimensions:
+      width: 320
+      height: 480
+    rotation: 90°
+    color_order: BGR
+    invert_colors: false
+    update_interval: 5s
+    # HX8357D start-up commands from Adafruit's HX8357 library (SETEXTC, SETRGB, SETCOM,
+    # SETOSC, SETPANEL, SETPWR1, SETSTBA, SETCYC, SETGAMMA, tearing off). Pixel format,
+    # scan direction, sleep-out and display-on are added by ESPHome after these.
+    init_sequence:
+      - [0xB9, 0xFF, 0x83, 0x57]
+      - delay 150ms
+      - [0xB3, 0x00, 0x00, 0x06, 0x06]
+      - [0xB6, 0x25]
+      - [0xB0, 0x68]
+      - [0xCC, 0x05]
+      - [0xB1, 0x00, 0x15, 0x1C, 0x1C, 0x83, 0xAA]
+      - [0xC0, 0x50, 0x50, 0x01, 0x3C, 0x1E, 0x08]
+      - [0xB4, 0x02, 0x40, 0x00, 0x2A, 0x2A, 0x0D, 0x78]
+      - [0xE0, 0x02, 0x0A, 0x11, 0x1D, 0x23, 0x35, 0x41, 0x4B, 0x4B, 0x42, 0x3A, 0x27, 0x1B, 0x08, 0x09, 0x03, 0x02, 0x0A, 0x11, 0x1D, 0x23, 0x35, 0x41, 0x4B, 0x4B, 0x42, 0x3A, 0x27, 0x1B, 0x08, 0x09, 0x03, 0x00, 0x01]
+      - [0x35, 0x00]
+      - [0x44, 0x00, 0x02]
+    lambda: |-
+      const Color BG(0, 0, 0);
+      const Color WHITE(255, 255, 255);
+      const Color GREY(150, 150, 150);
+      const Color CYAN(90, 210, 255);
+      const Color AMBER(255, 160, 0);
+      const Color RED(255, 70, 70);
+      const Color GREEN(60, 220, 90);
+      const Color TEMPC(255, 190, 70);
+      const Color PRESSC(170, 150, 255);
+      it.fill(BG);
+
+      // Header: node name (left); Wi-Fi and hub dots (right)
+      it.printf(8, 4, id(font_small), GREY, TextAlign::TOP_LEFT, "%s", "${screen_title}");
+      it.filled_circle(440, 15, 6, wifi::global_wifi_component->is_connected() ? GREEN : RED);
+      it.filled_circle(464, 15, 6, api::global_api_server->is_connected() ? GREEN : AMBER);
+
+      bool fresh = !std::isnan(id(temp_c).state) &&
+                   id(last_reading_ms) != 0 &&
+                   (millis() - id(last_reading_ms)) < 60000;
+
+      if (!fresh) {
+        it.print(240, 120, id(font_nosensor), RED, TextAlign::CENTER, "NO SENSOR");
+        it.print(240, 175, id(font_small), GREY, TextAlign::CENTER, "check the STEMMA QT cable");
+      } else {
+        // Row tops: 26, 112, 198. Value left, graph right (x 220..470), min/max under the value.
+        const int rows[3] = {26, 112, 198};
+        // Graphs
+        it.graph(222, rows[0] + 2, id(graph_temp), TEMPC);
+        it.graph(222, rows[1] + 2, id(graph_rh), CYAN);
+        it.graph(222, rows[2] + 2, id(graph_press), PRESSC);
+        for (int i = 0; i < 3; i++)
+          it.line(8, rows[i] + 94, 472, rows[i] + 94, Color(40, 40, 40));
+
+        // Temperature
+        it.printf(8, rows[0], id(font_big), TEMPC, TextAlign::TOP_LEFT, "%.1f", id(temp_c).state);
+        it.print(122, rows[0] + 16, id(font_unit), TEMPC, TextAlign::TOP_LEFT, "°C");
+        if (id(temp_min).has_state() && id(temp_max).has_state())
+          it.printf(8, rows[0] + 62, id(font_small), GREY, TextAlign::TOP_LEFT, "1 h  %.1f to %.1f", id(temp_min).state, id(temp_max).state);
+
+        // Humidity
+        if (!std::isnan(id(rh).state)) {
+          it.printf(8, rows[1], id(font_big), CYAN, TextAlign::TOP_LEFT, "%.0f", id(rh).state);
+          it.print(100, rows[1] + 16, id(font_unit), CYAN, TextAlign::TOP_LEFT, "%");
+          if (id(rh_min).has_state() && id(rh_max).has_state())
+            it.printf(8, rows[1] + 62, id(font_small), GREY, TextAlign::TOP_LEFT, "1 h  %.0f to %.0f", id(rh_min).state, id(rh_max).state);
+        }
+
+        // Pressure
+        if (!std::isnan(id(press_hpa).state)) {
+          it.printf(8, rows[2], id(font_big), PRESSC, TextAlign::TOP_LEFT, "%.0f", id(press_hpa).state);
+          it.print(134, rows[2] + 16, id(font_unit), PRESSC, TextAlign::TOP_LEFT, "hPa");
+          if (id(press_min).has_state() && id(press_max).has_state())
+            it.printf(8, rows[2] + 62, id(font_small), GREY, TextAlign::TOP_LEFT, "1 h  %.1f to %.1f", id(press_min).state, id(press_max).state);
+        }
+      }
+
+      // Footer: IP address (left), Wi-Fi signal (right)
+      it.printf(8, 296, id(font_small), GREY, TextAlign::TOP_LEFT, "%s", id(ip_addr).state.c_str());
+      if (id(wifi_dbm).has_state())
+        it.printf(472, 296, id(font_small), GREY, TextAlign::TOP_RIGHT, "%.0f dBm", id(wifi_dbm).state);
