@@ -53,6 +53,7 @@ from ..core import spl_limits as limits_mod
 from ..integrations.lanwm import importer as logimport
 from ..integrations.ontime.client import check_connection
 from ..integrations.shelly import TEXT as SHELLY_TEXT, InUse
+from ..integrations.shelly import UnknownChannel
 from ..integrations.shelly.http import ShellyError
 from ..integrations.witmotion import scan as wm_scan
 from ..core.updater import RateLimited, Updater, message_for
@@ -2097,10 +2098,14 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def shelly_patch(device_id: str, body: ShellyPatchBody):
         try:
             await shelly_integ().update(device_id, body.name, body.area, body.interval_s, body.host, body.rating_a,
-                                       None if body.channels is None else [c.model_dump() for c in body.channels],
+                                       None if body.channels is None else [c.model_dump(exclude_unset=True) for c in body.channels],
                                        body.combined_bar, body.breaker_a)
         except LookupError:
             raise HTTPException(404, "No such power meter") from None
+        except UnknownChannel:
+            raise HTTPException(422, "That meter has no such circuit. Nothing has been changed.") from None
+        except ptree.TreeError as exc:
+            raise HTTPException(422, f"{exc.message} Nothing has been changed.") from None
         except ShellyError as exc:
             raise HTTPException(422, f"{SHELLY_TEXT.get(exc.category, SHELLY_TEXT['unreachable'])} Nothing has been changed.") from None
         return {"ok": True}
