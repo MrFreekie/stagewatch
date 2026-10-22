@@ -332,3 +332,15 @@ def test_dashboard_put_rejects_hidden_characters_and_long_titles(client, field, 
 def test_dashboard_put_refuses_unknown_fields(client):
     _admin(client)
     assert _put(client, [{"slug": "foh", "cards": ["env_tiles"], "surprise": 1}]).status_code == 422
+
+
+def test_about_card_is_registered_half_capable_and_off_by_default():
+    assert "about" in cards.KNOWN_CARDS and "about" in cards.HALF_CAPABLE
+    for layout in ("tablet", "phone", "wall"):
+        assert "about" not in cards.default_cards(layout)
+    html = (STATIC / "dashboard.html").read_text(encoding="utf-8")
+    js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
+    common = (STATIC / "common.js").read_text(encoding="utf-8")
+    assert html.count('data-card="about"') == 1
+    assert common.count("https://github.com/MrFreekie/stagewatch") == 1   # one place only
+    assert 'about: { el: cardEl("about"), render: renderAbout }' in js

@@ -29,6 +29,7 @@
     pi_host: ["Raspberry Pi", "The health of the Raspberry Pi Stagewatch runs on: temperature, power supply (under-voltage), speed, load, memory, disk and Wi-Fi signal. Hidden unless Stagewatch runs on a Pi."],
     alignment_drift: ["Alignment drift", "How far each delay path has drifted since the Aligned marker, as the air warms or cools, with the delay that would match. Advice only: Stagewatch never changes your delays. Set the paths up in Admin (FOH advice). Stays hidden until a path is set up."],
     hf_air_loss: ["HF air loss", "Estimated change in top end lost to the air (4 kHz and above) at FOH and Rear since the Soundcheck marker. Advice only, not a measurement. Set the positions up in Admin (FOH advice). Stays hidden until a position is set up."],
+    about: ["About Stagewatch", "A small advert: the name, one line and a QR code that opens the Stagewatch project page on a phone. Shows no show data."],
     connect_footer: ["Open on a tablet", "This dashboard's address and a QR code, below all the other cards."],
   };
 

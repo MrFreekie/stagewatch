@@ -1624,3 +1624,12 @@ body.layout-wall .adv-list > li.adv-line { flex-wrap: nowrap; align-items: cente
 .pdp-unsaved { font-weight: 700; color: var(--warn, #e0a030); }
 .pdp-page input, .pdp-page select, .pdp-page button { min-height: 44px; }
 .pdp-summary-counts { display: flex; gap: 14px; flex-wrap: wrap; }
+
+/* About Stagewatch card: the QR sits on a white plate in both themes so it scans */
+.about-line { margin: 0 0 8px; }
+.about-qr { background: #fff; padding: 8px; border-radius: 6px; width: 176px; max-width: 100%; box-sizing: border-box; margin: 0 auto 6px; }
+.about-qr svg { display: block; width: 100%; height: auto; }
+.about-url { display: block; font-size: 12px; color: var(--muted); text-align: center; overflow-wrap: anywhere; }
+body.layout-wall .about-line { font-size: 30px; }
+body.layout-wall .about-qr { width: 300px; padding: 14px; }
+body.layout-wall .about-url { font-size: 20px; }
