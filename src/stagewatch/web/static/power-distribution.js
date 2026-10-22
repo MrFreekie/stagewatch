@@ -327,6 +327,51 @@
       if (dirty && !confirm("Throw away your unsaved changes?")) return;
       refresh();
     } }, "Undo changes");
+    // ---- Save to a file / Read a file. Reading shows a preview first; nothing changes until Apply.
+    const fileNote = h("p", { class: "muted", role: "status" });
+    const fileBox = h("div", { role: "status" });
+    const saveFileBtn = h("button", { class: "touch", type: "button", title: "Download the saved layout as a file: a backup, or to move it to another hub", onclick: async () => {
+      try {
+        const res = await fetch("/api/admin/power-tree/export", { credentials: "same-origin", cache: "no-store" });
+        if (res.status === 401) { toLogin(); return; }
+        if (!res.ok) throw new Error("Could not make the file");
+        const a = h("a", { href: URL.createObjectURL(await res.blob()), download: `stagewatch-power-distribution-${new Date().toISOString().slice(0, 10)}.json` });
+        document.body.append(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        fileNote.textContent = dirty ? "Saved the layout as it is stored on the hub. Changes still on this page are not in the file until you press Save." : "Saved. The file says which meter each setting belongs to, by its MAC, and holds no addresses or passwords.";
+      } catch (err) { toast(err.message, true); }
+    } }, "Save to a file");
+    const showFile = (data, r) => {
+      const list = (s) => h("div", {}, h("strong", {}, s.title), h("ul", {}, s.lines.map((t) => h("li", {}, t))));
+      fileNote.textContent = "";
+      fileBox.replaceChildren(h("div", { class: "notice" },
+        h("p", {}, PA.previewHeadline(r)),
+        ...PA.previewSections(r).map(list),
+        h("p", { class: "muted" }, "Reading a file never removes anything that is already here."),
+        h("div", { class: "row" },
+          PA.canApply(r) ? h("button", { class: "primary small touch", type: "button", onclick: () =>
+            run(() => api("POST", "/api/admin/power-tree/import", { data, dry_run: false }), "Power distribution read from the file")
+              .then(() => { fileBox.replaceChildren(); return refresh(); }, () => {}) }, "Apply to this hub") : null,
+          h("button", { class: "small touch", type: "button", onclick: () => fileBox.replaceChildren() }, PA.canApply(r) ? "Cancel" : "Close"))));
+    };
+    const fileInput = h("input", { type: "file", accept: "application/json,.json", hidden: true, "aria-label": "Power distribution file to read", onchange: () => {
+      const f = fileInput.files[0]; fileInput.value = "";
+      if (!f) return;
+      if (f.size > PA.FILE_MAX_BYTES) { toast("That file is too big to be a power distribution file. Nothing has been changed.", true); return; }
+      const rd = new FileReader();
+      rd.onload = () => {
+        let data;
+        try { data = JSON.parse(String(rd.result)); } catch (_) { toast("That is not a Stagewatch power distribution file. Nothing has been changed.", true); return; }
+        if (!data || typeof data !== "object" || Array.isArray(data)) { toast("That is not a Stagewatch power distribution file. Nothing has been changed.", true); return; }
+        run(() => api("POST", "/api/admin/power-tree/import", { data, dry_run: true })).then((r) => showFile(data, r), () => {});
+      };
+      rd.onerror = () => toast("Could not read that file. Nothing has been changed.", true);
+      rd.readAsText(f);
+    } });
+    const readFileBtn = h("button", { class: "touch", type: "button", title: "Choose a saved file. You see what would change first; nothing changes until you press Apply", onclick: () => {
+      if (dirty && !confirm("You have changes on this page that are not saved. Applying a file reloads the page and they would be lost. Choose a file anyway?")) return;
+      fileInput.click();
+    } }, "Read a file");
     const note = (list, cls) => list.map((x) => h("p", { class: cls }, x.message));
     const nUnits = rows.length;
 
@@ -342,7 +387,8 @@
         h("div", { class: "row pdp-tools" }, field("Find", filterIn), field("Show only", kindSel),
           h("button", { class: "touch", type: "button", onclick: () => setAll(true) }, "Expand all"),
           h("button", { class: "touch", type: "button", onclick: () => setAll(false) }, "Collapse all"),
-          h("span", { class: "grow" }), countEl, add),
+          h("span", { class: "grow" }), countEl, saveFileBtn, readFileBtn, fileInput, add),
+        fileNote, fileBox,
         listBox,
         SW.help(h("p", { class: "muted hint" }, "The order is supply, intake unit (ISU), main distribution unit (CDU), final distribution unit (FDU), then equipment. A unit can skip a level but cannot be fed from the same level or from below. Units are grouped under the supply that feeds them; change what feeds a unit and it moves to its new group. When you choose what a unit is, Stagewatch fills in the next free number and suggests what feeds it; change either if it is wrong. A meter with one circuit is one row. Under More options: the way is the circuit number on the unit above, so a final unit on way 2 of CDU02 reads CDU02-C2, and with its line CDU02-C2-L1 (CDU01-C1-3P for a three-phase feed). Each way feeds one thing. The breaker or fuse rating is the protective device in front of it; the device limit is what the meter itself can carry; the lower of the two is used for the load bars. A UPS can sit anywhere in the chain; its type says how it behaves on mains. Numbers run from 1 to 99, each used once per role. Several generators or supplies are fine: each is the top of its own tree. Check the names ISU, CDU and FDU against your own paperwork. Nothing here changes any meter."))),
       h("div", { class: "pdp-bar" }, status, msg, h("span", { class: "grow" }), undo, save));
