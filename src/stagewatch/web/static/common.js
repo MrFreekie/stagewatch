@@ -1112,6 +1112,24 @@ SW.qrSvg = function (text, size = 176) {
   return svg;
 };
 
+// About Stagewatch card: the one place the project address lives. Fixed text, drawn locally.
+SW.ABOUT_URL = "https://github.com/MrFreekie/stagewatch";
+SW.ABOUT_LINE = "Free, open-source show monitoring.";
+SW.aboutNodes = function () {
+  const qr = SW.qrSvg(SW.ABOUT_URL, 160);
+  let plate = null;
+  if (qr) {
+    qr.setAttribute("aria-label", "QR code linking to the Stagewatch project page");
+    qr.removeAttribute("width"); qr.removeAttribute("height");
+    plate = SW.h("div", { class: "about-qr" }, qr);
+  }
+  return [
+    SW.h("p", { class: "about-line" }, SW.ABOUT_LINE),
+    plate,
+    SW.h("a", { class: "about-url", href: SW.ABOUT_URL, target: "_blank", rel: "noopener noreferrer" }, SW.ABOUT_URL),
+  ].filter(Boolean);
+};
+
 // The small print of a card (how figures are made, advisory wording) folds away under one closed
 // "About these figures" line, so the card shows titles and figures, not paragraphs.
 SW.about = function (...nodes) {
@@ -1130,7 +1148,7 @@ SW.slot = function (el, hide) { if (el.dataset) el.dataset.slot = ""; if (el.hid
 // Card size (Dashboard.card_sizes, core/cards.py HALF_CAPABLE). A card is half width only when
 // the dashboard says "half" for it, the card is allowed to be half, and the layout is not the
 // phone (a phone always shows full width). Anything else is full.
-SW.HALF_CAPABLE = ["wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power", "pi_host"];
+SW.HALF_CAPABLE = ["wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power", "pi_host", "about"];
 SW.cardIsHalf = function (dash, id, layout) {
   if (layout === "phone" || SW.HALF_CAPABLE.indexOf(id) < 0) return false;
   const sizes = dash && dash.card_sizes;

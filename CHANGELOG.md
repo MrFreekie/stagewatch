@@ -17,6 +17,7 @@ them into a dated release section and tags the commit.
 
 ### Added
 
+- **About Stagewatch card.** A small optional dashboard card with the name, one line and a QR code that opens the Stagewatch project page (the address is printed under it). Off by default; add it under User dashboards, Edit cards. The QR code is drawn on the page, shows on a white square in light and dark, and needs no internet or data. Can be Half width. See [About Stagewatch](docs/cards/about.md).
 - **Power distribution: Save to a file and Read a file.** Two buttons on the Power distribution page. **Save to a file** downloads your layout (points, roles, numbers, what feeds what, ways, lines, breaker and device limits, labels, the site-total ticks and the power demand settings) as `stagewatch-power-distribution-<date>.json`: a backup, a way to move the layout to another hub, or a start for the next event. Meters are matched by MAC, and the file has no addresses, passwords or tokens. **Read a file** shows a preview first (new, changed, already the same, and meters the file has that this hub does not, which are skipped and listed), and only **Apply to this hub** changes anything. It uses the same checks as Save, so a loop or a clash refuses the whole file with "Nothing has been changed". A file from a newer Stagewatch is refused with a clear message. Reading a file never removes a point or a meter. Admin only.
 
 ### Changed

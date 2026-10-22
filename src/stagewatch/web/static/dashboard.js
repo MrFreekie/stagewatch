@@ -1824,6 +1824,8 @@
     spl_limits: { el: cardEl("spl_limits"), render: () => { if (!splLim.data) loadSplLimits(); renderSplLimits(); } },
     spl_live: { el: cardEl("spl_live"), render: renderSpl, empty: () => SW.spl.entities(state.entities).length === 0 },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
+    // About Stagewatch: static, no data; drawn once and works offline.
+    about: { el: cardEl("about"), render: renderAbout },
     connect_footer: { el: cardEl("connect_footer"), footer: true, render: renderConnectFooter },
   };
   // Without a dashboard (an admin on an unknown slug) show the 0.2.0 set.
@@ -1979,6 +1981,15 @@
       previewStrip();
       try { window.parent.postMessage({ type: "sw-preview-ready" }, location.origin); } catch (_) { /* ignore */ }
     }
+  }
+
+  // About Stagewatch: fixed text and a locally drawn QR code; no server data, so it works offline.
+  function renderAbout() {
+    const card = $("about-card");
+    if (!has("about")) { card.hidden = true; return; }
+    card.hidden = false;
+    if ($("about-body").firstChild) return;
+    $("about-body").replaceChildren(...SW.aboutNodes());
   }
 
   // "Open on a tablet" footer card: where tablets can reach this dashboard. Only the address and
