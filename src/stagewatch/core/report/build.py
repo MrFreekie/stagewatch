@@ -86,11 +86,11 @@ class _Ctx:
 
 # ------------------------------------------------------------------ entry point
 def build_report(conn, cfg, scope: ReportScope, now: float, source_label: str = "this hub",
-                 live: bool = False) -> ReportData:
+                 live: bool = False, notes: list[str] | None = None) -> ReportData:
     """Make the report for ``scope``.  ``conn`` comes from ``query.open_readonly``.  ``live`` says the
     newest hub run is still going (the running hub is making the report)."""
     cfg_site = getattr(cfg, "site", None)
-    warnings: list[str] = []
+    warnings: list[str] = list(notes or [])    # e.g. the command line could not read the config
     tz = (getattr(cfg_site, "timezone", "") or "").strip()
     rollover = getattr(cfg_site, "day_rollover", "") or "06:00"
     probe = SimpleNamespace(timezone=tz, day_rollover=rollover)

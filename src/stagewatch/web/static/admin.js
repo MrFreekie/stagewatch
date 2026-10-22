@@ -2922,6 +2922,7 @@
       tabPanel("show",
         foldCard(eventShowCard(), "event", true),
         scheduleCard(),     // summary and a link to /schedule
+        foldCard(SW.reportCard(admin), "report", false),   // end-of-day show report
         foldCard(alarmLogCard(), "alarmlog", true),
         foldCard(alarmNoticesCard(), "notices", true),
         foldCard(dashboardsCard(), "dashboards", true),   // full width: room for the "Edit cards" panel

@@ -263,6 +263,9 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "import-log":
         import_log_cli(sys.argv[2:])
         return
+    if len(sys.argv) > 1 and sys.argv[1] == "report":
+        from .report_cli import run as report_run
+        sys.exit(report_run(sys.argv[2:], resolve_data_dir))
     if len(sys.argv) > 1 and sys.argv[1] == "reset-admin-pin":
         reset_admin_pin_cli(sys.argv[2:])
         return
