@@ -1572,3 +1572,44 @@ async def test_the_circuits_a_meter_reports_are_remembered_and_a_one_circuit_met
     assert cfg.circuit_keys == ["pm1_0"]
     adm = integ.admin_status()["meters"][0]
     assert adm["single"] is True and adm["role"] == "equipment" and adm["way"] == 3
+
+
+def test_effective_limit_ignores_booleans_and_non_finite_numbers():
+    assert _pt.effective_limit(True, 16) == (16.0, "device")
+    assert _pt.effective_limit(float("inf"), 16) == (16.0, "device")
+    assert _pt.effective_limit(16, float("nan")) == (16.0, "breaker")
+    assert _pt.effective_limit(True, float("inf")) == (None, "")
+
+
+# ============================================================== saving circuits merges, it does not replace
+async def test_saving_one_circuit_keeps_the_others_and_the_way(hub):
+    from stagewatch.integrations.shelly import UnknownChannel
+    integ, cfg = await make(hub)
+    feed(integ, pm(100.0, 230.0, 1.0, 1000.0), T0)
+    cfg.circuit_keys = ["pm1_0", "pm1_1"]
+    cfg.channels = [ShellyChannelConfig(key="pm1_0", label="Amp rack", way=3), ShellyChannelConfig(key="pm1_1", label="Lights")]
+    await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "phase": "L2"}])     # label and way not sent
+    got = {c.key: c for c in cfg.channels}
+    assert got["pm1_0"].label == "Amp rack" and got["pm1_0"].way == 3 and got["pm1_0"].phase == "L2"
+    assert got["pm1_1"].label == "Lights"                                    # not mentioned: left alone
+    with pytest.raises(UnknownChannel):
+        await integ.update("rack", "New name", None, None, None, None, [{"key": "pm9_9", "label": "x"}])
+    assert cfg.name == "Mic rack" and {c.key for c in cfg.channels} == {"pm1_0", "pm1_1"}
+
+
+async def test_a_save_that_breaks_the_power_tree_rules_changes_nothing(hub):
+    from stagewatch.core.power_tree import TreeError
+    integ, cfg = await make(hub)
+    feed(integ, pm(100.0, 230.0, 1.0, 1000.0), T0)
+    cfg.channels = [ShellyChannelConfig(key="pm1_0", label="Amp rack")]
+    with pytest.raises(TreeError):
+        await integ.update("rack", None, None, None, None, None, [{"key": "pm1_0", "role": "cdu", "upstream": "p:nowhere"}])
+    assert cfg.channels[0].upstream == "" and cfg.channels[0].label == "Amp rack"
+
+
+def test_the_patch_route_refuses_an_unknown_circuit_with_fixed_text(client):
+    client.hub.config.shelly_devices.append(ShellyDeviceConfig(id="rack", host=HOST, mac=MAC, name="Mic rack", circuit_keys=["pm1_0"]))
+    r = client.patch("/api/admin/shelly/rack", json={"channels": [{"key": "pm9_9", "label": "x"}]})
+    assert r.status_code == 422 and "pm9_9" not in r.text and "no such circuit" in r.json()["detail"]
+    assert client.patch("/api/admin/shelly/rack", json={"channels": [{"key": "pm1_0", "label": "ok"}]}).status_code == 200
+    assert client.hub.config.shelly_devices[0].channels[0].label == "ok"

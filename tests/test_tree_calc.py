@@ -254,3 +254,11 @@ async def test_nothing_is_recorded_until_a_tree_is_set_up(hub):
     integ = await _site(hub, chans)
     integ.status(MAC, _em1([12.0, 10.0, 8.0]), T0)
     assert not [k for k in hub.entities if k.startswith("power_site.tree")]
+
+
+def test_a_supply_under_another_supply_is_not_counted_twice():
+    # A 400 W supply placed under a 600 W one: the site total is 1000 W, not 1400 W.
+    nodes = [N("p:g1", "source", "point"), N("p:g2", "source", "point", up="p:g1"),
+             N("m:a", "isu", up="p:g1", w=600), N("m:b", "isu", up="p:g2", w=400)]
+    r = rollup(nodes)
+    assert r.site.watts == 1000 and r.site.complete

@@ -171,7 +171,6 @@ Then Stagewatch sends, for each path and position:
 | Address | Value |
 |---|---|
 | `/stagewatch/path/<id>/drift` | Drift in ms (plus means sound arrives later). |
-| `/stagewatch/path/<id>/suggested_delay` | Current delay plus drift, in ms. |
 | `/stagewatch/position/<id>/change_db` | Change in dB since the marker, one number per band, in band order. |
 
 `<id>` is the short name Stagewatch made from the path or position name. An unknown value is sent as

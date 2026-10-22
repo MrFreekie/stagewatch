@@ -183,10 +183,10 @@ Stagewatch, copies the data to a new dated folder called `stagewatch-backup-` pl
 in your user folder (`C:\Users\YOUR_NAME`), and starts it again:
 
 ```powershell
-Stop-ScheduledTask -TaskName "Stagewatch"; Start-Sleep -Seconds 10; Copy-Item "C:\ProgramData\Stagewatch" "$HOME\stagewatch-backup-$(Get-Date -Format yyyy-MM-dd)" -Recurse; Start-ScheduledTask -TaskName "Stagewatch"
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Stagewatch\deploy\windows\stop-stagewatch.ps1"; Copy-Item "C:\ProgramData\Stagewatch" "$HOME\stagewatch-backup-$(Get-Date -Format yyyy-MM-dd)" -Recurse; Start-ScheduledTask -TaskName "Stagewatch"
 ```
 
-Stagewatch notes this stop in its history as an unexpected stop. That is expected here.
+The stop is a clean one (the helper asks Stagewatch to stop, then waits for it), so it is not recorded as an unexpected stop. If you installed Stagewatch somewhere other than `C:\Stagewatch`, change that path in the command.
 
 Then copy that folder to a USB stick you keep safe. Do not put it in a cloud folder.
 
@@ -242,7 +242,7 @@ Administrator** and paste this, with your folder's name in place of
 
 ```powershell
 $BK = "$HOME\stagewatch-backup-2026-10-17"; $OLD = "C:\ProgramData\Stagewatch-before-restore-$(Get-Date -Format yyyy-MM-dd)"
-Stop-ScheduledTask -TaskName "Stagewatch"; Start-Sleep -Seconds 10
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Stagewatch\deploy\windows\stop-stagewatch.ps1"
 New-Item -ItemType Directory $OLD | Out-Null; Move-Item "C:\ProgramData\Stagewatch\*" $OLD
 Copy-Item "$BK\*" "C:\ProgramData\Stagewatch" -Recurse
 Start-ScheduledTask -TaskName "Stagewatch"

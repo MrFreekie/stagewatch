@@ -151,6 +151,10 @@ def validate_host(host: object) -> str:
     return str(ip)
 
 
+class UnknownChannel(Exception):
+    """A circuit key that this meter does not have. Carries nothing: the text never echoes what was sent."""
+
+
 class InUse(Exception):
     """The meter, the name or the room for another meter is not available. The message is fixed text."""
 
@@ -594,6 +598,7 @@ class ShellyIntegration(Integration):
             cfg = next((c for c in self.hub.config.shelly_devices if c.id == device_id), None)
             if cfg is None:
                 raise LookupError
+            new_channels = None if channels is None else self._merged_channels(cfg, channels)
             new_host = cfg.host
             if host is not None:
                 new_host = validate_host(host)
@@ -613,19 +618,8 @@ class ShellyIntegration(Integration):
                 cfg.breaker_a = breaker_a or None    # 0 clears it
             if combined_bar is not None:
                 cfg.combined_bar = combined_bar
-            if channels is not None:
-                seen, kept = set(), []
-                old = {x.key: x for x in cfg.channels}
-                for c in channels:
-                    # The power tree fields (role, number, upstream) are edited on their own card: keep them.
-                    prev = old.get(c.get("key"))
-                    tree = {"role": prev.role, "unit_no": prev.unit_no, "upstream": prev.upstream} if prev else {}
-                    ch = ShellyChannelConfig(**{**tree, **c, "rating_a": c.get("rating_a") or None,
-                                                "breaker_a": c.get("breaker_a") or None})
-                    if ch.key not in seen and (ch.label or ch.phase or ch.rating_a or ch.breaker_a or ch.in_total or ch.role or ch.upstream):
-                        seen.add(ch.key)
-                        kept.append(ch)
-                cfg.channels = kept
+            if new_channels is not None:
+                cfg.channels = new_channels
             cfg.host = new_host
             self.hub.save_config()
             m = self._meters.get(cfg.mac)
@@ -635,6 +629,43 @@ class ShellyIntegration(Integration):
             self.hub.set_device_public(cfg.id, public_extra(cfg))
             self._transport.add(Target(cfg.mac, cfg.host, cfg.poll_interval_s))
             self._update_neutral(self._clock())
+
+    def _merged_channels(self, cfg: ShellyDeviceConfig, channels: list[dict]) -> list[ShellyChannelConfig]:
+        """The meter's circuits after a save: what is sent is merged into what is there (a field that is not
+        sent keeps its value, including the power tree fields and the way), a circuit that is not sent is left
+        alone, and a circuit the meter does not have is refused. The result is checked with the power tree rules
+        on a copy first, so a refused save changes nothing."""
+        known = set(cfg.circuit_keys) | {x.key for x in cfg.channels}
+        known_all = bool(cfg.circuit_keys)       # until the meter has reported, its circuits are not known yet
+        by_key = {x.key: x for x in cfg.channels}
+        order = [x.key for x in cfg.channels]
+        for c in channels:
+            key = c.get("key")
+            if known_all and key not in known:
+                raise UnknownChannel
+            prev = by_key.get(key)
+            data = prev.model_dump() if prev else {"key": key}
+            data.update(c)
+            for f in ("rating_a", "breaker_a"):
+                data[f] = data.get(f) or None         # 0 or empty clears it
+            by_key[key] = ShellyChannelConfig(**data)
+            if key not in order:
+                order.append(key)
+        kept = []
+        for key in order:
+            ch = by_key[key]
+            if ch.label or ch.phase or ch.rating_a or ch.breaker_a or ch.in_total or ch.role or ch.upstream \
+                    or ch.unit_no is not None or ch.way is not None:
+                kept.append(ch)
+        trial = self.hub.config.model_copy(deep=True)
+        mine = next((d for d in trial.shelly_devices if d.id == cfg.id), None)
+        if mine is not None:
+            before = {p.message for p in power_tree.validate(power_tree.build_nodes(self.hub.config))}
+            mine.channels = [k.model_copy(deep=True) for k in kept]
+            fresh = [p for p in power_tree.validate(power_tree.build_nodes(trial)) if p.message not in before]
+            if fresh:
+                raise power_tree.TreeError(fresh[0].message, fresh)
+        return kept
 
     def apply_warnings(self, device_id: str) -> int:
         """Admin button "Add warnings at 80 % and 100 %": for each circuit's current reading, two ordinary

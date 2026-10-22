@@ -37,6 +37,7 @@ def test_the_endpoint_gives_only_metered_nodes_with_history_and_caps_the_window(
         ref = next(n["ref"] for n in c.get("/api/power-tree").json()["nodes"] if n["ref"].startswith("m:"))
         dev = ref.split(":")[1]
         hub.recorder.record_state(f"{dev}.meter_power_load", 750.0, time.time() - 60)
+        hub.recorder.flush()
         got = c.get("/api/power-tree/trend?minutes=1").json()
         assert got["minutes"] == 15
         assert set(got["series"]) <= {n["ref"] for n in c.get("/api/power-tree").json()["nodes"] if not n["ref"].startswith("p:")}
@@ -58,3 +59,23 @@ def test_trend_read_stays_within_budget_with_a_big_states_table(tmp_path):
     assert all(0 < len(v) <= server.TREND_POINTS for v in out.values())
     assert took < 1.5       # measured well under half a second; a whole-table read per series is many seconds
     rec.close()
+
+
+def test_the_endpoint_answers_from_a_ten_second_cache_per_window(tmp_path, monkeypatch):
+    hub = Hub(tmp_path, emulate=True)
+    seed_emulate_shelly(hub.config)
+    reads = []
+    real = hub.recorder.trend_threaded
+    monkeypatch.setattr(hub.recorder, "trend_threaded", lambda *a, **k: (reads.append(1), real(*a, **k))[1])
+    with TestClient(create_app(hub, lan_addresses=lambda: ["192.0.2.10"])) as c:
+        ref = next(n["ref"] for n in c.get("/api/power-tree").json()["nodes"] if n["ref"].startswith("m:"))
+        hub.entities[f"{ref.split(':')[1]}.meter_power_load"] = object()      # the meter's watts entity exists
+        hub.recorder.record_state(f"{ref.split(':')[1]}.meter_power_load", 750.0, time.time() - 60)
+        hub.recorder.flush()
+        first = c.get("/api/power-tree/trend?minutes=30").json()
+        assert c.get("/api/power-tree/trend?minutes=30").json() == first and len(reads) == 1   # second call: cache
+        c.get("/api/power-tree/trend?minutes=60")
+        assert len(reads) == 2                                                                 # another window: its own entry
+        monkeypatch.setattr(server, "TREND_CACHE_S", 0.0)
+        c.get("/api/power-tree/trend?minutes=30")
+        assert len(reads) == 3                                                                 # expired: worked out again
