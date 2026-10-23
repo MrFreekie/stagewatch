@@ -15,6 +15,8 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-23
+
 ### Added
 
 - **Show report.** A new **Show report** card on the Admin Show day tab makes an end-of-day report for any show day: temperature, humidity, pressure, alarms, device outages, markers and every time Stagewatch was not recording (including an unexpected stop). Choose the whole day, doors to curfew, between two markers or your own times, tick the sections, then **Open report** (printable; save as PDF with Ctrl+P) or **Download ZIP** (the page plus CSV files). A **Sharing excerpt** leaves out who acknowledged alarms, marker sources, device fault detail, system events and the running order. Network addresses are always removed. `stagewatch report` makes the same report with Stagewatch stopped, or after a crash or power cut, from a copy of the history, without changing your data folder. Emulate mode can add a demo day. See [Show report](docs/admin/show-report.md).
@@ -759,7 +761,8 @@ The sections below list every change in detail.
 - Version tracking: build info (version, git commit, schema versions) in the API,
   admin UI and logs; config and database schema versions with migration hooks.
 
-[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/MrFreekie/stagewatch/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/MrFreekie/stagewatch/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MrFreekie/stagewatch/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/MrFreekie/stagewatch/compare/v0.2.0...v0.3.0
