@@ -15,6 +15,10 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Changed
+
+- **Power card: the frequency graph is no longer smoothed.** It is drawn as recorded, so the small swings (a few hundredths of a hertz) show. Power, current, voltage and the other measurements keep their display smoothing, and the note under the chart says which applies.
+
 ## [0.6.0] - 2026-10-23
 
 ### Added

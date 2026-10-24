@@ -1365,14 +1365,14 @@
     const dec = lines.length ? lines[0].decimals : 1;
     pwChart.format = (v) => SW.num(v, Math.min(2, dec));
     // Colour (3) and dash (3) together tell up to nine lines apart; the legend names every one.
-    pwChart.series = lines.map((l) => ({ label: l.label, color: css(`--spl-${l.colour + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[l.dash], points: SW.pw.smooth(state.pwHistory[l.id], SW.pw.smoothWindow(span), gap) }));
+    pwChart.series = lines.map((l) => ({ label: l.label, color: css(`--spl-${l.colour + 1}`), width: 2, gap, dash: SW.spl.LINE_STYLES[l.dash], points: SW.pw.smooth(state.pwHistory[l.id], SW.pw.smoothWindow(span, state.pwMetric), gap) }));
     pwChart.markers = SW.visibleMarkers(state.markers, false).filter((m) => m.source === "shelly" || m.source === "schedule").map((m) => ({ ...m, selected: false }));
     const sc = SW.pw.chartScale(state.pwMetric);
     pwChart.fixedRange = sc.fixed; pwChart.defaultRange = sc.def;
     pwChart.range = [now - span, now];
     pwChart.draw();
     $("power-legend").replaceChildren(...lines.map((l) => h("span", {}, h("i", { class: `spl-key spl-line-${l.dash}`, style: `border-top-color:${css(`--spl-${l.colour + 1}`)}` }), `${l.label}${l.unit ? " (" + l.unit + ")" : ""}`)));
-    setText($("power-chart-note"), [plan.note, SW.pw.chartNote(span, SW.pw.POINTS)].filter(Boolean).join(" "));
+    setText($("power-chart-note"), [plan.note, SW.pw.chartNote(span, SW.pw.POINTS, state.pwMetric)].filter(Boolean).join(" "));
   }
 
   // ------------------------------------------------------- sound level

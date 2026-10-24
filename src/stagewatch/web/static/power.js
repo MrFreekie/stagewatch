@@ -396,7 +396,9 @@ SW.pw = (function () {
   // Display-only smoothing: each point becomes the mean of the recorded points within windowS
   // around it. It never reaches across a gap (no reading for more than gapS), so a gap stays a
   // gap and nothing is invented; the stored history is unchanged.
-  pw.smoothWindow = (spanS) => Math.max(30, spanS / 60);   // 1 h -> 1 min, 6 h -> 6 min
+  // Frequency is not smoothed at all: it only moves a few hundredths of a hertz, and averaging would flatten
+  // exactly the small swings the line is there to show.
+  pw.smoothWindow = (spanS, field) => (field === "freq" ? 0 : Math.max(30, spanS / 60));   // 1 h -> 1 min, 6 h -> 6 min
   pw.smooth = function (points, windowS, gapS) {
     const pts = (points || []).filter((p) => p && Number.isFinite(p[1]));
     const out = [];
@@ -412,7 +414,9 @@ SW.pw = (function () {
     }
     return out;
   };
-  pw.chartNote = (spanS, points) => `One point per ${SW.num(Math.max(1, spanS / points), 0)} s at most, as recorded, smoothed over ${pw.smoothWindow(spanS) < 60 ? SW.num(pw.smoothWindow(spanS), 0) + " s" : SW.num(pw.smoothWindow(spanS) / 60, 0) + " min"}; gaps are left as gaps. Short surges are flattened: check the meter's maximum above.`;
+  pw.chartNote = (spanS, points, field) => field === "freq"
+    ? `One point per ${SW.num(Math.max(1, spanS / points), 0)} s at most, as recorded, not smoothed; gaps are left as gaps.`
+    : `One point per ${SW.num(Math.max(1, spanS / points), 0)} s at most, as recorded, smoothed over ${pw.smoothWindow(spanS) < 60 ? SW.num(pw.smoothWindow(spanS), 0) + " s" : SW.num(pw.smoothWindow(spanS) / 60, 0) + " min"}; gaps are left as gaps. Short surges are flattened: check the meter's maximum above.`;
 
   // The combined load bar: the SUM of the currents of a meter's single-phase circuits against the
   // meter's own rating. All or nothing: if any circuit's current is missing or old, or the meter is not

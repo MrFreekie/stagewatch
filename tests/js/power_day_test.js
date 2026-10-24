@@ -105,6 +105,10 @@ eq(SW.pw.smooth([[0, 10], [10, 20], [20, 30]], 30, 60), [[0, 15], [10, 20], [20,
 eq(SW.pw.smooth([[0, 10], [10, 20], [500, 100], [510, 200]], 30, 60), [[0, 15], [10, 15], [500, 150], [510, 150]], "never across a gap");
 eq(SW.pw.smooth([[0, 10], [10, null], [20, 30]], 30, 60).length, 2, "missing values are dropped, not filled");
 eq(SW.pw.smooth(undefined, 30, 60), [], "no history: no points");
+eq(SW.pw.smoothWindow(3600, "freq"), 0, "frequency is not smoothed");
+eq(SW.pw.smoothWindow(3600, "power"), 60, "other measurements keep the smoothing");
+eq(SW.pw.smooth([[0, 50.01], [10, 49.97], [20, 50.02]], 0, 60), [[0, 50.01], [10, 49.97], [20, 50.02]], "no window: points as recorded");
+eq(/not smoothed/.test(SW.pw.chartNote(3600, 500, "freq")), true, "the note says so");
 // Chart scales: voltage fixed to the UK range, frequency to 49-51 Hz, power and current from 0.
 eq(SW.pw.chartScale("voltage").fixed, [216.2, 253], "voltage: UK range");
 eq(SW.pw.chartScale("freq").fixed, [49, 51], "frequency: 50 Hz plus or minus 1");
