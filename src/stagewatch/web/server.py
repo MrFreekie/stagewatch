@@ -1097,7 +1097,7 @@ class LogImportBody(BaseModel):
     returns what an import would do; ``dry_run: false`` writes it."""
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
-    format: Literal["lanwm"] = "lanwm"
+    format: Literal["lanwm", "nebra"] = "lanwm"
     text: str = Field(max_length=5_000_000)
     file_name: str = Field("", max_length=200)
     show_id: int | None = Field(None, ge=1)
@@ -3034,7 +3034,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def import_log(body: LogImportBody):
         show_id = body.show_id if body.show_id is not None else hub.recorder.show_id
         try:
-            parsed = await asyncio.to_thread(logimport.parse.parse_text, body.text)   # slow part, off the loop
+            parsed = await asyncio.to_thread(logimport.parse_for, body.format, body.text)   # slow part, off the loop
             plan = logimport.plan_import(
                 hub.recorder, hub.config.site, fmt=body.format, text="", parsed=parsed,
                 file_name=body.file_name, show_id=show_id, tz=body.tz, offset_s=body.offset_s,

@@ -190,6 +190,31 @@ def reset_admin_pin_cli(argv: list[str]) -> None:
         sys.exit(1)
 
 
+def _nebra_status_cli(args, text: str | None = None) -> None:
+    """`import-log --format nebra-status FILE`: a plain-words inventory from a Nebra System Status Report.
+    Preview only: it never opens the database, so there is nothing to write."""
+    from .integrations.lanwm import parse
+    from .integrations.nebra import parse as nebra_parse, status
+    if args.write:
+        print("error: A Nebra status report is only previewed. It cannot be imported.", file=sys.stderr)
+        sys.exit(1)
+    try:
+        for f in (args.file, args.events):
+            if f is not None and f.stat().st_size > 20 * 1024 * 1024:
+                print("error: That file is bigger than 20 MB.", file=sys.stderr)
+                sys.exit(1)
+        report = status.parse_status(text if text is not None else parse.decode(args.file.read_bytes()))
+        events = None if args.events is None else nebra_parse.parse_text(parse.decode(args.events.read_bytes()))
+    except OSError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+    if not report.entities and not report.connections and not report.version:
+        print("error: No Nebra status report was found in that file.", file=sys.stderr)
+        sys.exit(1)
+    print("\n".join(status.describe(status.inventory(report, events))))
+    print("Nothing has been imported: a status report is only previewed.")
+
+
 def import_log_cli(argv: list[str]) -> None:
     """`stagewatch import-log FILE`: put a vendor log (LA Network Manager) into a show. Shows what it
     would do; adds `--write` to do it. Local only: it needs the data folder."""
@@ -198,10 +223,15 @@ def import_log_cli(argv: list[str]) -> None:
     from .core.recorder import Recorder
     from .integrations.lanwm import importer, parse
     parser = argparse.ArgumentParser(prog="stagewatch import-log",
-                                     description="Import an L-Acoustics Network Manager log file into a show. "
-                                                 "Without --write it only shows what would be imported.")
+                                     description="Import an L-Acoustics Network Manager log or a Meyer Sound Nebra "
+                                                 "Events CSV into a show. Without --write it only shows what would "
+                                                 "be imported.")
     parser.add_argument("file", type=Path)
-    parser.add_argument("--format", choices=importer.FORMATS, default="lanwm")
+    parser.add_argument("--format", choices=importer.FORMATS + ("nebra-status",), default=None,
+                        help="lanwm, nebra (Events CSV) or nebra-status (System Status Report, preview only); "
+                             "default: found from the file's content")
+    parser.add_argument("--events", type=Path, default=None,
+                        help="with nebra-status: the Events CSV too, to list units the report does not show")
     parser.add_argument("--show", type=int, default=None, help="show id (default: the current show)")
     parser.add_argument("--tz", default="", help="time zone of the computer that wrote the file "
                                                   "(default: the site's zone), e.g. Europe/London")
@@ -216,6 +246,9 @@ def import_log_cli(argv: list[str]) -> None:
     parser.add_argument("--force", action="store_true",
                         help="run even if a Stagewatch server seems to be running on this data folder")
     args = parser.parse_args(argv)
+    if args.format == "nebra-status":
+        _nebra_status_cli(args)
+        return
     data_dir = resolve_data_dir(args.data_dir, args.emulate)
     if args.write and not args.force and updater_common.server_running(data_dir):
         print("error: Stagewatch appears to be running on this data folder. Import from the Admin page "
@@ -225,10 +258,14 @@ def import_log_cli(argv: list[str]) -> None:
         if args.file.stat().st_size > 20 * 1024 * 1024:
             raise importer.ImportRefused("That file is bigger than 20 MB.")
         text = parse.decode(args.file.read_bytes())
+        fmt = args.format or importer.detect_format(text) or "lanwm"
+        if fmt == "nebra-status":
+            _nebra_status_cli(args, text)
+            return
         site = ConfigStore(data_dir / "config.yaml").load().site
         recorder = Recorder(data_dir / "stagewatch.sqlite3")
         try:
-            plan = importer.plan_import(recorder, site, fmt=args.format, text=text, file_name=args.file.name,
+            plan = importer.plan_import(recorder, site, fmt=fmt, text=text, file_name=args.file.name,
                                         show_id=args.show if args.show is not None else recorder.show_id,
                                         tz=args.tz, offset_s=args.offset, session_markers=args.session_markers,
                                         load_checker_markers=args.load_checker_markers)
@@ -240,8 +277,12 @@ def import_log_cli(argv: list[str]) -> None:
             print(f"Show day: {when(s['show_day']['from'])} to {when(s['show_day']['to'])}")
             print(f"New: {s['new']}   already there: {s['already_present']}   outside the show day: "
                   f"{s['outside_day']}   session lines left out: {s['session_left_out']}   markers: {s['markers']}")
+            if s.get("covered_by_lanwm"):
+                print(f"Already covered by the LA Network Manager log (left out): {s['covered_by_lanwm']}")
+            for note in s.get("notes", []):
+                print(f"Note: {note}")
             for ep in s["episodes"]:
-                length = "never cleared" if ep["seconds"] is None else f"cleared after {ep['seconds']:g} s"
+                length = ep.get("note") or ("never cleared" if ep["seconds"] is None else f"cleared after {ep['seconds']:g} s")
                 print(f"  {when(ep['start'])}  {ep['level']:8} {ep['unit']}: {ep['what']} ({length})")
             if s["outside_day"] and not s["new"]:
                 print("None of it falls in this show's day. Shows in this data folder (use --show ID):")

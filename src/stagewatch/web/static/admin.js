@@ -1265,7 +1265,7 @@
     return c;
   }
 
-  // ------------------------------------------------- import a log file (LA Network Manager)
+  // ------------------------------------------------- import a log file (LA Network Manager, Meyer Sound Nebra)
   const LOG_MAX_CHARS = 5000000;   // the server's limit on the file's text
   const LEVEL_CLASS = { Stop: "error", Alert: "", Advisory: "muted" };
 
@@ -1281,21 +1281,31 @@
     const offset = h("input", { class: "num touch", type: "number", step: "1", value: "0", "aria-label": "Clock offset in seconds", onchange: () => preview() });
     const sessionMarkers = h("input", { type: "checkbox", onchange: () => preview() });
     const loadCheckerMarkers = h("input", { type: "checkbox", onchange: () => preview() });
+    const sessionLabel = h("label", { class: "field inline" }, sessionMarkers, " Also add markers for going online or offline and for Acknowledge all");
+    const loadCheckerLabel = h("label", { class: "field inline" }, loadCheckerMarkers, " Also add markers for entering and leaving Load Checker (it can make inputs unlock)");
+    const formatSel = h("select", { class: "touch", "aria-label": "Kind of log file", onchange: () => { syncFormat(); preview(); } },
+      h("option", { value: "lanwm" }, "L-Acoustics Network Manager log (.xml)"),
+      h("option", { value: "nebra" }, "Meyer Sound Nebra Events CSV (.csv)"));
+    const syncFormat = () => {
+      const nebra = formatSel.value === "nebra";
+      loadCheckerLabel.hidden = nebra;
+      sessionLabel.lastChild.textContent = nebra ? " Also add markers for Nebra database updates" : " Also add markers for going online or offline and for Acknowledge all";
+    };
     const status = h("p", { class: "muted", role: "status" });
     const previewBox = h("div", { role: "status" });
     const listBox = h("div");
 
-    const fileInput = h("input", { class: "touch", type: "file", accept: ".xml,text/xml,application/xml", "aria-label": "LA Network Manager log file to read", onchange: () => {
+    const fileInput = h("input", { class: "touch", type: "file", accept: ".xml,.csv,text/xml,application/xml,text/csv,text/plain", "aria-label": "Log file to read", onchange: () => {
       const f = fileInput.files[0]; fileInput.value = "";
       if (!f) return;
-      if (f.size > LOG_MAX_CHARS) { toast("That file is too big to be an LA Network Manager log. Nothing has been changed.", true); return; }
+      if (f.size > LOG_MAX_CHARS) { toast("That file is too big to be a log from Network Manager or Nebra. Nothing has been changed.", true); return; }
       const rd = new FileReader();
-      rd.onload = () => { text = String(rd.result); fileName = f.name; preview(); };
+      rd.onload = () => { text = String(rd.result); fileName = f.name; formatSel.value = text.slice(0, 4096).includes("<ITEM") ? "lanwm" : "nebra"; syncFormat(); preview(); };
       rd.onerror = () => toast("Could not read that file. Nothing has been changed.", true);
       rd.readAsText(f);
     } });
 
-    const body = (dry) => ({ text, file_name: fileName, show_id: Number(showSel.value), tz: tz.value.trim(), offset_s: Number(offset.value) || 0,
+    const body = (dry) => ({ format: formatSel.value, text, file_name: fileName, show_id: Number(showSel.value), tz: tz.value.trim(), offset_s: Number(offset.value) || 0,
       session_markers: sessionMarkers.checked, load_checker_markers: loadCheckerMarkers.checked, dry_run: dry });
     const span = (a, b) => `${SW.fmtTime(a, { date: true })} to ${SW.fmtTime(b, { date: true })}`;
     const clear = () => { text = ""; ticket++; previewBox.replaceChildren(); };
@@ -1318,9 +1328,11 @@
       const none = r.new === 0;
       const lines = [
         h("p", {}, h("strong", {}, fileName), ` covers ${span(r.file.first, r.file.last)}. This show day is ${span(r.show_day.from, r.show_day.to)}.`),
-        r.file.closed ? null : h("p", { class: "muted hint" }, "LA Network Manager had not closed this log (it was still open, or stopped suddenly). Everything up to the last whole line is read."),
+        r.file.closed || r.format !== "lanwm" ? null : h("p", { class: "muted hint" }, "LA Network Manager had not closed this log (it was still open, or stopped suddenly). Everything up to the last whole line is read."),
         h("p", {}, `${r.new} new ${r.new === 1 ? "entry" : "entries"} to add, ${r.markers} ${r.markers === 1 ? "marker" : "markers"}. `
-          + `${r.already_present} already imported, ${r.outside_day} outside this show day, ${r.session_left_out} session ${r.session_left_out === 1 ? "line" : "lines"} left out (they hold the laptop's addresses).`),
+          + `${r.already_present} already imported, ${r.outside_day} outside this show day, ${r.session_left_out} session ${r.session_left_out === 1 ? "line" : "lines"} left out${r.format === "lanwm" ? " (they hold the laptop's addresses)" : ""}.`
+          + (r.covered_by_lanwm ? ` ${r.covered_by_lanwm} already covered by the LA Network Manager log.` : "")),
+        ...(r.notes || []).map((n) => h("p", { class: "muted hint" }, n)),
         none && r.outside_day > 0 && r.already_present === 0 ? h("p", { class: "error" }, "Nothing falls on this show day. Check the show, the time zone and the clock offset above.") : null,
         none && r.already_present > 0 ? h("p", { class: "muted" }, "Everything in this file is already imported.") : null,
       ];
@@ -1329,7 +1341,7 @@
           h("td", { class: "muted" }, SW.fmtTime(e.start, { seconds: true })),
           h("td", { class: LEVEL_CLASS[e.level] || "" }, e.level),
           h("td", {}, `${e.unit}: ${e.what}`),
-          h("td", { class: "muted" }, e.seconds === null ? "never cleared" : e.seconds < 1 ? "cleared in under a second" : `cleared after ${SW.fmtDuration(e.seconds, false)}`))))))) : null;
+          h("td", { class: "muted" }, e.seconds === null ? (e.note || "never cleared") : e.seconds < 1 ? "cleared in under a second" : `cleared after ${SW.fmtDuration(e.seconds, false)}`))))))) : null;
       previewBox.replaceChildren(h("div", {}, ...lines, eps,
         h("div", { class: "row" },
           h("button", { class: "primary touch", type: "button", disabled: none, onclick: doImport }, "Import into this show"),
@@ -1348,7 +1360,7 @@
     async function loadImports() {
       try {
         const r = await api("GET", `/api/admin/logs/imports?show_id=${encodeURIComponent(showSel.value)}`);
-        const name = (i) => i.source.replace(/^lanwm:/, "");
+        const name = (i) => i.source.replace(/^(lanwm|nebra):/, "");
         listBox.replaceChildren(r.imports.length ? h("div", { class: "table-scroll" }, h("table", {}, h("tbody", {}, r.imports.map((i) => h("tr", {},
           h("td", {}, name(i)), h("td", { class: "muted" }, span(i.first, i.last)),
           h("td", {}, `${i.rows} entries, ${i.markers} markers`),
@@ -1361,16 +1373,15 @@
     loadImports();
 
     return card("Import a log file",
-      h("p", { class: "muted" }, "Read an L-Acoustics Network Manager log after a show, so amplifier faults and power events appear as markers in that show's timeline and report. Stagewatch only reads a copy of the file; it never talks to Network Manager or the amplifiers. Nothing is added until you press Import, and every import can be undone."),
+      h("p", { class: "muted" }, "Read an L-Acoustics Network Manager log or a Meyer Sound Nebra Events CSV after a show, so faults and power events appear as markers in that show's timeline and report. Stagewatch only reads a copy of the file; it never talks to Network Manager, Nebra or the equipment. Nothing is added until you press Import, and every import can be undone."),
       h("p", { class: "muted hint" }, "The file is in the L-Acoustics folder inside AppData on the computer that runs Network Manager: LA Network Manager → Log, named Log_ with the date and time."),
-      h("div", { class: "row" }, h("label", { class: "field inline" }, "Log file: ", fileInput)),
+      h("div", { class: "row" }, h("label", { class: "field inline" }, "Log file: ", fileInput), field("Kind of log", formatSel)),
       h("div", { class: "row" },
         field("Show", showSel),
         field("Time zone of that computer", tz),
         field("Clock offset (seconds)", offset)),
       h("p", { class: "muted hint" }, "The log has no time zone, so it is read as the time zone above. If the laptop's clock was wrong, put the number of seconds to add (a laptop 5 minutes slow: 300)."),
-      h("label", { class: "field inline" }, sessionMarkers, " Also add markers for going online or offline and for Acknowledge all"),
-      h("label", { class: "field inline" }, loadCheckerMarkers, " Also add markers for entering and leaving Load Checker (it can make inputs unlock)"),
+      sessionLabel, loadCheckerLabel,
       status, previewBox,
       h("h3", { class: "muted", style: "font-size:13px;margin:14px 0 6px" }, "IMPORTED INTO THE SELECTED SHOW"),
       listBox);
