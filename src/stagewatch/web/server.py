@@ -2153,11 +2153,12 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 "sensors": [{**f, "added": f["address"] in mine} for f in found]}
     # RME units. Read-only: Stagewatch listens to each unit's status socket and sends it nothing, not even for
     # Test. Addresses must be private-network IP addresses (no names, no redirects). The units have no login.
-    rme_last: list[float] = [0.0]
+    rme_last: list[float] = [-1e9]
+    app.state.rme_clock = time.monotonic        # a test replaces this; nothing else does
 
     def rme_rate_limit() -> None:
         """Test, Add and a changed address each open a connection to a unit: at most one every 2 seconds."""
-        now = time.monotonic()
+        now = app.state.rme_clock()
         if now - rme_last[0] < 2.0:
             raise HTTPException(429, "Wait a moment and try again. Nothing has been changed.")
         rme_last[0] = now

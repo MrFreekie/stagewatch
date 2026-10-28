@@ -349,7 +349,7 @@ class RmeIntegration(Integration):
         self._clear_alarms(unit)                # the last answer is old now; the offline notice takes over
         if was_up:
             unit.outage_at = self._clock()
-            self._emit(unit, "link", "went offline")
+            self._emit(unit, "link_down", "went offline")
         elif unit.ever_up and unit.outage_at is None:
             unit.outage_at = self._clock()
         self.hub.set_device_status(unit.device_id, Status.MISSING, detail or TEXT["unreachable"], silent_alarm=True)
@@ -371,7 +371,7 @@ class RmeIntegration(Integration):
         if result.kind == "baseline":
             unit.lost_live = frozenset()
             if unit.outage_at is not None:
-                self._emit(unit, "link", mapping.back_text(now - unit.outage_at))
+                self._emit(unit, "link_up", mapping.back_text(now - unit.outage_at))
                 unit.outage_at = None
             unit.ever_up = True
         elif result.kind == "delta" and old is not None:
