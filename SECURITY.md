@@ -34,6 +34,19 @@ Only the latest release on the Stable channel (and the current Nightly) receive 
 - Requests that come from another web page (cross-origin) are refused, and repeated wrong PINs are
   rate-limited.
 - ESPHome encryption keys and saved passwords are never sent back to the browser.
+- **The clock button (Raspberry Pi / Debian only).** The Admin **Clock** card can set the computer's
+  clock from the browser. Stagewatch never runs a shell and never runs as root. It runs one
+  root-owned file, `/usr/local/sbin/stagewatch-set-time`, through `sudo -n`, with an argument list.
+  A sudoers rule, `/etc/sudoers.d/stagewatch-set-time`, lets the Stagewatch service user run that
+  one file and nothing else (the installer checks it with `visudo -cf` first). The file takes a
+  single whole number of seconds, refuses anything else or any year outside 2025 to 2099, and sets
+  the clock (and the hardware clock if there is one). The request needs the admin login, is
+  refused from another web page, and is limited to one change every 10 seconds; a jump of more
+  than 5 seconds must be confirmed. The trade-off: `sudo` needs the service's "no new privileges"
+  and "restrict SUID" systemd protections turned off, so the installer adds a drop-in,
+  `/etc/systemd/system/stagewatch.service.d/clock-helper.conf`, for that. Skip it with
+  `install.sh --no-clock-button`, or remove it with `install-clock-helper.sh --uninstall`. The
+  copy in `/usr/local/sbin` is not updated by in-app updates; run the installer line again to refresh it.
 - The in-app updater refuses downgrades, targets that are not on `main`, moved release tags and
   changes to where dependencies come from, and only runs code from the pinned GitHub origin. It
   **cannot** protect you if the GitHub account itself is compromised. Maintainers should turn on

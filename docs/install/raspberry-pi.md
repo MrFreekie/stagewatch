@@ -262,12 +262,45 @@ Terminal.
 A Raspberry Pi does **not** keep time when it is switched off. With no internet it starts
 with the **last time it saved**. That makes the history timestamps wrong.
 
-Before the show, either:
+Stagewatch stores every reading by time, so the Pi needs a time source. Before the show, do one
+of these:
 
-- connect the Pi to a network with internet (it then sets its own clock), or
-- fit an **RTC** (real-time clock) add-on board.
+- **Connect the Pi to a network with internet.** It then sets its own clock (network time).
+  This is the best answer if you can.
+- **Fit an RTC** (real-time clock) add-on board with a battery. The Pi then keeps time with the
+  power off. Follow the board maker's steps to switch it on, then set the clock once.
+- **Set the clock from your tablet or phone.** In **Admin**, open the **System** tab, find the
+  **Clock** card and press **Set the clock from this device**. See [below](#set-the-clock-from-your-tablet-or-phone).
+- Use a local time server such as **chrony** (advanced). Run `sudo apt install chrony`, point it at
+  a time source on your network, and leave Stagewatch's button alone.
 
 Check the time on the Pi's screen (top right) before you set markers.
+
+### Set the clock from your tablet or phone
+
+This is a stopgap for a Pi with no network time and no clock battery. If the Pi does have an RTC,
+the button writes the new time to it as well, so it keeps it after a power cut.
+
+1. Open **Admin** on a tablet or phone whose own clock is right.
+2. Open the **System** tab and find the **Clock** card. It shows the Pi's time, this device's time and the difference.
+3. Press **Set the clock from this device**.
+4. If the difference is more than 5 seconds, Stagewatch tells you how far the clock will jump and asks you to confirm.
+
+**What you should see:** a message saying the clock has been set, and a marker in the show called
+`Clock set from a browser (was ... s)`. The Pi's time on the card now matches the device.
+
+**Do this before the show, not during it.** Readings that are already saved keep the time they
+were saved with. Stagewatch does not rewrite or back-fill them. If the clock jumps forward, the
+charts show a gap. If it jumps back, the charts show an overlap for that stretch. A small
+correction of a few seconds is nothing to worry about.
+
+The first time, the Clock card may say **Not set up on this Pi** and show one line to type in a
+Terminal window on the Pi. Type it once (it asks for your Pi password), then reload Admin. A new
+install made with `install.sh` sets this up for you (leave it out with `--no-clock-button`).
+
+The button works with a network time source as well, but the Pi will correct itself again
+at its next network time update. To take the button away, run
+`sudo bash /opt/stagewatch/deploy/pi/install-clock-helper.sh --uninstall`.
 
 ---
 
@@ -308,7 +341,7 @@ bash ~/stagewatch/deploy/pi/uninstall.sh
 
 **What you should see:** `Stagewatch service removed.`
 
-This removes the boot service and the kiosk auto-start. It **keeps** your data in
+This removes the boot service, the kiosk auto-start and the clock button's helper (if you set it up). It **keeps** your data in
 `/var/lib/stagewatch` and the program in `/opt/stagewatch`. It also works if you still have
 the older Linux install.
 

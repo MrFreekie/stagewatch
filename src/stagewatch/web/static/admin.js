@@ -255,6 +255,112 @@
       panel);
   }
 
+  // ------------------------------------------------------- clock
+  // "Set the clock from this device": for a Raspberry Pi with no network time and no clock battery. The page asks
+  // the Pi for its time several times, keeps the quickest answer, works out the difference and sends the time at
+  // which the final request will arrive (see clock.js). The Pi then sets its clock through a small root-owned
+  // helper (see SECURITY.md). Nothing already recorded is changed.
+  function clockCard() {
+    const C = SW.clock;
+    const st = { s: null, at: 0, diffS: NaN, busy: false, msg: null, ask: false };
+    const body = h("div", { role: "status" });
+    const sec = card("Clock", body);
+    let timer = null;
+    const siteTime = (epochS) => SW.fmtTime(epochS, { date: true, seconds: true });
+    const hubNow = () => (st.s ? st.s.hub_epoch + (Date.now() - st.at) / 1000 : null);
+    const hubSpan = h("span", { class: "mono" }, "—");
+    const devSpan = h("span", { class: "mono" }, "—");
+    const tick = () => {
+      if (!sec.isConnected) { clearInterval(timer); timer = null; return; }
+      const hn = hubNow();
+      hubSpan.textContent = hn === null ? "—" : siteTime(hn);
+      devSpan.textContent = siteTime(Date.now() / 1000);
+    };
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    async function probe() {
+      const samples = [];
+      for (let i = 0; i < C.PROBES; i++) {
+        const sent = Date.now();
+        const r = await api("GET", "/api/admin/clock/probe");
+        samples.push({ sent, back: Date.now(), server: r.epoch_ms });
+        await wait(40);
+      }
+      return C.estimate(samples);
+    }
+    async function load() {
+      try {
+        st.s = await api("GET", "/api/admin/clock");
+        st.at = Date.now();
+        const est = await probe();
+        st.diffS = est ? est.diffS : NaN;
+      } catch (err) { st.s = null; st.msg = { text: err.message, error: true }; }
+      draw();
+      if (!timer) timer = setInterval(tick, 1000);
+    }
+    async function send(confirm) {
+      st.busy = true; st.ask = false; st.msg = { text: "Checking the time…" }; draw();
+      try {
+        const est = await probe();
+        if (!est) throw new Error("Could not read the Pi's time. Nothing has been changed.");
+        st.diffS = est.diffS;
+        const v = C.verdict(est.diffS);
+        if (v === "same") { st.msg = { text: "The Pi's clock already matches this device to within a second. Nothing has been changed." }; return; }
+        if (v === "confirm" && !confirm) { st.ask = true; st.msg = null; return; }
+        const res = await api("POST", "/api/admin/clock/set", C.body(Date.now(), est.rttMs, confirm));
+        st.msg = { text: res.message || "The clock has been set." };
+        toast(st.msg.text);
+      } catch (err) { st.msg = { text: err.message, error: true }; }
+      finally { st.busy = false; await load(); }
+    }
+    function draw() {
+      const s = st.s;
+      if (!s) { body.replaceChildren(h("p", { class: st.msg ? "error" : "muted" }, st.msg ? st.msg.text : "Reading the clock…")); return; }
+      const rows = [
+        ["Pi time (the hub)", hubSpan],
+        ["This device's time", devSpan],
+        ["Difference", Number.isFinite(st.diffS) ? C.differenceText(st.diffS) : "—"],
+        ["Synchronised with network time", C.ntpText(s.ntp_synchronized)],
+        ["Time zone", s.system_timezone || s.site_timezone || "Not set"],
+      ];
+      const kids = [
+        h("p", { class: "muted hint" }, "For a Pi with no internet and no clock battery. Times are shown in the site time zone."),
+        h("table", {}, h("tbody", {}, rows.map(([k, v]) => h("tr", {}, h("td", { class: "muted" }, k), h("td", {}, v))))),
+      ];
+      if (!s.can_set) {
+        kids.push(h("p", { class: "warn-text" }, s.setup_command ? "Not set up on this Pi." : s.reason_if_not));
+        if (s.setup_command) {
+          kids.push(h("p", {}, "To switch this on, type this line once in a Terminal window on the Pi, then reload this page. It asks for your Pi password and restarts Stagewatch for about 10 seconds:"),
+            h("pre", { class: "mono" }, s.setup_command),
+            h("div", { class: "row" },
+              h("button", { type: "button", class: "touch", onclick: () => {
+                try { navigator.clipboard.writeText(s.setup_command).then(() => toast("Copied"), () => toast("Could not copy. Select the line and copy it by hand.", true)); }
+                catch (_) { toast("Could not copy. Select the line and copy it by hand.", true); }
+              } }, "Copy the line"),
+              h("a", { class: "touch", href: HELP_REPO + "docs/install/raspberry-pi.md#the-pi-has-no-clock-battery", target: "_blank", rel: "noopener noreferrer" }, "Read the guide")));
+        }
+      } else if (s.is_emulate) {
+        kids.push(h("p", { class: "muted hint" }, "Emulate mode: the button runs through the same steps, but the clock is not changed."));
+      }
+      if (st.ask) {
+        kids.push(h("div", { class: "card-inset" },
+          h("p", { class: "warn-text" }, `▲ ${C.confirmText(st.diffS)}`),
+          h("div", { class: "row" },
+            h("button", { type: "button", class: "primary touch", disabled: st.busy, onclick: () => send(true) }, "Yes, set the clock"),
+            h("button", { type: "button", class: "touch", onclick: () => { st.ask = false; draw(); } }, "Cancel"))));
+      }
+      if (st.msg && !st.ask) kids.push(h("p", { class: st.msg.error ? "error" : "" }, st.msg.text));
+      kids.push(h("div", { class: "row", style: "margin-top:10px" },
+        h("button", { type: "button", class: "primary touch", id: "clock-set", disabled: !s.can_set || st.busy || st.ask, onclick: () => send(false) }, "Set the clock from this device"),
+        h("button", { type: "button", class: "touch", disabled: st.busy, onclick: () => { st.msg = null; load(); } }, "Check again")));
+      kids.push(h("p", { class: "muted hint" }, "Do this before the show, not during it. Charts and history are stored by time: readings already saved keep their old times, so a big change leaves a gap or an overlap on the charts. A marker is added to the show."));
+      body.replaceChildren(...kids);
+      tick();
+    }
+    draw();
+    load();
+    return sec;
+  }
+
   // ------------------------------------------------------- sound level
   // Settings for the Sound level card: where Smaart is and which (up to three) values to record. The
   // card itself is added to a dashboard under User dashboards → Edit cards. Read-only toward Smaart.
@@ -3085,6 +3191,7 @@
         foldCard(catalogCard(), "integrations", false)),
       tabPanel("system",
         foldCard(siteCard(), "site", false, !admin.config.site.timezone),
+        foldCard(clockCard(), "clock", false),
         foldCard(securityCard(), "security", false),
         softwareCard(),
         foldCard(supportCard(), "help", false)));

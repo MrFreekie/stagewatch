@@ -61,6 +61,7 @@ from ..integrations.rme import InUse as RmeInUse, probe_message as rme_probe_mes
 from ..integrations.rme.client import TEXT as RME_TEXT, RmeError
 from ..integrations.witmotion import scan as wm_scan
 from ..core.updater import RateLimited, Updater, message_for
+from ..core.clockset import ClockError, ClockSetter
 from ..updater_common import UpdaterError
 from ..version import build_info
 from .auth import COOKIE, SESSION_S, SessionSigner, hash_pin, verify_pin
@@ -346,6 +347,17 @@ class AdviceBody(AdviceConfig):
     model_config = _STRICT
     paths: list[_AdvicePathBody] = Field(default_factory=list, max_length=ADVICE_MAX_PATHS)
     positions: list[_AdvicePositionBody] = Field(default_factory=list, max_length=ADVICE_MAX_POSITIONS)
+
+
+class ClockSetBody(BaseModel):
+    """POST /api/admin/clock/set: the browser's estimate of the time at which this request reaches the server.
+    Strict, no unknown or relative fields. Bounds are checked in ClockSetter with fixed text."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    epoch_ms: StrictInt
+    rtt_ms: StrictInt
+    confirm_jump: StrictBool = False
 
 
 class QuietUnitBody(BaseModel):
@@ -1306,8 +1318,9 @@ class LiveFeed:
 # -------------------------------------------------------------------- app
 def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None,
                body_limit: int = DEFAULT_BODY_LIMIT, body_limit_overrides: dict[str, int] | None = None,
-               lan_addresses=None) -> FastAPI:
+               lan_addresses=None, clock: ClockSetter | None = None) -> FastAPI:
     updater = updater or Updater.detect(hub)
+    clock = clock or ClockSetter(hub)
     lan_addresses = lan_addresses or netinfo.local_ipv4  # callable -> list[str]; injectable for tests
     started_at = time.time()
     signer = SessionSigner(hub.data_dir / "secret.key")
@@ -3287,6 +3300,23 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise UpdaterError("not_managed")
         await check_pin(body.pin)
         return await updater.rollback(body.history_id)
+
+    # ------------------------------------------------------------ clock
+    @app.get("/api/admin/clock", dependencies=[Depends(require_admin)])
+    async def clock_status():
+        return JSONResponse(await asyncio.to_thread(clock.status), headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/admin/clock/probe", dependencies=[Depends(require_admin)])
+    async def clock_probe():
+        return JSONResponse({"epoch_ms": int(clock.wall() * 1000)}, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/admin/clock/set", dependencies=admin_deps)
+    async def clock_set(body: ClockSetBody):
+        received = clock.mono()
+        try:
+            return await asyncio.to_thread(clock.set, body.epoch_ms, body.rtt_ms, body.confirm_jump, received)
+        except ClockError as e:
+            return JSONResponse({"detail": e.message, "code": e.code}, status_code=e.status)
 
     # -------------------------------------------------- connect a tablet
     def server_port(request: Request) -> int:

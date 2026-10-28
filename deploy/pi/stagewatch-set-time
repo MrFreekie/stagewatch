@@ -1,0 +1,31 @@
+#!/bin/bash
+# stagewatch-set-time: set this computer's clock from ONE whole number of seconds since 1970 (UTC).
+#
+# Installed by deploy/pi/install-clock-helper.sh to /usr/local/sbin/ (owner root, mode 0755). The
+# Stagewatch service user may run exactly this file through sudo (see /etc/sudoers.d/stagewatch-set-time)
+# and nothing else. It takes one argument, checks it is an integer between 1 Jan 2025 and 1 Jan 2100,
+# sets the clock with `date` (timedatectl set-time refuses while network time is on), writes the time
+# to a hardware clock if the Pi has one, and prints ONE line:
+#   OK <seconds> rtc=yes|no|failed
+# or, on a refusal, a line starting ERROR and exit status 1.
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin   # pinned PATH
+RTC_GLOB='/dev/rtc*'                 # hardware clock devices
+MIN=1735689600                       # 2025-01-01 00:00:00 UTC
+MAX=4102444800                       # 2100-01-01 00:00:00 UTC (not allowed)
+
+fail() { echo "ERROR $1"; exit 1; }
+
+[[ $# -eq 1 ]] || fail "needs exactly one argument"
+[[ "$1" =~ ^[0-9]{10}$ ]] || fail "not a whole number of seconds"
+EPOCH=$((10#$1))
+(( EPOCH >= MIN && EPOCH < MAX )) || fail "outside the allowed range"
+[[ "$(id -u)" == "0" ]] || fail "must run as root"
+
+date -u -s "@$EPOCH" >/dev/null 2>&1 || fail "the clock could not be set"
+
+RTC=no
+if compgen -G "$RTC_GLOB" >/dev/null; then
+  if hwclock --systohc >/dev/null 2>&1; then RTC=yes; else RTC=failed; fi
+fi
+echo "OK $EPOCH rtc=$RTC"

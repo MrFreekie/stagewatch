@@ -713,6 +713,24 @@ class Hub:
             self.bus.publish("alarms", self.alarm_notices())
         return len(acked)
 
+    # ------------------------------------------------------------ clock step
+    def clock_stepped(self, step_s: float) -> None:
+        """The computer's clock was deliberately moved by ``step_s`` seconds (the Admin clock button).
+
+        Wall-clock comparisons held in memory are moved with it, so a step is not mistaken for a node that
+        went quiet (a step forward) or for readings from the future that never go stale (a step back), and
+        the run heartbeat carries on. Nothing already recorded is changed: the history keeps its old times
+        and the charts show a gap or an overlap. The event-loop watchdog and the launcher use the monotonic
+        timer, which a clock step does not move.
+        """
+        for entity in self.entities.values():
+            if entity.updated is not None:
+                entity.updated += step_s
+        for device in self.devices.values():
+            if device.last_reading is not None:
+                device.last_reading += step_s
+        self.recorder.clock_stepped(step_s)
+
     # -------------------------------------------------------------- markers
     def add_marker(self, label: str, source: str, ts: float | None = None, note: str = "") -> Marker:
         """``note`` must already be clean (recorder.clean_note)."""
