@@ -21,8 +21,8 @@ from guest and public Wi-Fi. Stagewatch only listens, and holds no password for 
 ## What Stagewatch does
 
 - **It only listens.** It opens one connection to each unit's status socket (a live web connection the unit's own
-  page uses) and sends it **nothing**: no request, no question, no setting. It cannot change gain, 48 V, a preset,
-  routing or the clock. A test checks that a unit receives nothing from Stagewatch.
+  page uses). It sends no commands or settings; it only opens the link and answers the unit's keep-alive. It cannot
+  change gain, 48 V, a preset, routing or the clock. A test checks that a unit receives no data from Stagewatch.
 - **Equipment, not air.** The unit's core temperature and its two power supplies are recorded as Equipment readings.
   They never count towards the site averages, the speed of sound or the barometer. The Equipment card shows only the temperature; the supplies are On or Off words on the RME interfaces card.
 - **Changes are marked as they happen.** While Stagewatch is watching, a lost or restored power supply, a changed clock
@@ -65,8 +65,10 @@ The card uses RME's own "soundness" words and says which area they come from.
 3. Type the unit's address in **Unit address** (for example `192.168.1.50`) and click **Test**. A good result reads
    like `RME 12Mic, firmware 2.0.1, named 'Stage L'. Reading works.` It shows only the model, firmware and name, and
    never the serial number or the address. **Save unit** stays switched off until a Test has worked.
-4. Give it a name if you want a different one (it starts as the unit's own name), type an **Area** if you like, and
-   click **Save unit**.
+4. Give it a name if you want a different one. If you leave the name empty, Stagewatch fills in the unit's own name
+   and asks you to check it: **a unit's own name can contain its serial number**, and the name is shown on
+   dashboards and in timeline markers. Stagewatch leaves out long numbers and anything that looks like a serial
+   number, but read it before you save. Type an **Area** if you like (empty clears it), and click **Save unit**.
 5. The unit now has its own tile on the **Integrations** tab and its own **RME interfaces** card below, with its
    status, a rename box and **Remove**. Under **User dashboards**, click **Edit cards** on a dashboard and tick
    **RME interfaces**. See [the card](../cards/rme-units.md).
@@ -76,7 +78,8 @@ use **Replace unit** after a hardware swap, so the new unit takes over the old u
 changes (not available yet)** is shown switched off: gain and 48 V are not read yet.
 
 The address must be an address on a private network, such as `192.168.x.x`, `10.x.x.x` or `172.16.x.x`. **Host names
-(including `.local` names) are refused**, and so are public addresses. If the unit tries to send Stagewatch somewhere
+(including `.local` names) are refused**, and so are public addresses, `169.254.x.x`, `127.x.x.x`, `0.x.x.x`,
+`100.64.x.x` to `100.127.x.x` (carrier-grade NAT), `255.255.255.255` and any IPv6 address with a `%` interface name. If the unit tries to send Stagewatch somewhere
 else, Stagewatch stops and says so.
 
 ### Plain failure messages
@@ -108,8 +111,13 @@ information, not an outage: a quiet unit has nothing to say.
 
 Each unit sends about 70 KB a second of meter data that Stagewatch cannot switch off (the only way is a setting
 change, which Stagewatch never makes). Eight units on a Raspberry Pi are about half a megabyte a second. Frames larger
-than 512 KiB, damaged frames and floods are dropped, and a unit that keeps sending bad data is disconnected for a
-while.
+than 512 KiB are refused. Stagewatch also limits how much text, how many meter frames and how many full statuses it
+accepts each second. If a status change had to be dropped (too many, too big or damaged), Stagewatch does not carry on
+with old values as if they were current: it shows the unit as away, reconnects after the usual wait and reads the
+whole status again. A unit that keeps doing this is disconnected for a while each time.
+
+Test and Save have separate limits (one of each every 2 seconds), so you can press Save straight after Test. At most
+two connections to units are open from Admin at once.
 
 ## Emulate mode
 
