@@ -222,25 +222,37 @@ def flapping(starts: list[float]) -> bool:
     return any(s[i + FLAP_COUNT - 1] - s[i] <= FLAP_WINDOW_S for i in range(len(s) - FLAP_COUNT + 1))
 
 
-def build_row(sub: Subject) -> dict:
+def unit_key(key: str) -> str:
+    """The key a quiet list holds: the row key with spaces tidied and case folded."""
+    return " ".join(str(key).split()).casefold()
+
+
+def build_row(sub: Subject, quiet: bool = False) -> dict:
+    """``quiet``: an imported unit the admin quieted. Its problems stay listed and keep their time in fault,
+    but all count as Advisory and are marked, so they add nothing to the Stop and Alert totals."""
+    quiet = quiet and sub.now == "imported"
     eps = sorted(sub.episodes, key=lambda e: e.start)
-    stops = sum(1 for e in eps if not e.dropout and e.level >= 3)
-    alerts = sum(1 for e in eps if not e.dropout and e.level == 2)
-    advisories = sum(1 for e in eps if not e.dropout and e.level <= 1)
+    held_stops = sum(1 for e in eps if not e.dropout and e.level >= 3)
+    held_alerts = sum(1 for e in eps if not e.dropout and e.level == 2)
+    stops = 0 if quiet else held_stops
+    alerts = 0 if quiet else held_alerts
+    advisories = sum(1 for e in eps if not e.dropout and (quiet or e.level <= 1))
     dropouts = sum(1 for e in eps if e.dropout)
     last = eps[-1] if eps else None
     return {
         "key": sub.key, "name": sub.name, "kind": sub.kind, "now": sub.now,
+        "quieted": quiet, "quieted_stops": held_stops if quiet else 0, "quieted_alerts": held_alerts if quiet else 0,
         "stops": stops, "alerts": alerts, "advisories": advisories, "dropouts": dropouts,
         "problems": len(eps), "seconds_in_fault": round(sum(e.seconds or 0.0 for e in eps), 3),
         "never_cleared": sum(1 for e in eps if e.ended_by == "file"),
         "flapping": flapping([e.start for e in eps]),
-        "last": None if last is None else {"ts": last.start, "level": "Offline" if last.dropout else LEVEL_WORD[last.level],
+        "last": None if last is None else {"ts": last.start, "level": "Offline" if last.dropout else "Advisory" if quiet else LEVEL_WORD[last.level],
                                            "text": last.text},
         "imported_from": sorted(sub.imported_from)[:3],
         "episodes_total": len(eps),
         "episodes": [{"start": e.start, "end": e.end, "seconds": None if e.seconds is None else round(e.seconds, 3),
-                      "level": "Offline" if e.dropout else LEVEL_WORD[e.level], "text": e.text, "ended_by": e.ended_by}
+                      "level": "Offline" if e.dropout else "Advisory" if quiet else LEVEL_WORD[e.level],
+                      "text": e.text, "ended_by": e.ended_by}
                      for e in eps[-EPISODES_SHOWN:]],
     }
 
@@ -250,9 +262,9 @@ def _order(row: dict) -> tuple:
 
 
 def summarise(recorder, show_ids: list[int], devices: dict[str, dict], now: float,
-              current_run_id: int | None = None) -> dict:
+              current_run_id: int | None = None, quiet: frozenset | set | list = ()) -> dict:
     """Rows for one show, or for several (an event's days) added together, plus the gaps when Stagewatch was
-    not running. ``devices`` maps a device id to {"name", "kind", "status"} for the devices there are now."""
+    not running. ``quiet`` holds the unit keys the admin quieted. ``devices`` maps a device id to {"name", "kind", "status"} for the devices there are now."""
     subjects: dict[str, Subject] = {}
     for dev_id, d in devices.items():
         subjects[DEVICE_PREFIX + dev_id] = Subject(DEVICE_PREFIX + dev_id, d["name"], d["kind"], d.get("status", ""))
@@ -280,6 +292,7 @@ def summarise(recorder, show_ids: list[int], devices: dict[str, dict], now: floa
             sub.episodes += eps
             sub.imported_from |= files
         all_gaps += gaps(runs, show["started"], limit_end, now, current_run_id)
-    rows = sorted((build_row(s) for s in subjects.values()), key=_order)
+    muted = {unit_key(k) for k in quiet}
+    rows = sorted((build_row(s, unit_key(s.key) in muted) for s in subjects.values()), key=_order)
     return {"rows": rows, "gaps": sorted(set(all_gaps)),
             "totals": {k: sum(r[k] for r in rows) for k in ("stops", "alerts", "advisories", "dropouts", "problems")}}

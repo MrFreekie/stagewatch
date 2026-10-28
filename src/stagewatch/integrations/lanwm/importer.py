@@ -133,7 +133,8 @@ def _show(recorder: Recorder, show_id: int) -> dict:
 
 def plan_import(recorder: Recorder, site, *, fmt: str, text: str, file_name: str, show_id: int,
                 tz: str = "", offset_s: float = 0.0, session_markers: bool = False,
-                load_checker_markers: bool = False, parsed: parse.ParseResult | None = None) -> Plan:
+                load_checker_markers: bool = False, parsed: parse.ParseResult | None = None,
+                quiet: frozenset = frozenset()) -> Plan:
     """Read the file and work out what an import would do. Writes nothing. ``parsed`` lets a caller do
     the (slow, pure) reading off the event loop and pass it in; ``text`` is then ignored."""
     if fmt not in FORMATS:
@@ -141,7 +142,7 @@ def plan_import(recorder: Recorder, site, *, fmt: str, text: str, file_name: str
     if fmt == "nebra":
         from ..nebra import importer as nebra_importer
         return nebra_importer.plan_import(recorder, site, text=text, file_name=file_name, show_id=show_id, tz=tz,
-                                          offset_s=offset_s, session_markers=session_markers, parsed=parsed)
+                                          offset_s=offset_s, session_markers=session_markers, parsed=parsed, quiet=quiet)
     if not -MAX_OFFSET_S <= offset_s <= MAX_OFFSET_S:
         raise ImportRefused("The clock offset must be within 24 hours.")
     show = _show(recorder, show_id)
@@ -196,7 +197,8 @@ def plan_import(recorder: Recorder, site, *, fmt: str, text: str, file_name: str
 
     # Markers come only from entries that are new, so an overlapping import adds none twice.
     new_eps = mapping.episodes(fresh)
-    for b in mapping.bursts([ep for ep in new_eps if ep.severity >= 2]):
+    # a unit the admin quieted makes no marker
+    for b in mapping.bursts([ep for ep in new_eps if ep.severity >= 2 and f"lanwm:{ep.unit}".casefold() not in quiet]):
         plan.markers.append((aligned_ts(b.start, zone, offset_s), b.label()[:MARKER_LABEL_MAX], "Imported from the LA Network Manager log"))
     for e in fresh:
         if mapping.is_action(e) or (e.unit == parse.UNIT_SESSION and e.category.lower() == "session"):

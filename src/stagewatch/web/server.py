@@ -34,7 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from .. import __version__, acoustics
 from ..core.config import (
     ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
-    ContactsSettings, PowerPointConfig, PowerSiteConfig, ShellyChannelConfig, SiteConfig, UnmonitoredAllowance, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error,
+    ContactsSettings, DeviceErrorsConfig, PowerPointConfig, PowerSiteConfig, ShellyChannelConfig, SiteConfig, UnmonitoredAllowance, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error, valid_quiet_key, QUIET_MAX,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
 from ..core import calibration_io
@@ -344,6 +344,15 @@ class AdviceBody(AdviceConfig):
     model_config = _STRICT
     paths: list[_AdvicePathBody] = Field(default_factory=list, max_length=ADVICE_MAX_PATHS)
     positions: list[_AdvicePositionBody] = Field(default_factory=list, max_length=ADVICE_MAX_POSITIONS)
+
+
+class QuietUnitBody(BaseModel):
+    """PUT /api/admin/devices/errors/quiet: quiet or unquiet one imported unit. Strict, no unknown keys."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    key: str = Field(max_length=100)
+    quiet: bool = Field(strict=True)
 
 
 class AlarmsBody(BaseModel):
@@ -3026,9 +3035,27 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         words = {"sensor": "Sensor", "service": "Service", "meter": "Power meter", "host": "This Raspberry Pi"}
         devices = {d.id: {"name": d.name, "kind": words.get(d.category, d.category.title() or "Device"),
                           "status": d.status.value} for d in hub.devices.values() if d.id != "site"}
-        out = errors_mod.summarise(rec, ids, devices, time.time(), rec.run_id)
+        out = errors_mod.summarise(rec, ids, devices, time.time(), rec.run_id, hub.config.device_errors.quiet)
         return {"show": {k: show[k] for k in ("id", "name", "day", "started", "ended")}, "scope": scope,
                 "days": len(ids), **out, "gaps": [{"from": a, "to": b} for a, b in out["gaps"]]}
+
+    @app.put("/api/admin/devices/errors/quiet", dependencies=admin_deps)
+    async def quiet_unit(body: QuietUnitBody):
+        """Quiet or unquiet one imported unit on the Device errors card. Its problems stay listed at Advisory
+        weight; nothing recorded is changed."""
+        key = valid_quiet_key(body.key)
+        if key is None:
+            raise HTTPException(422, "That is not an imported unit. Nothing has been changed.")
+        current = list(hub.config.device_errors.quiet)
+        if body.quiet and key not in current:
+            if len(current) >= QUIET_MAX:
+                raise HTTPException(409, "Too many units are quieted. Unquiet some first. Nothing has been changed.")
+            current.append(key)
+        elif not body.quiet:
+            current = [k for k in current if k != key]
+        hub.config.device_errors = DeviceErrorsConfig(quiet=current)
+        hub.save_config()
+        return {"quiet": hub.config.device_errors.quiet}
 
     @app.post("/api/admin/logs/import", dependencies=admin_deps)
     async def import_log(body: LogImportBody):
@@ -3038,7 +3065,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             plan = logimport.plan_import(
                 hub.recorder, hub.config.site, fmt=body.format, text="", parsed=parsed,
                 file_name=body.file_name, show_id=show_id, tz=body.tz, offset_s=body.offset_s,
-                session_markers=body.session_markers, load_checker_markers=body.load_checker_markers)
+                session_markers=body.session_markers, load_checker_markers=body.load_checker_markers,
+                quiet=frozenset(hub.config.device_errors.quiet))
             result = {"dry_run": body.dry_run, **plan.summary()}
             if body.dry_run:
                 return result

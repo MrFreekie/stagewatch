@@ -289,6 +289,13 @@ def _alarms(a: dict, data: ReportData) -> str:
 
 
 def _devices(d: dict, data: ReportData) -> str:
+    quiet = d.get("quieted") or []
+    note = ("" if not quiet else '<p class="mut">Imported units quieted by the admin (their alerts show as '
+            f'Advisory): {e(", ".join(quiet[:50]))} (quieted).</p>')
+    return _devices_table(d, data) + note
+
+
+def _devices_table(d: dict, data: ReportData) -> str:
     if not d["rows"]:
         return "<p>No device outages in this range.</p>"
     hide = d.get("hide_detail")

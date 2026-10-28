@@ -1130,6 +1130,42 @@ class ContactsSettings(_Model):
     reveal_pin_hash: str = ""
 
 
+QUIET_MAX = 200
+QUIET_KEY_MAX = 100
+_QUIET_PREFIXES = ("lanwm:", "nebra:")
+
+
+def valid_quiet_key(v: object) -> str | None:
+    """A unit key as the Device errors card groups imported units ("lanwm:104", "nebra:Joyned MU16 3"),
+    case-folded; None if it is not one. Only imported units can be quieted, never a Stagewatch device."""
+    if not isinstance(v, str):
+        return None
+    k = " ".join(v.split()).casefold()
+    if not k.startswith(_QUIET_PREFIXES) or len(k) > QUIET_KEY_MAX or len(k.split(":", 1)[1]) < 1:
+        return None
+    if any(ord(c) < 32 or c in "<>\\" for c in k):
+        return None
+    return k
+
+
+class DeviceErrorsConfig(_Model):
+    """Units the admin quieted on the Device errors card (imported LA / Nebra units). Additive field."""
+    quiet: list[str] = Field(default_factory=list)
+
+    @field_validator("quiet", mode="before")
+    @classmethod
+    def _clean_quiet(cls, v):
+        """Unusable and repeated entries are dropped and the list cut to QUIET_MAX (salvage-friendly)."""
+        if not isinstance(v, list):
+            return []
+        out: list[str] = []
+        for item in v:
+            k = valid_quiet_key(item)
+            if k and k not in out and len(out) < QUIET_MAX:
+                out.append(k)
+        return out
+
+
 class Config(_Model):
     schema_version: int = CONFIG_SCHEMA_VERSION
     site: SiteConfig = Field(default_factory=SiteConfig)
@@ -1165,6 +1201,8 @@ class Config(_Model):
     power_points: list[PowerPointConfig] = Field(default_factory=list)
     contacts: ContactsSettings = Field(default_factory=ContactsSettings)
     advice: AdviceConfig = Field(default_factory=AdviceConfig)
+    # Additive (no schema bump): imported units the admin quieted on the Device errors card.
+    device_errors: DeviceErrorsConfig = Field(default_factory=DeviceErrorsConfig)
 
     @field_validator("advice", mode="before")
     @classmethod

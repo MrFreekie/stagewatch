@@ -353,7 +353,8 @@ def _devices_section(ctx: _Ctx, outages: list[dict]) -> dict:
         rows.append({"device": name, "area": area_of.get(o["id"][7:], ""), "start": o["start"], "end": o["end"],
                      "already_active": o["already_active"], "duration_s": o["duration_s"], "status": status,
                      "detail": detail, "end_text": _end_text(o), "device_id": o["id"][7:]})
-    return {"rows": rows}
+    quiet = getattr(getattr(ctx.cfg, "device_errors", None), "quiet", None) or []
+    return {"rows": rows, "quieted": [k.split(":", 1)[-1] for k in quiet][:200]}
 
 
 # ------------------------------------------------------------------ downtime and gaps

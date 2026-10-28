@@ -1211,20 +1211,27 @@
     const ENDED = { clear: "", restart: " (ended when Stagewatch restarted)", open: " (still going)", show_end: " (still going when the day ended)", file: " (never cleared in the log)" };
     function timeline(r) {
       const items = r.episodes.slice().reverse().map((e) => h("li", {},
-        `${SW.fmtTime(e.start, { seconds: true })} · ${e.level}: ${e.text} · ${e.seconds === null ? "no end known" : SW.faultTime(e.seconds)}${ENDED[e.ended_by] || ""}`));
+        `${SW.fmtTime(e.start, { seconds: true })} · ${r.quieted ? "Advisory (quieted by you)" : e.level}: ${e.text} · ${e.seconds === null ? "no end known" : SW.faultTime(e.seconds)}${ENDED[e.ended_by] || ""}`));
       return h("tr", {}, h("td", { colspan: 8 }, h("ul", { class: "muted", style: "margin:4px 0 8px 18px" }, items),
         r.episodes_total > r.episodes.length ? h("p", { class: "muted hint" }, `Showing the latest ${r.episodes.length} of ${r.episodes_total}.`) : null,
         r.imported_from.length ? h("p", { class: "muted hint" }, `Imported from ${r.imported_from.join(", ")}.`) : null));
     }
 
+    const imported = (r) => r.now === "imported";
+    async function setQuiet(r, quiet) {
+      try { await run(() => api("PUT", "/api/admin/devices/errors/quiet", { key: r.key, quiet }), quiet ? "Unit quieted" : "Unit no longer quieted"); await load(); } catch (_) { /* the toast says why */ }
+    }
     function rowEls(r) {
       const isOpen = openRows.has(r.key);
       const toggle = r.problems ? h("button", { class: "small", style: "min-height:44px", type: "button", "aria-expanded": String(isOpen),
         "aria-label": `${isOpen ? "Hide" : "Show"} the problems of ${r.name}`,
         onclick: () => { if (isOpen) openRows.delete(r.key); else openRows.add(r.key); draw(); } }, isOpen ? "Hide" : "Show") : null;
-      const main = h("tr", {},
+      const main = h("tr", { class: r.quieted ? "muted" : "" },
         h("td", {}, r.name, r.flapping ? h("span", { class: "pill", style: "margin-left:6px", title: "3 or more problems within 10 minutes" }, "flapping") : null,
-          h("div", { class: "muted", style: "font-size:12px" }, r.kind)),
+          h("div", { class: "muted", style: "font-size:12px" }, r.kind),
+          r.quieted ? h("div", { class: "muted", style: "font-size:12px" }, `Quieted by you${r.quieted_stops || r.quieted_alerts ? ` (would be ${r.quieted_stops} Stop, ${r.quieted_alerts} Alert)` : ""}`) : null,
+          imported(r) ? h("label", { class: "field inline", style: "font-size:12px" }, h("input", { type: "checkbox", checked: !!r.quieted, "aria-label": `Quiet this unit: ${r.name}`,
+            onchange: (ev) => setQuiet(r, ev.target.checked) }), " Quiet this unit") : null),
         h("td", { class: "muted" }, r.now || "-"),
         num(r.stops, "error"), num(r.alerts), num(r.advisories), num(r.dropouts),
         h("td", { class: r.seconds_in_fault ? "" : "muted" }, SW.faultTime(r.seconds_in_fault),
@@ -1258,7 +1265,7 @@
     load();
 
     const c = card("Device errors",
-      h("p", { class: "muted" }, "How many problems each device had, and when, so you can see which box keeps dropping out. A problem is counted once however long it lasts or however many units report it at the same moment. Imported LA Network Manager logs add their units here. Limit alarms (a stage that is too hot) are not device problems and stay in the alarm log."),
+      h("p", { class: "muted" }, "How many problems each device had, and when, so you can see which box keeps dropping out. A problem is counted once however long it lasts or however many units report it at the same moment. Imported LA Network Manager logs add their units here. Limit alarms (a stage that is too hot) are not device problems and stay in the alarm log. A unit that keeps disconnecting and you already know about can be quieted: its problems stay listed but show as Advisory and do not add to the Stop and Alert totals."),
       h("div", { class: "row" }, field("Show", showSel), field("How much", scopeSel)),
       box);
     c.id = "device-errors-card";

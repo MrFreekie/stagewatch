@@ -67,7 +67,8 @@ def _la_unlock_starts(recorder, show_id: int) -> dict[str, list[float]]:
 
 
 def plan_import(recorder, site, *, text: str, file_name: str, show_id: int, tz: str = "", offset_s: float = 0.0,
-                session_markers: bool = False, parsed: parse.ParseResult | None = None) -> Plan:
+                session_markers: bool = False, parsed: parse.ParseResult | None = None,
+                quiet: frozenset = frozenset()) -> Plan:
     """Read the file and work out what an import would do. Writes nothing."""
     if not -MAX_OFFSET_S <= offset_s <= MAX_OFFSET_S:
         raise ImportRefused("The clock offset must be within 24 hours.")
@@ -153,7 +154,8 @@ def plan_import(recorder, site, *, text: str, file_name: str, show_id: int, tz: 
     # Markers come only from entries that are new, so an overlapping import adds none twice.
     fresh_events = {id(items[i][0]) for i in fresh_ids}
     new_eps = [ep for ep in shown if id(ep.events[0][0]) in fresh_events]
-    for b in mapping.bursts([ep for ep in new_eps if ep.severity >= 2]):
+    # a unit the admin quieted makes no marker
+    for b in mapping.bursts([ep for ep in new_eps if ep.severity >= 2 and f"nebra:{ep.name}".casefold() not in quiet]):
         plan.markers.append((b.start, b.label()[:MARKER_LABEL_MAX], NOTE))
     if session_markers:
         for i in sorted(fresh_ids):
