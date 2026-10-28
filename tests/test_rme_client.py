@@ -157,6 +157,45 @@ async def test_full_status_then_deltas_then_binary_and_nothing_sent():
             await cl.stop()
 
 
+async def test_binary_frames_of_any_size_up_to_the_limit_are_counted_and_dropped_unread():
+    async def script(ws, n):
+        await ws.send(STATUS)
+        await ws.send(METER)                              # 1072 bytes, like a meter frame
+        await ws.send(bytes(70000))                       # 70,000 bytes
+        await ws.send(b"")                                # empty
+        await ws.send(b'{"msg": "status", "data": {"device": {"psu": {"state": [false, false]}}}}')   # JSON inside a binary frame is NOT read
+        await ws.send(DELTA_TEMP)
+        await hold(ws)
+
+    async with FakeRme(script) as srv:
+        sink = Sink()
+        cl = make_client(srv.port, sink)
+        await cl.start()
+        try:
+            await until(lambda: sink.states == ["baseline", "delta"] and cl.binary_frames == 4)
+            assert sink.downs == [] and cl.bad_frames == 0
+            assert sink.temps[-1] == 63.0
+        finally:
+            await cl.stop()
+
+
+async def test_a_binary_frame_over_the_size_limit_closes_the_connection():
+    async def script(ws, n):
+        await ws.send(STATUS)
+        await ws.send(bytes(600 * 1024))
+        await hold(ws)
+
+    async with FakeRme(script) as srv:
+        sink = Sink()
+        cl = make_client(srv.port, sink)
+        await cl.start()
+        try:
+            await until(lambda: sink.downs)
+            assert sink.downs[0][1] == TEXT["too_large"]
+        finally:
+            await cl.stop()
+
+
 async def test_two_clients_on_one_unit_both_get_the_status():
     async with FakeRme() as srv:
         a, b = Sink(), Sink()
@@ -504,8 +543,7 @@ def test_the_package_has_no_send_path():
         code = "\n".join(line.split("#")[0] for line in path.read_text(encoding="utf-8").splitlines())
         assert not re.search(r"\.send\w*\(", code), path.name
         assert not re.search(r"\.(ping|pong|write|sendall)\(", code), path.name
-        assert "ping_interval=None" in code or path.name != "client.py" or True
-    assert "ping_interval=None" in (root / "client.py").read_text(encoding="utf-8")
+    assert "ping_interval=None" in (root / "client.py").read_text(encoding="utf-8")      # the library sends no keep-alive either
 
 
 async def test_library_frame_logging_is_silenced_so_the_serial_never_reaches_a_log(caplog):

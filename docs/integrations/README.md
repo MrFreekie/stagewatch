@@ -16,6 +16,7 @@ This is the one table of integrations. Other pages link here rather than repeati
 | WitMotion tilt sensor (Bluetooth) | WitMotion | Roll and pitch, acceleration, battery and sensor temperature, with an optional target angle, over Bluetooth | Yes | Inclinometer (WitMotion), Equipment | WT901BLECL and WT9011DCL checked against real captures. The Bluetooth link is not yet run on a Pi, and Windows is untested | [WitMotion](witmotion.md) |
 | Smaart | Rational Acoustics | Up to three sound level values that Smaart reports | Yes | Sound level | Tested live on Smaart Suite 9.6.4. Other Smaart versions are not tested. Port 26000 is the usual example: confirm it on your Smaart | [Smaart](smaart.md) |
 | DirectOut GLOBCON | DirectOut | Channel level meters, names and mute state of one controller | Yes | DirectOut GLOBCON | Names, layers and live meters checked on one real controller. Compare the levels with GLOBCON's own screen. The scale for each channel type is not yet confirmed | [GLOBCON](globcon.md) |
+| RME interfaces (12Mic) | RME | Core temperature, the two power supplies, clock source and lock, preset, AVB streams and the unit's own health words, over the local network. It sends the unit nothing | Yes | RME interfaces, Equipment | Tried on one 12Mic (firmware 2.0.1) only, from recordings of its web page. Not yet tested on other RME units. RME units have no login | [RME](rme.md) |
 | Ontime | Carlos Valente (open source) | Time of day, countdown, rundown position and ahead or behind | Yes | Wall Clock, Ontime Timer, Ontime Rundown | Rolling state tested on real Ontime 4.14.0. The rest is not yet tested | [Ontime](ontime.md) |
 | OSC output | Not applicable | Nothing. It sends the site average and alarm state out | Not applicable (send only) | Not applicable | Messages built and tested. Not yet tested with a real receiver | [OSC output](osc-output.md) |
 
@@ -34,7 +35,7 @@ product's own screen before you rely on it.
 ### An independent project
 
 Stagewatch is independent and unofficial. It is **not made, approved, sponsored or supported by**
-Ontime, Rational Acoustics (Smaart), DirectOut (GLOBCON), L-Acoustics, Meyer Sound, Allterco Robotics (Shelly), Bitfocus
+Ontime, Rational Acoustics (Smaart), DirectOut (GLOBCON), RME, L-Acoustics, Meyer Sound, Allterco Robotics (Shelly), Bitfocus
 (Companion), the ESPHome project, or any other maker named in these guides.
 
 ### Names and logos

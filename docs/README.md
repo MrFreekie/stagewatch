@@ -41,7 +41,7 @@ You do not need to know how to code. Every guide tells you what you should see a
    [Windows](install/windows.md), [Raspberry Pi](install/raspberry-pi.md) or [Debian Linux](install/debian-linux.md).
 2. [Networking](networking.md): one network, or the sensor nodes on their own Wi-Fi.
 3. [Build and add a sensor node](nodes/README.md).
-4. [Connect other kit](integrations/README.md): Ontime, Smaart, DirectOut GLOBCON, Shelly power meters, WitMotion tilt sensors, OSC output.
+4. [Connect other kit](integrations/README.md): Ontime, Smaart, DirectOut GLOBCON, RME interfaces, Shelly power meters, WitMotion tilt sensors, OSC output.
 5. [Set it up in Admin](admin/README.md).
 
 **On the day**

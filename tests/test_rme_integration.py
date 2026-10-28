@@ -167,6 +167,22 @@ async def test_the_six_minute_script_psu_clock_offline_gap_and_unknown_word(hub)
         await integ.stop()
 
 
+def test_an_unknown_soundness_word_is_logged_once_as_the_word_only(hub, caplog):
+    import logging
+    from stagewatch.integrations.rme import parse
+    caplog.set_level(logging.INFO)
+    integ = RmeIntegration(hub, emulate=True)
+    st = parse.RmeState()
+    st.ingest(json.dumps({"msg": "status", "data": {"device": {"entity_name": "Secret Name", "serial_number": "SN-LOG-1",
+                                                               "soundness": {"state": "Surprise!", "cause": "Whatever"}}}}))
+    view = parse.make_view(st.data)
+    for _ in range(3):
+        integ._note_unknown(view)
+    lines = [r.getMessage() for r in caplog.records if "unrecognised" in r.getMessage()]
+    assert len(lines) == 1 and "Surprise" in lines[0]
+    assert "Secret Name" not in caplog.text and "SN-LOG-1" not in caplog.text and "Whatever" not in caplog.text
+
+
 def test_the_script_is_deterministic_and_the_temperature_stays_between_52_and_63():
     temps = [scene(i, t).temp_c for i in (0, 1) for t in range(0, 360)]
     assert 52 <= min(temps) and max(temps) <= 63

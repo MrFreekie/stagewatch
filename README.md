@@ -106,7 +106,7 @@ uv run stagewatch --emulate
 - [All guides, in the order to follow](docs/README.md)
 - [Dashboard cards](docs/cards/README.md): what each card shows and what the colours mean
 - [Admin](docs/admin/README.md): setting up the site, sensors, alarms and dashboards
-- [Integrations](docs/integrations/README.md): Ontime, Smaart, DirectOut GLOBCON, Shelly, WitMotion tilt sensors, OSC output
+- [Integrations](docs/integrations/README.md): Ontime, Smaart, DirectOut GLOBCON, RME interfaces (tried on one 12Mic only), Shelly, WitMotion tilt sensors, OSC output
 - [Updating and backups](docs/updating-and-backups.md), including a forgotten PIN
 - [Troubleshooting](docs/troubleshooting.md) and the [glossary](docs/glossary.md)
 - [Changelog](CHANGELOG.md)

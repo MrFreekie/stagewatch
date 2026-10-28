@@ -15,6 +15,10 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+
+- **RME interfaces (12Mic), experimental.** Shows the health of RME 12Mic units on the network: core temperature, both power supplies, the clock source and whether it is locked, the loaded preset, AVB streams and the unit's own health words (Good, Notice, Warning and so on). It only listens to each unit's status and never sends it anything, so it cannot change gain, 48 V, presets or the clock. Changes (a lost power supply, a clock change, a different preset, a unit going away and coming back) are marked on the timeline as they happen, with nothing filled in for a time the unit was away. Temperature and power supplies are Equipment readings and never count towards the site averages. Every notice is silent. Add up to eight units under Admin, Integrations, Add integration, RME (private addresses only; Test shows the model, firmware and name, never the serial number). `--emulate` adds two simulated units. Tried on one 12Mic only; other RME units are not tested. RME units have no login, so keep their network separate (see [RME interfaces](docs/integrations/rme.md)). The settings are saved as `rme_devices`; older versions ignore the list and drop it the next time they save.
+
 ## [0.7.0] - 2026-10-28
 
 ### Added
