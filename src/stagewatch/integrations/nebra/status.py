@@ -35,7 +35,7 @@ _CLIENTS = re.compile(r"(\d{1,5})\s+Connected clients?", re.IGNORECASE)
 
 def _key_regex(keys: tuple[str, ...]) -> re.Pattern:
     ordered = sorted(keys, key=len, reverse=True)
-    return re.compile(r"(?<![\w#])(" + "|".join(re.escape(k) for k in ordered) + r")\s*=\s*")
+    return re.compile(r"(?<![\w#])(" + "|".join(re.escape(k) for k in ordered) + r")\s*=\s*", re.IGNORECASE)
 
 
 _ENTITY_RE = _key_regex(ENTITY_KEYS)
@@ -50,11 +50,16 @@ def scrub(text: str) -> str:
 def split_pairs(line: str, regex: re.Pattern, keep: tuple[str, ...]) -> dict[str, str]:
     """``key=value`` pairs for the wanted keys only. A value runs to the next known key."""
     marks = list(regex.finditer(line))
+    canon = {k.lower(): k for k in keep}
     out: dict[str, str] = {}
     for i, m in enumerate(marks):
         end = marks[i + 1].start() if i + 1 < len(marks) else len(line)
-        if m.group(1) in keep:
-            out[m.group(1)] = parse.clean(line[m.end():end].strip().rstrip(",;|").strip(), 120)
+        key = canon.get(m.group(1).lower())
+        if key:
+            value = line[m.end():end].strip().rstrip(",;|").strip()
+            if value.startswith("[") and value.endswith("]"):   # Nebra writes every value as [value]
+                value = value[1:-1].strip()
+            out[key] = parse.clean(value, 120)
     return out
 
 

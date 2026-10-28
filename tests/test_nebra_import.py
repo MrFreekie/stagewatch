@@ -426,3 +426,35 @@ def test_cli_status_is_preview_only_and_private(tmp_path, capsys):
 def test_admin_card_offers_nebra():
     js = (Path(__file__).parents[1] / "src" / "stagewatch" / "web" / "static" / "admin.js").read_text(encoding="utf-8")
     assert 'value: "nebra"' in js and "format: formatSel.value" in js and "nebra-status" not in js
+
+
+def test_status_report_values_in_square_brackets():
+    """A real report writes every value as [value]; the names, firmware and 'No Error' must read cleanly."""
+    from stagewatch.integrations.nebra import status
+    text = "\n".join([
+        "Nebra v.2.6.9",
+        "System Status Report for system Test-System, as of 2026/10/24 21:37:59",
+        "",
+        "0 Connected clients:",
+        "",
+        "Active alerts:",
+        "",
+        "AVB Entities:",
+        "entity_id=1/00-11-22-33-44-55 entity_model_id=2/[] entity_name=[AMP 101] group_name=[] serial#=[0000001] "
+        "firmwareVersion=[1.2.3] status=Available #sources=0 #sinks=4 as_path_map=[0:2]",
+        "entity_id=3/00-11-22-33-44-66 entity_model_id=4/[X] entity_name=[Mixer] group_name=[Net] serial#=[0000002] "
+        "firmwareVersion=[2.0 (v1)] status=Available #sources=1 #sinks=1 as_path_map=[0:6]",
+        "",
+        "AVB Connections:",
+        "Talker Location=[Net.Mixer.Output 1 (00-11-22-33-44-66,0)] Listener Location=[AMP 101.A 1 (00-11-22-33-44-55,0)] "
+        "State=[Registered] Flags=[Class A] Failure Code=[No Error] VLAN=[2]",
+        "Talker Location=[Net.Mixer.Output 2 (00-11-22-33-44-66,2)] Listener Location=[AMP 101.B 1 (00-11-22-33-44-55,1)] "
+        "State=[Failed] Flags=[Class A] Failure Code=[Bandwidth] VLAN=[2]",
+        "End of Report",
+    ])
+    inv = status.inventory(status.parse_status(text))
+    assert inv["units"] == 2 and inv["available"] == 2
+    assert inv["firmware"] == {"1.2.3": 1, "2.0 (v1)": 1}
+    assert inv["failing_total"] == 1 and inv["failing_streams"][0]["code"] == "Bandwidth"
+    printed = "\n".join(status.describe(inv))
+    assert "0000001" not in printed and "00-11-22" not in printed
