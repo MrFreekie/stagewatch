@@ -1186,6 +1186,21 @@ class Recorder:
         except (TypeError, ValueError):
             return None
 
+    def clock_stepped(self, step_s: float) -> None:
+        """The computer's clock was deliberately stepped: restart the heartbeat timer on the new time and, for a
+        step back, pull this run's start and last-seen times back with it, so a later restart is not reported
+        as "the clock moved backwards" or as a long gap. Old readings are not touched."""
+        now = time.time()
+        self._last_heartbeat = now
+        if self.run_id is None:
+            return
+        try:
+            self._db.execute("UPDATE hub_runs SET last_seen = ?, started = MIN(started, ?) WHERE id = ?",
+                             (now, now, self.run_id))
+            self._db.commit()
+        except sqlite3.Error as e:
+            log.error("Could not record the clock step in the run record (%s)", type(e).__name__)
+
     def set_run_stop_reason(self, run_id: int, reason: str) -> None:
         """Say why an earlier run that never stopped cleanly ended (``stopped`` stays empty: the
         exact time is not known, ``last_seen`` is the last sign of life)."""
