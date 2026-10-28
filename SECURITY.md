@@ -24,8 +24,8 @@ Only the latest release on the Stable channel (and the current Nightly) receive 
 - Please don't test against installations you don't own.
 - Stagewatch's dashboards have no login. Anyone on the show network can see them. The admin page needs a PIN.
 - RME units (12Mic and similar) have no authentication: they accept changes from any device on their network,
-  including gain and 48 V. Keep the AVB and control network separate. Stagewatch only listens to them, sends them
-  nothing and holds no unit credentials (see [RME interfaces](docs/integrations/rme.md)).
+  including gain and 48 V. Keep the AVB and control network separate. Stagewatch sends no commands or settings; it only
+  opens the link and answers the unit's keep-alive. It holds no unit credentials (see [RME interfaces](docs/integrations/rme.md)).
 
 ## How the admin page is protected
 

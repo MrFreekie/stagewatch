@@ -868,13 +868,17 @@
     const name = h("input", { maxlength: "40", placeholder: "Uses the unit's own name", "aria-label": "Name for this unit" });
     const area = h("input", { maxlength: "40", placeholder: "e.g. Stage left", "aria-label": "Area" });
     const result = h("div", { class: "rme-test-result", role: "status" });
+    const nameCheck = h("p", { class: "warn-text", style: "font-size:12px" }, "▲ " + ra.NAME_CHECK);
+    SW.slot(nameCheck, false);
     const save = h("button", { class: "primary touch", disabled: true }, "Save unit");
     const saveHint = h("span", { class: "muted" }, "Press Test first: Save works once the unit answers.");
     const setSave = (off) => { save.disabled = off; SW.slot(saveHint, !off); };
     const show = (view) => {
-      if (!view) { result.replaceChildren(); setSave(true); return; }
+      if (!view) { result.replaceChildren(); SW.slot(nameCheck, true); setSave(true); return; }
       result.replaceChildren(...view.lines.map((l, i) => h("p", { class: i === 0 && view.warn ? "warn-text" : (i === 0 ? "" : "muted") }, i === 0 && view.warn ? `▲ ${l}` : l)));
-      if (view.ok && view.name && val(name) === "") name.value = view.name;
+      const prefilled = view.ok && view.name && val(name) === "";
+      if (prefilled) name.value = view.name;
+      if (prefilled) SW.slot(nameCheck, false); else if (!view.ok) SW.slot(nameCheck, true);
       setSave(!view.ok || !!view.already);
     };
     const test = h("button", { class: "touch", onclick: async () => {
@@ -895,7 +899,7 @@
     return h("div", {},
       h("div", { class: "row" }, field("Unit address (an IP address on your local network)", host), test),
       result,
-      field("Name (optional)", name), field("Area (optional)", area),
+      field("Name (optional)", name), nameCheck, field("Area (optional)", area),
       h("details", { class: "card-about" }, h("summary", {}, "Advanced"), field("Port (usually 80)", port)),
       h("p", { class: "notice" }, ra.SECURITY),
       h("p", { class: "muted hint" }, "Tip: give the unit a fixed address so it stays where Stagewatch expects it. Test opens a second short connection and closes it at once."),

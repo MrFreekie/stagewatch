@@ -1073,7 +1073,7 @@
     const own = new Set(has("witmotion_tilt") ? SW.wm.sensorsOf(state.devices).map((d) => d.id) : []);
     for (const e of Object.values(state.entities)) {
       // RME units: only the core temperature here; the power supplies are On / Off words on the RME card.
-      if (e.kind === "contact" && String(e.device_id).indexOf("rme_") === 0) continue;
+      if (e.kind === "contact" && (state.devices[e.device_id] || {}).integration === "rme") continue;
       if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery") continue;
       // Inclinometers: only their body temperature, and only when Admin asks for it.
       const wmPub = (state.devices[e.device_id] || {}).witmotion;

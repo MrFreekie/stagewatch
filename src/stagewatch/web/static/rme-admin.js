@@ -85,6 +85,7 @@ SW.rmeAdmin = (function () {
     return b;
   };
 
+  ra.NAME_CHECK = "This is the unit's own name. Check it before you save: it can contain the unit's serial number, and the name is shown on dashboards and in timeline markers. Type a different name if it does.";
   ra.removeText = (name) => `Remove the RME unit ${name}? Stagewatch stops listening to it. Its history and markers are kept, and it can be added again.`;
   ra.replaceText = (name) => `Use this only when you have swapped the hardware at ${name}. Stagewatch will take the unit that answers at this address as ${name}, and keep its history. Carry on?`;
   return ra;

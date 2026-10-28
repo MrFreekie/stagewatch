@@ -41,6 +41,10 @@ TOPIC = "rme_units"
 TICK_S = 1.0
 CONFIRM_S = 30.0              # an unchanged reading is recorded again this often while frames flow
 MAX_UNKNOWN_LOGGED = 50
+RETRY_MIN_S = 5.0             # if a unit's source could not be built or started: try again after this, doubling
+RETRY_MAX_S = 120.0
+START_FAILED = "Could not start reading this unit"
+ALARM_GAP_S = 2.0             # one alarm condition of one unit changes at most this often
 
 MANIFEST = Manifest(
     domain="rme",
@@ -83,7 +87,13 @@ class _Unit:
     entities: set = field(default_factory=set)
     pushed: dict = field(default_factory=dict)      # suffix -> (value, clock seconds)
     alarms: set = field(default_factory=set)
+    alarm_applied: dict = field(default_factory=dict)   # key -> (level, text) as the hub has it
+    alarm_at: dict = field(default_factory=dict)        # key -> clock seconds of its last change
+    alarm_wanted: dict = field(default_factory=dict)    # what the latest status asks for
     last_status: tuple | None = None
+    start_failures: int = 0
+    retry_at: float | None = None
+    retrying: bool = False
 
     @property
     def device_id(self) -> str:
@@ -214,7 +224,8 @@ class RmeIntegration(Integration):
             key = (self.emulate, cfg.host, cfg.port)
             if unit is None:
                 unit = self._units[uid] = _Unit(cfg, key)
-                unit.policy = MarkerPolicy(partial(self._make_marker, unit), self._clock)
+                unit.policy = MarkerPolicy(partial(self._make_marker, unit), self._clock,
+                                           lambda u=unit: f"RME {u.name()}: {mapping.OVERFLOW_TEXT}")
                 self._register_device(unit)
                 await self._start_source(unit)
             elif unit.key != key:
@@ -238,8 +249,29 @@ class RmeIntegration(Integration):
         unit.last_status = None
 
     async def _start_source(self, unit: _Unit) -> None:
-        unit.source = self._factory(self, unit)
-        await unit.source.start()
+        """Build and start the unit's source. If that fails the unit shows as away and the tick tries again
+        later (5 s, then twice as long each time, at most 2 minutes), so one failure is not for ever."""
+        try:
+            unit.source = self._factory(self, unit)
+            await unit.source.start()
+            unit.start_failures, unit.retry_at = 0, None
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - one unit must not stop the others
+            log.exception("Could not start the RME source")
+            await self._stop_source(unit)
+            unit.start_failures += 1
+            unit.retry_at = self._clock() + min(RETRY_MAX_S, RETRY_MIN_S * 2 ** (unit.start_failures - 1))
+            self._on_link(unit, False, START_FAILED)
+
+    async def _retry_start(self, unit: _Unit) -> None:
+        try:
+            async with self._lock:
+                if self._units.get(unit.cfg.id) is unit and unit.source is None and not self._stopped:
+                    await self._start_source(unit)
+        finally:
+            unit.retrying = False
+        self.publish_once()
 
     async def _stop_source(self, unit: _Unit) -> None:
         source, unit.source = unit.source, None
@@ -264,7 +296,7 @@ class RmeIntegration(Integration):
         self.hub.register_device(Device(
             unit.device_id, shown[0], "rme", "RME" if not self.emulate else "Stagewatch", model,
             area=unit.cfg.area, status=Status.INITIALIZING, status_detail=mapping.DETAIL_CONNECTING,
-            category="service", role="equipment"))
+            category="service", role="equipment"), area_authoritative=True)      # clearing the Area clears it
         unit.registered = shown
 
     def _make_marker(self, unit: _Unit, text: str, hidden: bool) -> None:
@@ -275,9 +307,9 @@ class RmeIntegration(Integration):
         except Exception:  # noqa: BLE001 - a marker must never stop the readings
             log.exception("Could not add an RME marker")
 
-    def _emit(self, unit: _Unit, key: str, text: str, hidden: bool = False) -> None:
+    def _emit(self, unit: _Unit, key: str, text: str, hidden: bool = False, restore: bool = False) -> None:
         if unit.policy is not None:
-            unit.policy.emit(key, f"RME {unit.name()}: {text}", hidden)
+            unit.policy.emit(key, f"RME {unit.name()}: {text}", hidden, restore)
 
     def _register_entities(self, unit: _Unit, values: dict) -> None:
         for suffix, name, kind, decimals in mapping.ENTITY_SPECS:
@@ -297,21 +329,36 @@ class RmeIntegration(Integration):
                 unit.pushed[suffix] = (value, now)
 
     def _clear_alarms(self, unit: _Unit) -> None:
-        self._set_alarms(unit, {})
+        self._set_alarms(unit, {}, force=True)
 
-    def _set_alarms(self, unit: _Unit, wanted: dict) -> None:
+    def _set_alarms(self, unit: _Unit, wanted: dict, force: bool = False) -> None:
+        """Make the unit's alarm conditions match ``wanted``. Each condition changes at most once in
+        ALARM_GAP_S (a flapping lock or a hostile unit cannot cost a database write and a broadcast per
+        frame); a change held back is applied by ``tick`` with whatever is wanted by then."""
+        unit.alarm_wanted = dict(wanted)
         changes = []
         name = unit.name()
         now = time.time()
-        for key, (level, text) in wanted.items():
-            change = self.hub.alarms.set_condition(f"rme:{unit.cfg.id}:{key}", True, level, f"{name}: {text}", now, silent=True)
+        clock = self._clock()
+        for key in set(wanted) | set(unit.alarm_applied):
+            want = (wanted[key][0], f"{name}: {wanted[key][1]}") if key in wanted else None
+            if unit.alarm_applied.get(key) == want:
+                continue
+            last = unit.alarm_at.get(key)
+            if not force and last is not None and clock - last < ALARM_GAP_S:
+                continue
+            if want is None:
+                change = self.hub.alarms.set_condition(f"rme:{unit.cfg.id}:{key}", False, 0, "", now)
+                unit.alarm_applied.pop(key, None)
+            else:
+                change = self.hub.alarms.set_condition(f"rme:{unit.cfg.id}:{key}", True, want[0], want[1], now, silent=True)
+                unit.alarm_applied[key] = want
+            unit.alarm_at[key] = clock
             if change:
                 changes.append(change)
-        for key in unit.alarms - set(wanted):
-            change = self.hub.alarms.set_condition(f"rme:{unit.cfg.id}:{key}", False, 0, "", now)
-            if change:
-                changes.append(change)
-        unit.alarms = set(wanted)
+        unit.alarms = set(unit.alarm_applied)
+        if len(unit.alarm_at) > 64:
+            unit.alarm_at = {k: t for k, t in unit.alarm_at.items() if k in unit.alarm_applied or clock - t < ALARM_GAP_S}
         if changes:
             self.hub._alarm_changed(changes)
 
@@ -368,6 +415,8 @@ class RmeIntegration(Integration):
         if view is None:
             return
         old = unit.view
+        if result.kind == "resync" and old is not None and view == old:
+            result = FrameResult("delta", False)       # a full status that changes nothing is just a delta
         unit.view = view
         unit.phase = "up"
         if result.kind == "baseline":
@@ -379,7 +428,7 @@ class RmeIntegration(Integration):
         elif result.kind == "delta" and old is not None:
             unit.lost_live = mapping.lost_live_after(old, view, unit.lost_live)
             for ev in mapping.marker_events(old, view):
-                self._emit(unit, ev.key, ev.text, ev.hidden)
+                self._emit(unit, ev.key, ev.text, ev.hidden, ev.restored)
         self._note_unknown(view)
         self._refresh(unit, force=result.kind != "delta")
         self.publish_once()
@@ -440,6 +489,14 @@ class RmeIntegration(Integration):
         frames are flowing, which the client guarantees by dropping a silent link) and republish."""
         now = self._clock()
         for unit in self._units.values():
+            if unit.policy is not None:
+                unit.policy.poll()
+            if unit.source is None and unit.retry_at is not None and now >= unit.retry_at and not unit.retrying \
+                    and not self._stopped:
+                unit.retrying = True
+                asyncio.get_running_loop().create_task(self._retry_start(unit), name="rme-retry")
+            if unit.phase == "up":
+                self._set_alarms(unit, unit.alarm_wanted)       # applies a change the 2 s gap held back
             source = unit.source
             if unit.phase == "up" and source is not None and source.last_frame_at is not None:
                 unit.last_seen = max(unit.last_seen or 0.0, source.last_frame_at)
@@ -503,6 +560,9 @@ class RmeIntegration(Integration):
                 raise InUse("Another unit already uses that address")
             if (new_host, new_port) != (cfg.host, cfg.port) or replace_unit:
                 info = await self._probe(new_host, new_port)
+                if info["serial"] and any(c.serial == info["serial"] for c in self.hub.config.rme_devices
+                                          if c is not cfg):
+                    raise InUse("That unit has already been added")
                 if replace_unit:
                     serial = info["serial"]
                 elif cfg.serial and info["serial"] and info["serial"] != cfg.serial:

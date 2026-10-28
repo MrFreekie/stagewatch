@@ -18,7 +18,7 @@ import platform
 import re
 import sys
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -1791,7 +1791,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             raise HTTPException(409, "Sound levels are recorded exactly as received and cannot be adjusted. "
                                      "Nothing has been changed.")
         if entity.locked_equipment:
-            raise HTTPException(409, "Power meter readings are recorded exactly as received and are always "
+            raise HTTPException(409, "Equipment readings are recorded exactly as received and are always "
                                      "Equipment, so they cannot be adjusted. Nothing has been changed.")
         # Accuracy: only for the three kinds that make the site average, within a sane limit for
         # the kind. Fixed text; the submitted number is never echoed.
@@ -2166,15 +2166,25 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                 "sensors": [{**f, "added": f["address"] in mine} for f in found]}
     # RME units. Read-only: Stagewatch listens to each unit's status socket and sends it nothing, not even for
     # Test. Addresses must be private-network IP addresses (no names, no redirects). The units have no login.
-    rme_last: list[float] = [-1e9]
+    rme_last: dict[str, float] = {"test": -1e9, "save": -1e9}
+    rme_inflight: list[int] = [0]
     app.state.rme_clock = time.monotonic        # a test replaces this; nothing else does
 
-    def rme_rate_limit() -> None:
-        """Test, Add and a changed address each open a connection to a unit: at most one every 2 seconds."""
+    def rme_rate_limit(bucket: str = "save") -> None:
+        """Test has its own limit, and so do Add and a changed address (Save straight after Test must work):
+        each at most one every 2 seconds. At most two unit connections are open for the admin at once."""
         now = app.state.rme_clock()
-        if now - rme_last[0] < 2.0:
+        if now - rme_last[bucket] < 2.0 or rme_inflight[0] >= 2:
             raise HTTPException(429, "Wait a moment and try again. Nothing has been changed.")
-        rme_last[0] = now
+        rme_last[bucket] = now
+
+    @contextmanager
+    def rme_probe_slot():
+        rme_inflight[0] += 1
+        try:
+            yield
+        finally:
+            rme_inflight[0] -= 1
 
     def rme_text(exc: RmeError) -> str:
         return RME_TEXT.get(exc.category, RME_TEXT["unreachable"])
@@ -2187,18 +2197,20 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def rme_test(body: RmeTestBody):
         """Look at a unit without saving it: model, firmware and the name it gives itself. Fixed-text
         failures; the address typed is never repeated and the serial number is never returned."""
-        rme_rate_limit()
+        rme_rate_limit("test")
         try:
-            info = await rme_integ().test(body.host, body.port)
+            with rme_probe_slot():
+                info = await rme_integ().test(body.host, body.port)
         except RmeError as exc:
             return {"ok": False, "category": exc.category, "message": rme_text(exc)}
         return {"ok": True, **info, "message": rme_probe_message(info)}
 
     @app.post("/api/admin/rme", dependencies=admin_deps)
     async def rme_add(body: RmeAddBody):
-        rme_rate_limit()
+        rme_rate_limit("save")
         try:
-            cfg = await rme_integ().add(body.host, body.port, body.name, body.area)
+            with rme_probe_slot():
+                cfg = await rme_integ().add(body.host, body.port, body.name, body.area)
         except RmeError as exc:
             raise HTTPException(422, rme_text(exc)) from None
         except RmeInUse as exc:
@@ -2208,11 +2220,12 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     @app.put("/api/admin/rme/{unit_id}", dependencies=admin_deps)
     async def rme_update(unit_id: str, body: RmePatchBody):
         if body.host is not None or body.port is not None or body.replace_unit:
-            rme_rate_limit()      # these read the unit
+            rme_rate_limit("save")      # these read the unit
         try:
-            await rme_integ().update(unit_id, name=body.name, area=body.area,
-                                     record_input_changes=body.record_input_changes, host=body.host,
-                                     port=body.port, replace_unit=body.replace_unit)
+            with rme_probe_slot():
+                await rme_integ().update(unit_id, name=body.name, area=body.area,
+                                         record_input_changes=body.record_input_changes, host=body.host,
+                                         port=body.port, replace_unit=body.replace_unit)
         except LookupError:
             raise HTTPException(404, "No such RME unit") from None
         except RmeError as exc:
