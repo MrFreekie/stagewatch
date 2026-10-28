@@ -54,6 +54,22 @@ Press **Show 4 quiet devices** (the number changes) to list the devices with no 
 - **Limit alarms are not device problems.** A stage that is too hot is the environment, not a faulty
   box. Those stay in the alarm log.
 
+## Quiet a unit you already know about
+
+An imported unit can keep raising alerts that you already know about, for example a Meyer Sound unit that
+keeps disconnecting from the network. Tick **Quiet this unit** under its name.
+
+- The unit and all its problems stay in the list, in its timeline and in its time in fault.
+- Its problems show as **Advisory** (greyed, marked `quieted by you`), whatever the log said. The row says how
+  many Stops and Alerts it would have been.
+- They no longer count in the Stop and Alert figures in the line above the table.
+- Imports you make after this add no marker for that unit. Markers already in a show are not removed.
+- The show report lists the quieted units and marks them `quieted`.
+
+Untick **Quiet this unit** to bring back the original wording and counts. Nothing recorded is changed, so
+you can change your mind at any time. Only imported units can be quieted, never a Stagewatch device. The
+choice is saved in Stagewatch's settings (up to 200 units) and is only visible in Admin.
+
 ## When Stagewatch was not running
 
 Stagewatch can only count what it saw. If it was switched off or restarted during the show, the card
