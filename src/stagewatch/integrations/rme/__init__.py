@@ -24,7 +24,7 @@ from typing import Callable
 
 from ...core.cards import KNOWN_CARDS
 from ...core.config import RME_MAX_UNITS, RmeDeviceConfig, _plain_text
-from ...core.model import Device, Entity, Kind, Status, UNITS, slugify
+from ...core.model import Device, Entity, Status, UNITS, slugify
 from ...core.plugin import Integration, Manifest
 from ..smaart.client import is_local_address
 from . import mapping, parse
