@@ -38,6 +38,7 @@ class RmeSource(ABC):
         self.last_frame_at: float | None = None
         self.last_text_at: float | None = None
         self.binary_frames = 0        # dropped before any decoding
+        self.binary_dropped = 0       # binary frames over the rate limit
         self.dropped_frames = 0       # malformed, too many, or before a baseline
         self.bad_frames = 0
 

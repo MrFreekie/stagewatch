@@ -218,10 +218,28 @@ async def test_a_second_full_status_mid_session_is_a_resync():
 
     async with FakeRme(script) as srv:
         sink = Sink()
-        cl = make_client(srv.port, sink)
+        cl = make_client(srv.port, sink, min_status_gap_s=0.0)
         await cl.start()
         try:
             await until(lambda: sink.states == ["baseline", "resync"])
+        finally:
+            await cl.stop()
+
+
+async def test_a_full_status_again_within_the_gap_drops_the_link_and_reconnects():
+    async def script(ws, n):
+        await ws.send(STATUS)
+        if n == 1:
+            await ws.send(STATUS)
+        await hold(ws)
+
+    async with FakeRme(script) as srv:
+        sink = Sink()
+        cl = make_client(srv.port, sink)
+        await cl.start()
+        try:
+            await until(lambda: sink.downs and len(sink.ups) >= 2)
+            assert sink.downs[0][1] == TEXT["flood"]
         finally:
             await cl.stop()
 
@@ -406,11 +424,11 @@ async def test_an_oversize_frame_closes_the_connection_not_the_hub():
             await cl.stop()
 
 
-async def test_a_few_bad_frames_are_dropped_and_counted_the_link_survives():
+async def test_bad_frames_before_the_first_status_are_dropped_and_counted():
     async def script(ws, n):
-        await ws.send(STATUS)
         for bad in ("nope", "[1]", '{"a": NaN}', '{"a":' * 14 + "1" + "}" * 14, json.dumps({"s": "x" * 300})):
             await ws.send(bad)
+        await ws.send(STATUS)
         await ws.send(DELTA_TEMP)
         await hold(ws)
 
@@ -426,11 +444,33 @@ async def test_a_few_bad_frames_are_dropped_and_counted_the_link_survives():
             await cl.stop()
 
 
-async def test_more_than_20_bad_frames_in_a_minute_drops_the_link():
+@pytest.mark.parametrize("bad", ["nope", "[1]", '{"a": NaN}', json.dumps({"s": "x" * 300})])
+async def test_a_bad_frame_after_the_status_marks_the_unit_down_and_reads_it_afresh(bad):
+    """A dropped frame may have been a change: the link goes down (no old values re-recorded) and the next
+    connection brings a full status."""
     async def script(ws, n):
         await ws.send(STATUS)
+        if n == 1:
+            await ws.send(bad)
+        await hold(ws)
+
+    async with FakeRme(script) as srv:
+        sink = Sink()
+        cl = make_client(srv.port, sink)
+        await cl.start()
+        try:
+            await until(lambda: sink.downs and sink.states == ["baseline", "baseline"])
+            assert sink.downs[0][1] == TEXT["lost_update"]
+            assert srv.connections >= 2
+        finally:
+            await cl.stop()
+
+
+async def test_more_than_20_bad_frames_in_a_minute_drops_the_link():
+    async def script(ws, n):
         for _ in range(25):
             await ws.send("garbage")
+        await ws.send(STATUS)
         await hold(ws)
 
     async with FakeRme(script) as srv:
@@ -444,8 +484,51 @@ async def test_more_than_20_bad_frames_in_a_minute_drops_the_link():
             await cl.stop()
 
 
-async def test_a_text_flood_is_dropped_then_the_link_is():
-    """Fast fake clock so the one-second windows roll: more than 10 text frames in each of 2 windows."""
+async def test_a_text_flood_drops_the_link_and_reads_the_unit_afresh():
+    ticks = [0.0]
+
+    def clock():
+        ticks[0] += 0.05
+        return ticks[0]
+
+    async def script(ws, n):
+        await ws.send(STATUS)
+        if n == 1:
+            for _ in range(400):
+                await ws.send(DELTA_TEMP)
+        await hold(ws)
+
+    async with FakeRme(script) as srv:
+        sink = Sink()
+        cl = make_client(srv.port, sink, clock=clock, max_text_per_s=10, first_frame_s=1e9, silence_s=1e9,
+                         min_status_gap_s=0.0)
+        await cl.start()
+        try:
+            await until(lambda: sink.downs and sink.states.count("baseline") >= 2)
+            assert sink.downs[0][1] == TEXT["flood"]
+            assert cl.dropped_frames > 0
+        finally:
+            await cl.stop()
+
+
+async def test_a_text_bytes_budget_drops_the_link():
+    async def script(ws, n):
+        await ws.send(STATUS)
+        await ws.send(DELTA_TEMP)
+        await hold(ws)
+
+    async with FakeRme(script) as srv:
+        sink = Sink()
+        cl = make_client(srv.port, sink, max_text_bytes_per_s=len(STATUS) + 10)
+        await cl.start()
+        try:
+            await until(lambda: sink.downs)
+            assert sink.downs[0][1] == TEXT["flood"]
+        finally:
+            await cl.stop()
+
+
+async def test_a_binary_flood_is_dropped_silently_and_counted_then_the_link_is_dropped():
     ticks = [0.0]
 
     def clock():
@@ -455,17 +538,17 @@ async def test_a_text_flood_is_dropped_then_the_link_is():
     async def script(ws, n):
         await ws.send(STATUS)
         for _ in range(400):
-            await ws.send(DELTA_TEMP)
+            await ws.send(METER)
         await hold(ws)
 
     async with FakeRme(script) as srv:
         sink = Sink()
-        cl = make_client(srv.port, sink, clock=clock, max_text_per_s=10, flood_s=2, first_frame_s=1e9, silence_s=1e9)
+        cl = make_client(srv.port, sink, clock=clock, max_binary_per_s=10, flood_s=2, first_frame_s=1e9, silence_s=1e9)
         await cl.start()
         try:
             await until(lambda: sink.downs)
             assert sink.downs[0][1] == TEXT["flood"]
-            assert cl.dropped_frames > 0
+            assert cl.binary_dropped > 0
         finally:
             await cl.stop()
 

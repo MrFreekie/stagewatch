@@ -53,6 +53,9 @@ SILENCE_S = 10.0              # no frame of any kind this long (meters normally 
 MAX_BYTES = 512 * 1024        # a whole status is about 17 KB
 MAX_QUEUE = 16
 MAX_TEXT_PER_S = 100
+MAX_TEXT_BYTES_PER_S = 256 * 1024     # a whole status is about 17 KB; deltas are tiny
+MAX_BINARY_PER_S = 400                # the meters send about 66 a second
+MIN_STATUS_GAP_S = 3.0                # a full status again sooner than this is a flood
 FLOOD_SECONDS = 5
 BAD_PER_MINUTE = 20
 TICK_S = 0.5
@@ -70,6 +73,7 @@ TEXT = {
     "closed": "The unit closed the connection",
     "bad_frames": "The unit sent data Stagewatch could not read",
     "flood": "The unit sent far more data than expected, so Stagewatch stopped",
+    "lost_update": "An update from the unit was lost, so Stagewatch reconnected to read it afresh",
     "waiting": "Connected, waiting for the unit's status",
 }
 
@@ -173,7 +177,8 @@ class RmeClient(RmeSource):
                  stable_s: float = STABLE_S, open_timeout_s: float = OPEN_TIMEOUT_S,
                  first_frame_s: float = FIRST_FRAME_S, silence_s: float = SILENCE_S, tick_s: float = TICK_S,
                  max_text_per_s: int = MAX_TEXT_PER_S, flood_s: int = FLOOD_SECONDS,
-                 bad_per_minute: int = BAD_PER_MINUTE) -> None:
+                 bad_per_minute: int = BAD_PER_MINUTE, max_text_bytes_per_s: int = MAX_TEXT_BYTES_PER_S,
+                 max_binary_per_s: int = MAX_BINARY_PER_S, min_status_gap_s: float = MIN_STATUS_GAP_S) -> None:
         super().__init__(on_state, on_link)
         self._target_fn = target_fn
         self._expected_serial = expected_serial_fn
@@ -182,6 +187,7 @@ class RmeClient(RmeSource):
         self._bmin, self._bmax, self._stable_s = backoff_min_s, backoff_max_s, stable_s
         self._open_timeout, self._first_frame, self._silence, self._tick = open_timeout_s, first_frame_s, silence_s, tick_s
         self._max_text, self._flood_s, self._bad_per_min = max_text_per_s, flood_s, bad_per_minute
+        self._max_text_bytes, self._max_binary, self._min_status_gap = max_text_bytes_per_s, max_binary_per_s, min_status_gap_s
         self._task: asyncio.Task | None = None
         self._up_since: float | None = None
         self._down_kind = ""
@@ -277,37 +283,46 @@ class RmeClient(RmeSource):
     async def _read(self, ws, ctx: _Session) -> None:
         state = RmeState()
         bad: deque[float] = deque()
-        window_start, in_window, streak = self._clock(), 0, 0
+        window_start, text_n, text_bytes, binary_n, binary_streak = self._clock(), 0, 0, 0, 0
+        last_status: float | None = None
         try:
             async for raw in ws:
                 now = self._clock()
                 ctx.frames += 1
                 ctx.last_rx = now
                 self.last_frame_at = now
+                if now - window_start >= 1.0:
+                    binary_streak = binary_streak + 1 if binary_n > self._max_binary else 0
+                    window_start, text_n, text_bytes, binary_n = now, 0, 0, 0
+                    if binary_streak >= self._flood_s:
+                        raise RmeError("flood")
                 if not isinstance(raw, str):
                     self.binary_frames += 1        # the meters: counted and dropped before any decoding
+                    binary_n += 1
+                    if binary_n > self._max_binary:
+                        self.binary_dropped += 1   # over the limit: dropped silently, and counted
                     continue
                 self.last_text_at = now
-                if now - window_start >= 1.0:
-                    streak = streak + 1 if in_window > self._max_text else 0
-                    window_start, in_window = now, 0
-                    if streak >= self._flood_s:
-                        raise RmeError("flood")
-                in_window += 1
-                if in_window > self._max_text:
+                text_n += 1
+                text_bytes += len(raw)
+                if text_n > self._max_text or text_bytes > self._max_text_bytes:
+                    # A text frame we will not read may have been a change. Reconnect to read the unit afresh.
                     self.dropped_frames += 1
-                    continue
+                    raise RmeError("flood")
                 try:
                     result = state.ingest(raw)
-                except BadFrame:
-                    self._count_bad(bad, now)
-                    continue
                 except Exception:  # noqa: BLE001 - nothing a frame says may end the hub
                     self._count_bad(bad, now)
+                    if ctx.up:                       # a change was lost: do not carry on with old values
+                        raise RmeError("lost_update") from None
                     continue
                 if result.kind == "ignored":
                     self.dropped_frames += 1
                     continue
+                if result.kind in ("baseline", "resync"):
+                    if last_status is not None and now - last_status < self._min_status_gap:
+                        raise RmeError("flood")
+                    last_status = now
                 if result.kind == "baseline":
                     if not isinstance(state.data.get("device"), dict):
                         raise RmeError("not_rme")
