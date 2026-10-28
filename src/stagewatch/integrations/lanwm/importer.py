@@ -25,7 +25,7 @@ from ...core import sitetime
 from ...core.config import valid_timezone
 from ...core.recorder import Recorder
 
-FORMATS = ("lanwm",)
+FORMATS = ("lanwm", "nebra")
 MAX_ROWS = 50_000               # entries kept from one file
 MAX_OFFSET_S = 24 * 3600
 APP = "LA Network Manager"
@@ -63,6 +63,8 @@ class Plan:
     markers: list[tuple[float, str, str]] = field(default_factory=list)
     episodes: list[dict] = field(default_factory=list)
     open_episodes: int = 0
+    covered_by_lanwm: int = 0               # Nebra lines that LA Network Manager's own log already holds
+    notes: list[str] = field(default_factory=list)      # plain-words things to know before importing
 
     def summary(self) -> dict:
         return {
@@ -74,8 +76,30 @@ class Plan:
             "new": len(self.rows), "already_present": self.already_present,
             "outside_day": self.outside_day, "session_left_out": self.session_left_out,
             "markers": len(self.markers), "open_episodes": self.open_episodes,
+            "covered_by_lanwm": self.covered_by_lanwm, "notes": self.notes,
             "episodes": self.episodes[:EPISODES_SHOWN], "episodes_total": len(self.episodes),
         }
+
+
+def parse_for(fmt: str, text: str):
+    """Read a file's text in the chosen format. Pure and slow on a big file, so callers run it off the loop."""
+    if fmt == "nebra":
+        from ..nebra import parse as nebra_parse
+        return nebra_parse.parse_text(text)
+    return parse.parse_text(text)
+
+
+def detect_format(text: str) -> str | None:
+    """Which log format a file's text is, by its content: ``lanwm``, ``nebra``, ``nebra-status`` or None."""
+    head = text[:4096].lstrip("﻿")
+    if "<ITEM" in head or head.lstrip().startswith("<DATA"):
+        return "lanwm"
+    from ..nebra import parse as nebra_parse, status as nebra_status
+    if nebra_parse.looks_like_events(head):
+        return "nebra"
+    if nebra_status.looks_like_status(head):
+        return "nebra-status"
+    return None
 
 
 def _zone(tz: str, site) -> zoneinfo.ZoneInfo | None:
@@ -114,6 +138,10 @@ def plan_import(recorder: Recorder, site, *, fmt: str, text: str, file_name: str
     the (slow, pure) reading off the event loop and pass it in; ``text`` is then ignored."""
     if fmt not in FORMATS:
         raise ImportRefused("That log format is not supported.")
+    if fmt == "nebra":
+        from ..nebra import importer as nebra_importer
+        return nebra_importer.plan_import(recorder, site, text=text, file_name=file_name, show_id=show_id, tz=tz,
+                                          offset_s=offset_s, session_markers=session_markers, parsed=parsed)
     if not -MAX_OFFSET_S <= offset_s <= MAX_OFFSET_S:
         raise ImportRefused("The clock offset must be within 24 hours.")
     show = _show(recorder, show_id)
@@ -186,6 +214,6 @@ def apply_import(recorder: Recorder, plan: Plan) -> dict:
     """Write a plan as one import. Returns its id and counts."""
     if not plan.rows:
         raise ImportRefused("There is nothing new to import from that file.")
-    import_id = f"lanwm-{int(time.time())}-{secrets.token_hex(3)}"
+    import_id = f"{plan.fmt}-{int(time.time())}-{secrets.token_hex(3)}"
     recorder.add_vendor_import(plan.show_id, import_id, plan.source, plan.rows, plan.markers)
     return {"import_id": import_id, "rows": len(plan.rows), "markers": len(plan.markers)}

@@ -1,0 +1,12 @@
+Nebra v.2.6.9
+System Status Report for system TESTSYSTEM, as of 2026/10/24 21:37:00
+2 Connected clients
+Active alerts:
+AVB Entities:
+entity_id=0x0000000000000001 MAC=00:00:00:00:00:01 entity_name=AMP 101 group_name=STAGE serial#=TESTSERIAL0001 firmwareVersion=1.2.3 status=Available #sources=0 #sinks=1 as_path_map=none
+entity_id=0x0000000000000002 MAC=00:00:00:00:00:02 entity_name=AMP 102 group_name=STAGE serial#=TESTSERIAL0002 firmwareVersion=1.2.3 status=Available #sources=0 #sinks=1 as_path_map=none
+entity_id=0x0000000000000003 MAC=00:00:00:00:00:03 entity_name=AMP 103 group_name=STAGE serial#=TESTSERIAL0003 firmwareVersion=1.2.0 status=Unavailable #sources=0 #sinks=1 as_path_map=none
+entity_id=0x0000000000000004 MAC=00:00:00:00:00:04 entity_name=TESTPC-01 group_name=Hive serial#=TESTSERIAL0004 firmwareVersion=2.6.9 status=Available #sources=0 #sinks=0 as_path_map=none
+AVB Connections:
+Talker location=STAGE.MIXER 1:0 Listener location=STAGE.AMP 101:0 State=Registered Flags=0 MSRP Stream ID=00:00:00:00:00:01:00:00 MSRP Latency nS=2000000 Listener MAC=00:00:00:00:00:0A Failure Code=No Error Failure Bridge=none VLAN=2
+Talker location=STAGE.MIXER 1:1 Listener location=STAGE.AMP 102:0 State=Registered Flags=0 MSRP Stream ID=00:00:00:00:00:01:00:01 MSRP Latency nS=2000000 Listener MAC=00:00:00:00:00:0B Failure Code=Bandwidth Exceeded Failure Bridge=00:00:00:00:00:0C VLAN=2

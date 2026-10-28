@@ -1,0 +1,27 @@
+General;Database update in progress...;2026-10-24 13:50:00
+General;Database update is done;2026-10-24 13:50:10
+Warning;STAGE.AMP 101 is unlocked.;2026-10-24 13:50:16
+Warning;STAGE.AMP 102 is unlocked.;2026-10-24 13:50:16
+Warning;STAGE.AMP 103 is unlocked.;2026-10-24 13:50:17
+Warning;STAGE.AMP 104 is unlocked.;2026-10-24 13:50:17
+Error;STAGE.MIXER 1 has been disconnected from the Network.;2026-10-24 13:51:00
+Error;STAGE.MIXER 1 has been reconnected to the Network.;2026-10-24 13:51:20
+Error;STAGE.MIXER 1 has been disconnected from the Network.;2026-10-24 13:55:00
+Error;STAGE.MIXER 1 has been reconnected to the Network.;2026-10-24 13:55:30
+Warning;STAGE.AMP 101 is locked again.;2026-10-24 13:56:14
+Warning;STAGE.AMP 102 is locked again.;2026-10-24 13:56:14
+Warning;STAGE.AMP 103 is locked again.;2026-10-24 13:56:15
+Error;STAGE.MIXER 1 has been disconnected from the Network.;2026-10-24 13:57:00
+Error;STAGE.MIXER 1 has been reconnected to the Network.;2026-10-24 13:57:10
+Error;STAGE.MIXER 1 has been disconnected from the Network.;2026-10-24 14:04:03
+Error;Hive.TESTPC-01 has been disconnected from the Network.;2026-10-24 14:10:00
+Error;Hive.TESTPC-01 has been reconnected to the Network.;2026-10-24 14:10:30
+General;Backup finished OK;2026-10-24 14:11:00
+Error;RACK.DSP A has been disconnected from the Network.;2026-10-24 14:20:00
+Error;RACK.DSP B has been disconnected from the Network.;2026-10-24 14:20:01
+Error;RACK.DSP C has been disconnected from the Network.;2026-10-24 14:20:01
+Error;RACK.DSP D has been disconnected from the Network.;2026-10-24 14:20:01
+Error;RACK.DSP A has been reconnected to the Network.;2026-10-24 14:25:00
+Error;RACK.DSP B has been reconnected to the Network.;2026-10-24 14:25:00
+Error;RACK.DSP C has been reconnected to the Network.;2026-10-24 14:25:00
+Error;RACK.DSP D has been reconnected to the Network.;2026-10-24 14:25:00
