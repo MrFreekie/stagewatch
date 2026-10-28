@@ -1661,7 +1661,7 @@ body.layout-wall .about-url { font-size: 20px; }
 .rme-item { padding: 2px 0; overflow-wrap: anywhere; }
 .rme-isym { display: inline-block; min-width: 1.2em; font-weight: 800; }
 .rme-age { margin: 8px 0 0; font-size: 15px; font-weight: 700; }
-.rme-quiet { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.rme-age.rme-quiet { font-size: 14px; font-weight: 400; color: var(--muted); }
 .rme-more { margin-top: 6px; }
 .rme-more summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 14px; }
 .rme-fw { margin: 6px 0 0; font-size: 13px; }
@@ -1676,8 +1676,10 @@ body.layout-wall .rme-status { font-size: 36px; }
 body.layout-wall .rme-temp { font-size: 88px; }
 body.layout-wall .rme-psus { font-size: 36px; gap: 6px 32px; }
 body.layout-wall .rme-age { font-size: 28px; }
-body.layout-wall .rme-quiet, body.layout-wall .rme-foot { display: none; }
+body.layout-wall .rme-foot { display: none; }
+body.layout-wall .rme-age.rme-quiet { font-size: 22px; }
 body.layout-wall .rme-tile { padding: 16px 20px; }
 .rme-admin-unit { border: 1px solid var(--grid); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
 .rme-admin-unit .row { align-items: flex-end; flex-wrap: wrap; gap: 8px; }
 .rme-test-result p { margin: 4px 0; }
+.rme-tile [hidden]:not([data-slot]), .rme-empty[hidden], .rme-foot[hidden] { display: none; }

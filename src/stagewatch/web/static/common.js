@@ -279,8 +279,9 @@ SW.sourceInput = {
   rme: function (units, now) {
     const list = Array.isArray(units) ? units.filter((u) => u && typeof u === "object") : [];
     if (!list.length) return { source: "rme", reported: "waiting", dataAt: null };
-    if (list.some((u) => u.status === "offline" || u.link_up === false && u.status !== "starting")) {
-      const ages = list.filter((u) => typeof u.last_frame_age_s === "number").map((u) => u.last_frame_age_s);
+    const away = list.filter((u) => u.status === "offline" || u.link_up === false && u.status !== "starting");
+    if (away.length) {
+      const ages = away.filter((u) => typeof u.last_frame_age_s === "number").map((u) => u.last_frame_age_s);
       return { source: "rme", reported: "offline", dataAt: ages.length ? now - Math.min.apply(null, ages) : null };
     }
     if (list.some((u) => u.status === "starting")) return { source: "rme", reported: "waiting", dataAt: null };

@@ -139,7 +139,7 @@ SW.rme = (function () {
       temp: h("div", { class: "rme-temp" }),
       psu1: h("span", { class: "rme-psu" }), psu2: h("span", { class: "rme-psu" }),
       clock: h("span", {}), preset: h("span", {}), presetFlag: h("span", { class: "rme-flag", hidden: true }, "▲ Preset changed"),
-      avb: h("span", {}), age: h("p", { class: "rme-age", role: "status" }), quiet: h("p", { class: "rme-quiet" }),
+      avb: h("span", {}), age: h("p", { class: "rme-age", role: "status" }),
       notes: h("ul", { class: "rme-notes" }), checks: h("ul", { class: "rme-checks" }), fw: h("p", { class: "rme-fw muted" }),
     };
     const row = (label, ...kids) => h("div", { class: "rme-row" }, h("span", { class: "rme-label" }, label), h("span", { class: "rme-val" }, ...kids));
@@ -151,7 +151,7 @@ SW.rme = (function () {
       h("div", { class: "rme-head" }, h("div", { class: "rme-title" }, t.name, t.model), h("div", { class: "rme-status", role: "status" }, t.sym, t.word)),
       t.temp,
       h("div", { class: "rme-psus" }, t.psu1, t.psu2),
-      t.rowClock, t.rowPreset, t.rowAvb, t.notes, t.age, t.quiet, t.more);
+      t.rowClock, t.rowPreset, t.rowAvb, t.notes, t.age, t.more);
     t.update = function (v) {
       setClass(t.el, `rme-tile ${v.cls}${v.dim ? " rme-dim" : ""}`);
       setText(t.name, v.name);
@@ -177,10 +177,10 @@ SW.rme = (function () {
         setText(t.fw, v.firmware ? `Firmware ${v.firmware}` : "");
         setHidden(t.more, !v.checks.length && !v.firmware);
       }
-      setText(t.age, v.ageNote);
-      SW.slot(t.age, !v.ageNote);
-      setText(t.quiet, v.quiet);
-      SW.slot(t.quiet, !v.quiet);
+      // One line that keeps its space: how old an offline unit's values are, or that a quiet unit has nothing new.
+      setClass(t.age, v.ageNote ? "rme-age" : "rme-age rme-quiet");
+      setText(t.age, v.ageNote || v.quiet);
+      SW.slot(t.age, !v.ageNote && !v.quiet);
     };
     return t;
   };

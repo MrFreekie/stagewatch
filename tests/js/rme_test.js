@@ -149,6 +149,7 @@ eq(/OFFLINE, last seen 30 s ago/.test(ui.nodes[0].textContent), true, "offline t
 eq(SW.sourceInput.rme([unit(), unit({ status: "offline", link_up: false, last_frame_age_s: 20 })], 1000).reported, "offline", "one unit away: chip says offline");
 eq(SW.sourceInput.rme([unit()], 1000), { source: "rme", reported: "ok", dataAt: 1000 }, "all up: online");
 eq(SW.sourceInput.rme(null, 1000).reported, "waiting", "no units: waiting");
+eq(SW.sourceInput.rme([unit(), unit({ status: "offline", link_up: false, last_frame_age_s: 20 })], 1000).dataAt, 980, "last data is the away unit's, not the live one's");
 
 console.log(fails ? `${fails} of ${count} checks FAILED` : `${count} checks passed`);
 process.exit(fails ? 1 : 0);
