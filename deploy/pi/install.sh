@@ -4,6 +4,7 @@
 #
 #   cd ~/stagewatch && bash deploy/pi/install.sh [--channel stable|nightly] [--ref <tag-or-sha>]
 #        [--source-url https://github.com/MrFreekie/stagewatch.git] [--kiosk] [--port 8080] [--emulate]
+#        [--no-clock-button]
 #
 # *** Tested on a Debian 13.7 virtual machine and on a Raspberry Pi 4 (4 GB), owner report 2026-10;
 # *** not tested on a Pi 5 or with the kiosk ***
@@ -24,6 +25,7 @@ umask 022
 
 PORT=8080
 KIOSK=0
+CLOCK_BUTTON=1
 EMULATE=""
 CHANNEL=stable
 REF=""
@@ -35,6 +37,7 @@ while [[ $# -gt 0 ]]; do
     --ref) REF="${2:?--ref needs a value}"; shift ;;
     --source-url) SOURCE_URL="${2:?--source-url needs a value}"; shift ;;
     --kiosk) KIOSK=1 ;;
+    --no-clock-button) CLOCK_BUTTON=0 ;;
     --port) PORT="${2:?--port needs a value}"; shift ;;
     --emulate) EMULATE="--emulate" ;;
     *) echo "unknown option $1"; exit 1 ;;
@@ -211,6 +214,14 @@ EOF
 }
 
 install_managed
+
+# The Admin "Set the clock from this device" button: a root-owned helper that can set the clock and
+# nothing else, plus a sudo rule for it (deploy/pi/install-clock-helper.sh; see SECURITY.md). It lets
+# the service use sudo, so it can be skipped with --no-clock-button. Not fatal if it fails.
+if [[ $CLOCK_BUTTON -eq 1 ]]; then
+  sudo bash "$REPO/deploy/pi/install-clock-helper.sh" \
+    || echo "The clock button was not set up. Stagewatch works without it; see docs/install/raspberry-pi.md."
+fi
 
 if [[ $KIOSK -eq 1 ]]; then
   install -m 755 "$REPO/deploy/pi/kiosk.sh" "$HOME/.local/bin/stagewatch-kiosk" 2>/dev/null || {
