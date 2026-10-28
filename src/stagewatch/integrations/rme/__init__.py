@@ -214,7 +214,8 @@ class RmeIntegration(Integration):
             key = (self.emulate, cfg.host, cfg.port)
             if unit is None:
                 unit = self._units[uid] = _Unit(cfg, key)
-                unit.policy = MarkerPolicy(partial(self._make_marker, unit), self._clock)
+                unit.policy = MarkerPolicy(partial(self._make_marker, unit), self._clock,
+                                           lambda u=unit: f"RME {u.name()}: {mapping.OVERFLOW_TEXT}")
                 self._register_device(unit)
                 await self._start_source(unit)
             elif unit.key != key:
@@ -275,9 +276,9 @@ class RmeIntegration(Integration):
         except Exception:  # noqa: BLE001 - a marker must never stop the readings
             log.exception("Could not add an RME marker")
 
-    def _emit(self, unit: _Unit, key: str, text: str, hidden: bool = False) -> None:
+    def _emit(self, unit: _Unit, key: str, text: str, hidden: bool = False, restore: bool = False) -> None:
         if unit.policy is not None:
-            unit.policy.emit(key, f"RME {unit.name()}: {text}", hidden)
+            unit.policy.emit(key, f"RME {unit.name()}: {text}", hidden, restore)
 
     def _register_entities(self, unit: _Unit, values: dict) -> None:
         for suffix, name, kind, decimals in mapping.ENTITY_SPECS:
@@ -379,7 +380,7 @@ class RmeIntegration(Integration):
         elif result.kind == "delta" and old is not None:
             unit.lost_live = mapping.lost_live_after(old, view, unit.lost_live)
             for ev in mapping.marker_events(old, view):
-                self._emit(unit, ev.key, ev.text, ev.hidden)
+                self._emit(unit, ev.key, ev.text, ev.hidden, ev.restored)
         self._note_unknown(view)
         self._refresh(unit, force=result.kind != "delta")
         self.publish_once()
@@ -440,6 +441,8 @@ class RmeIntegration(Integration):
         frames are flowing, which the client guarantees by dropping a silent link) and republish."""
         now = self._clock()
         for unit in self._units.values():
+            if unit.policy is not None:
+                unit.policy.poll()
             source = unit.source
             if unit.phase == "up" and source is not None and source.last_frame_at is not None:
                 unit.last_seen = max(unit.last_seen or 0.0, source.last_frame_at)

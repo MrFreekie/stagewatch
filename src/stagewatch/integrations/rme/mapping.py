@@ -174,6 +174,7 @@ class MarkerEvent:
     key: str
     text: str
     hidden: bool = False
+    restored: bool = False      # puts something back to normal: never held back by the 10 s window
 
 
 def _by_area(items: tuple[SoundItem, ...]) -> dict[str, SoundItem]:
@@ -189,13 +190,13 @@ def marker_events(old: View, new: View) -> list[MarkerEvent]:
             if old.psu[i] and not new.psu[i]:
                 out.append(MarkerEvent(f"psu{i + 1}", f"PSU {i + 1} lost"))
             elif not old.psu[i] and new.psu[i]:
-                out.append(MarkerEvent(f"psu{i + 1}", f"PSU {i + 1} restored"))
+                out.append(MarkerEvent(f"psu{i + 1}", f"PSU {i + 1} restored", restored=True))
     if old.clock_key and new.clock_key and old.clock_key != new.clock_key:
         out.append(MarkerEvent("clock_source", f"clock source {old.clock_source} to {new.clock_source}"))
     if old.clock_locked is True and new.clock_locked is False:
         out.append(MarkerEvent("clock_lock", "clock lost lock"))
     elif old.clock_locked is False and new.clock_locked is True:
-        out.append(MarkerEvent("clock_lock", "clock locked"))
+        out.append(MarkerEvent("clock_lock", "clock locked", restored=True))
     if old.preset_loaded is not None and new.preset_loaded is not None and old.preset_loaded != new.preset_loaded:
         out.append(MarkerEvent("preset", f"preset loaded changed {old.preset_loaded} to {new.preset_loaded}"))
     before, after = _by_area(old.sound), _by_area(new.sound)
@@ -206,11 +207,12 @@ def marker_events(old: View, new: View) -> list[MarkerEvent]:
         if was_word == now_word:
             continue
         worst = max(was.level if was else 0, now.level if now else 0)
-        if now is not None and (now.level or not now.known):
-            text = f"{area}: {now.word}" + (f" ({now.cause})" if now.cause else "")
-        else:
+        back = not (now is not None and (now.level or not now.known))
+        if back:
             text = f"{area}: back to {now_word}"
-        out.append(MarkerEvent("sound:" + area, text, hidden=worst < LEVEL_ALERT))
+        else:
+            text = f"{area}: {now.word}" + (f" ({now.cause})" if now.cause else "")
+        out.append(MarkerEvent("sound:" + area, text, hidden=worst < LEVEL_ALERT, restored=back))
     return out
 
 
@@ -233,33 +235,64 @@ OVERFLOW_TEXT = "further RME changes not marked"
 
 
 class MarkerPolicy:
-    """Dedupe and rate-limit the markers of ONE unit: one marker per key in 10 s, at most 20 a minute and
-    then a single "further changes not marked" until the minute has passed. ``add(text, hidden)`` makes
-    the marker; ``clock`` is monotonic seconds (injected in tests)."""
+    """Dedupe and rate-limit the markers of ONE unit: the same marker (key and text) at most once in 10 s,
+    at most 20 a minute and then a single "further changes not marked" until the minute has passed. A marker
+    that puts something back to normal (``restore``) is never held back by the 10 s window. Changes held
+    back by the cap are remembered, and when the minute has passed the final state of each is marked if it
+    differs from the last marker for that key. ``add(text, hidden)`` makes the marker; ``clock`` is
+    monotonic seconds (injected in tests); ``overflow_text`` gives the notice wording (names the unit)."""
 
-    def __init__(self, add: Callable[[str, bool], None], clock: Callable[[], float]) -> None:
+    def __init__(self, add: Callable[[str, bool], None], clock: Callable[[], float],
+                 overflow_text: Callable[[], str] | None = None) -> None:
         self._add, self._clock = add, clock
-        self._last: dict[str, float] = {}
+        self._overflow_text = overflow_text or (lambda: OVERFLOW_TEXT)
+        self._last: dict[tuple[str, str], float] = {}
+        self._last_text: dict[str, str] = {}
+        self._pending: dict[str, tuple[str, bool]] = {}
         self._times: deque[float] = deque()
         self._overflowed = False
 
-    def emit(self, key: str, text: str, hidden: bool = False) -> bool:
-        now = self._clock()
-        last = self._last.get(key)
-        if last is not None and now - last < DEDUPE_S:
-            return False
+    def _expire(self, now: float) -> None:
         while self._times and now - self._times[0] >= RATE_WINDOW_S:
             self._times.popleft()
         if len(self._times) < RATE_MAX:
             self._overflowed = False
-        if len(self._times) >= RATE_MAX:
-            if not self._overflowed:
-                self._overflowed = True
-                self._add(OVERFLOW_TEXT, False)
-            return False
-        self._last[key] = now
+        if len(self._last) > 200:
+            self._last = {k: t for k, t in self._last.items() if now - t < DEDUPE_S}
+
+    def _send(self, now: float, key: str, text: str, hidden: bool) -> None:
+        self._last[(key, text)] = now
+        self._last_text[key] = text
+        self._pending.pop(key, None)
         self._times.append(now)
         self._add(text, hidden)
+
+    def poll(self) -> None:
+        """Call now and then (once a second is plenty): once the minute is over, mark the final state of
+        anything the cap held back."""
+        now = self._clock()
+        self._expire(now)
+        for key, (text, hidden) in list(self._pending.items()):
+            if len(self._times) >= RATE_MAX:
+                break
+            if self._last_text.get(key) == text:
+                del self._pending[key]
+            else:
+                self._send(now, key, text, hidden)
+
+    def emit(self, key: str, text: str, hidden: bool = False, restore: bool = False) -> bool:
+        now = self._clock()
+        self.poll()
+        last = self._last.get((key, text))
+        if not restore and last is not None and now - last < DEDUPE_S:
+            return False
+        if len(self._times) >= RATE_MAX:
+            self._pending[key] = (text, hidden)
+            if not self._overflowed:
+                self._overflowed = True
+                self._add(self._overflow_text(), False)
+            return False
+        self._send(now, key, text, hidden)
         return True
 
 

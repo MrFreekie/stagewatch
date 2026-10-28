@@ -453,11 +453,35 @@ def test_marker_policy_dedupes_one_key_per_ten_seconds():
     p = mapping.MarkerPolicy(c.add, lambda: t[0])
     assert p.emit("psu2", "a") is True
     t[0] += 9.9
-    assert p.emit("psu2", "b") is False                          # same key inside 10 s
+    assert p.emit("psu2", "a") is False                          # same marker inside 10 s
+    assert p.emit("psu2", "b") is True                           # a different text is a different marker
     assert p.emit("clock", "c") is True                          # another key is fine
     t[0] += 0.2
-    assert p.emit("psu2", "d") is True                           # 10.1 s later
-    assert [x[0] for x in c.out] == ["a", "c", "d"]
+    assert p.emit("psu2", "a") is True                           # 10.1 s later
+    assert [x[0] for x in c.out] == ["a", "b", "c", "a"]
+
+
+def test_a_psu_that_drops_and_returns_within_ten_seconds_gives_both_markers():
+    t = [0.0]
+    c = Collector()
+    p = mapping.MarkerPolicy(c.add, lambda: t[0])
+    assert p.emit("psu2", "PSU 2 lost") is True
+    t[0] += 2.0
+    assert p.emit("psu2", "PSU 2 restored", restore=True) is True
+    t[0] += 2.0
+    assert p.emit("psu2", "PSU 2 lost") is False                 # the same loss again inside 10 s
+    t[0] += 1.0
+    assert p.emit("psu2", "PSU 2 restored", restore=True) is True    # a return is never held back
+    assert [x[0] for x in c.out] == ["PSU 2 lost", "PSU 2 restored", "PSU 2 restored"]
+
+
+def test_events_that_put_things_back_are_flagged_as_restores():
+    old = parse.make_view(baseline().data)
+    st = baseline()
+    st.ingest(json.dumps({"device": {"psu": {"state": [False, True]}}}))
+    down = parse.make_view(st.data)
+    assert [(e.text, e.restored) for e in mapping.marker_events(old, down) if "PSU 1" in e.text] == [("PSU 1 lost", False)]
+    assert [(e.text, e.restored) for e in mapping.marker_events(down, old) if "PSU 1" in e.text] == [("PSU 1 restored", True)]
 
 
 def test_marker_policy_rate_cap_then_one_overflow_marker_then_recovers():
@@ -473,6 +497,42 @@ def test_marker_policy_rate_cap_then_one_overflow_marker_then_recovers():
     t[0] += 60
     assert p.emit("again", "back") is True
     assert c.out[-1] == ("back", False)
+    assert [x[0] for x in c.out[21:-1]] == [f"m{i}" for i in range(20, 30)]       # the final states held back
+
+
+def test_marker_policy_marks_the_final_state_when_the_cap_window_ends():
+    t = [0.0]
+    c = Collector()
+    notice = lambda: "RME Stage L: further RME changes not marked"
+    p = mapping.MarkerPolicy(c.add, lambda: t[0], notice)
+    for i in range(20):
+        p.emit(f"k{i}", f"m{i}")
+    p.emit("psu1", "PSU 1 lost")                                  # held back by the cap
+    p.emit("psu1", "PSU 1 restored", restore=True)                # the final state of that key
+    assert c.out[-1] == ("RME Stage L: further RME changes not marked", False)
+    assert len(c.out) == 21
+    t[0] += 30
+    p.poll()
+    assert len(c.out) == 21                                       # still inside the minute
+    t[0] += 31
+    p.poll()
+    assert c.out[21:] == [("PSU 1 restored", False)]
+    p.poll()
+    assert len(c.out) == 22                                       # marked once
+
+
+def test_a_held_back_state_equal_to_the_last_marker_is_not_marked_again():
+    t = [0.0]
+    c = Collector()
+    p = mapping.MarkerPolicy(c.add, lambda: t[0])
+    p.emit("psu1", "PSU 1 lost")
+    for i in range(19):
+        p.emit(f"k{i}", f"m{i}")
+    p.emit("psu1", "PSU 1 restored", restore=True)                # held back
+    p.emit("psu1", "PSU 1 lost")                                  # held back; final state = the last marker
+    t[0] += 61
+    p.poll()
+    assert [x[0] for x in c.out].count("PSU 1 lost") == 1
 
 
 def test_back_text():
