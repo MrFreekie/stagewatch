@@ -83,7 +83,7 @@ def test_wall_and_phone_layouts_and_reduced_motion():
 
 def test_equipment_card_leaves_the_rme_power_supply_contacts_to_the_rme_card():
     js = read("dashboard.js")
-    assert 'e.kind === "contact" && String(e.device_id).indexOf("rme_") === 0' in js
+    assert 'e.kind === "contact" && (state.devices[e.device_id] || {}).integration === "rme"' in js
 
 
 def test_admin_has_the_tile_the_add_form_and_the_safety_lines():
@@ -103,3 +103,13 @@ def test_admin_never_shows_a_serial_or_mac():
     admin = code("admin.js")
     section = admin[admin.index("function rmeAddForm"):admin.index("function rmeCard") + 2500].lower()
     assert "serial" not in section and ".mac" not in section
+
+
+def test_equipment_hides_rme_contacts_by_the_devices_integration_not_an_id_prefix():
+    js = code("dashboard.js")
+    line = next(l for l in js.splitlines() if 'e.kind === "contact"' in l and "continue" in l)
+    assert 'integration === "rme"' in line and 'indexOf("rme_")' not in line
+
+
+def test_the_add_form_tells_the_admin_to_check_the_prefilled_name():
+    assert "Check it before you save" in code("rme-admin.js") and "ra.NAME_CHECK" in code("admin.js")
