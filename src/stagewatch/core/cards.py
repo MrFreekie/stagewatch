@@ -33,6 +33,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "alignment_drift",  # FOH advice: how far delay paths have drifted since the Aligned marker; hidden while no path is set up; never added by default
     "hf_air_loss",     # FOH advice: estimated top-end air loss at FOH and Rear since the Soundcheck marker; hidden while no position is set up; never added by default
     "about",           # About Stagewatch: a title, one line and a QR code to the project page; needs no data and works offline; never added by default
+    "rme_units",       # RME interfaces (12Mic and similar): one tile per unit, health words from the unit; hidden while no unit is set up; never added by default
 )
 KNOWN_CARDS = KNOWN_CARDS_0_3
 

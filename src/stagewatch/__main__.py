@@ -22,6 +22,7 @@ from .integrations.esphome import EsphomeIntegration
 from .integrations.globcon import GlobconIntegration, seed_emulate_globcon
 from .integrations.ontime import OntimeIntegration
 from .integrations.osc_out import OscOutIntegration
+from .integrations.rme import RmeIntegration, seed_emulate_rme
 from .integrations.shelly import ShellyIntegration, seed_emulate_shelly
 from .integrations.pihost import PiHostIntegration
 from .integrations.witmotion import WitmotionIntegration
@@ -94,6 +95,7 @@ async def run(args: argparse.Namespace) -> int:
     hub.add_integration(SmaartIntegration(hub, emulate=args.emulate))  # runs only when switched on in the admin page
     hub.add_integration(GlobconIntegration(hub, emulate=args.emulate))  # runs only while a dashboard has the GLOBCON levels card
     hub.add_integration(ShellyIntegration(hub, emulate=args.emulate))  # reads the power meters the admin added
+    hub.add_integration(RmeIntegration(hub, emulate=args.emulate))  # listens to the RME units the admin added (read-only; two simulated units in emulate)
     hub.add_integration(PiHostIntegration(hub, emulate=args.emulate))  # runs only on a Raspberry Pi (a simulated one in emulate)
     hub.add_integration(WitmotionIntegration(hub, emulate=args.emulate))  # runs only when switched on in config.yaml (a simulated sensor in emulate)
     if args.emulate and seed_emulate_shelly(hub.config):   # a fresh emulate folder gets one simulated PM Mini and the Power card
@@ -103,6 +105,8 @@ async def run(args: argparse.Namespace) -> int:
     if args.emulate and seed_emulate_spl(hub.config):   # ...and the Sound level card with simulated values
         hub.save_config()
     if args.emulate and seed_emulate_globcon(hub.config):   # ...and the GLOBCON levels card on the wall
+        hub.save_config()
+    if args.emulate and seed_emulate_rme(hub.config):   # ...and two simulated RME units with their card on the wall
         hub.save_config()
     app = create_app(hub)
     app.state.port = args.port  # for the "Connect a tablet" addresses

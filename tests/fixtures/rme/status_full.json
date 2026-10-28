@@ -1,0 +1,53 @@
+{
+  "msg": "status",
+  "data": {
+    "osc": {"version": "1.0", "schema": {"device": {"psu": {"state": null}, "health": {"temperatures": {"core": null}}}, "input": {"analog": {"1": {"gain": null, "label": null}}}}},
+    "device": {
+      "entity_name": "Stage L",
+      "vendor_name": "RME",
+      "model_name": "12Mic",
+      "firmware_version": "2.0.1",
+      "group_name": "Group Placeholder",
+      "serial_number": "SN-PLACEHOLDER-0001",
+      "identify": false,
+      "psu": {"state": [true, false], "redundancy_alert": false, "soundness": {"state": "Good"}},
+      "levelmeters": {"mode": "rms", "over_hold": 2, "over_reset": false},
+      "dark_mode": {"enabled": false},
+      "preset": {
+        "active": 0,
+        "loaded": 2,
+        "names": {"1": "Live 1", "2": "Live 2", "3": "Walk-in"},
+        "soundness": {"state": "Notice", "cause": "PresetChanged"}
+      },
+      "health": {"temperatures": {"core": 335.05}, "soundness": {"state": "Good"}},
+      "soundness": {"state": "Good"}
+    },
+    "network": {"pri": {"gptp_grandmaster_id": "00-00-00-FFFE-000000"}, "sec": {"gptp_grandmaster_id": "00-00-00-FFFE-000001"}},
+    "clock": {
+      "sampling_rate": 48000,
+      "current_sampling_rate": 48000,
+      "word_clock_single_speed": false,
+      "source": "wordclock",
+      "reference_clock": "internal",
+      "soundness": {"state": "Good", "cause": "ClockMasterNoSync"},
+      "sources": {
+        "internal": {"rate": 48000, "sync": true, "soundness": {"state": "Good"}},
+        "wordclock": {"rate": 48000, "sync": true, "soundness": {"state": "Good"}},
+        "madi_coax": {"rate": 0, "sync": false, "soundness": {"state": "Inactive"}}
+      }
+    },
+    "input": {
+      "analog": {"1": {"type": "mic", "p48": false, "phase": false, "trs": false, "hiz": false, "gain": 30, "gain_group": 0, "label": "Placeholder Mic 1"}},
+      "madi": {},
+      "avb": {
+        "1": {"channel_count": 8, "format": "aaf", "sampling_rate": 48000, "pri": {"soundness": {"state": "Good"}, "avb_status": {"stream_id": "00-00-00-00-00-00-00-01", "dest_addr": "91-E0-F0-00-00-01", "state": 1}}, "sec": {"soundness": {"state": "Inactive"}}},
+        "2": {"channel_count": 8, "format": "aaf", "sampling_rate": 48000, "pri": {"soundness": {"state": "Good"}}, "sec": {"soundness": {"state": "Inactive"}}},
+        "3": {"channel_count": 0, "pri": {"soundness": {"state": "Inactive"}}, "sec": {"soundness": {"state": "Inactive"}}},
+        "4": {"channel_count": 0, "pri": {"soundness": {"state": "Inactive"}}, "sec": {"soundness": {"state": "Inactive"}}}
+      },
+      "crf": {"pri": {"soundness": {"state": "Inactive"}}}
+    },
+    "output": {"phones": {}, "madi": {}, "adat": {}, "avb": {"1": {"pri": {"soundness": {"state": "Inactive"}}, "sec": {"soundness": {"state": "Inactive"}}}}},
+    "routing": {}
+  }
+}

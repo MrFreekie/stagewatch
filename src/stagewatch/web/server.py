@@ -57,6 +57,8 @@ from ..integrations.ontime.client import check_connection
 from ..integrations.shelly import TEXT as SHELLY_TEXT, InUse
 from ..integrations.shelly import UnknownChannel
 from ..integrations.shelly.http import ShellyError
+from ..integrations.rme import InUse as RmeInUse, probe_message as rme_probe_message
+from ..integrations.rme.client import TEXT as RME_TEXT, RmeError
 from ..integrations.witmotion import scan as wm_scan
 from ..core.updater import RateLimited, Updater, message_for
 from ..updater_common import UpdaterError
@@ -482,6 +484,50 @@ class ShellyAddBody(ShellyTestBody):
     @field_validator("name", "area")
     @classmethod
     def _plain(cls, v: str) -> str:
+        v = v.strip()
+        if _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+
+class RmeTestBody(BaseModel):
+    """POST /api/admin/rme/test: the address (and port) of an RME unit to look at. An IP address only."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    host: str = Field(min_length=1, max_length=64)
+    port: StrictInt = Field(80, ge=1, le=65535)
+
+
+class RmeAddBody(RmeTestBody):
+    """POST /api/admin/rme. The serial number is never taken from the client: it is read from the unit."""
+    name: str = Field("", max_length=40)
+    area: str = Field("", max_length=40)
+
+    @field_validator("name", "area")
+    @classmethod
+    def _plain(cls, v: str) -> str:
+        v = v.strip()
+        if _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+
+class RmePatchBody(BaseModel):
+    """PUT /api/admin/rme/{id}. A new address or port must answer as the same unit, unless replace_unit is set."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    name: str | None = Field(None, max_length=40)
+    area: str | None = Field(None, max_length=40)
+    record_input_changes: StrictBool | None = None
+    host: str | None = Field(None, min_length=1, max_length=64)
+    port: StrictInt | None = Field(None, ge=1, le=65535)
+    replace_unit: StrictBool = False
+
+    @field_validator("name", "area")
+    @classmethod
+    def _plain(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         v = v.strip()
         if _has_hidden_chars(v):
             raise ValueError("Use plain text")
@@ -1224,6 +1270,8 @@ class LiveFeed:
             self._send_all({"type": "ontime_rundown", **payload})
         elif topic == "globcon_meters" and isinstance(payload, dict):
             self._send_all({"type": "globcon_meters", **payload})
+        elif topic == "rme_units" and isinstance(payload, dict):
+            self._send_all({"type": "rme_units", **payload})
         elif topic == "schedule" and isinstance(payload, dict):
             # Small on purpose: clients fetch GET /api/schedule?stage= for the list itself.
             self._send_all({"type": "schedule", "show_id": payload.get("show_id"),
@@ -1517,6 +1565,16 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         integ = hub.integrations.get("shelly")
         return integ.admin_status() if integ is not None else {"meters": [], "transport": "", "max_meters": 0, "emulate": hub.emulate}
 
+    def rme_integ():
+        integ = hub.integrations.get("rme")
+        if integ is None:
+            raise HTTPException(404, "RME integration not loaded")
+        return integ
+
+    def rme_admin() -> dict:
+        integ = hub.integrations.get("rme")
+        return integ.admin_status() if integ is not None else {"units": [], "max_units": 0, "emulate": hub.emulate}
+
     def globcon_admin() -> dict:
         integ = hub.integrations.get("globcon")
         state = integ.admin_status() if integ is not None else {"running": False, "status": "off"}
@@ -1536,6 +1594,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         cfg.get("globcon", {}).pop("password", None)   # GLOBCON's controller password: only "set / not set" (globcon.password_set)
         for dev in cfg.get("esphome_devices", []):
             dev["noise_psk"] = "set" if dev.get("noise_psk") else ""
+        for dev in cfg.get("rme_devices", []):   # an RME unit's serial number: only "set / not set" (the address is admin-only)
+            dev["serial"] = "set" if dev.get("serial") else ""
         cfg.get("spl", {}).pop("password", None)   # Smaart's API password: only "set / not set" (spl.password_set)
         esp =hub.integrations.get("esphome")
         return {
@@ -1565,6 +1625,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "witmotion": {"emulate": hub.emulate, **witmotion_admin()},
             # Shelly power meters card: the meters (addresses, MACs and firmware are admin-only), no passwords exist.
             "shelly": shelly_admin(),
+            # RME interfaces card: the units (addresses are admin-only; there are no passwords, the units have no login).
+            "rme": rme_admin(),
             "power_tree": ptree.admin_view(hub.config),
             # Sound level card: the values that can be chosen, and what is running (no addresses).
             "spl": spl_admin(),
@@ -2089,6 +2151,70 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         mine = {s.address.upper() for s in hub.config.witmotion.sensors}
         return {"ok": True, "seconds": wm_scan.SCAN_S, "emulate": hub.emulate,
                 "sensors": [{**f, "added": f["address"] in mine} for f in found]}
+    # RME units. Read-only: Stagewatch listens to each unit's status socket and sends it nothing, not even for
+    # Test. Addresses must be private-network IP addresses (no names, no redirects). The units have no login.
+    rme_last: list[float] = [0.0]
+
+    def rme_rate_limit() -> None:
+        """Test, Add and a changed address each open a connection to a unit: at most one every 2 seconds."""
+        now = time.monotonic()
+        if now - rme_last[0] < 2.0:
+            raise HTTPException(429, "Wait a moment and try again. Nothing has been changed.")
+        rme_last[0] = now
+
+    def rme_text(exc: RmeError) -> str:
+        return RME_TEXT.get(exc.category, RME_TEXT["unreachable"])
+
+    @app.get("/api/admin/rme", dependencies=[Depends(require_admin)])
+    async def rme_list():
+        return rme_admin()
+
+    @app.post("/api/admin/rme/test", dependencies=admin_deps)
+    async def rme_test(body: RmeTestBody):
+        """Look at a unit without saving it: model, firmware and the name it gives itself. Fixed-text
+        failures; the address typed is never repeated and the serial number is never returned."""
+        rme_rate_limit()
+        try:
+            info = await rme_integ().test(body.host, body.port)
+        except RmeError as exc:
+            return {"ok": False, "category": exc.category, "message": rme_text(exc)}
+        return {"ok": True, **info, "message": rme_probe_message(info)}
+
+    @app.post("/api/admin/rme", dependencies=admin_deps)
+    async def rme_add(body: RmeAddBody):
+        rme_rate_limit()
+        try:
+            cfg = await rme_integ().add(body.host, body.port, body.name, body.area)
+        except RmeError as exc:
+            raise HTTPException(422, rme_text(exc)) from None
+        except RmeInUse as exc:
+            raise HTTPException(409, f"{exc}. Nothing has been changed.") from None
+        return {"id": cfg.id}
+
+    @app.put("/api/admin/rme/{unit_id}", dependencies=admin_deps)
+    async def rme_update(unit_id: str, body: RmePatchBody):
+        if body.host is not None or body.port is not None or body.replace_unit:
+            rme_rate_limit()      # these read the unit
+        try:
+            await rme_integ().update(unit_id, name=body.name, area=body.area,
+                                     record_input_changes=body.record_input_changes, host=body.host,
+                                     port=body.port, replace_unit=body.replace_unit)
+        except LookupError:
+            raise HTTPException(404, "No such RME unit") from None
+        except RmeError as exc:
+            raise HTTPException(422, f"{rme_text(exc)}. Nothing has been changed.") from None
+        except RmeInUse as exc:
+            raise HTTPException(409, f"{exc}. Nothing has been changed.") from None
+        return {"ok": True}
+
+    @app.delete("/api/admin/rme/{unit_id}", dependencies=admin_deps)
+    async def rme_delete(unit_id: str):
+        try:
+            await rme_integ().remove(unit_id)
+        except LookupError:
+            raise HTTPException(404, "No such RME unit") from None
+        return {"ok": True}
+
     # Shelly power meters. Read-only toward the meters: Stagewatch asks for readings (two GET requests,
     # see integrations/shelly/http.py) and sends nothing else. Addresses must be on a private network.
     shelly_calls: list[float] = []

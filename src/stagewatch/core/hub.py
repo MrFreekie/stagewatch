@@ -892,6 +892,10 @@ class Hub:
         integ = self.integrations.get("globcon")
         return integ.snapshot() if integ is not None else None   # None while no dashboard has the card
 
+    def _rme_snapshot(self) -> dict | None:
+        integ = self.integrations.get("rme")
+        return integ.snapshot() if integ is not None else None   # None while no RME unit is set up
+
     def snapshot(self) -> dict:
         now = time.time()
         stale_after = self.config.site.stale_after_s
@@ -907,6 +911,7 @@ class Hub:
             "ontime_timer": self.ontime_timer.snapshot(),  # likewise
             "ontime_rundown": self.ontime_rundown.snapshot(),  # likewise
             "globcon_meters": self._globcon_snapshot(),  # likewise
+            "rme_units": self._rme_snapshot(),  # likewise: None while no RME unit is set up
             "advice": self.advice.snapshot(),  # drift paths and air-loss positions (names, distances, numbers)
             "devices": [d.to_dict(now) for d in self.devices.values()],
             "entities": [self.entity_dict(e, now, stale_after) for e in self.entities.values()],

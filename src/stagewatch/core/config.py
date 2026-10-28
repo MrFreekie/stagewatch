@@ -385,6 +385,72 @@ class ShellyDeviceConfig(_TreeFields):
         return v
 
 
+RME_MAX_UNITS = 8
+_RME_SERIAL_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _plain_text(v, limit: int) -> str:
+    """Text typed by the admin or read from a unit, made plain: control and format characters removed,
+    spaces tidied, cut to ``limit``. Anything that is not text becomes empty."""
+    if not isinstance(v, str):
+        return ""
+    text = "".join(" " if ch.isspace() else ch for ch in v if ch.isspace() or unicodedata.category(ch)[0] != "C")
+    return " ".join(text.split())[:limit].strip()
+
+
+class RmeDeviceConfig(_Model):
+    """An RME unit (12Mic and similar) the admin added. Read-only: Stagewatch only listens to its status
+    socket and never sends it anything. ``host`` is where to listen (an IP address; the private-network check
+    is made again at every connection). ``serial`` is read from the unit when it was added and kept only to
+    notice a different unit at the same address: admin-only, never on a dashboard. ``record_input_changes``
+    is reserved for a later phase and does nothing yet. Additive with defaults: no schema bump. An older
+    build ignores the list and drops it on its next save."""
+    id: str = Field(max_length=40)
+    host: str = Field(max_length=64)
+    port: int = Field(80, ge=1, le=65535)
+    name: str = Field("", max_length=40)
+    area: str = Field("", max_length=40)
+    serial: str = Field("", max_length=64)
+    record_input_changes: bool = False
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _slug(cls, v):
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("id needed")
+        return slugify(v)[:40]
+
+    @field_validator("host")
+    @classmethod
+    def _host(cls, v: str) -> str:
+        try:
+            return str(ipaddress.ip_address((v or "").strip()))
+        except ValueError:
+            raise ValueError("address must be an IP address") from None
+
+    @field_validator("port", mode="before")
+    @classmethod
+    def _port(cls, v):
+        if isinstance(v, bool):
+            raise ValueError("port must be a number")
+        return v
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _name(cls, v):
+        return _plain_text(v, 40)
+
+    @field_validator("area", mode="before")
+    @classmethod
+    def _area(cls, v):
+        return _plain_text(v, 40)
+
+    @field_validator("serial", mode="before")
+    @classmethod
+    def _serial(cls, v):
+        return _RME_SERIAL_RE.sub("", v)[:64] if isinstance(v, str) else ""
+
+
 # Sensor accuracy ("Accuracy ±"), stored in canonical units (degC, %RH, Pa) per kind. The upper
 # bounds are what the admin API accepts (a datasheet figure above this is a typing slip). A value
 # outside them in a saved file is ignored when averaging.
@@ -1195,6 +1261,8 @@ class Config(_Model):
     witmotion: WitmotionConfig = Field(default_factory=WitmotionConfig)
     # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
     shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list)
+    # RME units (read-only status listening). Additive, no schema bump; salvage keeps each valid entry.
+    rme_devices: list[RmeDeviceConfig] = Field(default_factory=list)
     power_site: PowerSiteConfig = Field(default_factory=PowerSiteConfig)
     # Power distribution tree: points with no meter (generator, grid supply, intake units). Meters and circuits
     # carry their own role, number and upstream. Additive: no schema bump; salvage keeps each valid point.
@@ -1250,6 +1318,41 @@ class Config(_Model):
             kept.append(d)
         if len(kept) < len(v):
             log.warning("Shelly meters: %d duplicate or surplus entr%s left out", len(v) - len(kept), "y" if len(v) - len(kept) == 1 else "ies")
+        return kept
+
+    @field_validator("rme_devices", mode="before")
+    @classmethod
+    def _lenient_rme(cls, v):
+        """On load: an entry that cannot be read is left out (the rest stay), and a list that is not a list
+        is empty. Logs a count only, never a value."""
+        if not isinstance(v, list):
+            if v is not None:
+                log.warning("RME units: the saved list was not usable and was reset")
+            return []
+        kept, dropped = [], 0
+        for item in v:
+            try:
+                kept.append(item if isinstance(item, RmeDeviceConfig) else RmeDeviceConfig.model_validate(item))
+            except Exception:  # noqa: BLE001 - any unreadable entry is simply left out
+                dropped += 1
+        if dropped:
+            log.warning("RME units: %d unreadable entr%s left out", dropped, "y" if dropped == 1 else "ies")
+        return kept
+
+    @field_validator("rme_devices")
+    @classmethod
+    def _rme_unique_and_capped(cls, v: list) -> list:
+        """Later duplicates (same id or same address) are dropped and the list cut to RME_MAX_UNITS,
+        so a hand-edited or salvaged file can never stop the hub starting. Logs a count only."""
+        seen_id, seen_host, kept = set(), set(), []   # same address twice would be two sockets to one unit
+        for d in v:
+            if d.id in seen_id or d.host in seen_host or len(kept) >= RME_MAX_UNITS:
+                continue
+            seen_id.add(d.id)
+            seen_host.add(d.host)
+            kept.append(d)
+        if len(kept) < len(v):
+            log.warning("RME units: %d duplicate or surplus entr%s left out", len(v) - len(kept), "y" if len(v) - len(kept) == 1 else "ies")
         return kept
 
     @field_validator("power_points")

@@ -1,0 +1,1 @@
+{"clock": {"source": "internal", "soundness": {"state": "Notice", "cause": "InputNoSync"}, "sources": {"wordclock": {"sync": false}}}}
