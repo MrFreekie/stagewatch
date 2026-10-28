@@ -167,6 +167,33 @@ async def test_the_six_minute_script_psu_clock_offline_gap_and_unknown_word(hub)
         await integ.stop()
 
 
+async def test_a_hot_rack_never_moves_the_site_average_speed_of_sound_or_calibration(hub):
+    """The air sensor reads 20 C; the RME unit reports 60 C. Site values stay with the air sensor."""
+    import time
+    from stagewatch.core.model import Device, Entity
+    hub.config.site.smoothing_tau_s = 0
+    hub.register_device(Device("air", "Air", "test", status=Status.OK))
+    for kind, v in ((Kind.TEMPERATURE, 20.0), (Kind.HUMIDITY, 50.0), (Kind.PRESSURE, 101325.0)):
+        hub.register_entity(Entity(f"air.{kind.value}", "air", kind.value, kind))
+        hub.update_state(f"air.{kind.value}", v)
+    hub.compute_site(time.time())
+    before = (hub.entities["site.temperature"].value, hub.entities["site.speed_of_sound"].value)
+    assert before[0] == pytest.approx(20.0)
+    tk = Ticker()
+    integ = await started(hub, tk)
+    try:
+        await tk.step(1, 5)
+        hub.update_state(f"{D1}.core_temp", 60.0)
+        assert hub.entities[f"{D1}.core_temp"].value == 60.0
+        hub.compute_site(time.time())
+        assert (hub.entities["site.temperature"].value, hub.entities["site.speed_of_sound"].value) == before
+        hub.config.entities[f"{D1}.core_temp"] = type(hub.config.entity_settings("x"))(offset=5.0)       # even a stray offset is not applied
+        hub.update_state(f"{D1}.core_temp", 60.0)
+        assert hub.entities[f"{D1}.core_temp"].value == 60.0
+    finally:
+        await integ.stop()
+
+
 def test_an_unknown_soundness_word_is_logged_once_as_the_word_only(hub, caplog):
     import logging
     from stagewatch.integrations.rme import parse
