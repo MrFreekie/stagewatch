@@ -61,7 +61,10 @@ def test_list_and_report_leave_the_originals_alone(folder, tmp_path):
 
 def test_day_range_and_ambiguity(folder, tmp_path):
     d, sid = folder
-    day = next(line.split()[2] for line in cli("--data-dir", d, "--list").stdout.splitlines() if line.strip().startswith("show "))
+    # The demo day's own row, not the first row: the first is today's live show, which only overlaps 19:30 to 23:00
+    # when the test happens to run in the evening.
+    day = next(line.split()[2] for line in cli("--data-dir", d, "--list").stdout.splitlines()
+               if line.strip().startswith(f"show {sid} "))
     r = cli("--data-dir", d, "--day", day, "--from", "19:30", "--to", "23:00", "--out", tmp_path / "a.html")
     assert r.returncode == 0, r.stderr
     r = cli("--data-dir", d, "--day", "1999-01-01", "--out", tmp_path / "b.html")
