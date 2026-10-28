@@ -88,9 +88,59 @@ def test_test_is_rate_limited_to_one_every_two_seconds(client):
     client.now[0] += 1.9
     r = client.post("/api/admin/rme/test", json={"host": HOST})
     assert r.status_code == 429 and "Nothing has been changed" in r.json()["detail"]
-    assert client.post("/api/admin/rme", json={"host": HOST}).status_code == 429
     client.now[0] += 0.2
     assert client.post("/api/admin/rme/test", json={"host": HOST}).status_code == 200
+
+
+def test_add_straight_after_test_is_not_refused_but_two_adds_in_two_seconds_are(client):
+    later(client)
+    assert client.post("/api/admin/rme/test", json={"host": HOST}).status_code == 200
+    assert client.post("/api/admin/rme", json={"host": HOST}).status_code == 200      # Save right after Test
+    client.now[0] += 1.0
+    r = client.post("/api/admin/rme", json={"host": HOST2})
+    assert r.status_code == 429 and "Nothing has been changed" in r.json()["detail"]
+    client.now[0] += 1.1
+    assert client.post("/api/admin/rme", json={"host": HOST2}).status_code == 200
+
+
+def test_no_more_than_two_unit_connections_are_open_at_once(client):
+    import asyncio
+    import threading
+    assert add(client).status_code == 200
+    uid = client.hub.config.rme_devices[0].id
+    integ = client.hub.integrations["rme"]
+    release, entered = threading.Event(), []
+
+    async def slow_probe(ip, port):
+        entered.append(ip)
+        while not release.is_set():
+            await asyncio.sleep(0.005)               # held open until the test lets it go
+        return {"model": "12Mic", "firmware": "2", "name": "X", "serial": "S-" + ip}
+
+    integ._probe = slow_probe
+    results = []
+
+    def call(fn):
+        results.append(fn().status_code)
+
+    later(client)
+    t1 = threading.Thread(target=call, args=(lambda: client.post("/api/admin/rme/test", json={"host": HOST2}),))
+    t2 = threading.Thread(target=call, args=(lambda: client.post("/api/admin/rme", json={"host": HOST2}),))
+    t1.start()
+    t2.start()
+    try:
+        deadline = time.monotonic() + 10
+        while len(entered) < 2 and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert len(entered) == 2
+        later(client)
+        third = client.put(f"/api/admin/rme/{uid}", json={"host": "192.168.1.60"})      # a third open connection
+        assert third.status_code == 429
+    finally:
+        release.set()
+        t1.join(10)
+        t2.join(10)
+    assert sorted(results) == [200, 200]
 
 
 @pytest.mark.parametrize("body", [
