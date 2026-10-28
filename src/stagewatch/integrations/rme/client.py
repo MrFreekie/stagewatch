@@ -47,6 +47,7 @@ BACKOFF_MAX_S = 30.0
 STABLE_S = 30.0
 JITTER_S = 0.25
 OPEN_TIMEOUT_S = 5.0
+CLOSE_TIMEOUT_S = 1.0         # a unit that floods us cannot keep us waiting to close the socket
 FIRST_FRAME_S = 8.0           # nothing at all this long after opening: connected but not sending
 SILENCE_S = 10.0              # no frame of any kind this long (meters normally arrive ~66 a second)
 MAX_BYTES = 512 * 1024        # a whole status is about 17 KB
@@ -247,7 +248,8 @@ class RmeClient(RmeSource):
 
     def _open(self, url: str):
         return _NoRedirectConnect(url, max_size=MAX_BYTES, proxy=None, open_timeout=self._open_timeout,
-                                  ping_interval=None, compression=None, max_queue=MAX_QUEUE, logger=_WS_LOG)
+                                  ping_interval=None, compression=None, max_queue=MAX_QUEUE, close_timeout=CLOSE_TIMEOUT_S,
+                                  logger=_WS_LOG)
 
     async def _session(self, ip: str, port: int) -> None:
         async with self._open(ws_url(ip, port)) as ws:
@@ -348,7 +350,7 @@ async def probe(host: object, port: int = 80, *, address_ok: Callable = is_local
     try:
         ws = await _NoRedirectConnect(ws_url(ip, port), max_size=MAX_BYTES, proxy=None,
                                       open_timeout=open_timeout_s, ping_interval=None, compression=None,
-                                      max_queue=MAX_QUEUE, logger=_WS_LOG)
+                                      max_queue=MAX_QUEUE, close_timeout=CLOSE_TIMEOUT_S, logger=_WS_LOG)
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001
