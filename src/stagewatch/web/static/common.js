@@ -195,6 +195,8 @@ SW.SOURCES = {
     error: "Tell the system admin." },
   shelly: { name: "Shelly", offline: "Check the meters are powered and on the same network, and their addresses in Admin → Shelly power meters.",
     error: "Check the meter settings in Admin → Shelly power meters, then tell the system admin." },
+  rme: { name: "The RME units", offline: "Check the units are switched on and on the network, and their addresses in Admin → Integrations.",
+    error: "Tell the system admin." },
 };
 SW.sourceStatus = function (o) {
   const src = SW.SOURCES[o.source] || { name: "The source", offline: "Check it is running.", error: "Tell the system admin." };
@@ -271,6 +273,18 @@ SW.sourceInput = {
     else if (!dev || s === "initializing") reported = "waiting";
     else reported = fresh ? "ok" : at === null ? "waiting" : "stale";
     return { source: "smaart", reported: reported, dataAt: at };
+  },
+  // RME units ("rme_units" message units): the worst unit decides, so Online means every unit is sending.
+  // `now` is the server time; a unit that is up counts as having data now (it sends many frames a second).
+  rme: function (units, now) {
+    const list = Array.isArray(units) ? units.filter((u) => u && typeof u === "object") : [];
+    if (!list.length) return { source: "rme", reported: "waiting", dataAt: null };
+    if (list.some((u) => u.status === "offline" || u.link_up === false && u.status !== "starting")) {
+      const ages = list.filter((u) => typeof u.last_frame_age_s === "number").map((u) => u.last_frame_age_s);
+      return { source: "rme", reported: "offline", dataAt: ages.length ? now - Math.min.apply(null, ages) : null };
+    }
+    if (list.some((u) => u.status === "starting")) return { source: "rme", reported: "waiting", dataAt: null };
+    return { source: "rme", reported: "ok", dataAt: now };
   },
   // Shelly power meters: one card status for all its meters. [{ dev, ents }] per meter; the worst
   // meter decides (Error, then Offline, then Quiet, then Waiting), so Online means every meter is live.

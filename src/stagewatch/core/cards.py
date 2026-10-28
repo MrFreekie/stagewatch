@@ -32,6 +32,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "contacts",        # onsite contacts for the current event (job title, name, radio; phone only when allowed); never added by default
     "alignment_drift",  # FOH advice: how far delay paths have drifted since the Aligned marker; hidden while no path is set up; never added by default
     "hf_air_loss",     # FOH advice: estimated top-end air loss at FOH and Rear since the Soundcheck marker; hidden while no position is set up; never added by default
+    "rme_units",       # RME interfaces: one tile per RME unit (status word, temperature, power supplies, clock, preset, AVB); hidden while none are set up; never added by default
     "about",           # About Stagewatch: a title, one line and a QR code to the project page; needs no data and works offline; never added by default
 )
 KNOWN_CARDS = KNOWN_CARDS_0_3

@@ -1037,6 +1037,32 @@
     gcc.timer = setTimeout(tickGlobcon, 1000);
   }
 
+  // ------------------------------------------------------ RME interfaces
+  // One tile per RME unit from the "rme_units" message (SW.rme, rme.js). The server sends a message when
+  // something changes, so a one-minute-or-less tick keeps "last seen N ago" honest while a unit is away.
+  // The tick runs only while the card is on this dashboard and a unit is offline or starting. Nothing here
+  // sounds or sends anything to a unit.
+  const rmeC = { timer: null, ui: null, at: 0, status: null };
+  function stopRme() { if (rmeC.timer) { clearTimeout(rmeC.timer); rmeC.timer = null; } }
+  function renderRme() {
+    stopRme();
+    const card = $("rme-card");
+    const units = SW.rme.units(state.rme);
+    if (!has("rme_units") || !units.length) { card.hidden = true; return; }
+    card.hidden = false;
+    if (!rmeC.ui) {
+      rmeC.ui = SW.rme.createUi();
+      card.append(...rmeC.ui.nodes);
+      rmeC.status = addCardStatus(card, "rme");
+    }
+    const layout = (state.dash && state.dash.layout) || "tablet";
+    const views = rmeC.ui.update(units, Math.max(0, Date.now() / 1000 - rmeC.at), layout);
+    const now = serverNow();
+    rmeC.status.update(SW.sourceInput.rme(units, now), now);
+    setClass(card, `card ${SW.rme.cardClass(views)}`.trim());
+    if (views.some((v) => v.dim || v.state === "starting")) rmeC.timer = setTimeout(renderRme, 10000);
+  }
+
   // --------------------------------------------------------- equipment  // Readings from sensors whose role is Equipment (an amp rack, a power supply): never part of
   // any site average. Grouped by node; each reading shows its value with the unit, goes dim with
   // its age when stale, and carries the calibration asterisk. Text is set with textContent only.
@@ -1046,6 +1072,8 @@
     // Sensors with their own card on this dashboard are not repeated here.
     const own = new Set(has("witmotion_tilt") ? SW.wm.sensorsOf(state.devices).map((d) => d.id) : []);
     for (const e of Object.values(state.entities)) {
+      // RME units: only the core temperature here; the power supplies are On / Off words on the RME card.
+      if (e.kind === "contact" && String(e.device_id).indexOf("rme_") === 0) continue;
       if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery") continue;
       // Inclinometers: only their body temperature, and only when Admin asks for it.
       const wmPub = (state.devices[e.device_id] || {}).witmotion;
@@ -1803,6 +1831,8 @@
     equipment: { el: cardEl("equipment"), render: renderEquipment, empty: () => equipmentGroups().length === 0 },
     // Live GLOBCON levels. Hidden until the first message arrives (the server sends one with the snapshot).
     globcon_meters: { el: cardEl("globcon_meters"), wide: true, render: renderGlobcon, empty: () => !state.globcon },
+    // RME units. Hidden while none is set up (the server sends null).
+    rme_units: { el: cardEl("rme_units"), wide: true, render: renderRme, empty: () => !SW.rme.units(state.rme).length },
     // Power meters (Shelly). Hidden while no meter has been added (renderPower keeps it in step).
     power: { el: cardEl("power"), wide: true, render: renderPower, empty: () => !Object.keys(state.devices).some((k) => state.devices[k].category === "meter") },
     // Power tree. Shows its own empty note until a tree is set up (renderPowerTree keeps it in step).
@@ -1875,7 +1905,7 @@
   // classes each card already sets (style.css draws the edge on the wall layout only). Kept in
   // step by a class observer, so cards that tick on their own timers need no extra call.
   const LEVEL_STOP = ".pw-l-over, .wm-l3";
-  const LEVEL_ALERT = ".lvl-alert:not(.baro-tend):not(.next):not(.next *), .rd-lvl-alert, .ot-over, .lim-over, .wm-l2, .pt-gap-check";
+  const LEVEL_ALERT = ".lvl-alert:not(.baro-tend):not(.next):not(.next *), .rd-lvl-alert, .ot-over, .lim-over, .wm-l2, .pt-gap-check, .rme-has-warning";
   function markLevels() {
     for (const card of $("main").querySelectorAll("[data-card]")) {
       const hit = (sel) => card.matches(sel) || !!card.querySelector(sel);
@@ -1949,6 +1979,7 @@
     state.ontimeTimer = msg.ontime_timer || null; // likewise
     state.ontimeRundown = msg.ontime_rundown || null; // likewise
     state.globcon = msg.globcon_meters || null;       // likewise
+    state.rme = msg.rme_units || null; rmeC.at = Date.now() / 1000;   // likewise: null while no RME unit is set up
     state.advice = msg.advice || null;                // FOH advice block (drift paths, air-loss positions)
     state.isAdmin = msg.is_admin;
     savedDash = msg.dashboard;
@@ -1976,6 +2007,7 @@
     if (!has("ontime_timer")) stopOntimeTimer();
     if (!has("ontime_rundown")) stopOntimeRundown();
     if (!has("globcon_meters")) stopGlobcon();
+    if (!has("rme_units")) stopRme();
     syncSchedule();
     if (PREVIEW && state.isAdmin) {
       previewStrip();
@@ -2039,6 +2071,7 @@
     if (!has("ontime_timer")) stopOntimeTimer();
     if (!has("ontime_rundown")) stopOntimeRundown();
     if (!has("globcon_meters")) stopGlobcon();
+    if (!has("rme_units")) stopRme();
     syncSchedule();
   }
   if (PREVIEW) window.addEventListener("message", onDraft);
@@ -2096,6 +2129,7 @@
       case "wall_clock": state.wallClock = msg; if (has("wall_clock")) renderWallClock(); break;
       case "ontime_timer": state.ontimeTimer = msg; if (has("ontime_timer")) renderOntimeTimer(); break;
       case "globcon_meters": state.globcon = msg; if (has("globcon_meters")) renderGlobcon(); break;
+      case "rme_units": state.rme = msg; rmeC.at = Date.now() / 1000; if (has("rme_units")) renderRme(); break;
       case "advice":   // the same block as the snapshot's; the cards patch their cells in place
         state.advice = { drift_ref: msg.drift_ref, air_ref: msg.air_ref, resolution: msg.resolution, paths: msg.paths || [], positions: msg.positions || [] };
         if (has("alignment_drift")) renderDrift();

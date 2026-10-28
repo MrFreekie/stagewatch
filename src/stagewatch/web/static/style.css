@@ -1633,3 +1633,48 @@ body.layout-wall .adv-list > li.adv-line { flex-wrap: nowrap; align-items: cente
 body.layout-wall .about-line { font-size: 30px; }
 body.layout-wall .about-qr { width: 300px; padding: 14px; }
 body.layout-wall .about-url { font-size: 20px; }
+
+/* RME interfaces card (rme.js). Words and symbols always go with colour; an offline unit is dimmed and struck through. */
+.rme-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.rme-grid[data-n="1"] { grid-template-columns: minmax(0, 1fr); }
+.rme-tile { background: var(--panel-2); border: 1px solid var(--grid); border-left: 6px solid var(--grid); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.rme-tile.rme-ok { border-left-color: var(--ok); }
+.rme-tile.rme-check { border-left-color: var(--warn); }
+.rme-tile.rme-warning { border-left-color: var(--alert); }
+.rme-tile.rme-offline, .rme-tile.rme-starting { border-left-color: var(--muted); }
+.rme-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
+.rme-title { min-width: 0; }
+.rme-name { font-size: 20px; font-weight: 700; overflow-wrap: anywhere; }
+.rme-model { margin-left: 8px; font-size: 13px; color: var(--muted); }
+.rme-status { font-size: 18px; font-weight: 800; letter-spacing: .04em; white-space: nowrap; }
+.rme-sym { margin-right: 6px; }
+.rme-check .rme-status, .rme-warning .rme-status { text-decoration: underline; text-underline-offset: 4px; }
+.rme-temp { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; margin: 6px 0; }
+.rme-psus { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.rme-psu-off { font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.rme-psu-unknown { color: var(--muted); }
+.rme-row { display: flex; gap: 10px; font-size: 15px; padding: 3px 0; min-width: 0; }
+.rme-label { flex: 0 0 64px; color: var(--muted); }
+.rme-val { min-width: 0; overflow-wrap: anywhere; }
+.rme-flag { font-weight: 800; }
+.rme-notes, .rme-checks { list-style: none; margin: 6px 0 0; padding: 0; font-size: 14px; }
+.rme-item { padding: 2px 0; overflow-wrap: anywhere; }
+.rme-isym { display: inline-block; min-width: 1.2em; font-weight: 800; }
+.rme-age { margin: 8px 0 0; font-size: 15px; font-weight: 700; }
+.rme-quiet { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.rme-more { margin-top: 6px; }
+.rme-more summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 14px; }
+.rme-fw { margin: 6px 0 0; font-size: 13px; }
+.rme-foot { margin: 10px 0 0; font-size: 12px; }
+.rme-dim > :not(.rme-head):not(.rme-age) { opacity: .5; }
+.rme-dim .rme-temp, .rme-dim .rme-psus { text-decoration: line-through; text-decoration-thickness: 2px; }
+body.layout-phone .rme-grid { grid-template-columns: minmax(0, 1fr); }
+body.layout-phone .rme-temp { font-size: 34px; }
+body.layout-wall .rme-name { font-size: 40px; }
+body.layout-wall .rme-model { display: none; }
+body.layout-wall .rme-status { font-size: 36px; }
+body.layout-wall .rme-temp { font-size: 88px; }
+body.layout-wall .rme-psus { font-size: 36px; gap: 6px 32px; }
+body.layout-wall .rme-age { font-size: 28px; }
+body.layout-wall .rme-quiet, body.layout-wall .rme-foot { display: none; }
+body.layout-wall .rme-tile { padding: 16px 20px; }
