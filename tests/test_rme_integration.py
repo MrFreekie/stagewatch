@@ -461,3 +461,75 @@ class _Idle:
 
     def hint(self):
         return ""
+
+
+# ------------------------------------------------------------------ lost updates and the alarm log
+async def _driven_unit(hub, tk):
+    """A real-looking unit whose frames the test feeds in by hand (no socket)."""
+    from stagewatch.integrations.rme.parse import RmeState
+    integ = RmeIntegration(hub, emulate=False, probe_fn=Probe(), address_ok=lambda ip: True,
+                           source_factory=lambda o, u: _Idle(), clock=tk.clock, sleep=tk.sleep)
+    hub.add_integration(integ)
+    await integ.start()
+    await integ.add("192.168.1.50", 80, "", "")
+    unit = integ._units["stage_l"]
+    st = RmeState()
+    integ._on_link(unit, True)
+    integ._on_state(unit, st, st.ingest(STATUS))
+
+    def feed(text):
+        integ._on_state(unit, st, st.ingest(text))
+    return integ, unit, feed
+
+
+async def test_a_burst_of_alarm_changes_costs_a_bounded_number_of_log_writes_and_ends_correct(hub):
+    tk = Ticker()
+    integ, unit, feed = await _driven_unit(hub, tk)
+    calls = []
+    real = hub._alarm_changed
+    hub._alarm_changed = lambda changes: (calls.append(len(changes)), real(changes))[1]
+    try:
+        off, on = json.dumps({"device": {"psu": {"state": [True, False]}}}), json.dumps({"device": {"psu": {"state": [True, True]}}})
+        for i in range(100):
+            feed(off if i % 2 == 0 else on)             # 100 toggles at one instant, ending "on"
+        assert len(calls) <= 2
+        key = f"rme:{unit.cfg.id}:psu"
+        await tk.step(3.0)
+        integ.tick()
+        assert key not in hub.alarms.active             # the final state is what ends up there
+        assert len(calls) <= 3
+        feed(off)
+        await tk.step(3.0)
+        integ.tick()
+        assert key in hub.alarms.active and len(calls) <= 5
+    finally:
+        await integ.stop()
+
+
+async def test_a_later_full_status_that_changes_nothing_is_a_delta_not_a_forced_refresh(hub):
+    tk = Ticker()
+    integ, unit, feed = await _driven_unit(hub, tk)
+    forced = []
+    real = integ._refresh
+    integ._refresh = lambda u, force=False: (forced.append(force), real(u, force))[1]
+    try:
+        feed(STATUS)
+        assert forced == [False]
+    finally:
+        await integ.stop()
+
+
+async def test_after_a_lost_update_the_unit_is_down_and_old_values_are_not_rerecorded(hub):
+    """The client drops the link when it drops a text frame (see test_rme_client); here the integration's
+    side: the unit shows as away and the tick records nothing for it."""
+    tk = Ticker()
+    integ, unit, _feed = await _driven_unit(hub, tk)
+    try:
+        integ._on_link(unit, False, TEXT["lost_update"])
+        assert unit.phase == "down" and hub.devices[unit.device_id].status == Status.MISSING
+        pushed = dict(unit.pushed)
+        await tk.step(60.0)
+        integ.tick()
+        assert unit.pushed == pushed
+    finally:
+        await integ.stop()

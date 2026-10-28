@@ -41,6 +41,7 @@ TOPIC = "rme_units"
 TICK_S = 1.0
 CONFIRM_S = 30.0              # an unchanged reading is recorded again this often while frames flow
 MAX_UNKNOWN_LOGGED = 50
+ALARM_GAP_S = 2.0             # one alarm condition of one unit changes at most this often
 
 MANIFEST = Manifest(
     domain="rme",
@@ -83,6 +84,9 @@ class _Unit:
     entities: set = field(default_factory=set)
     pushed: dict = field(default_factory=dict)      # suffix -> (value, clock seconds)
     alarms: set = field(default_factory=set)
+    alarm_applied: dict = field(default_factory=dict)   # key -> (level, text) as the hub has it
+    alarm_at: dict = field(default_factory=dict)        # key -> clock seconds of its last change
+    alarm_wanted: dict = field(default_factory=dict)    # what the latest status asks for
     last_status: tuple | None = None
 
     @property
@@ -298,21 +302,36 @@ class RmeIntegration(Integration):
                 unit.pushed[suffix] = (value, now)
 
     def _clear_alarms(self, unit: _Unit) -> None:
-        self._set_alarms(unit, {})
+        self._set_alarms(unit, {}, force=True)
 
-    def _set_alarms(self, unit: _Unit, wanted: dict) -> None:
+    def _set_alarms(self, unit: _Unit, wanted: dict, force: bool = False) -> None:
+        """Make the unit's alarm conditions match ``wanted``. Each condition changes at most once in
+        ALARM_GAP_S (a flapping lock or a hostile unit cannot cost a database write and a broadcast per
+        frame); a change held back is applied by ``tick`` with whatever is wanted by then."""
+        unit.alarm_wanted = dict(wanted)
         changes = []
         name = unit.name()
         now = time.time()
-        for key, (level, text) in wanted.items():
-            change = self.hub.alarms.set_condition(f"rme:{unit.cfg.id}:{key}", True, level, f"{name}: {text}", now, silent=True)
+        clock = self._clock()
+        for key in set(wanted) | set(unit.alarm_applied):
+            want = (wanted[key][0], f"{name}: {wanted[key][1]}") if key in wanted else None
+            if unit.alarm_applied.get(key) == want:
+                continue
+            last = unit.alarm_at.get(key)
+            if not force and last is not None and clock - last < ALARM_GAP_S:
+                continue
+            if want is None:
+                change = self.hub.alarms.set_condition(f"rme:{unit.cfg.id}:{key}", False, 0, "", now)
+                unit.alarm_applied.pop(key, None)
+            else:
+                change = self.hub.alarms.set_condition(f"rme:{unit.cfg.id}:{key}", True, want[0], want[1], now, silent=True)
+                unit.alarm_applied[key] = want
+            unit.alarm_at[key] = clock
             if change:
                 changes.append(change)
-        for key in unit.alarms - set(wanted):
-            change = self.hub.alarms.set_condition(f"rme:{unit.cfg.id}:{key}", False, 0, "", now)
-            if change:
-                changes.append(change)
-        unit.alarms = set(wanted)
+        unit.alarms = set(unit.alarm_applied)
+        if len(unit.alarm_at) > 64:
+            unit.alarm_at = {k: t for k, t in unit.alarm_at.items() if k in unit.alarm_applied or clock - t < ALARM_GAP_S}
         if changes:
             self.hub._alarm_changed(changes)
 
@@ -369,6 +388,8 @@ class RmeIntegration(Integration):
         if view is None:
             return
         old = unit.view
+        if result.kind == "resync" and old is not None and view == old:
+            result = FrameResult("delta", False)       # a full status that changes nothing is just a delta
         unit.view = view
         unit.phase = "up"
         if result.kind == "baseline":
@@ -443,6 +464,8 @@ class RmeIntegration(Integration):
         for unit in self._units.values():
             if unit.policy is not None:
                 unit.policy.poll()
+            if unit.phase == "up":
+                self._set_alarms(unit, unit.alarm_wanted)       # applies a change the 2 s gap held back
             source = unit.source
             if unit.phase == "up" and source is not None and source.last_frame_at is not None:
                 unit.last_seen = max(unit.last_seen or 0.0, source.last_frame_at)
