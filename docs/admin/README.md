@@ -69,6 +69,7 @@ Admin has four tabs: **Show day**, **Sensors and nodes**, **Integrations** and *
 | Admin card | What you do there | Guide |
 |---|---|---|
 | **Site** | Time zone, show-day start, altitude, warning times, reference distance, stale time | [Site and shows](site-and-shows.md) |
+| **Clock** | Check the Pi's time against this device and set it, for a Pi with no network time or clock battery | [Clock](clock.md) |
 | **Security** | Change the PIN | [Security and data](security-and-data.md) |
 | **Software** | Check for updates, install, roll back, backups | [Updating and backups](../updating-and-backups.md) |
 | **Help** | Download diagnostics and links to these guides | [Troubleshooting](../troubleshooting.md) |

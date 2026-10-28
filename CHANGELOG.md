@@ -15,6 +15,10 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+
+- **Set the clock from this device (Raspberry Pi).** A new **Clock** card in Admin (System tab) shows the Pi's time, this device's time, the difference, whether the Pi has network time and its time zone, and a **Set the clock from this device** button, for a Pi with no internet and no clock battery. The page measures the delay to the Pi several times and uses the quickest answer. A change of more than 5 seconds is confirmed first, naming the jump, and changes closer than a second are left alone. If the Pi has a hardware clock (RTC) the time is written to it too. A marker `Clock set from a browser (was ... s)` is added to the show. Readings already saved keep their times (no back-fill), so do this before the show. A small root-owned helper (`/usr/local/sbin/stagewatch-set-time`) and a sudo rule that allows only that file are set up by `install.sh` (skip with `--no-clock-button`); older installs see **Not set up on this Pi** with the one line to run (`deploy/pi/install-clock-helper.sh`, which also has `--uninstall`). In Emulate mode the button is a dry run. See SECURITY.md for what it allows. No change to saved data.
+
 ## [0.7.0] - 2026-10-28
 
 ### Added
