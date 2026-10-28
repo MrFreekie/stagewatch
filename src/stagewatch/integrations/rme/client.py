@@ -120,9 +120,26 @@ def validate_host(host: object, address_ok: Callable = is_local_address) -> str:
         ip = ipaddress.ip_address(host.strip())
     except ValueError:
         raise RmeError("not_local") from None
-    if not address_ok(ip):
+    if _never_a_unit(ip) or not address_ok(ip):
         raise RmeError("not_local")
     return str(ip)
+
+
+_REFUSED_NETS = tuple(ipaddress.ip_network(n) for n in (
+    "100.64.0.0/10",       # carrier-grade NAT: not a rack network
+    "64:ff9b:1::/48",      # NAT64 local use: carries another address inside
+    "0.0.0.0/8",           # "this network"
+    "255.255.255.255/32",  # broadcast
+))
+
+
+def _never_a_unit(ip) -> bool:
+    """Addresses refused whatever the caller allows: a scoped IPv6 address (it names a local interface),
+    carrier-grade NAT, NAT64 local-use, all of 0.x and the broadcast address. Private RFC 1918 and fc00::/7
+    addresses are fine."""
+    if isinstance(ip, ipaddress.IPv6Address) and getattr(ip, "scope_id", None):
+        return True
+    return any(ip.version == n.version and ip in n for n in _REFUSED_NETS)
 
 
 def ws_url(host: str, port: int) -> str:

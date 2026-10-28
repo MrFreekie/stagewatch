@@ -619,6 +619,22 @@ def test_validate_host_accepts_private_ips_only():
         assert exc.value.category == "not_local"
 
 
+@pytest.mark.parametrize("bad", ["fe80::1%eth0", "fd00::5%2", "100.64.0.1", "100.127.255.254", "64:ff9b:1::1",
+                                 "64:ff9b:1:ffff::1", "0.0.0.0", "0.1.2.3", "0.255.255.255", "255.255.255.255"])
+def test_validate_host_refuses_scoped_cgnat_nat64_zero_net_and_broadcast_even_if_the_check_allows(bad):
+    for check in (lambda ip: True, None):
+        with pytest.raises(RmeError) as exc:
+            validate_host(bad, check) if check else validate_host(bad)
+        assert exc.value.category == "not_local"
+
+
+def test_validate_host_still_allows_the_private_ranges_around_the_refused_ones():
+    for ok in ("100.63.255.255", "100.128.0.1", "192.168.0.1", "172.31.255.254", "fc00::1", "fdff::1"):
+        assert validate_host(ok, lambda ip: True) == ok
+    for ok in ("172.16.5.5", "10.0.0.1", "fd12::34"):
+        assert validate_host(ok) == ok
+
+
 # ------------------------------------------------------------------ nothing sent, nothing logged
 def test_the_package_has_no_send_path():
     root = Path(rme_client.__file__).parent
