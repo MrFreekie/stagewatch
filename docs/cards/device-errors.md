@@ -40,8 +40,15 @@ Press **Show 4 quiet devices** (the number changes) to list the devices with no 
 - **One raise is one problem.** A fault that lasts an hour is one problem. A fault reported by forty
   units at the same moment is one problem, not forty.
 - A Stagewatch device going offline is a **drop-out**.
-- An imported unit's entry counts by its level in the log: Critical is **Stop**, Major is **Alert**,
-  Minor is **Advisory**. See [Import a log file](../admin/import-log.md).
+- An imported L-Acoustics unit's entry counts by its level in the log: Critical is **Stop**, Major is
+  **Alert**, Minor is **Advisory**. See [Import a log file](../admin/import-log.md).
+- An imported Meyer Sound Nebra unit that disconnects from the network is an **Alert** until it
+  reconnects. A unit that loses its stream lock is an **Advisory** until it is locked again. A
+  disconnect with no reconnect in the file stays open to the end of the file; Stagewatch does not
+  assume it recovered.
+- **Nothing is counted twice.** If the LA Network Manager log and the Nebra log both show the same
+  amplifier losing its stream lock within 10 seconds, only the Network Manager entry counts, whichever
+  file you imported first.
 - If the level rises during one problem, it stays one problem at its highest level.
 - **Not counted:** information lines, clears, acknowledgements, software updates and session lines.
 - **Limit alarms are not device problems.** A stage that is too hot is the environment, not a faulty
@@ -74,6 +81,7 @@ any. The link jumps to this card.
 |---|---|
 | `No problems recorded.` but a device did drop out | Check the **Show** and **How much** choices. Then check for a `Stagewatch was not running` note covering that time. |
 | An imported unit is missing | Import its log first: [Import a log file](../admin/import-log.md). |
+| A Nebra amplifier is missing but the Network Manager log has it | Its lock changes were the same event, so only the Network Manager entry is counted. |
 | The card shows an error instead of a table | Press **Refresh**. If it stays, see [Troubleshooting](../troubleshooting.md). |
 
 Related: [Sensors and alarms](../admin/sensors-and-alarms.md), [Glossary](../glossary.md).

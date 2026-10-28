@@ -15,6 +15,11 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+
+- **Meyer Sound Nebra log import (experimental).** `stagewatch import-log FILE` and the Admin **Import a log file** card now also read the Events CSV that Nebra exports (it works out which kind of file it has, or choose it). Disconnects count as Alerts and are paired with their reconnect for time in fault; a disconnect with no reconnect stays open to the end of the file. Lost stream locks are Advisories. Many units at once become one marker. A Hive client (another computer running Nebra) is kept as a system line without its computer's name. Lock changes that the LA Network Manager log already holds for the same unit are left out and counted, so the Device errors card never counts one event twice. Times are read in the site's time zone; the preview says when some fell in the hour the clocks go back or forward. Importing the same file twice adds nothing.
+- **Nebra System Status Report preview.** `stagewatch import-log --format nebra-status FILE` prints a plain-words inventory (units Available, firmware versions, streams with a failure code, and with `--events FILE` the units the events file names but the report does not list). Preview only; serial numbers, MAC addresses and computer names are never read or shown.
+
 ### Changed
 
 - **Power card: the frequency graph is no longer smoothed.** It is drawn as recorded, so the small swings (a few hundredths of a hertz) show. Power, current, voltage and the other measurements keep their display smoothing, and the note under the chart says which applies.

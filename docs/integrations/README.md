@@ -34,7 +34,7 @@ product's own screen before you rely on it.
 ### An independent project
 
 Stagewatch is independent and unofficial. It is **not made, approved, sponsored or supported by**
-Ontime, Rational Acoustics (Smaart), DirectOut (GLOBCON), Allterco Robotics (Shelly), Bitfocus
+Ontime, Rational Acoustics (Smaart), DirectOut (GLOBCON), L-Acoustics, Meyer Sound, Allterco Robotics (Shelly), Bitfocus
 (Companion), the ESPHome project, or any other maker named in these guides.
 
 ### Names and logos
