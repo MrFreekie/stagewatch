@@ -758,7 +758,7 @@ wheels = [
 
 [[package]]
 name = "stagewatch"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "aioesphomeapi", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },

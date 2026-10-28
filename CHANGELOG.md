@@ -15,6 +15,8 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-28
+
 ### Added
 
 - **Device errors: Quiet this unit.** Tick it on an imported L-Acoustics or Meyer Sound unit you already know about (a Nebra unit that keeps disconnecting, say). Its problems stay listed, with their timeline and time in fault, but show greyed as Advisory (`quieted by you`), add nothing to the Stop and Alert figures and make no marker in later imports. Untick it to bring back the original wording. The show report lists quieted units. Saved in the settings (up to 200 units); older versions ignore it.
@@ -771,7 +773,8 @@ The sections below list every change in detail.
 - Version tracking: build info (version, git commit, schema versions) in the API,
   admin UI and logs; config and database schema versions with migration hooks.
 
-[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/MrFreekie/stagewatch/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/MrFreekie/stagewatch/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/MrFreekie/stagewatch/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/MrFreekie/stagewatch/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MrFreekie/stagewatch/compare/v0.3.0...v0.4.0
