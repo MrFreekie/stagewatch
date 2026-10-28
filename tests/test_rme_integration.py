@@ -533,3 +533,76 @@ async def test_after_a_lost_update_the_unit_is_down_and_old_values_are_not_rerec
         assert unit.pushed == pushed
     finally:
         await integ.stop()
+
+
+# ------------------------------------------------------------------ duplicates, area, a source that fails to start
+async def test_replace_unit_runs_the_same_duplicate_serial_check_as_add(hub):
+    from stagewatch.integrations.rme import InUse
+    probe = Probe()
+    integ = RmeIntegration(hub, emulate=False, probe_fn=probe, address_ok=lambda ip: True,
+                           source_factory=lambda o, u: _Idle())
+    hub.add_integration(integ)
+    await integ.start()
+    try:
+        first = await integ.add("192.168.1.50", 80, "One", "")
+        probe.info["serial"] = "SN-2"
+        second = await integ.add("192.168.1.51", 80, "Two", "")
+        probe.info["serial"] = SERIAL                               # the unit at .51 now answers as unit one
+        with pytest.raises(InUse):
+            await integ.update(second.id, replace_unit=True)
+        with pytest.raises(InUse):
+            await integ.update(second.id, host="192.168.1.52")
+        assert second.serial == "SN-2" and second.host == "192.168.1.51" and first.serial == SERIAL
+        probe.info["serial"] = "SN-3"
+        await integ.update(second.id, replace_unit=True)             # a serial nobody else has is fine
+        assert second.serial == "SN-3"
+    finally:
+        await integ.stop()
+
+
+async def test_clearing_the_area_reaches_the_device(hub):
+    probe = Probe()
+    integ = RmeIntegration(hub, emulate=False, probe_fn=probe, address_ok=lambda ip: True,
+                           source_factory=lambda o, u: _Idle())
+    hub.add_integration(integ)
+    await integ.start()
+    try:
+        cfg = await integ.add("192.168.1.50", 80, "One", "Stage left")
+        assert hub.devices[f"rme_{cfg.id}"].area == "Stage left"
+        await integ.update(cfg.id, area="")
+        assert hub.devices[f"rme_{cfg.id}"].area == ""
+    finally:
+        await integ.stop()
+
+
+async def test_a_source_that_fails_to_start_is_tried_again_with_backoff(hub):
+    tk = Ticker()
+    attempts = []
+
+    def factory(owner, unit):
+        attempts.append(owner._clock())
+        if len(attempts) <= 2:
+            raise RuntimeError("boom")
+        return _Idle()
+
+    integ = RmeIntegration(hub, emulate=False, probe_fn=Probe(), address_ok=lambda ip: True,
+                           source_factory=factory, clock=tk.clock, sleep=tk.sleep)
+    hub.add_integration(integ)
+    await integ.start()
+    try:
+        await integ.add("192.168.1.50", 80, "One", "")
+        unit = integ._units["one"]
+        assert unit.source is None and unit.phase == "down" and unit.retry_at == 5.0
+        integ.tick()
+        await asyncio.sleep(0)
+        assert len(attempts) == 1                                    # not yet
+        await tk.step(5.0)
+        integ.tick()
+        await until(lambda: len(attempts) == 2 and not unit.retrying)
+        assert unit.source is None and unit.retry_at == 5.0 + 10.0   # the wait doubled
+        await tk.step(10.0)
+        integ.tick()
+        await until(lambda: unit.source is not None)
+        assert unit.start_failures == 0 and unit.retry_at is None and len(attempts) == 3
+    finally:
+        await integ.stop()

@@ -288,12 +288,14 @@ class Hub:
             if entity.device_id == device.id:
                 self._entity_meta(entity)
 
-    def register_device(self, device: Device) -> Device:
+    def register_device(self, device: Device, area_authoritative: bool = False) -> Device:
+        """Add a device or update the one with this id. A blank area keeps the one already set, unless the
+        caller owns the area (``area_authoritative``: the admin's own setting, where blank means none)."""
         existing = self.devices.get(device.id)
         if existing:
             existing.name, existing.manufacturer, existing.model = (
                 device.name or existing.name, device.manufacturer, device.model)
-            if device.area:
+            if device.area or area_authoritative:
                 existing.area = device.area
             existing.role = device.role
             existing.sleep_minutes = device.sleep_minutes

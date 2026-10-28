@@ -41,6 +41,9 @@ TOPIC = "rme_units"
 TICK_S = 1.0
 CONFIRM_S = 30.0              # an unchanged reading is recorded again this often while frames flow
 MAX_UNKNOWN_LOGGED = 50
+RETRY_MIN_S = 5.0             # if a unit's source could not be built or started: try again after this, doubling
+RETRY_MAX_S = 120.0
+START_FAILED = "Could not start reading this unit"
 ALARM_GAP_S = 2.0             # one alarm condition of one unit changes at most this often
 
 MANIFEST = Manifest(
@@ -88,6 +91,9 @@ class _Unit:
     alarm_at: dict = field(default_factory=dict)        # key -> clock seconds of its last change
     alarm_wanted: dict = field(default_factory=dict)    # what the latest status asks for
     last_status: tuple | None = None
+    start_failures: int = 0
+    retry_at: float | None = None
+    retrying: bool = False
 
     @property
     def device_id(self) -> str:
@@ -243,8 +249,29 @@ class RmeIntegration(Integration):
         unit.last_status = None
 
     async def _start_source(self, unit: _Unit) -> None:
-        unit.source = self._factory(self, unit)
-        await unit.source.start()
+        """Build and start the unit's source. If that fails the unit shows as away and the tick tries again
+        later (5 s, then twice as long each time, at most 2 minutes), so one failure is not for ever."""
+        try:
+            unit.source = self._factory(self, unit)
+            await unit.source.start()
+            unit.start_failures, unit.retry_at = 0, None
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - one unit must not stop the others
+            log.exception("Could not start the RME source")
+            await self._stop_source(unit)
+            unit.start_failures += 1
+            unit.retry_at = self._clock() + min(RETRY_MAX_S, RETRY_MIN_S * 2 ** (unit.start_failures - 1))
+            self._on_link(unit, False, START_FAILED)
+
+    async def _retry_start(self, unit: _Unit) -> None:
+        try:
+            async with self._lock:
+                if self._units.get(unit.cfg.id) is unit and unit.source is None and not self._stopped:
+                    await self._start_source(unit)
+        finally:
+            unit.retrying = False
+        self.publish_once()
 
     async def _stop_source(self, unit: _Unit) -> None:
         source, unit.source = unit.source, None
@@ -269,7 +296,7 @@ class RmeIntegration(Integration):
         self.hub.register_device(Device(
             unit.device_id, shown[0], "rme", "RME" if not self.emulate else "Stagewatch", model,
             area=unit.cfg.area, status=Status.INITIALIZING, status_detail=mapping.DETAIL_CONNECTING,
-            category="service", role="equipment"))
+            category="service", role="equipment"), area_authoritative=True)      # clearing the Area clears it
         unit.registered = shown
 
     def _make_marker(self, unit: _Unit, text: str, hidden: bool) -> None:
@@ -464,6 +491,10 @@ class RmeIntegration(Integration):
         for unit in self._units.values():
             if unit.policy is not None:
                 unit.policy.poll()
+            if unit.source is None and unit.retry_at is not None and now >= unit.retry_at and not unit.retrying \
+                    and not self._stopped:
+                unit.retrying = True
+                asyncio.get_running_loop().create_task(self._retry_start(unit), name="rme-retry")
             if unit.phase == "up":
                 self._set_alarms(unit, unit.alarm_wanted)       # applies a change the 2 s gap held back
             source = unit.source
@@ -529,6 +560,9 @@ class RmeIntegration(Integration):
                 raise InUse("Another unit already uses that address")
             if (new_host, new_port) != (cfg.host, cfg.port) or replace_unit:
                 info = await self._probe(new_host, new_port)
+                if info["serial"] and any(c.serial == info["serial"] for c in self.hub.config.rme_devices
+                                          if c is not cfg):
+                    raise InUse("That unit has already been added")
                 if replace_unit:
                     serial = info["serial"]
                 elif cfg.serial and info["serial"] and info["serial"] != cfg.serial:
