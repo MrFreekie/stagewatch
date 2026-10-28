@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Callable
 
+from ...core.cards import KNOWN_CARDS
 from ...core.config import RME_MAX_UNITS, RmeDeviceConfig, _plain_text
 from ...core.model import Device, Entity, Kind, Status, UNITS, slugify
 from ...core.plugin import Integration, Manifest
@@ -105,9 +106,10 @@ def seed_emulate_rme(config) -> bool:
     config.rme_devices = [
         RmeDeviceConfig(id=slugify(u["name"]), host=u["host"], name=u["name"], area=("Stage L", "Monitors")[u["index"]],
                         serial=u["serial"]) for u in DEMO_UNITS]
-    for d in config.dashboards:
-        if d.slug == "wall":
-            d.cards = [*d.cards[:1], CARD_ID, *d.cards[1:]]
+    if CARD_ID in KNOWN_CARDS:          # the card is added to the stock wall dashboard once the dashboard knows it
+        for d in config.dashboards:
+            if d.slug == "wall":
+                d.cards = [*d.cards[:1], CARD_ID, *d.cards[1:]]
     return True
 
 

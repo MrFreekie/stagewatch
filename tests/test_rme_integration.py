@@ -233,8 +233,10 @@ async def test_no_unit_means_nothing_runs_and_no_message(hub):
 def test_seed_is_for_a_fresh_emulate_config_only(hub):
     assert seed_emulate_rme(hub.config) is True
     assert [u.name for u in hub.config.rme_devices] == [u["name"] for u in DEMO_UNITS]
-    assert "rme_units" in next(d for d in hub.config.dashboards if d.slug == "wall").cards
-    assert seed_emulate_rme(hub.config) is False                                   # already there: not again
+    from stagewatch.core.cards import KNOWN_CARDS
+    wall = next(d for d in hub.config.dashboards if d.slug == "wall")
+    assert ("rme_units" in wall.cards) == ("rme_units" in KNOWN_CARDS)             # the card id is added once the dashboard knows it
+    assert seed_emulate_rme(hub.config) is False                                  # already there: not again
 
 
 def test_manifest_is_honest():
