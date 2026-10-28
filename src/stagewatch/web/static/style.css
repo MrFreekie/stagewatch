@@ -1678,3 +1678,6 @@ body.layout-wall .rme-psus { font-size: 36px; gap: 6px 32px; }
 body.layout-wall .rme-age { font-size: 28px; }
 body.layout-wall .rme-quiet, body.layout-wall .rme-foot { display: none; }
 body.layout-wall .rme-tile { padding: 16px 20px; }
+.rme-admin-unit { border: 1px solid var(--grid); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+.rme-admin-unit .row { align-items: flex-end; flex-wrap: wrap; gap: 8px; }
+.rme-test-result p { margin: 4px 0; }

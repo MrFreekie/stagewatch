@@ -749,6 +749,110 @@
       h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it. Stagewatch recognises a meter by its own hardware address, so if its address changes, type the new one in its row and press Save. Figures are advisory and do not replace the electrician's inspection and testing."));
   }
 
+  // ------------------------------------------------------------ RME interfaces
+  // RME units (for example the 12Mic) for the RME interfaces card. Read-only: Stagewatch only listens to a
+  // unit and sends it nothing. Units have no password, so the card says so. Addresses are shown here and
+  // nowhere public; the serial number is never shown. The words live in rme-admin.js (SW.rmeAdmin).
+  const rmeUnits = () => ((admin.rme || {}).units) || [];
+  let rmeTest = null;   // the last Test result for the Add form: {host, port, view} (kept across a re-render)
+  function rmeAddForm(onDone) {
+    const ra = SW.rmeAdmin;
+    const host = h("input", { class: "touch", maxlength: "64", autocomplete: "off", spellcheck: "false", placeholder: "e.g. 192.168.1.50", value: rmeTest ? rmeTest.host : "", "aria-label": "Unit address" });
+    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", placeholder: "80", value: rmeTest && rmeTest.port ? rmeTest.port : "", "aria-label": "Port (usually 80)" });
+    const name = h("input", { maxlength: "40", placeholder: "Uses the unit's own name", "aria-label": "Name for this unit" });
+    const area = h("input", { maxlength: "40", placeholder: "e.g. Stage left", "aria-label": "Area" });
+    const result = h("div", { class: "rme-test-result", role: "status" });
+    const save = h("button", { class: "primary touch", disabled: true }, "Save unit");
+    const saveHint = h("span", { class: "muted" }, "Press Test first: Save works once the unit answers.");
+    const setSave = (off) => { save.disabled = off; SW.slot(saveHint, !off); };
+    const show = (view) => {
+      if (!view) { result.replaceChildren(); setSave(true); return; }
+      result.replaceChildren(...view.lines.map((l, i) => h("p", { class: i === 0 && view.warn ? "warn-text" : (i === 0 ? "" : "muted") }, i === 0 && view.warn ? `▲ ${l}` : l)));
+      if (view.ok && view.name && val(name) === "") name.value = view.name;
+      setSave(!view.ok || !!view.already);
+    };
+    const test = h("button", { class: "touch", onclick: async () => {
+      if (!ra.portOk(port.value)) { show({ ok: false, warn: true, lines: ["The port must be a number from 1 to 65535.", "Nothing has been changed."] }); return; }
+      rmeTest = null; show(null);
+      result.replaceChildren(h("p", { class: "muted" }, "Asking the unit…"));
+      try {
+        const r = await api("POST", "/api/admin/rme/test", ra.addBody(val(host), port.value));
+        const view = ra.testView(r);
+        rmeTest = { host: val(host), port: port.value, view };
+        show(view);
+      } catch (err) { show({ ok: false, warn: true, lines: [err.message || "Could not test that address.", "Nothing has been changed."] }); }
+    } }, "Test");
+    save.onclick = () => run(() => api("POST", "/api/admin/rme", ra.addBody(val(host), port.value, val(name), val(area))), "Unit added")
+      .then(() => { rmeTest = null; if (onDone) onDone(); return refresh(); }, () => {});
+    setSave(true);
+    if (rmeTest && rmeTest.view) show(rmeTest.view);
+    return h("div", {},
+      h("div", { class: "row" }, field("Unit address (an IP address on your local network)", host), test),
+      result,
+      field("Name (optional)", name), field("Area (optional)", area),
+      h("details", { class: "card-about" }, h("summary", {}, "Advanced"), field("Port (usually 80)", port)),
+      h("p", { class: "notice" }, ra.SECURITY),
+      h("p", { class: "muted hint" }, "Tip: give the unit a fixed address so it stays where Stagewatch expects it. Test opens a second short connection and closes it at once."),
+      h("div", { class: "row sw-dlg-actions" }, saveHint, h("span", { class: "grow" }), save));
+  }
+  function rmeUnitTile(u) {
+    const ra = SW.rmeAdmin;
+    const ss = SW.deviceStatus({ status: u.status, status_detail: u.detail }, snap.now);
+    const name = h("input", { value: u.name, maxlength: "40", "aria-label": `${u.name} name` });
+    const area = h("input", { value: u.area, maxlength: "40", "aria-label": `${u.name} area` });
+    const host = h("input", { class: "touch", value: u.host, maxlength: "64", autocomplete: "off", spellcheck: "false", "aria-label": `${u.name} address` });
+    const port = h("input", { class: "num touch", type: "number", min: "1", max: "65535", value: u.port, "aria-label": `${u.name} port` });
+    const saved = { name: u.name, area: u.area, host: u.host, port: u.port };
+    const now = () => ({ name: val(name), area: val(area), host: val(host), port: port.value });
+    const put = (body, msg) => run(() => api("PUT", `/api/admin/rme/${encodeURIComponent(u.id)}`, body), msg).then(refresh, () => {});
+    const portBad = () => !ra.portOk(port.value) || port.value === "";
+    const status = h("span", { class: `status ${ss.cls}`, title: ss.title, "data-rme-chip": u.id }, ss.text);
+    const detail = h("div", { class: "muted", style: "font-size:12px", "data-rme-detail": u.id }, [u.detail, ra.facts(u)].filter(Boolean).join(" · "));
+    return h("div", { class: "rme-admin-unit", "data-rme-unit": u.id },
+      h("div", { class: "row" }, h("strong", {}, u.name), status),
+      detail,
+      u.hint ? h("div", { class: "warn-text", style: "font-size:12px", "data-rme-hint": u.id }, u.hint) : null,
+      h("div", { class: "row" }, field("Name", name), field("Area", area),
+        h("button", { class: "small touch", onclick: () => put(ra.patchBody(saved, Object.assign(now(), { host: saved.host, port: saved.port }), false), "Saved") }, "Save")),
+      h("details", { class: "card-about" }, h("summary", {}, "Advanced"),
+        h("div", { class: "row" }, field("Address", host), field("Port", port),
+          h("button", { class: "small touch", onclick: () => {
+            if (portBad()) { toast("The port must be a number from 1 to 65535.", true); return; }
+            put(ra.patchBody(saved, now(), false), "Address saved");
+          } }, "Save address")),
+        h("p", { class: "muted hint" }, "Changing the address checks that the same unit answers there. If you have swapped the hardware, use Replace unit instead."),
+        h("div", { class: "row" },
+          h("button", { class: "small touch", onclick: () => {
+            if (portBad()) { toast("The port must be a number from 1 to 65535.", true); return; }
+            if (confirm(ra.replaceText(u.name))) put(ra.patchBody(saved, now(), true), "Unit replaced");
+          } }, "Replace unit")),
+        h("label", { class: "check" }, h("input", { type: "checkbox", disabled: true, "aria-describedby": `rme-rec-${u.id}` }), " Record input changes (not available yet)"),
+        h("p", { class: "muted hint", id: `rme-rec-${u.id}` }, "Gain, 48 V and similar settings are not read yet, so there is nothing to record.")),
+      h("div", { class: "row" },
+        h("button", { class: "small danger touch", onclick: () => confirm(ra.removeText(u.name)) && run(() => api("DELETE", `/api/admin/rme/${encodeURIComponent(u.id)}`), "Removed").then(refresh, () => {}) }, "Remove")));
+  }
+  // Status, detail and hint of a unit's tile, in place (text only, so nothing typed is lost).
+  function rmeRefreshUnit(u) {
+    const q = (a) => document.querySelector(`[${a}="${CSS.escape(u.id)}"]`);
+    const chipEl = q("data-rme-chip"), det = q("data-rme-detail");
+    if (!chipEl || !det) return;
+    const ss = SW.deviceStatus({ status: u.status, status_detail: u.detail }, snap.now);
+    chipEl.className = `status ${ss.cls}`; chipEl.title = ss.title; chipEl.textContent = ss.text;
+    det.textContent = [u.detail, SW.rmeAdmin.facts(u)].filter(Boolean).join(" · ");
+    const hint = q("data-rme-hint");
+    if (hint) hint.textContent = u.hint || "";
+  }
+  function rmeCard() {
+    const ra = SW.rmeAdmin, units = rmeUnits();
+    return card("RME interfaces",
+      h("p", { class: "muted" }, "Shows the health of RME units, such as the 12Mic, on dashboards that have the RME interfaces card (User dashboards → Edit cards): whether the unit is OK, its core temperature, both power supplies, the clock it follows, the loaded preset and its AVB streams. Stagewatch only listens: it sends the unit nothing, so it cannot change gain, 48 V, a preset, routing or the clock. It is not a protection system."),
+      h("p", { class: "notice" }, ra.SECURITY),
+      admin.emulate ? h("p", { class: "notice" }, "Emulate mode: the units are simulated, so any private address will \"find\" a simulated 12Mic. The second unit goes offline for 30 seconds every few minutes, to show how an away unit looks.")
+        : h("p", { class: "notice" }, ra.NOTE),
+      units.length ? h("div", { class: "rme-admin-units" }, units.map(rmeUnitTile)) : h("p", { class: "muted" }, "No RME units yet."),
+      h("p", { class: "muted" }, `To add a unit, use the Add integration tile on the Integrations tab (up to ${(admin.rme || {}).max_units || ra.MAX} units).`));
+  }
+
   // Power card calculations: the demand window and the generator size suggestion. Advisory only: the figures
   // are worked out from measured demand and change nothing on any meter or generator.
   function powerSiteCard() {
@@ -1903,6 +2007,7 @@
     ].map((p) => Object.assign(p, { emulated: admin.emulate && p.key !== "ontime", added: p.added || admin.emulate })).concat([
       // One entry per device: always addable; each has its own add form, and is edited on its own card.
       { key: "shelly", name: "Shelly power meter", badge: "shelly-badge.svg", device: true, form: (prefill, done) => shellyAddForm(done) },
+      { key: "rme", name: "RME interface", badge: "", device: true, form: (prefill, done) => rmeAddForm(done) },
       { key: "esphome", name: "ESPHome node", badge: "", device: true, form: (prefill, done) => adoptForm(prefill || {}, done) },
       // Bluetooth sensors have no address to type here: they are found and set up on their own card.
       { key: "witmotion", name: "WitMotion tilt sensors", badge: "witmotion-badge.png", device: true, form: (prefill, done) => h("div", {},
@@ -1992,6 +2097,9 @@
     }));
     if (meters.length) tiles.push({ key: "shelly", name: "Shelly power meters", badge: "shelly-badge.svg", detail: plural(meters.length, "meter"),
       open: () => openCard("shelly"), hint: "Open the Shelly power meters card" });
+    const rmes = rmeUnits();
+    if (rmes.length) tiles.push({ key: "rme", name: "RME interfaces", badge: "", detail: plural(rmes.length, "unit"),
+      open: () => openCard("rme"), hint: "Open the RME interfaces card" });
     const nodes = nodeList();
     if (nodes.length) tiles.push({ key: "esphome", name: "ESPHome nodes", badge: "", detail: plural(nodes.length, "node"),
       open: () => openCard("nodes"), hint: "Open the ESPHome nodes card on the Sensors and nodes tab" });
@@ -2022,7 +2130,7 @@
     const addTile = h("div", { class: "int-tile int-add" },
       h("button", { type: "button", class: "int-main", onclick: () => connDialog(null) },
         h("span", { class: "card-logo int-nologo int-plus", "aria-hidden": "true" }, "+"), h("strong", { class: "int-name" }, "Add integration"),
-        h("span", { class: "int-detail muted" }, "Ontime, Smaart, GLOBCON, a Shelly meter, WitMotion tilt sensors or an ESPHome node")));
+        h("span", { class: "int-detail muted" }, "Ontime, Smaart, GLOBCON, a Shelly meter, an RME unit, WitMotion tilt sensors or an ESPHome node")));
     return card("Integrations",
       h("p", { class: "muted" }, "Each outside product Stagewatch reads from. Tap a tile to change its address or settings, or to remove it. Removing a product keeps its history. Each product's other settings are on its own card below."),
       h("div", { class: "int-tiles" }, tiles.map(tileEl), found.map(foundTile), addTile));
@@ -2803,6 +2911,9 @@
       const meters = (admin.shelly || {}).meters || [];
       return meters.length ? SW.sourceInput.shelly(meters.map((m) => ({ dev: devOf(m.id), ents: entsOf(m.id) }))) : null;
     },
+    rme() {
+      return SW.rmeAdmin.chipInput(rmeUnits(), snap.now);
+    },
     pihost() {
       return piHostInfo() ? Object.assign(SW.sourceInput.smaart(devOf("pi_host"), entsOf("pi_host")), { source: "pihost" }) : null;
     },
@@ -2964,6 +3075,7 @@
         added.globcon ? chip(foldCard(globconCard(), "globcon", false), "globcon") : null,
         chip(foldCard(witmotionCard(), "witmotion", false), "witmotion"),
         ((admin.shelly || {}).meters || []).length ? chip(foldCard(shellyCard(), "shelly", false), "shelly") : null,
+        rmeUnits().length ? chip(foldCard(rmeCard(), "rme", false), "rme") : null,
         ((admin.shelly || {}).meters || []).length ? foldCard(powerSiteCard(), "powersite", false) : null,
         (((admin.shelly || {}).meters || []).length || ((admin.config || {}).power_points || []).length) ? foldCard(powerTreeCard(), "powertree", false) : null,
         foldCard(barometerCard(), "barometer", false),
@@ -3045,6 +3157,8 @@
           if (found(live.discovered) !== found(admin.discovered) && canRebuild && !document.querySelector("dialog[open]")) { await refresh(); return; }
           admin.wall_clock = live.wall_clock; admin.ontime_timer = live.ontime_timer; admin.ontime_rundown = live.ontime_rundown;
           admin.globcon = live.globcon;
+          admin.rme = live.rme;
+          if (rmeUnits().length === document.querySelectorAll("[data-rme-unit]").length) rmeUnits().forEach(rmeRefreshUnit);   // text only: nothing typed is lost
           admin.witmotion = live.witmotion;
           document.querySelectorAll("[data-wm-status]").forEach((el) => el.replaceChildren(...wmStatusNodes(Number(el.dataset.wmStatus))));   // text only: nothing typed is lost
           if (ot) ot.replaceChildren(...ontimeStatusLines(admin).map((l) => h("p", {}, l)));
