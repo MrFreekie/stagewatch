@@ -24,7 +24,7 @@ from guest and public Wi-Fi. Stagewatch only listens, and holds no password for 
   page uses) and sends it **nothing**: no request, no question, no setting. It cannot change gain, 48 V, a preset,
   routing or the clock. A test checks that a unit receives nothing from Stagewatch.
 - **Equipment, not air.** The unit's core temperature and its two power supplies are recorded as Equipment readings.
-  They never count towards the site averages, the speed of sound or the barometer.
+  They never count towards the site averages, the speed of sound or the barometer. The Equipment card shows only the temperature; the supplies are On or Off words on the RME interfaces card.
 - **Changes are marked as they happen.** While Stagewatch is watching, a lost or restored power supply, a changed clock
   source, a clock that loses lock and a different loaded preset each add a marker, for example
   `RME Stage L: PSU 2 lost`. A unit going offline and coming back also adds markers. Things the unit says are worth a
@@ -60,15 +60,20 @@ The card uses RME's own "soundness" words and says which area they come from.
 ## Set up
 
 1. Give the unit an address on your network (RME's own page or its front panel). Use a fixed address.
-2. Open **Admin**, go to the **Integrations** tab and, in the **Integrations** card, click **Add integration** and
-   choose **RME**.
-3. Type the unit's address in **Address** (for example `192.168.1.50`) and click **Test**. A good result reads like
-   `RME 12Mic, firmware 2.0.1, named 'Stage L'. Reading works.` It never shows the serial number.
-4. Give it a name if you want a different one, choose an **Area**, and click **Add**.
-5. Under **User dashboards**, click **Edit cards** on a dashboard and tick **RME interfaces**.
+2. Open **Admin**, go to the **Integrations** tab and click the **Add integration** tile. In the pop-out, pick
+   **RME interface** from the **Product** list.
+3. Type the unit's address in **Unit address** (for example `192.168.1.50`) and click **Test**. A good result reads
+   like `RME 12Mic, firmware 2.0.1, named 'Stage L'. Reading works.` It shows only the model, firmware and name, and
+   never the serial number or the address. **Save unit** stays switched off until a Test has worked.
+4. Give it a name if you want a different one (it starts as the unit's own name), type an **Area** if you like, and
+   click **Save unit**.
+5. The unit now has its own tile on the **Integrations** tab and its own **RME interfaces** card below, with its
+   status, a rename box and **Remove**. Under **User dashboards**, click **Edit cards** on a dashboard and tick
+   **RME interfaces**. See [the card](../cards/rme-units.md).
 
-You can add up to eight units. Under **Advanced** you can change the port (usually 80), and choose **Replace unit**
-after a hardware swap.
+You can add up to eight units. Under **Advanced** on each unit you can change the address and port (usually 80), and
+use **Replace unit** after a hardware swap, so the new unit takes over the old unit's name and history. **Record input
+changes (not available yet)** is shown switched off: gain and 48 V are not read yet.
 
 The address must be an address on a private network, such as `192.168.x.x`, `10.x.x.x` or `172.16.x.x`. **Host names
 (including `.local` names) are refused**, and so are public addresses. If the unit tries to send Stagewatch somewhere

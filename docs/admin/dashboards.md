@@ -106,6 +106,7 @@ The names in this list are slightly different from the headings on screen.
 | **Barometer** | **Barometer** | [Barometer](../cards/barometer.md) |
 | **Sound level** | **Sound level** | [Sound level](../cards/sound-level.md) |
 | **DirectOut GLOBCON** | **DirectOut GLOBCON** | [GLOBCON](../cards/globcon.md) |
+| **RME interfaces** | **RME interfaces** | [RME interfaces](../cards/rme-units.md) |
 | **Power** | **Power** | [Power](../cards/power.md) |
 | **Sound level limits** | **Sound level limits** | [Sound level limits](../cards/sound-level-limits.md) |
 | **Raspberry Pi** | **Raspberry Pi** | [Raspberry Pi](../cards/raspberry-pi.md) |
@@ -142,6 +143,7 @@ A ticked card can still be hidden until it has something to show.
 | **Barometer** | Hidden on a **wall** layout while there is no pressure sensor. Other layouts say there is no sensor. |
 | **Sound level** | Sound level values are set up. |
 | **DirectOut GLOBCON** | GLOBCON has answered. |
+| **RME interfaces** | An RME unit has been added in Admin. |
 | **Power** | A power meter has been added. |
 | **Sound level limits** | Limits have been entered in Admin. |
 | **Raspberry Pi** | Stagewatch is running on a Raspberry Pi. |

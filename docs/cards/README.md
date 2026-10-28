@@ -24,6 +24,7 @@ This page is the one list of every card. Each card has its own page.
 | [Sound level](sound-level.md) | Up to three sound level values from Smaart, and their timeline. Hidden until set up | No | No | [Smaart](../integrations/smaart.md) |
 | [Sound level limits](sound-level-limits.md) | The licence limit now, the next change and Smaart's live value beside it. Public wording only | No | No | [Smaart](../integrations/smaart.md) and limits entered in Admin |
 | [DirectOut GLOBCON](globcon.md) | Level meters for 4, 8 or 16 channels of one controller. Hidden until GLOBCON has answered | No | Yes | [DirectOut GLOBCON](../integrations/globcon.md) |
+| [RME interfaces](rme-units.md) | One tile per RME unit, such as a 12Mic: status word, temperature, power supplies, clock, preset and AVB streams. Hidden until a unit is added | No | Yes | [RME interfaces](../integrations/rme.md) |
 | [Power](power.md) | Watts, volts, amps and energy from power meters. Hidden until a meter is added | No | Yes | [Shelly](../integrations/shelly.md) |
 | [Power tree](power-tree.md) | Supplies, units and equipment as a tree: power, load bars and the unmonitored load at each unit (calculated). Several supplies side by side. Needs Power distribution set up | No | No | [Shelly](../integrations/shelly.md) and Power distribution in Admin |
 | [Raspberry Pi](raspberry-pi.md) | The health of the Pi Stagewatch runs on: temperature, power supply, load, memory, disk. Hidden unless it runs on a Pi | No | Yes | A Raspberry Pi |
