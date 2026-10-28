@@ -261,6 +261,25 @@ def clean_text(value: object, limit: int) -> str:
     return " ".join(text.split())[:limit].strip()
 
 
+_DIGIT_RUN = re.compile(r"\d{5,}")
+_SERIAL_LOOK = re.compile(r"^(?=.*\d)(?=.*[A-Za-z])[A-Za-z0-9._-]{8,}$")
+
+
+def public_name(name: str, serial: str = "") -> str:
+    """A unit's own name made fit to be the default public name: any word that holds the serial number, a
+    run of five or more digits, or looks like a serial number (letters and digits mixed, eight or more
+    characters) is dropped. The unit may well have its serial number in its name."""
+    serial = (serial or "").strip().lower()
+    kept = []
+    for word in name.split():
+        if serial and len(serial) >= 4 and serial in word.lower():
+            continue
+        if _DIGIT_RUN.search(word) or _SERIAL_LOOK.match(word):
+            continue
+        kept.append(word)
+    return " ".join(kept)
+
+
 def clean_word(value: object, limit: int = WORD_MAX) -> str:
     """A token reduced to letters, digits, underscore and space (for soundness words and clock keys)."""
     if not isinstance(value, str):
@@ -464,6 +483,7 @@ def make_view(data: dict | None) -> View | None:
     model = clean_text(_get(data, "device", "model_name"), LOCAL_NAME_MAX)
     firmware = clean_text(_get(data, "device", "firmware_version"), WORD_MAX)
     serial = clean_serial(_get(data, "device", "serial_number"))
+    name = public_name(name, serial)
 
     psu_raw = _get(data, "device", "psu", "state")
     psu = (psu_raw[0], psu_raw[1]) if isinstance(psu_raw, list) and len(psu_raw) == 2 \

@@ -547,3 +547,13 @@ def test_nothing_in_the_view_depends_on_a_nan():
     with pytest.raises(BadFrame):
         st.ingest('{"device": {"health": {"temperatures": {"core": NaN}}}}')
     assert math.isfinite(parse.make_view(st.data).temp_c)
+
+
+def test_public_name_drops_serial_looking_words_and_the_serial_itself():
+    assert parse.public_name("Stage L") == "Stage L"
+    assert parse.public_name("Monitor World 2") == "Monitor World 2"
+    assert parse.public_name("12Mic Stage L") == "12Mic Stage L"
+    assert parse.public_name("12Mic 23051234") == "12Mic"                       # a long digit run
+    assert parse.public_name("Stage SN12345AB") == "Stage"                      # looks like a serial
+    assert parse.public_name("Rack ab-77c", "AB-77C") == "Rack"                 # holds the unit's serial
+    assert parse.public_name("23051234") == ""
