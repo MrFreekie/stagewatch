@@ -1,5 +1,6 @@
 * text=auto
 *.sh text eol=lf
+deploy/pi/stagewatch-set-time text eol=lf
 .githooks/* text eol=lf
 *.ps1 text eol=crlf
 *.py text eol=lf
