@@ -105,7 +105,9 @@ def test_advice_js_is_safe_to_render_and_uses_plain_words():
     css = _read("style.css")
     assert re.search(r"\.adv-status\.adv-check \{ color: var\(--warn\); \}", css)
     block = css[css.index("FOH advice cards"):]
-    assert "var(--stop)" not in block and "var(--alert)" not in block   # never alarm colours
+    # Only the advice card's own rules (selectors with .adv-): later cards may use alarm colours.
+    own = [body for sel, body in re.findall(r"([^{}]*\.adv-[^{}]*)\{([^}]*)\}", block)]
+    assert own and not any("var(--stop)" in b or "var(--alert)" in b for b in own)   # never alarm colours
     assert "font-variant-numeric: tabular-nums" in block and "body.layout-wall .adv-drift" in block
 
 
