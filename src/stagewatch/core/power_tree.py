@@ -212,10 +212,6 @@ def tidy_on_load(nodes: list[Node]) -> dict[str, str]:
     return cut
 
 
-def children_of(nodes: list[Node], ref: str) -> list[str]:
-    return [n.ref for n in nodes if n.upstream == ref]
-
-
 # --------------------------------------------------------------------------- reading a config
 # These functions use the config by duck typing (power_points, shelly_devices and their channels), so this
 # module never imports config.py.

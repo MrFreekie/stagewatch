@@ -124,10 +124,6 @@ def timer_message(label: str, reading: TimerReading, show_title: bool = True) ->
     }
 
 
-def timer_assigned(config) -> bool:
-    return card_assigned(config, CARD_ID)
-
-
 def _ontime_source(hub: "Hub", attr: str = "latest_timer"):
     """The Ontime integration's shared source (the real one or its emulated stand-in), if any."""
     for integration in hub.integrations.values():

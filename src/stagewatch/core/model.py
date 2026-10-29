@@ -256,10 +256,3 @@ class Marker:
     def to_dict(self) -> dict:
         return {"id": self.id, "ts": self.ts, "label": self.label, "source": self.source,
                 "hidden": self.hidden, "note": self.note}
-
-
-@dataclass
-class StateEvent:
-    entity_id: str
-    value: float | None
-    ts: float = field(default_factory=time.time)
