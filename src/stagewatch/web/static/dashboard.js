@@ -1828,7 +1828,7 @@
       return;
     }
     body.replaceChildren(h("div", { class: "wifi-list" }, wifiList.map((n) => {
-      const qr = SW.qrSvg(SW.wifiPayload(n), 200);
+      const qr = SW.qrSvg(SW.wifiPayload(n), 200, "L");
       let plate = null;
       if (qr) {
         qr.setAttribute("aria-label", `QR code to join ${n.ssid}`);
