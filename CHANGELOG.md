@@ -17,6 +17,7 @@ them into a dated release section and tags the commit.
 
 ### Fixed
 
+- **DirectOut GLOBCON: the dB figures no longer change the height of the row under the meters** (half-width card, 16 channels). The upright figure was as long as the number, so "-9.5" and "-100" made different heights. Each figure now sits in a box of the same length and ends at the same place.
 - **RME interfaces: timeline.** A power supply that drops and comes back within ten seconds now gives both markers, and a return to normal (power supply restored, clock locked, a health word back to Good) is never held back. The same marker is still only made once in ten seconds. When too many changes arrive in a minute, the notice names the unit, and once the minute is over the final state is marked if it changed.
 - **RME interfaces: lost updates.** If Stagewatch has to throw away a change a unit sent (too many at once, too big or unreadable), the unit now shows as away and Stagewatch reconnects to read its whole status again, instead of carrying on with old values as if they were current. A unit that sends far too much text, too many meter frames or full statuses too often is disconnected for a while.
 - **RME interfaces: alarm log.** Each notice on a unit changes at most once every two seconds, so a lock that keeps flapping cannot fill the log. A full status that changes nothing no longer forces a refresh.

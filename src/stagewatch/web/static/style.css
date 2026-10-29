@@ -1060,7 +1060,11 @@ body.layout-wall .gc-strips .gc-value { font-size: 22px; }
 body.layout-wall .gc-strips .gc-mark { font-size: 18px; }
 /* 16 channels in a half-width card on a tablet: the columns are about 20px wide, so the dB figure is turned upright
    like the name (a horizontal "-26" would wrap). Wide cards and the wall keep it horizontal. */
-body:not(.layout-wall):not(.layout-phone) main > [data-size="half"] .gc-strips[data-n="16"] .gc-value { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; font-size: 13px; }
+/* Half-width, 16 channels: the columns are too narrow to write the dB figure across, so it stays upright, but in a box of a
+   fixed length with tabular digits, ending at the same place. Before, the box was as long as the figure, so the row under
+   the meters changed height as the number changed ("-9.5" against "-100"). */
+body:not(.layout-wall):not(.layout-phone) main > [data-size="half"] .gc-strips[data-n="16"] .gc-value { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; font-size: 13px; height: 4em; text-align: end; overflow: hidden; font-variant-numeric: tabular-nums; }
+body:not(.layout-wall):not(.layout-phone) main > [data-size="half"] .gc-strips[data-n="16"] .gc-reading { min-height: 4em; }
 
 /* Equipment card: compact tiles so a node's Temperature, Pressure and Humidity sit on one line, wrapping to more
    lines only when there are more sensors. */
