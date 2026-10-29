@@ -7,6 +7,16 @@
 (function () {
   "use strict";
 
+  // Day / Night: apply the choice this browser made (Day/Night button, key "stagewatch.theme") before
+  // the page paints, so no page flashes the wrong theme and pages without a button (schedule, edit
+  // cards, power distribution) still follow it. No saved choice = follow the device.
+  try {
+    var savedTheme = localStorage.getItem("stagewatch.theme");
+    if (savedTheme === "day" || savedTheme === "night") {
+      document.documentElement.setAttribute("data-theme", savedTheme === "day" ? "light" : "dark");
+    }
+  } catch (e) { /* storage blocked: follow the device */ }
+
   // True if `code` parses. Only a SyntaxError counts as "not supported"; anything else
   // (for example a security policy blocking Function) is treated as fine.
   function parses(code) {

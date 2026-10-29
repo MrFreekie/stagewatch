@@ -199,3 +199,17 @@ def test_compat_message_text() -> None:
     assert "too old for Stagewatch" in compat
     assert "iOS 12 or later for dashboards" in compat
     assert "iOS 13" in compat
+
+
+def test_every_page_links_the_theme_code():
+    """Day / Night: compat.js applies the saved choice early, so every page must load it in <head>
+    before the stylesheet (no flash of the wrong theme, and pages without a button still follow it)."""
+    compat = (STATIC / "compat.js").read_text(encoding="utf-8")
+    assert '"stagewatch.theme"' in compat and "data-theme" in compat
+    for page in sorted(STATIC.glob("*.html")):
+        html = page.read_text(encoding="utf-8")
+        head = html.split("</head>")[0]
+        assert "/static/compat.js" in head, f"{page.name} does not load compat.js (theme) in <head>"
+        assert head.index("/static/compat.js") < head.index("/static/style.css"), f"{page.name}: compat.js after style.css"
+        if "theme-toggle" in html:
+            assert "stagewatch.theme" in html or "stagewatch.theme" in (STATIC / page.name.replace(".html", ".js")).read_text(encoding="utf-8"), page.name

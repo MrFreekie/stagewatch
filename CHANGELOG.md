@@ -23,6 +23,8 @@ them into a dated release section and tags the commit.
 
 ### Fixed
 
+- **Day / Night on every page.** The Day or Night choice you make on the start page, Admin or a dashboard is now applied before any page appears, so pages no longer flash the wrong theme. The schedule editor, Edit cards and Power distribution pages follow it too. In Day mode, green and amber text ("Online", "ok", the Raspberry Pi power warning) and blue links on grey panels are darker so they read clearly.
+
 - **DirectOut GLOBCON: the dB figures no longer change the height of the row under the meters** (half-width card, 16 channels). The upright figure was as long as the number, so "-9.5" and "-100" made different heights. Each figure now sits in a box of the same length and ends at the same place.
 - **RME interfaces: timeline.** A power supply that drops and comes back within ten seconds now gives both markers, and a return to normal (power supply restored, clock locked, a health word back to Good) is never held back. The same marker is still only made once in ten seconds. When too many changes arrive in a minute, the notice names the unit, and once the minute is over the final state is marked if it changed.
 - **RME interfaces: lost updates.** If Stagewatch has to throw away a change a unit sent (too many at once, too big or unreadable), the unit now shows as away and Stagewatch reconnects to read its whole status again, instead of carrying on with old values as if they were current. A unit that sends far too much text, too many meter frames or full statuses too often is disconnected for a while.
