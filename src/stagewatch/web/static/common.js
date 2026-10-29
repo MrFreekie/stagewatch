@@ -1113,7 +1113,7 @@ SW.heartbeat = function (everyMs = 2000) {
 
 // ---- QR codes (local; uses the vendored qrcode-generator in /static/vendor/qrcode.js) ----
 // Returns an <svg> element (built with DOM calls, no innerHTML) or null if it cannot be made.
-SW.qrSvg = function (text, size = 176, level = "M") {
+SW.qrSvg = function (text, size = 176, level = "L") {
   if (typeof qrcode !== "function") return null;
   let qr;
   try { qr = qrcode(0, level); qr.addData(text); qr.make(); } catch (_) { return null; }
