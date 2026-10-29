@@ -133,8 +133,24 @@ body.layout-wall .cs-panel { display: none; }
 body.layout-wall .cs-btn { min-width: 0; min-height: 0; padding: 2px 6px; pointer-events: none; }
 body.layout-wall .cs-btn.cs-ok { display: none; }
 .no-flex-gap .cs-word { margin-left: 4px; }
-@media (max-width: 640px) { header.top { padding: 6px 10px; gap: 8px; } .msg-panel { right: 4px; left: 4px; }
-  body:not(.layout-wall) .cs-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; } }
+/* Phone header: two rows. Row 1 is the title, the clock and the sound button; row 2 is the messages icon, the
+   two status chips (symbol AND word) and the Day/Night button. The sound button is a small two-line "Sound / On";
+   the long "Alarm sound: ..." wording stays for screen readers. */
+.sound-short { display: none; }
+@media (max-width: 640px) { header.top { padding: 6px 8px; gap: 4px 6px; } .msg-panel { right: 4px; left: 4px; }
+  body:not(.layout-wall) header.top .brand { order: 0; }
+  body:not(.layout-wall) header.top .title, body:not(.layout-wall) header.top .sub, body:not(.layout-wall) header.top .spacer { order: 1; }
+  body:not(.layout-wall) header.top .sub { flex: 1 1 0; }   /* the show name takes what is left and wraps */
+  body:not(.layout-wall) header.top .spacer { display: none; }
+  body:not(.layout-wall) header.top .clock, body:not(.layout-wall) button.sound-toggle { order: 2; }
+  body:not(.layout-wall) header.top::before { content: ""; order: 3; flex: 0 0 100%; height: 0; }   /* line break: status row below */
+  body:not(.layout-wall) .msg-btn, body:not(.layout-wall) .cs-btn, body:not(.layout-wall) button.theme-toggle { order: 4; }
+  body:not(.layout-wall) .cs-btn { padding: 4px 4px; min-width: 0; }
+  body:not(.layout-wall) .cs-word { font-size: 13px; }
+  body:not(.layout-wall) button.sound-toggle { padding: 2px 8px; gap: 6px; }
+  body:not(.layout-wall) button.sound-toggle #sound-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  body:not(.layout-wall) button.sound-toggle .sound-short { display: inline; font-size: 12px; line-height: 1.15; white-space: pre-line; text-align: left; }
+  body:not(.layout-wall) button.theme-toggle { padding: 4px 6px; } body:not(.layout-wall) .msg-btn { padding: 4px 4px; min-width: 0; } }
 .clock { font-variant-numeric: tabular-nums; font-weight: 600; }
 
 main { padding: 16px; display: grid; gap: 16px; max-width: 1600px; margin: 0 auto; }
@@ -759,15 +775,17 @@ body.layout-wall #ontime-rundown-card > h2 { font-size: 24px; }
 .baro-face { fill: var(--panel); stroke: var(--grid); stroke-width: 1; }
 .baro-tick { stroke: var(--muted); stroke-width: 1; }
 .baro-tick.major { stroke: var(--text); stroke-width: 1.6; }
-text.baro-num { fill: var(--text); font-size: 9px; font-variant-numeric: tabular-nums; }
-.baro-word { fill: var(--muted); font-size: 8.5px; }
+text.baro-num { fill: var(--text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.baro-word { fill: var(--muted); font-size: 11px; }
+@media (max-width: 640px) { text.baro-num.alt { display: none; } }
+body.layout-phone text.baro-num.alt { display: none; }   /* every second pressure number on a phone: the dial is small */
 .baro-point { fill: var(--muted); }
 .baro-hand { fill: var(--text); }
 .baro-tail { stroke: var(--text); stroke-width: 4; stroke-linecap: round; }
 .baro-hub { fill: var(--panel-2); stroke: var(--text); stroke-width: 2; }
 .baro-setmark { fill: var(--accent); }
 .baro-setline { stroke: var(--accent); stroke-width: 1.5; }
-.baro-setlabel { fill: var(--muted); font-size: 8px; font-variant-numeric: tabular-nums; }
+.baro-setlabel { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .baro-needle, .baro-sethand { transform-origin: 100px 100px; transition: transform .6s ease; }
 @media (prefers-reduced-motion: reduce) { .baro-needle, .baro-sethand { transition: none; } }
 .baro-dial.dim { opacity: .6; }
@@ -796,7 +814,7 @@ text.baro-num { fill: var(--text); font-size: 9px; font-variant-numeric: tabular
 .baro-no_sensor .baro-figures, .baro-no_sensor .baro-dial-host { display: none; }   /* an empty dial says nothing: just the sentence */
 .baro.dim .baro-value, .baro.dim .baro-unit { color: var(--muted); }
 /* Phone: the number first (it is what you glance for), the dial under it, a little smaller. */
-body.layout-phone .baro .baro-dial-host { width: 220px; margin: 0 auto; order: 2; }
+body.layout-phone .baro .baro-dial-host { width: 280px; margin: 0 auto; order: 2; }
 body.layout-phone .baro .baro-figures { flex-basis: 100%; }
 body.layout-phone .baro-temp, body.layout-wall .baro-temp { display: none; }
 body.layout-phone .baro-value { font-size: 36px; }
@@ -925,6 +943,7 @@ body.layout-wall .spl-note { font-size: 16px; line-height: 1.3; margin-top: 4px;
    space. Under 900 px wide it is one column again. */
 @media (min-width: 900px) {
   body.layout-tablet main, body.layout-wall main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body.layout-wall main { max-width: none; }   /* a wall screen uses its whole width */
   body.layout-tablet main > *, body.layout-wall main > * { grid-column: 1 / -1; }
   body.layout-tablet main > [data-size="half"], body.layout-wall main > [data-size="half"] { grid-column: auto; }
 }
@@ -1287,6 +1306,16 @@ body.layout-wall .wm-note { font-size: 18px; }
 .pw-dayfold > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }
 .pw-dayfold > .pw-day { margin-top: 4px; }
 body.layout-wall .pw-dayfold { display: none; }
+/* One-line status above the folded per-phase bars: symbol + words, colour only as a second cue. */
+.pw-status { margin-top: 10px; font-weight: 700; }
+.pw-status.pw-st-ok { color: var(--ok); }
+.pw-status.pw-st-high { color: var(--warn); }
+.pw-status.pw-st-over { color: var(--stop); }
+.pw-gaugefold { margin-top: 4px; }
+.pw-gaugefold > summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; min-height: 28px; }
+/* The wall cannot open a fold: the bars always show there and the summary line goes. */
+body.layout-wall .pw-gaugefold > summary { display: none; }
+body.layout-wall .pw-status { font-size: 24px; }
 
 /* Admin: event logo previews on a dark and a light swatch. */
 .brand-previews { align-items: center; }
@@ -1751,3 +1780,13 @@ body.layout-wall .cond-value { font-size: 88px; }
 body.layout-wall .cond-value .unit { font-size: 40px; }
 body.layout-wall .cond-line { font-size: 30px; }
 body.layout-wall .cond-foot, body.layout-wall .cond .card-about { display: none; }
+
+/* Touch screens and phones: the dashboard's small controls (chart ranges, List/Diagram, Add marker, fields) are 44 px tall. */
+@media (pointer: coarse), (max-width: 640px) {
+  main .seg button, main button, main button.small, main select, main .pw-histbar select, main input:not([type="checkbox"]):not([type="radio"]), .de-page button, .de-page button.small { min-height: 44px; }
+}
+/* Phone: a lone last site tile fills the row (the lone-card rule, for tiles). */
+@media (max-width: 640px) {
+  .tiles > .tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+.de-wallhint { border-left: 4px solid var(--warn); padding-left: 10px; color: var(--text); }

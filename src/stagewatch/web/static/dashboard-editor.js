@@ -64,14 +64,15 @@
     } }, admin.config.dashboards.map((d) => h("option", { value: d.slug }, `${d.title || d.slug} (/d/${d.slug}, ${d.layout})`)));
     pick.value = slug;
     const count = h("span", { class: "muted" });
+    const tickedText = () => `${editor.count()} cards ticked${editor.count() >= editor.max ? `. Maximum ${editor.max} cards` : ""}`;
     const status = h("p", { class: "muted de-status", role: "status" });
     let view = null;
     const onChange = () => {
-      if (editor) { dirty = true; count.textContent = `${editor.count()} cards ticked`; status.textContent = "Unsaved changes"; if (view) view.send(); }
+      if (editor) { dirty = true; count.textContent = tickedText(); status.textContent = "Unsaved changes"; if (view) view.send(); }
     };
     editor = SW.cardsEditor(dash, onChange, { cards: admin.cards, contactsPinSet: !!(admin.config.contacts && admin.config.contacts.reveal_pin_set) });
     dirty = false;
-    count.textContent = `${editor.count()} cards ticked`;
+    count.textContent = tickedText();
     status.textContent = "";
     view = preview(dash);
     const save = h("button", { class: "primary touch", onclick: async () => {
@@ -94,8 +95,9 @@
         view.reload();
       } catch (err) {
         if (err.status === 401) { toLogin(); return; }
-        status.textContent = `Not saved: ${err.message}`;
-        toast(err.message, true);
+        const msg = String(err.message).replace(/^\d+\.\w+:\s*(Value error,\s*)?/, "");   // the server's field path is not for crew
+        status.textContent = `Not saved: ${msg}`;
+        toast(msg, true);
       } finally { save.disabled = false; }
     } }, "Save");
     const undo = h("button", { class: "touch", type: "button", onclick: () => { render(); } }, "Undo changes");

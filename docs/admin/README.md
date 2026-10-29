@@ -41,7 +41,7 @@ Admin has four tabs: **Show day**, **Sensors and nodes**, **Integrations** and *
 | **ESPHome nodes** | Adopt, rename and remove sensor nodes | [ESPHome](../integrations/esphome.md) |
 | **Sensors: calibration & averaging** | Offsets, what counts in the site average, accuracy, role | [Sensors and alarms](sensors-and-alarms.md) |
 | **Threshold alarms** | Add limits | [Sensors and alarms](sensors-and-alarms.md) |
-| **Calibration & hardware** | Each sensor's board and offset history; save offsets to a file and read them back | [Sensors and alarms](sensors-and-alarms.md#calibration--hardware) |
+| **Hardware and offsets** | Each sensor's board and offset history; save offsets to a file and read them back | [Sensors and alarms](sensors-and-alarms.md#hardware-and-offsets) |
 | **Device errors** | Problems each device had in a show (experimental) | [Device errors](../cards/device-errors.md) |
 | **Import a log file** | Read an L-Acoustics Network Manager log into a show (experimental) | [Import a log file](import-log.md) |
 

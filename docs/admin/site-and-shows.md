@@ -17,10 +17,10 @@ itself while the time zone is not set.
 |---|---|---|
 | **Site / show name** | The name at the top of every dashboard. | `Stagewatch` |
 | **Altitude (m): for the barometer, and the speed of sound without a pressure sensor** | How high above sea level the site is, from -500 to 6,000 m. | 0 |
-| **Reference distance (m) for Δ ms** | The distance used for the drift number on a marker. | 30 |
+| **Distance for time difference (m)** | The distance used for the drift number on a marker. | 30 |
 | **Stale after (s)** | How old a reading can get before it counts as stale. 5 to 3,600. | 60 |
-| **Smoothing τ (s)** | How much the site values are smoothed. 0 to 900. 0 means no smoothing. | 30 |
-| **Reject outliers (≥3 sensors)** | Leaves out a sensor that is far from the others. | Ticked |
+| **Smoothing (seconds)** | How much the site values are smoothed. 0 to 900. 0 means no smoothing. | 30 |
+| **Ignore odd readings (3 or more sensors)** | Leaves out a sensor that is far from the others. | Ticked |
 | **Time zone** | The time zone of the show site. | Not set |
 | **New show day starts at (HH:MM, 24-hour)** | Which show day a late-night time belongs to. | `06:00` |
 | **Warning times (minutes)** | When the Schedule card changes colour. | `15, 5` |
@@ -82,9 +82,9 @@ These decide how the site average is worked out. What "stale" looks like on scre
 [the Tiles page](../cards/env-tiles.md#the-site-average).
 
 - **Stale after (s):** a reading older than this is greyed out and left out of the site average.
-- **Smoothing τ (s):** the site average is smoothed over about this many seconds, so the numbers do
+- **Smoothing (seconds):** the site average is smoothed over about this many seconds, so the numbers do
   not jump about.
-- **Reject outliers (≥3 sensors):** with three or more sensors, one that is more than about 3 °C,
+- **Ignore odd readings (3 or more sensors):** with three or more sensors, one that is more than about 3 °C,
   15 %RH or 5 hPa from the middle value is left out. With two sensors Stagewatch cannot tell which
   is wrong, so nothing is left out.
 

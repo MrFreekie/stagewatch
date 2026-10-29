@@ -151,7 +151,7 @@ Stagewatch makes markers only as time passes **live**. It never goes back and fi
 
 - Who can add markers and acknowledge alarms: **Admin → User dashboards** (**Add markers**,
   **Ack alarms**). See [Dashboards](../admin/dashboards.md).
-- The reference distance for the drift number: **Admin → Site** (**Reference distance (m) for Δ ms**).
+- The reference distance for the drift number: **Admin → Site** (**Distance for time difference (m)**).
   See [Site and shows](../admin/site-and-shows.md).
 - Delete a marker: log in to Admin, then use the **✕** beside it on any dashboard.
 

@@ -31,7 +31,7 @@ A sensor is left out of the average when:
   changed it). See [Sensors](sensors.md#stale-readings).
 - **It is an outlier.** There are three or more sensors, and one is far from the middle value:
   more than about 3 °C for temperature, 15 % for humidity, or 5 hPa for pressure. Your tech can
-  switch this off in **Admin → Site** (**Reject outliers (≥3 sensors)**).
+  switch this off in **Admin → Site** (**Ignore odd readings (3 or more sensors)**).
 - **Your tech ticked it out** of the average in Admin.
 - **It is an Equipment sensor** (a rack, a fan, a power supply). Gear readings never move a site
   value. See [Equipment](equipment.md).

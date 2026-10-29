@@ -656,7 +656,7 @@ SW.pw = (function () {
           h("div", { class: "pw-gscale muted" }, h("span", {}, "0"), h("span", { style: `left:${pw.LOAD_HIGH}%` }, "80%"), h("span", { class: "r" }, "100%")),
           pw.limitLine(m.breaker, m.device, false)));
         noted = !!m.weak;
-        r.gauges.push({ kind: "combined", ids: m.combinedIds, rating: m.rating, by: m.by, fill, text, word, el: track, meter: m });
+        r.gauges.push({ name: "Combined load", kind: "combined", ids: m.combinedIds, rating: m.rating, by: m.by, fill, text, word, el: track, meter: m });
       }
       for (const ch of m.channels) {
         for (const g of pw.GROUP_ORDER.filter((k) => ch.groups[k] && k !== "n" && k !== "total" && k !== "avg")) {
@@ -671,7 +671,7 @@ SW.pw = (function () {
               h("div", { class: "pw-gscale muted" }, h("span", {}, "0"), h("span", { style: `left:${pw.LOAD_HIGH}%` }, "80%"), h("span", { class: "r" }, "100%")),
               pw.limitLine(ch.breaker, ch.device, noted)));
             noted = noted || ch.weak;
-            r.gauges.push({ kind: "load", rating: ch.rating, by: ch.by, entity: cur.id, fill, mark, text, word, el: track });
+            r.gauges.push({ name: pre + "Load", kind: "load", rating: ch.rating, by: ch.by, entity: cur.id, fill, mark, text, word, el: track });
           }
           for (const f of ["voltage", "voltage_ll", "freq"]) {
             const e = ch.groups[g][f];
@@ -687,7 +687,7 @@ SW.pw = (function () {
             gaugeBox.append(h("div", { class: "pw-gauge" }, h("div", { class: "pw-glabel" }, h("span", { class: "pw-label" }, pre + cfg.word), " ", text, " ", word), track,
               h("div", { class: "pw-gscale muted" }, h("span", {}, `${cfg.scale[0]}`),
                 ...marks.map((x) => h("span", { style: `left:${pos(x)}%` }, `${x}`)), h("span", { class: "r" }, `${cfg.scale[1]} ${cfg.unit}`)), sub));
-            r.gauges.push({ kind: "swing", cfg, entity: e.id, band, live, text, word, sub, el: track });
+            r.gauges.push({ name: pre + cfg.word, kind: "swing", cfg, entity: e.id, band, live, text, word, sub, el: track });
           }
         }
       }
@@ -746,7 +746,16 @@ SW.pw = (function () {
       const dayFold = h("details", { class: "pw-dayfold" }, h("summary", {}, "Show day figures"), dayBody);
       dayFold.open = !!pw.dayFoldOpen[m.id];
       dayFold.addEventListener("toggle", () => { pw.dayFoldOpen[m.id] = dayFold.open; });
-      r.root = h("div", { class: "pw-meter" }, head, r.note, body, r.gauges.length ? gaugeBox : null, dayFold);
+      // The per-phase bars (load, voltage, frequency) fold away under one closed line; a one-line status above
+      // it says which circuit needs a look. The wall cannot open a fold, so there the bars always show.
+      r.status = h("div", { class: "pw-status" });
+      let gaugeFold = null;
+      if (r.gauges.length) {
+        gaugeFold = h("details", { class: "pw-gaugefold" }, h("summary", {}, "Per-phase detail: load, voltage, frequency"), gaugeBox);
+        gaugeFold.open = !!pw.dayFoldOpen["g" + m.id] || document.body.classList.contains("layout-wall");
+        gaugeFold.addEventListener("toggle", () => { pw.dayFoldOpen["g" + m.id] = gaugeFold.open; });
+      }
+      r.root = h("div", { class: "pw-meter" }, head, r.note, body, r.gauges.length ? r.status : null, gaugeFold, dayFold);
       return r;
     }
 
@@ -876,6 +885,25 @@ SW.pw = (function () {
                 gg.sub.textContent = `Today ${SW.num(d.min, cfg.dec)} to ${SW.num(d.max, cfg.dec)} ${cfg.unit}. ${lowOut}${highOut}`.trim();
               } else { gg.band.style.display = "none"; gg.sub.textContent = ""; }
             }
+          }
+          // One line for the whole meter: what is off, or that everything is fine. Symbol and words, never colour alone.
+          const bad = [];
+          for (const gg of r.gauges) {
+            const e = entities[gg.entity];
+            if (gg.kind === "combined" || gg.kind === "load") {
+              const lv = gg.kind === "combined" ? pw.combinedView(gg.ids, entities, gg.rating, m.state === "live", gg.by) : pw.loadView(e ? e.value : null, gg.rating, gg.by);
+              if (lv.level === "over" || lv.level === "high") bad.push({ over: lv.level === "over", text: `${gg.name} ${lv.word}` });
+            } else {
+              const vv = pw.swingView(e ? e.value : null, gg.cfg);
+              if (vv.state === "low" || vv.state === "high") bad.push({ over: true, text: `${gg.name} ${vv.word}` });
+              else if (vv.state === "near") bad.push({ over: false, text: `${gg.name} close to its limit` });
+            }
+          }
+          if (r.gauges.length) {
+            const anyOver = bad.some((b) => b.over);
+            const idle = m.state !== "live";
+            r.status.textContent = idle ? "– Not reading now" : !bad.length ? "✓ All circuits OK" : `${anyOver ? "✕" : "▲"} ${bad.slice(0, 3).map((b) => b.text).join(", ")}${bad.length > 3 ? ` and ${bad.length - 3} more` : ""}`;
+            r.status.className = `pw-status ${idle ? "" : !bad.length ? "pw-st-ok" : anyOver ? "pw-st-over" : "pw-st-high"}`;
           }
           const mine = Object.values(entities).filter((e) => e.device_id === m.id && e.labels && e.labels.channel);
           const day = pw.dayOf(mine);
