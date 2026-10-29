@@ -42,8 +42,9 @@ Ontime, Rational Acoustics (Smaart), DirectOut (GLOBCON), RME, L-Acoustics, Meye
 
 Product names, company names and logos belong to their owners. Stagewatch uses them only to say
 which product it can read from. Using one does not mean its owner knows about Stagewatch or agrees
-with it. The Ontime and DirectOut logos appear small on the cards that read from those products,
-for the same reason.
+with it. The Ontime, DirectOut and RME logos appear small on the cards that read from those products,
+for the same reason. The RME logo was supplied by the owner of this project and is used only to
+identify the integration.
 
 ### Read only
 

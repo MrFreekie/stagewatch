@@ -113,3 +113,18 @@ def test_equipment_hides_rme_contacts_by_the_devices_integration_not_an_id_prefi
 
 def test_the_add_form_tells_the_admin_to_check_the_prefilled_name():
     assert "Check it before you save" in code("rme-admin.js") and "ra.NAME_CHECK" in code("admin.js")
+
+
+def test_channel_names_are_public_text_and_the_wording_says_so():
+    js = code("rme.js")
+    assert "inputs" in js and "textContent" in js
+    assert "label" in js and "gain" not in js.lower() and "p48" not in js.lower()
+    assert "Put nothing private in a channel name." in read("rme-admin.js")
+    css = read("style.css")
+    assert "body.layout-wall .rme-names" in css
+    root = ROOT.parent
+    for doc in ("docs/integrations/rme.md", "docs/cards/rme-units.md"):
+        text = (root / doc).read_text(encoding="utf-8")
+        assert "Put nothing private in a channel name" in text or "put nothing private in a channel name" in text, doc
+        assert "private unless" not in text.lower() and "opt-in" not in text.lower() and "opts in" not in text.lower(), doc
+    assert "RME Audio" in (root / "README.md").read_text(encoding="utf-8")

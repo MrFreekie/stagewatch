@@ -7,6 +7,7 @@ SW.rmeAdmin = (function () {
   const isNum = (x) => typeof x === "number" && Number.isFinite(x);
   ra.MAX = 8;
   ra.SECURITY = "RME units have no password: anyone on the network can change them. Stagewatch only reads.";
+  ra.LABELS = "Channel names are shown on every dashboard that has the RME interfaces card. Put nothing private in a channel name.";
   ra.NOTE = "Tried on one RME 12Mic only. Other RME units are untested.";
 
   // What to check, by the category the Test answer carries. The server's own sentence says what happened.

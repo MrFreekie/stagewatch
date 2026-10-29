@@ -1,7 +1,8 @@
 // RME interfaces card: what to show (SW.rme.unitView, pure) and the card's DOM, built once per unit and
 // updated in place. The server sends an "rme_units" message whenever something changes: per unit its
 // name, model, a status word (OK / CHECK / WARNING / OFFLINE / Starting), core temperature, power
-// supplies, clock, preset, AVB stream counts and the unit's own soundness list. Everything is shown as
+// supplies, clock, preset, AVB stream counts and the unit's own soundness list. Channel names (the
+// unit's input labels) are shown on every dashboard; gain, 48 V and phase are never read. Everything is shown as
 // the unit reported it; nothing here is smoothed, guessed or sent back to the unit.
 //
 // Every state has a word and a symbol as well as colour. A unit that is offline keeps its last values on
@@ -73,6 +74,20 @@ SW.rme = (function () {
     return { all, notes: all.filter((s) => s.kind !== "tick" && s.kind !== "dash") };
   };
 
+  // Channel names (analogue input labels, shown on every dashboard by the owner's decision). Only channels
+  // with a name; at most 32; each name is plain text, cut at 40 characters. The wall shows at most 12.
+  rme.WALL_CHANNELS = 12;
+  rme.channels = function (inputs, layout) {
+    const all = [];
+    (Array.isArray(inputs) ? inputs : []).forEach((c) => {
+      if (!c || typeof c !== "object" || !Number.isInteger(c.n) || c.n < 1 || c.n > 32) return;
+      const label = text(c.label, 40).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202f\u2060-\u206f\ufeff]/g, "").trim();
+      if (label && all.length < 32) all.push({ n: c.n, label });
+    });
+    const cap = layout === "wall" ? rme.WALL_CHANNELS : 32;
+    return { list: all.slice(0, cap), more: Math.max(0, all.length - cap), total: all.length };
+  };
+
   // One unit as the card shows it. `u` is a unit from the "rme_units" message; `since` is how many seconds
   // ago the message arrived (the unit's own ages are as at that moment); `layout` is tablet, phone or wall.
   rme.unitView = function (u, since, layout) {
@@ -100,6 +115,8 @@ SW.rme = (function () {
     }
     v.temp = waiting ? "—" : rme.fmtTemp(u.temp_c);
     v.psu = waiting ? rme.psuWords(null) : rme.psuWords(u.psu);
+    v.layout = wall ? "wall" : layout === "phone" ? "phone" : "tablet";
+    v.channels = waiting ? { list: [], more: 0, total: 0 } : rme.channels(u.inputs, layout);
     v.psuText = v.psu.map((p) => `${p.label} ${p.word}`).join(", ");
     if (!wall) {
       v.clock = waiting ? "—" : rme.clockText(u.clock);
@@ -140,18 +157,23 @@ SW.rme = (function () {
       psu1: h("span", { class: "rme-psu" }), psu2: h("span", { class: "rme-psu" }),
       clock: h("span", {}), preset: h("span", {}), presetFlag: h("span", { class: "rme-flag", hidden: true }, "▲ Preset changed"),
       avb: h("span", {}), age: h("p", { class: "rme-age", role: "status" }),
+      names: h("ul", { class: "rme-names" }), namesMore: h("p", { class: "rme-names-more muted" }),
       notes: h("ul", { class: "rme-notes" }), checks: h("ul", { class: "rme-checks" }), fw: h("p", { class: "rme-fw muted" }),
     };
     const row = (label, ...kids) => h("div", { class: "rme-row" }, h("span", { class: "rme-label" }, label), h("span", { class: "rme-val" }, ...kids));
     t.rowClock = row("Clock", t.clock);
     t.rowPreset = row("Preset", t.preset, " ", t.presetFlag);
     t.rowAvb = row("AVB", t.avb);
+    t.namesList = h("ul", { class: "rme-names rme-names-detail" });
+    t.namesSummary = h("summary", {}, "Channel names");
+    t.namesBox = h("details", { class: "rme-chans" }, t.namesSummary, t.namesList);
+    t.namesWall = h("div", { class: "rme-names-wall" }, t.names, t.namesMore);
     t.more = h("details", { class: "rme-more" }, h("summary", {}, "All checks"), t.checks, t.fw);
     t.el = h("article", { class: "rme-tile" },
       h("div", { class: "rme-head" }, h("div", { class: "rme-title" }, t.name, t.model), h("div", { class: "rme-status", role: "status" }, t.sym, t.word)),
       t.temp,
       h("div", { class: "rme-psus" }, t.psu1, t.psu2),
-      t.rowClock, t.rowPreset, t.rowAvb, t.notes, t.age, t.more);
+      t.namesWall, t.rowClock, t.rowPreset, t.rowAvb, t.namesBox, t.notes, t.age, t.more);
     t.update = function (v) {
       setClass(t.el, `rme-tile ${v.cls}${v.dim ? " rme-dim" : ""}`);
       setText(t.name, v.name);
@@ -177,6 +199,18 @@ SW.rme = (function () {
         setText(t.fw, v.firmware ? `Firmware ${v.firmware}` : "");
         setHidden(t.more, !v.checks.length && !v.firmware);
       }
+      const hasNames = v.channels.list.length > 0;
+      setHidden(t.namesWall, !(hasNames && v.layout === "wall"));
+      setHidden(t.namesBox, !(hasNames && detail));
+      if (hasNames) {
+        fillNames(v.layout === "wall" ? t.names : t.namesList, v.channels.list);
+        const more = v.layout === "wall" && v.channels.more > 0;
+        setText(t.namesMore, more ? `+${v.channels.more} more` : "");
+        setHidden(t.namesMore, !more);
+        setText(t.namesSummary, `Channel names (${v.channels.total})`);
+        // Open on a tablet, folded on a phone; set when the layout first shows or changes, so a tap sticks.
+        if (t.chanLayout !== v.layout) { t.chanLayout = v.layout; t.namesBox.open = v.layout === "tablet"; }
+      }
       // One line that keeps its space: how old an offline unit's values are, or that a quiet unit has nothing new.
       setClass(t.age, v.ageNote ? "rme-age" : "rme-age rme-quiet");
       setText(t.age, v.ageNote || v.quiet);
@@ -184,6 +218,14 @@ SW.rme = (function () {
     };
     return t;
   };
+
+  function fillNames(ul, items) {
+    const sig = items.map((c) => `${c.n}|${c.label}`).join("\n");
+    if (ul.dataset && ul.dataset.sig === sig) return;
+    if (ul.dataset) ul.dataset.sig = sig;
+    const h = SW.h;
+    ul.replaceChildren(...items.map((c) => h("li", { class: "rme-chan" }, h("span", { class: "rme-chan-n" }, String(c.n)), " ", h("span", { class: "rme-chan-name" }, c.label))));
+  }
 
   function fillList(ul, items, withCause) {
     const sig = items.map((s) => `${s.area}|${s.symbol}|${s.word}|${s.cause}`).join("\n");
