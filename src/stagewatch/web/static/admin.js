@@ -954,7 +954,7 @@
   }
   function rmeCard() {
     const ra = SW.rmeAdmin, units = rmeUnits();
-    return card("RME interfaces",
+    return SW.brandCard("RME interfaces", "rme-badge.png", "RME",
       h("p", { class: "muted" }, "Shows the health of RME units, such as the 12Mic, on dashboards that have the RME interfaces card (User dashboards → Edit cards): whether the unit is OK, its core temperature, both power supplies, the clock it follows, the loaded preset and its AVB streams. Stagewatch only listens: it sends the unit nothing, so it cannot change gain, 48 V, a preset, routing or the clock. It is not a protection system."),
       h("p", { class: "notice" }, ra.SECURITY),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: the units are simulated, so any private address will \"find\" a simulated 12Mic. The second unit goes offline for 30 seconds every few minutes, to show how an away unit looks.")
@@ -2117,7 +2117,7 @@
     ].map((p) => Object.assign(p, { emulated: admin.emulate && p.key !== "ontime", added: p.added || admin.emulate })).concat([
       // One entry per device: always addable; each has its own add form, and is edited on its own card.
       { key: "shelly", name: "Shelly power meter", badge: "shelly-badge.svg", device: true, form: (prefill, done) => shellyAddForm(done) },
-      { key: "rme", name: "RME interface", badge: "", device: true, form: (prefill, done) => rmeAddForm(done) },
+      { key: "rme", name: "RME interface", badge: "rme-badge.png", device: true, form: (prefill, done) => rmeAddForm(done) },
       { key: "esphome", name: "ESPHome node", badge: "", device: true, form: (prefill, done) => adoptForm(prefill || {}, done) },
       // Bluetooth sensors have no address to type here: they are found and set up on their own card.
       { key: "witmotion", name: "WitMotion tilt sensors", badge: "witmotion-badge.png", device: true, form: (prefill, done) => h("div", {},
@@ -2208,7 +2208,7 @@
     if (meters.length) tiles.push({ key: "shelly", name: "Shelly power meters", badge: "shelly-badge.svg", detail: plural(meters.length, "meter"),
       open: () => openCard("shelly"), hint: "Open the Shelly power meters card" });
     const rmes = rmeUnits();
-    if (rmes.length) tiles.push({ key: "rme", name: "RME interfaces", badge: "", detail: plural(rmes.length, "unit"),
+    if (rmes.length) tiles.push({ key: "rme", name: "RME interfaces", badge: "rme-badge.png", detail: plural(rmes.length, "unit"),
       open: () => openCard("rme"), hint: "Open the RME interfaces card" });
     const nodes = nodeList();
     if (nodes.length) tiles.push({ key: "esphome", name: "ESPHome nodes", badge: "", detail: plural(nodes.length, "node"),
