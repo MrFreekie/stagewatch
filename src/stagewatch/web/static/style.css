@@ -1682,7 +1682,7 @@ body.layout-wall .rme-model { display: none; }
 body.layout-wall .rme-status { font-size: 36px; }
 body.layout-wall .rme-temp { font-size: 88px; }
 body.layout-wall .rme-psus { font-size: 36px; gap: 6px 32px; }
-body.layout-wall .rme-names { font-size: 22px; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 18px; line-height: 1.25; }
+body.layout-wall .rme-names { font-size: 24px; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 18px; line-height: 1.25; }
 body.layout-wall .rme-names-more { font-size: 22px; }
 body.layout-wall .rme-chan { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 body.layout-wall .rme-age { font-size: 28px; }
