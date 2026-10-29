@@ -151,5 +151,46 @@ eq(SW.sourceInput.rme([unit()], 1000), { source: "rme", reported: "ok", dataAt: 
 eq(SW.sourceInput.rme(null, 1000).reported, "waiting", "no units: waiting");
 eq(SW.sourceInput.rme([unit(), unit({ status: "offline", link_up: false, last_frame_age_s: 20 })], 1000).dataAt, 980, "last data is the away unit's, not the live one's");
 
+// ---- channel names
+const names = (k) => Array.from({ length: k }, (_, i) => ({ n: i + 1, label: `Mic ${i + 1}` }));
+{
+  const ui2 = rme.createUi();
+  ui2.update([unit({ inputs: [{ n: 1, label: "RF Mic 1" }, { n: 2, label: "Kick" }] })], 0, "tablet");
+  const t = ui2.tiles.get("stage_l");
+  eq(t.names.children.length + t.namesList.children.length, 2, "names listed once for the layout in use");
+  eq(/Channel names \(2\)/.test(t.namesBox.textContent) && /RF Mic 1/.test(t.namesBox.textContent), true, "tablet: names in the Channel names list");
+  eq([t.namesBox.open, t.namesBox.hidden, t.namesWall.hidden], [true, false, true], "tablet: list open, wall grid hidden");
+  ui2.update([unit({ inputs: names(2) })], 0, "phone");
+  eq([t.namesBox.open, t.namesBox.hidden], [false, false], "phone: list folded");
+  t.namesBox.open = true;
+  ui2.update([unit({ inputs: names(2) })], 0, "phone");
+  eq(t.namesBox.open, true, "a tap on the fold sticks between updates");
+  ui2.update([unit({ inputs: names(20) })], 0, "wall");
+  eq([t.namesWall.hidden, t.namesBox.hidden, t.names.children.length], [false, true, 12], "wall: grid of at most 12, no fold");
+  eq([t.namesMore.textContent, t.namesMore.hidden], ["+8 more", false], "wall: +N more");
+  ui2.update([unit({ inputs: names(12) })], 0, "wall");
+  eq([t.names.children.length, t.namesMore.hidden], [12, true], "exactly 12: no +N more");
+  eq(t.names.children[0].children.map((c) => c.textContent), ["1", "Mic 1"], "number then name");
+  ui2.update([unit()], 0, "tablet");
+  eq([t.namesBox.hidden, t.namesWall.hidden], [true, true], "no inputs field: nothing shown, nothing missing");
+  ui2.update([unit({ inputs: "nope" })], 0, "tablet");
+  eq(t.namesBox.hidden, true, "inputs of the wrong shape count as none");
+  ui2.update([unit({ status: "offline", status_word: "OFFLINE", status_symbol: "dash", link_up: false, last_frame_age_s: 5, inputs: names(2) })], 0, "tablet");
+  eq(/rme-dim/.test(t.el.className) && /Mic 1/.test(t.el.textContent), true, "offline tile keeps names, dimmed with the tile");
+}
+eq(rme.channels([{ n: 0, label: "a" }, { n: 33, label: "b" }, { n: 1.5, label: "c" }, { n: 1, label: 5 }, { n: 2, label: "  " }, null, "x"], "tablet").total, 0, "bad channels dropped");
+eq(rme.channels([{ n: 3, label: "A\u0000B\u202eC" }], "tablet").list, [{ n: 3, label: "ABC" }], "control characters removed");
+eq(rme.channels([{ n: 3, label: "q".repeat(90) }], "tablet").list[0].label.length, 40, "name cut at 40");
+eq(rme.channels(names(40), "tablet").total, 32, "at most 32 channels");
+{
+  const evil = '<img src=x onerror=alert(1)>';
+  const ui3 = rme.createUi();
+  ui3.update([unit({ inputs: [{ n: 1, label: evil }] })], 0, "tablet");
+  eq(ui3.nodes[0].textContent.indexOf(evil) >= 0, true, "hostile channel name shown as text");
+  const tg = [];
+  (function walk(n) { tg.push(n.tagName); (n.children || []).forEach(walk); })(ui3.nodes[0]);
+  eq(tg.filter((x) => /^(img|script|iframe)$/i.test(x)), [], "no element made from a channel name");
+}
+
 console.log(fails ? `${fails} of ${count} checks FAILED` : `${count} checks passed`);
 process.exit(fails ? 1 : 0);

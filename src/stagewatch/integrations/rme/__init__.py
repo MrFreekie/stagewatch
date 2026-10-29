@@ -56,7 +56,7 @@ MANIFEST = Manifest(
                 "so it cannot change gain, 48 V, presets, routing or the clock. Changes are marked on the "
                 "timeline live; nothing is back-filled. Tried on one 12Mic (firmware 2.0.1) only; other RME "
                 "units are untested. RME units have no login, so anyone on their network can change them. "
-                "Equipment: never part of the site averages. Input gain, labels and level meters are not read.",
+                "Equipment: never part of the site averages. Input gain, 48 V and level meters are not read. Channel names are shown on every dashboard with the RME card.",
     tier="experimental",
     direction="in",
     iot_class="local_push",

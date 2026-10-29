@@ -3,7 +3,8 @@ conditions, status text and change markers. Pure functions (plus the marker rate
 its clock as an argument), so every rule can be tested without a socket.
 
 Private by construction: the public message is built field by field from the view. The serial number,
-address, group name, stream ids, input labels and raw frames are never passed in, so they cannot leak.
+address, group name, stream ids and raw frames are never passed in, so they cannot leak. The one input
+detail that is public is each channel's name (the owner's decision: shown on every dashboard).
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from ...core.model import Kind
-from .parse import SoundItem, View
+from .parse import LABEL_MAX, MAX_CHANNELS, SoundItem, View, clean_text
 
 LEVEL_NONE, LEVEL_ADVISORY, LEVEL_ALERT = 0, 1, 2
 
@@ -129,10 +130,20 @@ def unit_status(view: View | None, phase: str, lost_live: frozenset[int]) -> str
     return "starting"
 
 
+def public_inputs(inputs: tuple[tuple[int, str], ...]) -> list[dict]:
+    """Channel names for the dashboard: only channels that have a name, cleaned and capped again here."""
+    out = []
+    for n, label in inputs[:MAX_CHANNELS]:
+        text = clean_text(label, LABEL_MAX)
+        if text and isinstance(n, int) and 1 <= n <= MAX_CHANNELS:
+            out.append({"n": n, "label": text})
+    return out
+
+
 def unit_message(uid: str, name: str, view: View | None, *, phase: str, frame_age_s: float | None,
                  text_age_s: float | None, lost_live: frozenset[int] = frozenset()) -> dict:
     """One unit as the dashboard card gets it. Exact field set, asserted by a test. No serial, MAC, address,
-    group name, stream id or input label ever appears here."""
+    group name or stream id ever appears here. Channel names (inputs) are the only input detail."""
     status = unit_status(view, phase, lost_live)
     word, symbol = STATUS_WORDS[status]
     v = view or View()
@@ -162,6 +173,7 @@ def unit_message(uid: str, name: str, view: View | None, *, phase: str, frame_ag
                 "states": [{"word": w, "count": n} for w, n in v.avb_states]},
         "soundness": [s.public() for s in v.sound],
         "firmware": v.firmware,
+        "inputs": public_inputs(v.inputs),
     }
 
 

@@ -38,6 +38,9 @@ BINARY_PER_S = 66                 # meter frames a second, counted and thrown aw
 UNKNOWN_WORD = "Surprise"         # an invented soundness word, to show the "never green" path
 PRESET_NAMES = {"1": "Live 1", "2": "Live 2", "3": "Walk-in"}
 
+CHANNEL_NAMES = ("RF Mic 1", "RF Mic 2", "RF Mic 3", "RF Mic 4", "Kick in", "Kick out",
+                 "Snare top", "Snare bottom", "Hat", "Tom 1", "Tom 2", "Mic 12")
+
 DEMO_UNITS = (
     {"index": 0, "host": "192.0.2.21", "name": "Stage L pre (simulated)", "serial": "SIM-0001", "model": "12Mic"},
     {"index": 1, "host": "192.0.2.22", "name": "Monitor world (simulated)", "serial": "SIM-0002", "model": "12Mic"},
@@ -74,11 +77,12 @@ def scene(index: int, t: float) -> Scene:
 
 def full_status(sc: Scene, name: str, serial: str, model: str = "12Mic") -> dict:
     """A whole state in the shape of the capture, with the parts Stagewatch throws away (osc schema,
-    network ids, analogue inputs and their labels) included so the whitelist has something to drop."""
+    network ids, analogue input gain and 48 V; channel names are kept) included so the whitelist has something to drop."""
     good = {"state": "Good"}
     avb = {str(n): {"pri": {"soundness": dict(good) if n <= 4 else {"state": "Inactive"},
                             "avb_status": {"stream_id": "00-00-00-00-00-00-00-0%d" % n, "dest_addr": "91-E0-F0-00-00-0%d" % n, "state": 1}},
                     "sec": {"soundness": {"state": "Inactive"}}} for n in range(1, 9)}
+    analog = {str(n): {"gain": 30, "label": CHANNEL_NAMES[n - 1], "p48": False, "phase": False} for n in range(1, 13)}
     return {
         "osc": {"version": "1.0", "schema": {"device": {"psu": {"state": None}, "health": {"temperatures": {"core": None}}}}},
         "device": {
@@ -97,7 +101,7 @@ def full_status(sc: Scene, name: str, serial: str, model: str = "12Mic") -> dict
             "sources": {"internal": {"rate": 48000, "sync": True, "soundness": dict(good)},
                         "wordclock": {"rate": 48000, "sync": sc.source == "wordclock", "soundness": dict(good)}},
         },
-        "input": {"analog": {"1": {"gain": 30, "label": "Mic 1", "p48": False, "phase": False}}, "avb": avb},
+        "input": {"analog": analog, "avb": avb},
         "output": {"avb": {}},
     }
 

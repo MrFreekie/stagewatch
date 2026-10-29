@@ -33,7 +33,10 @@ from guest and public Wi-Fi. Stagewatch only listens, and holds no password for 
   `back after 4 min (readings missing meanwhile)`. What happened in the gap is never guessed. Restarting Stagewatch
   does not add markers for what happened while it was off.
 - **No sound.** Every notice from this card is silent. It appears on screen and in the alarm log, and never sounds.
-- **Not read:** input gain, 48 V, labels, routing and the level meters. They are not recorded or shown.
+- **Channel names are shown.** The names on the unit's analogue inputs (for example `RF Mic 1`) appear on the RME interfaces
+  card on every dashboard that has it. **Put nothing private in a channel name.** Names are shown as plain text, cut at
+  40 characters (a longer name is left out), and up to 32 channels are kept. They are not recorded.
+- **Not read:** input gain, 48 V, phase, routing and the level meters. They are not recorded or shown.
 
 ## What the words mean
 

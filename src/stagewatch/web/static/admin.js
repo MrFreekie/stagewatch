@@ -902,6 +902,7 @@
       field("Name (optional)", name), nameCheck, field("Area (optional)", area),
       h("details", { class: "card-about" }, h("summary", {}, "Advanced"), field("Port (usually 80)", port)),
       h("p", { class: "notice" }, ra.SECURITY),
+      h("p", { class: "muted hint" }, ra.LABELS),
       h("p", { class: "muted hint" }, "Tip: give the unit a fixed address so it stays where Stagewatch expects it. Test opens a second short connection and closes it at once."),
       h("div", { class: "row sw-dlg-actions" }, saveHint, h("span", { class: "grow" }), save));
   }
@@ -957,6 +958,7 @@
     return SW.brandCard("RME interfaces", "rme-badge.png", "RME",
       h("p", { class: "muted" }, "Shows the health of RME units, such as the 12Mic, on dashboards that have the RME interfaces card (User dashboards → Edit cards): whether the unit is OK, its core temperature, both power supplies, the clock it follows, the loaded preset and its AVB streams. Stagewatch only listens: it sends the unit nothing, so it cannot change gain, 48 V, a preset, routing or the clock. It is not a protection system."),
       h("p", { class: "notice" }, ra.SECURITY),
+      h("p", { class: "muted" }, ra.LABELS),
       admin.emulate ? h("p", { class: "notice" }, "Emulate mode: the units are simulated, so any private address will \"find\" a simulated 12Mic. The second unit goes offline for 30 seconds every few minutes, to show how an away unit looks.")
         : h("p", { class: "notice" }, ra.NOTE),
       units.length ? h("div", { class: "rme-admin-units" }, units.map(rmeUnitTile)) : h("p", { class: "muted" }, "No RME units yet."),

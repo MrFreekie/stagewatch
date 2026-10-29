@@ -1662,6 +1662,13 @@ body.layout-wall .about-url { font-size: 20px; }
 .rme-isym { display: inline-block; min-width: 1.2em; font-weight: 800; }
 .rme-age { margin: 8px 0 0; font-size: 15px; font-weight: 700; }
 .rme-age.rme-quiet { font-size: 14px; font-weight: 400; color: var(--muted); }
+.rme-names { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 14px; font-size: 14px; }
+.rme-chan { min-width: 0; overflow-wrap: anywhere; }
+.rme-chan-n { display: inline-block; min-width: 1.6em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rme-chans { margin-top: 6px; }
+.rme-chans summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 14px; }
+.rme-names-more { margin: 2px 0 0; font-size: 14px; }
+.rme-names-wall { margin: 4px 0 8px; }
 .rme-more { margin-top: 6px; }
 .rme-more summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 14px; }
 .rme-fw { margin: 6px 0 0; font-size: 13px; }
@@ -1675,6 +1682,9 @@ body.layout-wall .rme-model { display: none; }
 body.layout-wall .rme-status { font-size: 36px; }
 body.layout-wall .rme-temp { font-size: 88px; }
 body.layout-wall .rme-psus { font-size: 36px; gap: 6px 32px; }
+body.layout-wall .rme-names { font-size: 24px; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 18px; line-height: 1.25; }
+body.layout-wall .rme-names-more { font-size: 22px; }
+body.layout-wall .rme-chan { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 body.layout-wall .rme-age { font-size: 28px; }
 body.layout-wall .rme-foot { display: none; }
 body.layout-wall .rme-age.rme-quiet { font-size: 22px; }
