@@ -196,7 +196,7 @@ SW.baro = (function () {
       svg.append(SW.svg("line", { x1: f1(o[0]), y1: f1(o[1]), x2: f1(i[0]), y2: f1(i[1]), class: major ? "baro-tick major" : "baro-tick" }));
       if (major) {
         const t = polar(67, a);          // inside the tick, clear of it at the sides where four digits are widest
-        const label = SW.svg("text", { x: f1(t[0]), y: f1(t[1] + 2.4), class: "baro-num", "text-anchor": "middle" });
+        const label = SW.svg("text", { x: f1(t[0]), y: f1(t[1] + 2.4), class: (p - baro.MIN_HPA) % 20 ? "baro-num alt" : "baro-num", "text-anchor": "middle" });
         label.textContent = SW.num(p, 0);
         svg.append(label);
       }

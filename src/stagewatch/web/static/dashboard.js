@@ -78,7 +78,7 @@
   // Trend lines under the tile figures: one shared fetch for every tile, over the History card's
   // span (1 hour without that card), at most once a minute or when the span changes. The paths are
   // worked out once per fetch; renders in between reuse them.
-  const TREND_POINTS = 60, TREND_W = 1000, TREND_H = 100;
+  const TREND_POINTS = 60, TREND_W = 1000, TREND_H = 100, TREND_MIN = 6;   // fewer readings than TREND_MIN draw no line (a stub reads as a glitch)
   const tileHist = { at: 0, span: null, busy: false, d: {} };
   const tileSpan = () => (has("chart") ? state.span : 3600);
   async function loadTileHistory(force) {
@@ -95,7 +95,7 @@
     tileHist.busy = false;
     const gap = Math.max(60, 3 * (t1 - t0) / TREND_POINTS);
     tileHist.d = {};
-    for (const id of ids) tileHist.d[id] = SW.trendPath(data[id], t0, t1, gap, TREND_W, TREND_H);
+    for (const id of ids) tileHist.d[id] = (data[id] || []).length >= TREND_MIN ? SW.trendPath(data[id], t0, t1, gap, TREND_W, TREND_H) : "";
     renderTiles();
   }
   function trendBox(id) {
@@ -283,6 +283,7 @@
     const btn = $("sound-toggle");
     const needsTap = wanted && !armed;
     $("sound-label").textContent = on ? "Alarm sound: On" : (needsTap ? "Alarm sound: Off \u2014 tap to turn on" : "Alarm sound: Off");
+    $("sound-short").textContent = on ? "Sound\nOn" : (needsTap ? "Sound\nTap" : "Sound\nOff");
     btn.classList.toggle("on", on);
     btn.classList.toggle("needs-tap", needsTap);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
@@ -1850,7 +1851,7 @@
       return;
     }
     if (!contactList.length) {
-      body.replaceChildren(h("p", { class: "muted" }, "No contacts on duty. Admin → Onsite contacts to add them."));
+      body.replaceChildren(h("p", { class: "muted" }, "No contacts yet. Ask whoever runs Stagewatch."));
       return;
     }
     const phoneOf = (c) => (c.tel ? h("a", { class: "contact-phone touch", href: `tel:${c.tel}` }, `☎ ${c.phone}`)
