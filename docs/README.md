@@ -53,6 +53,7 @@ You do not need to know how to code. Every guide tells you what you should see a
 7. [Updating and backups](updating-and-backups.md), including a forgotten PIN.
 8. [Troubleshooting](troubleshooting.md). Find your symptom, get the fix.
 9. [Glossary](glossary.md). Plain meanings of the odd words.
+10. [Known limitations](known-limitations.md). What Stagewatch estimates, cannot see or has not been tried on.
 
 ## Honest notes
 
@@ -60,6 +61,7 @@ You do not need to know how to code. Every guide tells you what you should see a
   Debian 13.7 (virtual machine) and on a Raspberry Pi 4 (4 GB), by the project owner in
   October 2026. It is not tested on a Raspberry Pi 5, or with the Pi kiosk.** Try it at
   home first. Do not meet it for the first time at a festival.
+- What it cannot do, and what is only an estimate, is on [Known limitations](known-limitations.md).
 - Which integrations have been tried on real kit is in one table: [Integrations at a glance](integrations/README.md#at-a-glance).
 - Updates take a backup first and can be rolled back. See [Updating and backups](updating-and-backups.md).
 

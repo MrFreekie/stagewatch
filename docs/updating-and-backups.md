@@ -396,4 +396,4 @@ data folder from a backup, then restart Stagewatch. The bad file is kept next to
 
 The header shows **Internet**, **No internet** or **Not checked**. Tap it to see when it was last checked. Stagewatch works fine without the internet; it is only needed to look for updates, so "No internet" on a show network is normal and raises no alarm.
 
-Every 5 minutes Stagewatch sends one small request to github.com (the same place the updater uses). It sends no site name, version or other identifying detail. A hotel or venue sign-in page that answers instead of the real internet is not counted as internet. To turn it off, go to Admin, **Setup and system**, **Internet check**. It is on automatically only for a managed install.
+Every 5 minutes Stagewatch sends one small request to github.com (the same place the updater uses). It sends no site name, version or other identifying detail. A hotel or venue sign-in page that answers instead of the real internet is not counted as internet. To turn it off, go to Admin, **Setup and system**, **Internet check**. It is on automatically only for a managed install. It is not shown on the wall layout. Not yet tested on real kit.

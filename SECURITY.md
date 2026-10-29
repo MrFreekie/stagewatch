@@ -27,6 +27,12 @@ Only the latest release on the Stable channel (and the current Nightly) receive 
   including gain and 48 V. Keep the AVB and control network separate. Stagewatch sends no commands or settings; it only
   opens the link and answers the unit's keep-alive. It holds no unit credentials (see [RME interfaces](docs/integrations/rme.md)).
 
+- **Internet icon.** Every 5 minutes Stagewatch sends one plain request to github.com (the host the updater already
+  uses) with no site name, version or other identifying detail. It can be turned off in Admin, **Internet check**.
+- **Wi-Fi card.** The crew internet password is stored as plain text in the config file and sent to every dashboard
+  that has the card, because the card shows it. It is left out of the snapshot, logs, diagnostics and show report.
+  Use guest or crew internet only, never the show network.
+
 ## How the admin page is protected
 
 - The PIN is stored as a salted PBKDF2 hash. Sessions are signed cookies (HttpOnly, SameSite strict).

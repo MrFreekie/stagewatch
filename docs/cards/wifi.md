@@ -25,3 +25,8 @@ Back to [Dashboard cards](README.md).
   files and the show report. If you back the config file up to a private Git repository, the
   password goes with it, so keep that repository private.
 - It can be set to **Half** width in the card list.
+- The join code is drawn at the lowest error correction level (L) so it stays small and quick to scan.
+  The trade-off is that a scratched, dirty or glare-covered screen may not scan. If a phone struggles,
+  type the password instead.
+- **Not yet tested on real kit.** It has been checked with tests and simulated data only.
+  Try the code on your crew's phones before you rely on it.

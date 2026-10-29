@@ -16,4 +16,5 @@ Back to [Dashboard cards](README.md).
   of course.)
 - The code sits on a white square in both the light and dark themes, so a phone can read it. It is
   larger on a wall screen.
+- The code is drawn at the lowest error correction level (L), so it is compact. A scratched or glary screen may not scan.
 - It can be set to **Half** width in the card list.
