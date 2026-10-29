@@ -17,10 +17,10 @@ Windows and macOS set their own clock, so on those the card says so and the butt
 
 | Row | What it means |
 |---|---|
-| **Pi time (the hub)** | The time on the computer running Stagewatch, ticking, in the site time zone. |
+| **Computer time (the one running Stagewatch)** | The time on the computer running Stagewatch, ticking, in the site time zone. |
 | **This device's time** | The time on the tablet or phone you are using, in the same time zone. |
 | **Difference** | How far apart they are, measured through the network delay. "Within a second" means they match. |
-| **Synchronised with network time** | Whether the Pi is getting the time from the network. **Unknown** if the Pi would not say. |
+| **Clock matches the network** | Whether the Pi is getting the time from the network. **Not known** if the Pi would not say. |
 | **Time zone** | The Pi's time zone, or the site time zone if the Pi would not say. |
 
 ## Set the clock

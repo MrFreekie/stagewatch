@@ -66,7 +66,7 @@ SW.clock = (function () {
   c.ntpText = function (v) {
     if (v === true) return "Yes: the Pi is getting the time from the network";
     if (v === false) return "No: the Pi has no network time right now";
-    return "Unknown";
+    return "Not known";
   };
   return c;
 })();

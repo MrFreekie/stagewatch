@@ -4,7 +4,7 @@ This page is for the person who looks after Stagewatch. It covers the Admin card
 counts in the site average and when Stagewatch raises an alarm:
 
 - **Sensors: calibration & averaging**
-- **Calibration & hardware**
+- **Hardware and offsets**
 - **Threshold alarms**
 - **Alarm notices**
 - **Alarm log (this show)**
@@ -138,11 +138,11 @@ watch the **Share** column change to match. Turn the switch off and the shares g
 If a battery node sleeps between readings, set **Sleeps between readings** under **ESPHome nodes**.
 See [ESPHome: sleeping nodes](../integrations/esphome.md#sleeping-nodes).
 
-## Calibration & hardware
+## Hardware and offsets
 
 An offset belongs to the **board** it was set on, not to the name or address you gave the node. If you
 remove a node and add it again, or change its address, the same board keeps its offsets. Open
-**Calibration & hardware** to see, for every sensor on a known board:
+**Hardware and offsets** to see, for every sensor on a known board:
 
 - the board's hardware address (only ever shown here, never on dashboards),
 - the offset in use,

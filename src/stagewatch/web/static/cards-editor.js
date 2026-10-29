@@ -59,10 +59,19 @@
       const btn = ul.children[j] && ul.children[j].querySelector(dir < 0 ? ".card-up" : ".card-down");
       if (btn && !btn.disabled) btn.focus();
     };
+    // At the card limit the unticked boxes are greyed out (untick one to free a place).
+    const MAX = 16;   // core/cards.py MAX_CARDS
+    const boxes = [];
+    const limitBoxes = () => {
+      const full = items.filter((it) => it.on).length >= MAX;
+      for (const b of boxes) b.el.disabled = full && !b.it.on;
+    };
     const draw = () => {
+      boxes.length = 0;
       ul.replaceChildren(...items.map((it, i) => {
         const info = CARD_INFO[it.id] || [it.id, ""];
-        const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; if (lookField) lookField.style.display = box.checked ? "" : "none"; onChange(); } });
+        const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; if (lookField) lookField.style.display = box.checked ? "" : "none"; limitBoxes(); onChange(); } });
+        boxes.push({ el: box, it });
         const lookField = it.id === "wall_clock" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Wall Clock look"), clockStyle)
           : it.id === "env_tiles" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Show dew point"), dewBox) : null;
         const sizeSel = halfOk.indexOf(it.id) < 0 ? null : h("select", { class: "touch", "aria-label": `${info[0]} size`, onchange: () => { sizes[it.id] = sizeSel.value; onChange(); } }, h("option", { value: "full" }, "Full"), h("option", { value: "half" }, "Half"));
@@ -86,6 +95,7 @@
           h("button", { type: "button", class: "card-up", "aria-label": `Move ${info[0]} up`, title: "Move up", disabled: i === 0, onclick: () => move(i, -1) }, "▲"),
           h("button", { type: "button", class: "card-down", "aria-label": `Move ${info[0]} down`, title: "Move down", disabled: i === items.length - 1, onclick: () => move(i, 1) }, "▼"));
       }));
+      limitBoxes();
       onChange();
     };
     // GLOBCON levels card: which controller (1 to 16) and which channels this screen shows.
@@ -120,6 +130,7 @@
     const el = h("div", { class: "cards-panel" },
       h("p", { class: "muted hint" }, "Tick the cards this dashboard shows. Use ▲ and ▼ to change the order, top to bottom. With no cards ticked, the screen shows only alarms. Wall Clock is never switched on by default: tick it here if you want it."),
       newer.length ? h("p", { class: "warn-text hint" }, `This dashboard also lists cards from a newer version of Stagewatch (${newer.join(", ")}). This version can't show them, and saving here removes them.`) : null,
+      d.layout === "wall" ? h("p", { class: "hint de-wallhint" }, "A wall screen does not scroll: pick the few cards that matter. Anything below the bottom of the screen cannot be seen.") : null,
       ul,
       h("div", { class: "row", style: "margin-top:10px" },
         field("Stage", stage)),
@@ -129,6 +140,7 @@
       read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewBox.checked, show_contact_phones: ctPhones.checked, contacts_area: val(ctArea), card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
       setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
       count: () => items.filter((it) => it.on).length,
+      max: MAX,
     };
   }
 

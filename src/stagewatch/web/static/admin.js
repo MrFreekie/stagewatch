@@ -206,10 +206,10 @@
       h("div", { class: "row" },
         field("Site / show name", name),
         field("Altitude (m): for the barometer, and the speed of sound without a pressure sensor", alt),
-        field("Reference distance (m) for Δ ms", dist),
+        field("Distance for time difference (m)", dist),
         field("Stale after (s)", stale),
-        field("Smoothing τ (s)", tau),
-        field("Reject outliers (≥3 sensors)", outl)),
+        field("Smoothing (seconds)", tau),
+        field("Ignore odd readings (3 or more sensors)", outl)),
       altHelper,
       h("div", { class: "row", style: "margin-top:10px" },
         field("Time zone", tz), tzList,
@@ -316,10 +316,10 @@
       const s = st.s;
       if (!s) { body.replaceChildren(h("p", { class: st.msg ? "error" : "muted" }, st.msg ? st.msg.text : "Reading the clock…")); return; }
       const rows = [
-        ["Pi time (the hub)", hubSpan],
+        ["Computer time (the one running Stagewatch)", hubSpan],
         ["This device's time", devSpan],
         ["Difference", Number.isFinite(st.diffS) ? C.differenceText(st.diffS) : "—"],
-        ["Synchronised with network time", C.ntpText(s.ntp_synchronized)],
+        ["Clock matches the network", C.ntpText(s.ntp_synchronized)],
         ["Time zone", s.system_timezone || s.site_timezone || "Not set"],
       ];
       const kids = [
@@ -1203,13 +1203,15 @@
     const area = h("input", { placeholder: "e.g. Stage L, FOH, Delay tower 1" });
     const psk = h("input", { type: "password", placeholder: prefill.encrypted ? "required: api encryption key" : "api encryption key (if set)", autocomplete: "off" });
     const role = roleSelect("environment");
+    const hint = (t) => h("span", { class: "muted hint" }, t);
     return h("form", { class: "row", onsubmit: (ev) => {
       ev.preventDefault();
       run(() => api("POST", "/api/admin/esphome/adopt", {
         host: val(host), port: Number(port.value), name: val(name), area: val(area), noise_psk: val(psk), role: role.value,
       }), "Node adopted").then(() => { if (onDone) onDone(); return refresh(); }, () => {});
-    } }, field("Host", host), field("Port", port), field("Name", name), field("Area", area),
-    field("Role", role), field("Encryption key", psk), h("button", { class: "primary", type: "submit", style: "align-self:flex-end" }, "Adopt"));
+    } }, field("Address", host), field("Port", port), field("Name", name), field("Area", area),
+    h("div", {}, field("Role", role), hint("Environment = air readings. Equipment = racks and power.")),
+    h("div", {}, field("Encryption key", psk), hint("From the node's file (api encryption key).")), h("button", { class: "primary", type: "submit", style: "align-self:flex-end" }, "Adopt"));
   }
 
   function devicesCard() {
@@ -1265,7 +1267,7 @@
           h("td", {}, role),
           h("td", {}, h("div", { class: "row" }, sleep, h("span", { class: "muted" }, "min")),
             h("div", { class: "muted", style: "font-size:12px" }, "Counted as stale after 2.5 times this")),
-          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null, deviceErrorCounts["device:" + d.id] ? h("div", { style: "font-size:12px" }, h("a", { href: "#device-errors-card" }, `${problemsWord(deviceErrorCounts["device:" + d.id])} this show`)) : null, hwd && hwd.conflict ? h("div", { style: "font-size:12px" }, h("a", { href: "#calibration-card" }, "Held by the hardware check: choose what to do under Calibration & hardware")) : null),
+          h("td", {}, h("span", { class: `status ${st.cls}`, title: st.title }, st.text), d.status_detail ? h("div", { class: "muted", style: "font-size:12px" }, d.status_detail) : null, deviceErrorCounts["device:" + d.id] ? h("div", { style: "font-size:12px" }, h("a", { href: "#device-errors-card" }, `${problemsWord(deviceErrorCounts["device:" + d.id])} this show`)) : null, hwd && hwd.conflict ? h("div", { style: "font-size:12px" }, h("a", { href: "#calibration-card" }, "Held by the hardware check: choose what to do under Hardware and offsets")) : null),
           h("td", {}, nodeAddress(admin.hardware && admin.hardware.devices && admin.hardware.devices[d.id])),
           h("td", {}, d.model),
           h("td", {}, h("div", { class: "row" },
@@ -1342,11 +1344,11 @@
         h("p", {}, n ? `Nothing has been changed yet. Applying this file would add ${r.added.length} and change ${r.changed.length}; ${r.unchanged.length} already match.` : "Nothing to apply: every sensor in this file already matches."),
         list("New", r.added.map((k) => { const o = data.calibrations && data.calibrations[k] && data.calibrations[k].offset; return h("li", {}, sensorWord(k) + (typeof o === "number" ? `: offset ${showVal(o)}` : "")); })),
         list("Changed", changed),
-        list("For a board this hub does not know (it applies if that board is added later)", r.unknown_hardware.map((k) => h("li", {}, sensorWord(k)))),
+        list("For a board this computer does not know (it applies if that board is added later)", r.unknown_hardware.map((k) => h("li", {}, sensorWord(k)))),
         list("Skipped (recorded exactly as received, never adjusted)", r.refused.map((k) => h("li", {}, sensorWord(k)))),
         h("div", { class: "row" },
           n ? h("button", { class: "primary small", style: "min-height:44px", onclick: () => run(() => api("POST", "/api/admin/calibrations/import", { data, dry_run: false }), "Calibration imported")
-            .then(() => { diffBox.replaceChildren(); return refresh(); }, () => {}) }, "Apply to this hub") : null,
+            .then(() => { diffBox.replaceChildren(); return refresh(); }, () => {}) }, "Apply to this computer") : null,
           h("button", { class: "small", style: "min-height:44px", onclick: () => diffBox.replaceChildren() }, n ? "Cancel" : "Close"))));
     };
     const fileInput = h("input", { type: "file", accept: "application/json,.json", "aria-label": "Calibration file to read", onchange: () => {
@@ -1393,7 +1395,7 @@
         h("td", {}, h("div", { class: "row" }, ref, note, add), histEl));
     }).filter(Boolean);
 
-    const c = card("Calibration & hardware",
+    const c = card("Hardware and offsets",
       h("p", { class: "muted" }, "Each offset belongs to the board it was set on, so it follows that board if you re-adopt it or change its address. Offsets are set under Sensors: calibration & averaging. Hardware addresses are only shown here, never on dashboards."),
       held.length ? h("div", {}, h("h3", { class: "muted", style: "font-size:13px;margin:10px 0 6px" }, "NEEDS A DECISION"), held) : null,
       h("h3", { class: "muted", style: "font-size:13px;margin:10px 0 6px" }, "SENSORS"),
@@ -1931,9 +1933,9 @@
     const tbody = h("tbody");
     const addRow = (d = {}) => {
       const isNew = !d.slug;
-      const slug = h("input", { value: d.slug || "", placeholder: "url-name" });
-      const title = h("input", { value: d.title || "" });
-      const layout = h("select", {}, ["tablet", "phone", "wall"].map((l) => h("option", { value: l }, l)));
+      const slug = h("input", { value: d.slug || "", placeholder: "url-name", "aria-label": "URL name" });
+      const title = h("input", { value: d.title || "", "aria-label": "Title" });
+      const layout = h("select", { "aria-label": "Layout" }, ["tablet", "phone", "wall"].map((l) => h("option", { value: l }, l)));
       layout.value = d.layout || "tablet";
       const mk = h("input", { type: "checkbox", checked: d.allow_marker !== false });
       const ack = h("input", { type: "checkbox", checked: !!d.allow_ack });
@@ -2259,7 +2261,7 @@
         h("span", { class: "card-logo int-nologo int-plus", "aria-hidden": "true" }, "+"), h("strong", { class: "int-name" }, "Add integration"),
         h("span", { class: "int-detail muted" }, "Ontime, Smaart, GLOBCON, a Shelly meter, an RME unit, WitMotion tilt sensors or an ESPHome node")));
     return card("Integrations",
-      h("p", { class: "muted" }, "Each outside product Stagewatch reads from. Tap a tile to change its address or settings, or to remove it. Removing a product keeps its history. Each product's other settings are on its own card below."),
+      h("p", { class: "muted" }, "Each outside product Stagewatch reads from. Tap a tile to change its address or settings, or to remove it. Where a product has Remove, removing it keeps its history. Each product's other settings are on its own card below."),
       h("div", { class: "int-tiles" }, tiles.map(tileEl), found.map(foundTile), addTile));
   }
 
@@ -2433,8 +2435,8 @@
   }
 
   function securityCard() {
-    const cur = h("input", { type: "password", placeholder: "current PIN", autocomplete: "current-password" });
-    const nw = h("input", { type: "password", placeholder: "new PIN", autocomplete: "new-password" });
+    const cur = h("input", { type: "password", placeholder: "current PIN", "aria-label": "Current PIN", autocomplete: "current-password" });
+    const nw = h("input", { type: "password", placeholder: "new PIN", "aria-label": "New PIN", autocomplete: "new-password" });
     return card("Security",
       h("form", { class: "row", onsubmit: (ev) => {
         ev.preventDefault();
