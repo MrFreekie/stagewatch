@@ -40,6 +40,9 @@ every 10 seconds.
 The page asks the Pi for its time several times, keeps the quickest answer and allows for half the
 delay, so the result is normally right to within a second or so. It is not a precision time source.
 
+> **Not yet tested on a real Pi.** The button, the helper and the hardware clock write have been checked with
+> simulated data and tests only. Try it at home before the show.
+
 ## Do this before the show, not during it
 
 Charts and history are stored by time. Stagewatch does not rewrite or back-fill anything:

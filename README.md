@@ -42,6 +42,9 @@ one table: [Integrations at a glance](docs/integrations/README.md#at-a-glance).
 > safety, wind-management or power plans. It only reads from other equipment and never
 > controls rigging, power or safety systems.
 
+> **Read the limits.** What Stagewatch only estimates, what it cannot see and what is not yet tested on real
+> kit is listed in [Known limitations](docs/known-limitations.md).
+
 > **100 % vibe coded.** I'm a FOH / systems engineer, not a programmer. Every line of
 > this project was written by an AI coding assistant ([Claude Code](https://claude.com/claude-code))
 > working from my ideas, requirements and show-site experience. That's not a knock on the
@@ -53,8 +56,8 @@ one table: [Integrations at a glance](docs/integrations/README.md#at-a-glance).
 
 **Tested so far.** The managed install is tested on Windows 11 and Windows 10 and on Debian 13.7
 (virtual machines), and on a Raspberry Pi 4 (4 GB), by the project owner. It is not tested on a
-Raspberry Pi 5 or with the Pi kiosk. Several integrations and node boards are not yet tested on
-real kit: each guide says so. Try it at home before you rely on it at a show.
+Raspberry Pi 5 or with the Pi kiosk. Several integrations, cards and node boards are not yet tested on
+real kit: each guide says so, and [Known limitations](docs/known-limitations.md) lists what to expect. Try it at home before you rely on it at a show.
 
 Stagewatch is independent and unofficial. Product and company names belong to their owners, and
 no affiliation or endorsement is implied. The full wording is in the
@@ -109,6 +112,7 @@ uv run stagewatch --emulate
 - [Integrations](docs/integrations/README.md): Ontime, Smaart, DirectOut GLOBCON, RME interfaces (tried on one 12Mic only), Shelly, WitMotion tilt sensors, OSC output
 - [Updating and backups](docs/updating-and-backups.md), including a forgotten PIN
 - [Troubleshooting](docs/troubleshooting.md) and the [glossary](docs/glossary.md)
+- [Known limitations](docs/known-limitations.md): what it estimates, what it cannot see, what is untested
 - [Changelog](CHANGELOG.md)
 
 ## On the horizon

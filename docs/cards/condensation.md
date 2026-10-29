@@ -31,5 +31,7 @@ only. What you type stays in that browser. It is not sent to Stagewatch or saved
 - The figures come from the site readings: the average of your environment sensors. Readings from
   Equipment sensors (amp racks and similar) are left out.
 - The card needs a temperature and a humidity sensor. See [Site readings](env-tiles.md).
+- **Not yet tested on real kit.** The maths is checked, but the card has not been compared with a
+  real cold-kit situation. Treat the word as a hint.
 - The small print is under **About these figures**. The wall screen shows only the word and the
   three figures.
