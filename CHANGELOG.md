@@ -27,6 +27,10 @@ them into a dated release section and tags the commit.
 
 ### Changed
 
+- **GUI review fixes.** The Power card folds each meter's per-phase load, voltage and frequency bars behind "Per-phase detail" and shows one line above them ("All circuits OK" or what needs a look); the wall always shows the bars. The phone header is two rows with a word on every status chip and a small "Sound On/Off" button. Chart ranges, List/Diagram, Add marker and fields are 44 px tall on touch screens. Barometer scale text is larger. Wall dashboards use the full width. A lone last site tile fills the row on a phone, and a trend line only draws with enough readings. Edit cards greys out the unticked cards at 16 ("Maximum 16 cards"), cleans the error text and warns that a wall screen does not scroll.
+- **Admin wording.** Plainer Site and Clock labels ("Smoothing (seconds)", "Ignore odd readings", "Distance for time difference (m)", "Computer time", "Clock matches the network"), "Hardware and offsets" for the calibration card, hints on the ESPHome adopt form, labels on the dashboards table and Change PIN fields, and a contacts empty state a viewer can act on.
+
+
 - **QR codes use the lowest error correction level (L).** The Wi-Fi card and the About Stagewatch card now draw a smaller, simpler code that is quicker to scan from a screen. A scratched or glary screen is a little more likely to fail to scan.
 - **Updated parts Stagewatch is built on.** FastAPI 0.162, aioesphomeapi 46.22, certifi and the GitHub setup-uv action are newer versions. Nothing to do.
 

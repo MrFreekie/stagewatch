@@ -64,7 +64,7 @@ eq(C.differenceText(3), "3 s behind this device", "behind text");
 eq(C.differenceText(NaN), "—", "unknown text");
 eq(C.ntpText(true).slice(0, 3), "Yes", "ntp yes");
 eq(C.ntpText(false).slice(0, 2), "No", "ntp no");
-eq(C.ntpText(null), "Unknown", "ntp unknown");
+eq(C.ntpText(null), "Not known", "ntp unknown");
 
 console.log(`${count} checks, ${fails} failed`);
 process.exit(fails ? 1 : 0);
