@@ -409,18 +409,6 @@ def iter_rows(conn: sqlite3.Connection, show_id: int, entity_id: str, start: flo
         cur.close()
 
 
-def read_rows(conn: sqlite3.Connection, show_id: int, entity_id: str, start: float, end: float
-              ) -> list[tuple[float, float | None]]:
-    return list(iter_rows(conn, show_id, entity_id, start, end))
-
-
-def entities_with_data(conn: sqlite3.Connection, show_id: int, start: float, end: float) -> list[str]:
-    cur = conn.execute(
-        "SELECT DISTINCT entity_id FROM states WHERE show_id = ? AND ts >= ? AND ts <= ? ORDER BY entity_id",
-        (show_id, start, end))
-    return [r[0] for r in cur]
-
-
 def value_near(conn, show_id: int, entity_id: str, ts: float, lo: float, max_age_s: float = 600.0) -> float | None:
     """The last reading at or before ``ts`` (and not before ``lo`` or older than ``max_age_s``)."""
     r = conn.execute("SELECT value FROM states WHERE show_id = ? AND entity_id = ? AND ts <= ? AND ts >= ? "

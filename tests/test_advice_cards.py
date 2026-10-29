@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from stagewatch.core import cards
-from stagewatch.core.config import AdviceConfig, AdvicePath, AdvicePosition
+from stagewatch.core.config import AdviceConfig, AdvicePosition
 from stagewatch.core.hub import Hub
 from stagewatch.core.model import Device, Entity, Kind, Status
 from stagewatch.web.server import create_app

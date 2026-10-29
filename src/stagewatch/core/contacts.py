@@ -218,16 +218,6 @@ class ContactStore:
         return self.root.is_dir() and any(f.name == f"{stem}.yaml" or f.name.startswith(f"{stem}.invalid")
                                           for f in self.root.iterdir())
 
-    def stored_events(self) -> list[int]:
-        """Event ids with a contacts file holding at least one contact."""
-        if not self.root.is_dir():
-            return []
-        ids = []
-        for f in self.root.glob("*.yaml"):
-            if _EVENT.fullmatch(f.stem) and self.contacts(int(f.stem)):
-                ids.append(int(f.stem))
-        return sorted(ids)
-
     # ------------------------------------------------------------ changes
     def replace(self, event_id, contacts: list[Contact]) -> list[dict]:
         event_id = valid_event(event_id)

@@ -25,7 +25,7 @@ from stagewatch import acoustics
 from stagewatch.core import barometer as bm
 from stagewatch.core import cards
 from stagewatch.core import config as config_mod
-from stagewatch.core.config import BarometerConfig, Config, ConfigStore, SiteConfig
+from stagewatch.core.config import BarometerConfig, Config, ConfigStore
 from stagewatch.core.hub import Hub
 from stagewatch.core.model import Device, Entity, Kind, Status
 from stagewatch.integrations.esphome import EsphomeIntegration

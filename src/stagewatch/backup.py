@@ -22,7 +22,7 @@ import time
 from pathlib import Path, PurePosixPath
 
 from .updater_common import (UpdaterError, atomic_write_json, backup_manifest_path, dir_size,
-                             is_valid_backup_id, read_json)
+                             read_json)
 
 log = logging.getLogger(__name__)
 

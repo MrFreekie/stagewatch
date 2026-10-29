@@ -4,7 +4,6 @@ from __future__ import annotations
 import io
 import re
 import threading
-import time
 import zipfile
 from pathlib import Path
 

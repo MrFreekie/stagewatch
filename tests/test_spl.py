@@ -11,7 +11,6 @@ in the tests is SYNTHETIC (made up to match those notes).
 from __future__ import annotations
 
 import json
-import math
 import shutil
 import subprocess
 from pathlib import Path
@@ -887,7 +886,6 @@ def test_a_dashboard_can_hold_the_card_and_it_round_trips(client_app):
 def test_history_endpoint_returns_unaveraged_points_for_sound_levels(client_app):
     c = client_app
     hub = c.hub
-    e = hub.entities["spl.a_slow"] if "spl.a_slow" in hub.entities else None
     admin(c)
     put(c)
     base = 2_000_000.0

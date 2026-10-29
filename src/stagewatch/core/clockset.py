@@ -90,18 +90,6 @@ def parse_helper_line(text: str) -> tuple[int, str] | None:
     return (int(m.group(1)), m.group(2)) if m else None
 
 
-def jump_words(seconds: float) -> str:
-    """'3 h 12 min' / '40 s' for a size of change (always positive)."""
-    s = int(round(abs(seconds)))
-    if s < 60:
-        return f"{s} s"
-    if s < 3600:
-        return f"{s // 60} min {s % 60:02d} s"
-    if s < 86400:
-        return f"{s // 3600} h {(s % 3600) // 60:02d} min"
-    return f"{s // 86400} d {(s % 86400) // 3600} h"
-
-
 class ClockSetter:
     def __init__(self, hub, *, runner: Runner = default_runner, platform: str | None = None,
                  wall: Callable[[], float] = time.time, mono: Callable[[], float] = time.monotonic,

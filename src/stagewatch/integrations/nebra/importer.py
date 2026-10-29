@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import zoneinfo
-from datetime import datetime
 
 from . import mapping, parse
 from ..lanwm.importer import (  # noqa: F401  (re-exported: one set of refusals and helpers for every format)
