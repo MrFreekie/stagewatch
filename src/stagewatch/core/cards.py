@@ -33,6 +33,7 @@ KNOWN_CARDS_0_3: tuple[str, ...] = (
     "alignment_drift",  # FOH advice: how far delay paths have drifted since the Aligned marker; hidden while no path is set up; never added by default
     "hf_air_loss",     # FOH advice: estimated top-end air loss at FOH and Rear since the Soundcheck marker; hidden while no position is set up; never added by default
     "rme_units",       # RME interfaces: one tile per RME unit (status word, temperature, power supplies, clock, preset, AVB); hidden while none are set up; never added by default
+    "wifi",            # Wi-Fi: crew internet name, password and a join QR code; only on dashboards that have it; never added by default
     "about",           # About Stagewatch: a title, one line and a QR code to the project page; needs no data and works offline; never added by default
 )
 KNOWN_CARDS = KNOWN_CARDS_0_3
@@ -82,7 +83,7 @@ def unknown_cards(cards: list[str]) -> list[str]:
 # Per-dashboard card size ("full" is the default and is never needed in the map). A card can be
 # made half width only if it is listed here; add an id to allow another card later.
 CARD_SIZES: tuple[str, ...] = ("full", "half")
-HALF_CAPABLE: tuple[str, ...] = ("wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power", "pi_host", "about")
+HALF_CAPABLE: tuple[str, ...] = ("wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power", "pi_host", "about", "wifi")
 
 
 def clean_card_sizes(v) -> tuple[dict[str, str], int]:

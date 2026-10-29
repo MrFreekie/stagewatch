@@ -1804,6 +1804,49 @@
       contactPinNeeded && !isWall() ? h("button", { class: "touch", type: "button", onclick: askContactsPin }, "Show numbers") : null].filter(Boolean));
   }
 
+  // ------------------------------------------------------------------ wifi
+  // Crew internet networks. Fetched on its own for this dashboard only (never in the snapshot); the
+  // join code is drawn here, offline. "wifi_changed" (no data) makes it fetch again.
+  let wifiList = null, wifiTicket = 0, wifiFailed = false;
+  async function loadWifi() {
+    if (!has("wifi")) return;
+    const t = ++wifiTicket;
+    try {
+      const r = await SW.api("GET", `/api/wifi?dashboard=${encodeURIComponent(slug)}`);
+      if (t !== wifiTicket) return;
+      wifiList = Array.isArray(r.networks) ? r.networks : [];
+      wifiFailed = false;
+    } catch (_) { wifiFailed = true; if (wifiList === null) wifiList = []; }
+    CARDS.wifi.el.hidden = CARDS.wifi.empty();
+    renderWifi();
+  }
+  function renderWifi() {
+    const body = $("wifi-body");
+    if (!body || wifiList === null) return;
+    if (!wifiList.length) {
+      body.replaceChildren(h("p", { class: "muted" }, wifiFailed ? "Could not load the Wi-Fi details. It tries again when the connection is back." : "No Wi-Fi networks yet. Admin → Wi-Fi to add them."));
+      return;
+    }
+    body.replaceChildren(h("div", { class: "wifi-list" }, wifiList.map((n) => {
+      const qr = SW.qrSvg(SW.wifiPayload(n), 200);
+      let plate = null;
+      if (qr) {
+        qr.setAttribute("aria-label", `QR code to join ${n.ssid}`);
+        qr.removeAttribute("width"); qr.removeAttribute("height");
+        plate = h("div", { class: "wifi-qr" }, qr);
+      }
+      const open = n.security === "nopass" || !n.password;
+      return h("div", { class: "wifi-net" }, plate,
+        h("div", { class: "wifi-info" },
+          n.label ? h("div", { class: "wifi-label" }, n.label) : null,
+          h("div", { class: "wifi-field" }, h("span", { class: "wifi-key" }, "Network"), h("span", { class: "wifi-val" }, n.ssid)),
+          open ? h("div", { class: "wifi-field" }, h("span", { class: "wifi-key" }, "Password"), h("span", { class: "wifi-val muted" }, "None needed"))
+            : n.hide_password ? h("div", { class: "wifi-field" }, h("span", { class: "wifi-key" }, "Password"), h("span", { class: "wifi-val muted" }, "Scan the code to join"))
+            : h("div", { class: "wifi-field" }, h("span", { class: "wifi-key" }, "Password"), h("span", { class: "wifi-val wifi-pass" }, n.password)),
+          n.note ? h("div", { class: "wifi-note muted" }, n.note) : null));
+    })));
+  }
+
   // --------------------------------------------------------------- cards
   // One entry per card this build can show (core/cards.py KNOWN_CARDS). The dashboard lists
   // which cards it shows and in what order (dash.cards); ids this build doesn't know (from a
@@ -1855,6 +1898,8 @@
     spl_live: { el: cardEl("spl_live"), render: renderSpl, empty: () => SW.spl.entities(state.entities).length === 0 },
     // A footer below everything, wherever it is in the list; it shows itself once it has an address.
     // About Stagewatch: static, no data; drawn once and works offline.
+    // Crew Wi-Fi: name, password and a join code. Fetched for this dashboard only; hidden while there are no networks.
+    wifi: { el: cardEl("wifi"), render: () => { renderWifi(); loadWifi(); }, empty: () => wifiList === null || !wifiList.length },
     about: { el: cardEl("about"), render: renderAbout },
     connect_footer: { el: cardEl("connect_footer"), footer: true, render: renderConnectFooter },
   };
@@ -2139,6 +2184,7 @@
       case "alarms": setAlarms(msg.alarms); state.sounding = msg.sounding; renderAlarms(); break;
       case "documents_changed": loadDocuments(); break;
       case "contacts_changed": loadContacts(); break;
+      case "wifi_changed": loadWifi(); break;
       case "spl_limits_changed": loadSplLimits(); break;   // no payload: fetch the limits
       case "reload": location.reload(); break;
     }

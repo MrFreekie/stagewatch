@@ -16,6 +16,7 @@ import json
 import logging
 import platform
 import re
+import secrets
 import sys
 import time
 from contextlib import asynccontextmanager, contextmanager
@@ -34,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 from .. import __version__, acoustics
 from ..core.config import (
     ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
-    ContactsSettings, DeviceErrorsConfig, PowerPointConfig, PowerSiteConfig, ShellyChannelConfig, SiteConfig, UnmonitoredAllowance, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error, valid_quiet_key, QUIET_MAX,
+    ContactsSettings, DeviceErrorsConfig, WIFI_MAX_NETWORKS, WifiConfig, WifiNetwork, PowerPointConfig, PowerSiteConfig, ShellyChannelConfig, SiteConfig, UnmonitoredAllowance, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error, valid_quiet_key, QUIET_MAX,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
 from ..core import calibration_io
@@ -358,6 +359,39 @@ class ClockSetBody(BaseModel):
     epoch_ms: StrictInt
     rtt_ms: StrictInt
     confirm_jump: StrictBool = False
+
+
+WIFI_DEMO = (
+    {"label": "Crew", "ssid": "Demo-Crew", "password": "demo-crew-pass", "security": "WPA", "hidden": False,
+     "hide_password": False, "note": "2.4 GHz only"},
+    {"label": "Artists", "ssid": "Demo Artists; guest", "password": "pa$$:word,\\1", "security": "WPA", "hidden": False,
+     "hide_password": True, "note": "Expires 23:00"},
+    {"label": "Production office", "ssid": "Demo-Office", "password": "", "security": "nopass", "hidden": False,
+     "hide_password": False, "note": ""},
+)
+
+
+class WifiNetworkIn(BaseModel):
+    """One network in PUT /api/admin/wifi. Strict, no unknown keys. Errors name the field, never the value."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    id: str = Field("", max_length=40)
+    label: str = Field("", max_length=40)
+    ssid: str = Field(max_length=32)
+    password: str = Field("", max_length=64)
+    security: Literal["WPA", "nopass"] = "WPA"
+    hidden: bool = Field(False, strict=True)
+    hide_password: bool = Field(False, strict=True)
+    note: str = Field("", max_length=60)
+
+
+class WifiBody(BaseModel):
+    """PUT /api/admin/wifi: the whole list of networks."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    networks: list[WifiNetworkIn] = Field(max_length=WIFI_MAX_NETWORKS)
 
 
 class QuietUnitBody(BaseModel):
@@ -1293,6 +1327,8 @@ class LiveFeed:
             self._send_all({**payload, "type": "advice"})
         elif topic == "contacts":
             self._send_all({"type": "contacts_changed"})   # no data: dashboards refetch their own list
+        elif topic == "wifi":
+            self._send_all({"type": "wifi_changed"})   # no data: dashboards with the card refetch their own list
         elif topic == "documents":
             self._send_all({"type": "documents_changed"})   # no data: dashboards refetch their own list
         elif topic == "spl_limits":
@@ -2815,6 +2851,44 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         return {"event_id": eid, "current": eid == hub.recorder.event_id,
                 "max_docs": docs_mod.MAX_DOCS,
                 "documents": [docs_mod.admin(x) for x in doc_call(documents.docs, eid)]}
+
+    @app.get("/api/wifi")
+    async def public_wifi(dashboard: str = Query(..., max_length=64)):
+        """The Wi-Fi card's networks, only for a dashboard that has the card. Never in the snapshot, so a
+        dashboard without the card (or a start page) cannot see a password. Not cached."""
+        d = hub.config.dashboard(dashboard)
+        nets = []
+        if d is not None and "wifi" in d.cards:
+            nets = [{"id": n.id, "label": n.label, "ssid": n.ssid, "password": n.password, "security": n.security,
+                     "hidden": n.hidden, "hide_password": n.hide_password, "note": n.note}
+                    for n in hub.config.wifi.networks]
+            if not nets and hub.emulate:   # emulate mode only: made-up networks so the card has something to show
+                nets = [dict(x, id=f"demo{i}") for i, x in enumerate(WIFI_DEMO)]
+        return JSONResponse({"networks": nets}, headers=NO_STORE)
+
+    @app.put("/api/admin/wifi", dependencies=admin_deps)
+    async def put_wifi(body: WifiBody):
+        """Replace the Wi-Fi card's networks. The password is stored in config.yaml, which diagnostics redact by key
+        name; it is never logged or echoed back in an error."""
+        out, seen = [], set()
+        for n in body.networks:
+            if any(ord(c) < 32 or ord(c) == 127 for c in n.ssid + n.password + n.label + n.note) or not n.ssid.strip():
+                raise HTTPException(422, "Each network needs a name in plain text. Nothing has been changed.")
+            if len(n.ssid.encode("utf-8")) > 32:
+                raise HTTPException(422, "A network name can be at most 32 bytes. Nothing has been changed.")
+            pw = n.password if n.security == "WPA" else ""
+            if n.security == "WPA" and not (8 <= len(pw) <= 63 or re.fullmatch(r"[0-9A-Fa-f]{64}", pw)):
+                raise HTTPException(422, "A WPA password is 8 to 63 characters. Nothing has been changed.")
+            nid = n.id or secrets.token_hex(3)
+            if nid in seen:
+                raise HTTPException(422, "Two networks have the same id. Nothing has been changed.")
+            seen.add(nid)
+            out.append(WifiNetwork(id=nid, label=n.label, ssid=n.ssid, password=pw, security=n.security,
+                                   hidden=n.hidden, hide_password=n.hide_password, note=n.note))
+        hub.config.wifi = WifiConfig(networks=out)
+        hub.save_config()
+        hub.bus.publish("wifi", None)
+        return {"networks": [x.model_dump() for x in hub.config.wifi.networks]}
 
     @app.get("/api/documents")
     async def list_documents(dashboard: str = Query(..., max_length=64)):

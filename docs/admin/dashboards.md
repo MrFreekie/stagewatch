@@ -110,6 +110,7 @@ The names in this list are slightly different from the headings on screen.
 | **Power** | **Power** | [Power](../cards/power.md) |
 | **Sound level limits** | **Sound level limits** | [Sound level limits](../cards/sound-level-limits.md) |
 | **Raspberry Pi** | **Raspberry Pi** | [Raspberry Pi](../cards/raspberry-pi.md) |
+| **Wi-Fi** | **Wi-Fi** | [Wi-Fi](../cards/wifi.md) |
 | **About Stagewatch** | **About Stagewatch** | [About Stagewatch](../cards/about.md) |
 | **Plans on file** | **Plans on file** | [Plans on file](../cards/documents.md) |
 | **Onsite contacts** | **Onsite contacts** | [Onsite contacts](../cards/contacts.md) |
@@ -155,8 +156,8 @@ A ticked card can still be hidden until it has something to show.
 
 ### Card width: Full or Half
 
-Seven cards have a **Card width** choice, **Full** or **Half**, beside them once they are ticked:
-**Wall Clock**, **Ontime Timer**, **Ontime Rundown**, **DirectOut GLOBCON**, **Power**, **Raspberry Pi** and **About Stagewatch**.
+Eight cards have a **Card width** choice, **Full** or **Half**, beside them once they are ticked:
+**Wall Clock**, **Ontime Timer**, **Ontime Rundown**, **DirectOut GLOBCON**, **Power**, **Raspberry Pi**, **Wi-Fi** and **About Stagewatch**.
 
 - Every card is **Full** until you choose **Half**.
 - Put two **Half** cards next to each other in the order and they sit side by side on a tablet or a

@@ -32,6 +32,7 @@ Admin has four tabs: **Show day**, **Sensors and nodes**, **Integrations** and *
 | **Connect a tablet** | Address and QR code for each dashboard | [Dashboards](dashboards.md) |
 | **Documents** | Upload the event's plans and choose who sees them | [Plans on file](../cards/documents.md) |
 | **Onsite contacts** | Key people for the event | [Onsite contacts](../cards/contacts.md) |
+| **Wi-Fi** | Crew internet networks for the Wi-Fi card | [Wi-Fi](../cards/wifi.md) |
 
 ### Sensors and nodes
 

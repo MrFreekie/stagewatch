@@ -2538,6 +2538,39 @@
     return card("Documents", box);
   }
 
+  // Wi-Fi card: the crew internet networks shown on dashboards that have the Wi-Fi card. Stored in
+  // config.yaml (admin only); sent to a dashboard only when that dashboard has the card.
+  function wifiCard() {
+    let rows = ((admin.config.wifi && admin.config.wifi.networks) || []).map((n) => Object.assign({}, n));
+    const max = 6;
+    const box = h("div");
+    const draw = () => {
+      box.replaceChildren(...rows.map((n, i) => {
+        const inp = (key, attrs) => h("input", Object.assign({ class: "touch", value: n[key] || "", oninput: (e) => { n[key] = e.target.value; dirty = true; } }, attrs));
+        const tick = (key, label) => h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!n[key], onchange: (e) => { n[key] = e.target.checked; dirty = true; } }), ` ${label}`);
+        const sec = h("select", { class: "touch", "aria-label": "Security", onchange: (e) => { n.security = e.target.value; dirty = true; draw(); } },
+          h("option", { value: "WPA", selected: n.security !== "nopass" }, "Password (WPA)"), h("option", { value: "nopass", selected: n.security === "nopass" }, "Open, no password"));
+        const pw = n.security === "nopass" ? null : field("Password (8 to 63 characters)", inp("password", { maxlength: 64, autocomplete: "off", spellcheck: "false" }));
+        return h("div", { class: "card-sub" },
+          h("div", { class: "row" }, field("Label (for example Crew)", inp("label", { maxlength: 40 })), field("Network name", inp("ssid", { maxlength: 32, spellcheck: "false" })), field("Security", sec)),
+          h("div", { class: "row" }, pw, field("Note (for example 2.4 GHz only)", inp("note", { maxlength: 60 }))),
+          h("div", { class: "row" }, tick("hide_password", "Hide the password, show the join code only"), tick("hidden", "Hidden network (does not broadcast its name)"),
+            h("button", { type: "button", class: "touch danger", onclick: () => { rows.splice(i, 1); dirty = true; draw(); } }, "Remove")));
+      }));
+      if (!rows.length) box.append(h("p", { class: "muted" }, "No networks yet."));
+    };
+    draw();
+    const save = () => run(() => api("PUT", "/api/admin/wifi", { networks: rows.map((n) => ({ id: n.id || "", label: n.label || "", ssid: n.ssid || "", password: n.security === "nopass" ? "" : (n.password || ""), security: n.security === "nopass" ? "nopass" : "WPA", hidden: !!n.hidden, hide_password: !!n.hide_password, note: n.note || "" })) }), "Wi-Fi saved")
+      .then((r) => { rows = r.networks.map((n) => Object.assign({}, n)); admin.config.wifi = { networks: r.networks }; dirty = false; draw(); }, () => {});
+    return card("Wi-Fi",
+      h("p", { class: "warn-text" }, "Only share guest/crew internet here. Never the network your show equipment runs on."),
+      h("p", { class: "muted hint" }, "Shown, with a QR code to join, on dashboards that have the Wi-Fi card (User dashboards → Edit cards). Anyone who can open such a dashboard can read the password, so use a network you can change after the event. It is kept in this computer's config file, never shown on other dashboards, and left out of diagnostics."),
+      box,
+      h("div", { class: "row" },
+        h("button", { type: "button", class: "touch", disabled: false, onclick: () => { if (rows.length < max) { rows.push({ id: "", label: "", ssid: "", password: "", security: "WPA", hidden: false, hide_password: false, note: "" }); dirty = true; draw(); } } }, "Add network"),
+        h("button", { type: "button", class: "primary touch", onclick: save }, "Save Wi-Fi")));
+  }
+
   // Onsite contacts (plans/onsite-contacts.md): key people per event. Personal data: admin-only
   // except job title, name, radio and area on dashboards with the Contacts card, and phone numbers
   // only where all three switches allow them. Nothing is kept in localStorage.
@@ -3170,7 +3203,8 @@
         foldCard(adviceCard(), "advice", false),          // FOH advice: alignment drift paths and HF air loss positions
         connectCard(),
         foldCard(documentsCard(), "documents", false),
-        foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0)),
+        foldCard(contactsCard(), "contacts", false, admin.contact_reminders > 0),
+        foldCard(wifiCard(), "wifi", false)),
       tabPanel("sensors",
         chip(foldCard(devicesCard(), "nodes", true), "esphome"),
         foldCard(entitiesCard(), "sensors", true),

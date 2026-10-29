@@ -15,6 +15,10 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+
+- **Wi-Fi card.** Shows the crew internet: network name, password and a QR code that joins it on a phone, drawn on the dashboard itself so it works offline. Several networks are allowed (Crew, Artists, Production office), each with a label and a note such as "2.4 GHz only". A network can hide its password and show the code only. Add the networks in Admin, Wi-Fi. The card is off by default, and a dashboard only receives the passwords if it has the card. Only share guest or crew internet here, never the network your show equipment runs on.
+
 ### Fixed
 
 - **DirectOut GLOBCON: the dB figures no longer change the height of the row under the meters** (half-width card, 16 channels). The upright figure was as long as the number, so "-9.5" and "-100" made different heights. Each figure now sits in a box of the same length and ends at the same place.
