@@ -71,10 +71,11 @@ def test_baseline_view_values_from_the_synthetic_capture():
 def test_baseline_keeps_only_whitelisted_subtrees():
     data = baseline().data
     text = json.dumps(data)
-    for gone in ("osc", "group_name", "Group Placeholder", "gptp", "Placeholder Mic", "stream_id", "dest_addr", "analog", "levelmeters"):
+    for gone in ("osc", "group_name", "Group Placeholder", "gptp", "stream_id", "dest_addr", "levelmeters", "gain", "p48", "phase", "hiz", "trs", "gain_group", '"type"'):
         assert gone not in text
     assert set(data) == {"device", "clock", "input", "output"}
-    assert set(data["input"]) == {"avb"}
+    assert set(data["input"]) == {"avb", "analog"}
+    assert data["input"]["analog"] == {"1": {"label": "Placeholder Mic 1"}}      # the name only
 
 
 def test_soundness_items_of_the_capture_with_causes():
@@ -318,7 +319,8 @@ def test_public_message_exact_field_set_and_nothing_private():
     msg = mapping.unit_message("stage_l", "Stage L", v, phase="up", frame_age_s=0.2, text_age_s=1.0)
     assert set(msg) == {"id", "name", "model", "status", "status_word", "status_symbol", "level", "link_up",
                         "last_frame_age_s", "no_updates_min", "temp_c", "psu", "redundancy", "clock", "preset",
-                        "avb", "soundness", "firmware"}
+                        "avb", "soundness", "firmware", "inputs"}
+    assert msg["inputs"] == [{"n": 1, "label": "Placeholder Mic 1"}]
     assert set(msg) == set(mapping.UNIT_FIELDS)
     assert set(msg["clock"]) == {"source_label", "locked", "rate_hz", "state"}
     assert set(msg["preset"]) == {"active_no", "loaded_no", "active_name", "loaded_name", "changed"}
@@ -326,7 +328,7 @@ def test_public_message_exact_field_set_and_nothing_private():
     assert all(set(s) == {"area", "word", "symbol", "level", "cause"} for s in msg["soundness"])
     assert msg["psu"] == [{"n": 1, "on": True}, {"n": 2, "on": False}]
     text = json.dumps(msg)
-    for private in (SERIAL, "Group Placeholder", "00-00-00", "Placeholder Mic", "gptp", "stream", "serial", "192.", "dest_addr"):
+    for private in (SERIAL, "Group Placeholder", "00-00-00", "gptp", "stream", "serial", "192.", "dest_addr"):
         assert private not in text
 
 
@@ -557,3 +559,67 @@ def test_public_name_drops_serial_looking_words_and_the_serial_itself():
     assert parse.public_name("Stage SN12345AB") == "Stage"                      # looks like a serial
     assert parse.public_name("Rack ab-77c", "AB-77C") == "Rack"                 # holds the unit's serial
     assert parse.public_name("23051234") == ""
+
+
+# ------------------------------------------------------------------ channel names (input labels)
+def labels_of(st: RmeState) -> list:
+    return list(parse.make_view(st.data).inputs)
+
+
+def test_labels_in_baseline_and_delta_and_nothing_else_about_inputs():
+    st = RmeState()
+    st.ingest(status({"input": {"analog": {"1": {"label": "RF Mic 1", "gain": 40, "p48": True, "phase": True, "trs": True,
+                                                "hiz": False, "gain_group": 3, "type": "mic"},
+                                           "2": {"label": "  RF   Mic 2 "}}}}))
+    assert labels_of(st) == [(1, "RF Mic 1"), (2, "RF Mic 2")]
+    assert st.data["input"]["analog"] == {"1": {"label": "RF Mic 1"}, "2": {"label": "RF Mic 2"}}
+    res = st.ingest(json.dumps({"input": {"analog": {"2": {"label": "Kick", "gain": 12}}}}))
+    assert res.kind == "delta" and res.changed
+    assert labels_of(st) == [(1, "RF Mic 1"), (2, "Kick")]
+    assert not st.ingest(json.dumps({"input": {"analog": {"2": {"label": "Kick"}}}})).changed
+    st.ingest(json.dumps({"input": {"analog": {"2": {"label": ""}}}}))
+    assert labels_of(st) == [(1, "RF Mic 1")]                    # an empty name is no name
+    msg = mapping.unit_message("u", "U", parse.make_view(st.data), phase="up", frame_age_s=0, text_age_s=0)
+    assert msg["inputs"] == [{"n": 1, "label": "RF Mic 1"}]
+    assert "gain" not in json.dumps(msg) and "p48" not in json.dumps(msg)
+
+
+def test_label_control_characters_length_and_type():
+    st = RmeState()
+    st.ingest(status({"input": {"analog": {
+        "1": {"label": "A\u0000B\u202eC\u200bD\n\tE"},
+        "2": {"label": "x" * 40}, "3": {"label": "y" * 41}, "4": {"label": 7}, "5": {"label": None},
+        "6": {"label": ["a"]}, "7": {"label": "   "}}}}))
+    got = dict(labels_of(st))
+    assert got[1] == "ABCD E"                                   # control and format characters gone
+    assert got[2] == "x" * 40 and 3 not in got                  # over the limit: dropped, not shortened
+    assert not ({4, 5, 6, 7} & set(got))
+    st.ingest(json.dumps({"input": {"analog": {"2": {"label": 5}}}}))
+    assert dict(labels_of(st))[2] == "x" * 40                    # a non-text label in a delta is ignored
+    st.ingest(json.dumps({"input": {"analog": {"2": {"label": "z" * 41}}}}))
+    assert 2 not in dict(labels_of(st))                         # a new over-long name replaces the old one with none
+
+
+def test_channel_numbers_over_the_cap_or_odd_are_ignored():
+    analog = {str(n): {"label": f"Ch {n}"} for n in (1, 32, 33, 99, 0, 100)}
+    analog.update({"01": {"label": "lead zero"}, "x": {"label": "text"}, "-1": {"label": "neg"}, "1.5": {"label": "dot"}})
+    st = RmeState()
+    st.ingest(status({"input": {"analog": analog}}))
+    assert [n for n, _ in labels_of(st)] == [1, 32]
+    big = {str(n): {"label": f"C{n}"} for n in range(1, 33)}
+    st2 = RmeState()
+    st2.ingest(status({"input": {"analog": big}}))
+    assert len(labels_of(st2)) == 32
+    assert len(mapping.public_inputs(tuple((n, "a") for n in range(1, 60)))) == 32
+
+
+def test_public_inputs_cleans_again():
+    out = mapping.public_inputs(((1, "ok"), (2, "a\u0007b"), (3, "x" * 90), (0, "no"), (4, ""), (40, "far")))
+    assert out == [{"n": 1, "label": "ok"}, {"n": 2, "label": "ab"}, {"n": 3, "label": "x" * 40}]
+
+
+def test_labels_survive_resync_and_vanish_on_a_new_socket():
+    st = RmeState()
+    st.ingest(status({"input": {"analog": {"1": {"label": "A"}}}}))
+    st.ingest(status({"input": {"analog": {"2": {"label": "B"}}}}))      # a later full status replaces the lot
+    assert labels_of(st) == [(2, "B")]

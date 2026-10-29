@@ -6,7 +6,8 @@ Shapes are from two owner captures of an RME 12Mic (firmware 2.0.1) web remote. 
 only what changed. Anything the captures do not show is marked UNVERIFIED below and is shown as
 "unknown" rather than guessed. Only a whitelist of subtrees is kept; the large ``osc`` schema tree, the
 serial number's neighbours (group name, gPTP grandmaster, stream ids and addresses) and every analogue
-input detail are dropped on the way in, so they can never reach a dashboard.
+input detail except the channel's name (its label) are dropped on the way in, so they can never reach a
+dashboard. The owner has decided channel names may be shown on every dashboard that has the card.
 
 Every number is checked: booleans are never numbers, numbers are never booleans, NaN and infinity are
 refused, strings are length-capped, and depth and node counts are bounded.
@@ -28,6 +29,8 @@ MAX_STR = 200                   # string values
 MAX_KEY = 64
 MAX_WILDCARD_KEYS = 32          # per level, for the "*" parts of the whitelist
 MAX_LIST = 4
+MAX_CHANNELS = 32               # analogue input numbers kept (1..32)
+LABEL_MAX = 40                  # a channel name longer than this is dropped, not shortened
 
 LOCAL_NAME_MAX = 40
 WORD_MAX = 24
@@ -109,6 +112,7 @@ def _check_limits(root: dict) -> None:
 # ------------------------------------------------------------------ the whitelist
 _S = "scalar"
 _L = "list"
+_LABEL = "label"
 _SNODE = {"state": _S, "cause": _S}
 _PATHS = {"pri": {"soundness": _SNODE}, "sec": {"soundness": _SNODE}}
 
@@ -124,7 +128,7 @@ SCHEMA: dict = {
         "source": _S, "sampling_rate": _S, "current_sampling_rate": _S, "soundness": _SNODE,
         "sources": {"*": {"rate": _S, "sync": _S, "soundness": _SNODE}},
     },
-    "input": {"avb": {"*": _PATHS}},
+    "input": {"avb": {"*": _PATHS}, "analog": {"*": {"label": _LABEL}}},
     "output": {"avb": {"*": _PATHS}},
 }
 
@@ -164,6 +168,11 @@ def _clean_leaf(kind: str, value: object):
     """The value to keep, or a sentinel for "not usable here"."""
     if kind == _S:
         return value if _is_scalar(value) else _SKIP
+    if kind == _LABEL:
+        if not isinstance(value, str):
+            return _SKIP         # not text: ignored, whatever was there stays
+        text = clean_text(value, MAX_STR)
+        return text if len(text) <= LABEL_MAX else ""      # too long: no name rather than a huge string
     if kind == _L:
         if isinstance(value, list) and len(value) <= MAX_LIST and all(_is_scalar(v) for v in value):
             return list(value)
@@ -174,8 +183,13 @@ def _clean_leaf(kind: str, value: object):
 _SKIP = object()
 
 
-def _sub_schema(schema: dict, key: str, existing: dict):
+_CHANNEL_KEY = re.compile(r"^[1-9][0-9]?$")
+
+
+def _sub_schema(schema: dict, key: str, existing: dict, path: tuple[str, ...] = ()):
     if "*" in schema:
+        if path == ("input", "analog") and not (_CHANNEL_KEY.match(key) and int(key) <= MAX_CHANNELS):
+            return None
         if not _WILD_KEY.match(key) or (key not in existing and len(existing) >= MAX_WILDCARD_KEYS):
             return None
         return schema["*"]
@@ -186,7 +200,7 @@ def _merge(dst: dict, src: dict, schema: dict, path: tuple[str, ...]) -> bool:
     """Fold ``src`` into ``dst`` keeping only whitelisted keys of the right shape. True if anything changed."""
     changed = False
     for key, value in src.items():
-        sub = _sub_schema(schema, key, dst)
+        sub = _sub_schema(schema, key, dst, path)
         if sub is None:
             continue
         here = path + (key,)
@@ -426,6 +440,7 @@ class View:
     avb_active: int = 0
     avb_total: int = 0
     avb_states: tuple[tuple[str, int], ...] = ()
+    inputs: tuple[tuple[int, str], ...] = ()      # (channel number, name) for channels that have a name
     sound: tuple[SoundItem, ...] = field(default_factory=tuple)
 
 
@@ -549,6 +564,16 @@ def make_view(data: dict | None) -> View | None:
             items.append(SoundItem(f"AVB out {n}", s.word, s.symbol, s.level, "", s.known,
                                    "" if s.known else s.word.removeprefix("Unrecognised: ")))
 
+    channels = []
+    analog = _get(data, "input", "analog")
+    if isinstance(analog, dict):
+        for ckey, cnode in analog.items():
+            if isinstance(ckey, str) and _CHANNEL_KEY.match(ckey) and int(ckey) <= MAX_CHANNELS:
+                chan = clean_text(cnode.get("label") if isinstance(cnode, dict) else None, LABEL_MAX)
+                if chan:
+                    channels.append((int(ckey), chan))
+    channels.sort()
+
     return View(
         name=name, model=model, firmware=firmware, serial=serial,
         temp_c=kelvin_to_celsius(_get(data, "device", "health", "temperatures", "core")),
@@ -559,5 +584,5 @@ def make_view(data: dict | None) -> View | None:
         preset_active_name=preset_name(active), preset_loaded_name=preset_name(loaded),
         preset_changed=changed,
         avb_active=active_n, avb_total=total, avb_states=tuple(sorted(states.items())),
-        sound=tuple(items[:40]),
+        sound=tuple(items[:40]), inputs=tuple(channels),
     )
