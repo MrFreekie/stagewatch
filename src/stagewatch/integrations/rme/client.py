@@ -374,7 +374,7 @@ class RmeClient(RmeSource):
 
 async def probe(host: object, port: int = 80, *, address_ok: Callable = is_local_address,
                 open_timeout_s: float = OPEN_TIMEOUT_S, wait_s: float = FIRST_FRAME_S) -> dict:
-    """Admin "Test": open a short-lived socket, read until the first full status, close. Sends nothing.
+    """Admin "Test": open a short-lived socket, read until the first full status, close. Sends no commands or settings.
     Returns ``{"model", "firmware", "name", "serial"}`` (the serial is for the server only: never put it in
     a response). Raises RmeError with a TEXT category. If the unit has a connection limit it may refuse this
     second connection; that shows as "nothing answered" or "closed"."""

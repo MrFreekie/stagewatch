@@ -286,7 +286,7 @@ def test_manifest_is_honest():
     m = MANIFEST
     assert (m.domain, m.tier, m.direction, m.iot_class, m.vendors) == ("rme", "experimental", "in", "local_push", ("RME",))
     assert m.protocols == ("WebSocket (JSON)",) and m.entity_kinds == ("temperature", "contact")
-    for phrase in ("never sends", "12Mic", "untested", "no login"):
+    for phrase in ("sends it no commands or settings", "12Mic", "untested", "no login"):
         assert phrase in m.description
 
 

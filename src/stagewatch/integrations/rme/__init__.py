@@ -1,7 +1,7 @@
 """RME interfaces (12Mic and similar AVB units): the health of each unit the admin added, on the RME
 interfaces card.
 
-Read-only. Stagewatch listens to each unit's status socket and sends it nothing at all: it cannot change
+Read-only. Stagewatch listens to each unit's status socket and sends it no commands or settings (it only opens the link and answers the keep-alive): it cannot change
 gain, 48 V, a preset, routing or the clock. It records the unit's core temperature and its two power
 supplies as Equipment readings (never part of a site average), and keeps the clock source, preset, AVB
 streams and the unit's own "soundness" words for the card. Changes are noted on the timeline as they
@@ -52,7 +52,7 @@ MANIFEST = Manifest(
     version="0.1.0",
     description="Shows the health of RME 12Mic units on the RME interfaces card: core temperature, the two "
                 "power supplies, clock source and lock, preset (active and loaded), AVB streams and the unit's "
-                "own soundness words. It only listens to each unit's status socket and never sends it anything, "
+                "own soundness words. It only listens to each unit's status socket and sends it no commands or settings, "
                 "so it cannot change gain, 48 V, presets, routing or the clock. Changes are marked on the "
                 "timeline live; nothing is back-filled. Tried on one 12Mic (firmware 2.0.1) only; other RME "
                 "units are untested. RME units have no login, so anyone on their network can change them. "
