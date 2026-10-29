@@ -32,6 +32,7 @@ This page is the one list of every card. Each card has its own page.
 | [Alignment drift](foh-advice.md) | How far each delay path has drifted since the **Aligned** marker, with a suggested delay. Advice only. Hidden until a path is set up | No | No | A sensor node and paths entered in Admin |
 | [HF air loss](foh-advice.md) | Estimated change in top end lost to the air at FOH and Rear since the **Soundcheck** marker. Advice only. Hidden until a position is set up | No | No | A sensor node with humidity and positions entered in Admin |
 | [Onsite contacts](contacts.md) | Key people for the event: job title, name, radio and area. Phone numbers only where allowed | No | No | Contacts entered in Admin |
+| [Wi-Fi](wifi.md) | The crew internet: network name, password and a QR code to join. Only on dashboards that have it | No | No | Networks entered in Admin |
 | [About Stagewatch](about.md) | A small advert: the name, one line and a QR code to the Stagewatch project page | No | Yes | Nothing |
 | [Plans on file](documents.md) | The event's safety and risk documents shared with this dashboard. Titles only on the wall | No | No | Documents uploaded in Admin |
 

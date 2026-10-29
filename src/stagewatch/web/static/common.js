@@ -1113,10 +1113,10 @@ SW.heartbeat = function (everyMs = 2000) {
 
 // ---- QR codes (local; uses the vendored qrcode-generator in /static/vendor/qrcode.js) ----
 // Returns an <svg> element (built with DOM calls, no innerHTML) or null if it cannot be made.
-SW.qrSvg = function (text, size = 176) {
+SW.qrSvg = function (text, size = 176, level = "M") {
   if (typeof qrcode !== "function") return null;
   let qr;
-  try { qr = qrcode(0, "M"); qr.addData(text); qr.make(); } catch (_) { return null; }
+  try { qr = qrcode(0, level); qr.addData(text); qr.make(); } catch (_) { return null; }
   const n = qr.getModuleCount();
   const quiet = 2;
   const NS = "http://www.w3.org/2000/svg";
@@ -1136,6 +1136,15 @@ SW.qrSvg = function (text, size = 176) {
   path.setAttribute("d", d); path.setAttribute("fill", "#000000");
   svg.append(path);
   return svg;
+};
+
+// Wi-Fi join code text: WIFI:T:WPA;S:<name>;P:<password>;; with \ ; , : " escaped. A name or password made only of
+// hex digits is wrapped in quotes so a phone does not read it as hex.
+SW.wifiPayload = function (n) {
+  const esc = (t) => String(t).replace(/([\\;,:"])/g, "\\$1");
+  const val = (t) => (/^[0-9A-Fa-f]+$/.test(t) ? `"${t}"` : esc(t));
+  const open = n.security === "nopass" || !n.password;
+  return `WIFI:T:${open ? "nopass" : "WPA"};S:${val(n.ssid)};${open ? "" : `P:${val(n.password)};`}${n.hidden ? "H:true;" : ""};`;
 };
 
 // About Stagewatch card: the one place the project address lives. Fixed text, drawn locally.

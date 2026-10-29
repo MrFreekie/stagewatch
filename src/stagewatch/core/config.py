@@ -1235,6 +1235,84 @@ class DeviceErrorsConfig(_Model):
         return out
 
 
+WIFI_MAX_NETWORKS = 6
+WIFI_SECURITY = ("WPA", "nopass")
+
+
+class WifiNetwork(_Model):
+    """One guest or crew internet network shown on the Wi-Fi card. The password is plain text on purpose (the card
+    shows it and draws a join code), so only the crew internet belongs here, never the show network. It stays out of
+    diagnostics by its key name, and out of every dashboard that does not have the card. Additive: no schema bump."""
+    id: str = Field(max_length=40)
+    label: str = Field("", max_length=40)
+    ssid: str = Field(max_length=32)
+    password: str = Field("", max_length=64)
+    security: str = "WPA"
+    hidden: bool = False             # the network does not broadcast its name
+    hide_password: bool = False      # show the join code only, not the password
+    note: str = Field("", max_length=60)
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _slug(cls, v):
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError("id needed")
+        return slugify(v)[:40]
+
+    @field_validator("label", "note", mode="before")
+    @classmethod
+    def _text(cls, v):
+        return _plain_text(v, 60)
+
+    @field_validator("ssid", "password", mode="before")
+    @classmethod
+    def _exact(cls, v):
+        """Spaces inside a name or password count, so only control characters are refused."""
+        if not isinstance(v, str) or any(ord(c) < 32 or ord(c) == 127 for c in v):
+            raise ValueError("Use plain text")
+        return v
+
+    @field_validator("ssid")
+    @classmethod
+    def _ssid_needed(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("A network name is needed")
+        return v
+
+    @field_validator("security", mode="before")
+    @classmethod
+    def _security(cls, v):
+        return v if v in WIFI_SECURITY else "WPA"
+
+
+class WifiConfig(_Model):
+    """The Wi-Fi card's networks (Admin, Wi-Fi). Additive field with defaults: an older build ignores it."""
+    networks: list[WifiNetwork] = Field(default_factory=list)
+
+    @field_validator("networks", mode="before")
+    @classmethod
+    def _lenient(cls, v):
+        """On load: an entry that cannot be read, or repeats an id, is left out and the list cut to the limit.
+        Logs a count only, never a value."""
+        if not isinstance(v, list):
+            return []
+        kept, seen, dropped = [], set(), 0
+        for item in v:
+            try:
+                net = item if isinstance(item, WifiNetwork) else WifiNetwork.model_validate(item)
+            except Exception:  # noqa: BLE001 - any unreadable entry is simply left out
+                dropped += 1
+                continue
+            if net.id in seen or len(kept) >= WIFI_MAX_NETWORKS:
+                dropped += 1
+                continue
+            seen.add(net.id)
+            kept.append(net)
+        if dropped:
+            log.warning("Wi-Fi networks: %d unreadable or surplus entr%s left out", dropped, "y" if dropped == 1 else "ies")
+        return kept
+
+
 class Config(_Model):
     schema_version: int = CONFIG_SCHEMA_VERSION
     site: SiteConfig = Field(default_factory=SiteConfig)
@@ -1274,6 +1352,8 @@ class Config(_Model):
     advice: AdviceConfig = Field(default_factory=AdviceConfig)
     # Additive (no schema bump): imported units the admin quieted on the Device errors card.
     device_errors: DeviceErrorsConfig = Field(default_factory=DeviceErrorsConfig)
+    # Wi-Fi card: guest and crew internet networks (additive, no schema bump).
+    wifi: WifiConfig = Field(default_factory=WifiConfig)
 
     @field_validator("advice", mode="before")
     @classmethod

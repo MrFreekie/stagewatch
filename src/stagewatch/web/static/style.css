@@ -1700,3 +1700,25 @@ body.layout-wall .rme-tile { padding: 16px 20px; }
 .rme-admin-unit .row { align-items: flex-end; flex-wrap: wrap; gap: 8px; }
 .rme-test-result p { margin: 4px 0; }
 .rme-tile [hidden]:not([data-slot]), .rme-empty[hidden], .rme-foot[hidden] { display: none; }
+
+/* Wi-Fi card: one block per network, join code beside the name and password (stacked on a phone). */
+.wifi-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.wifi-net { display: flex; gap: 16px; align-items: center; }
+.wifi-qr { background: #fff; padding: 8px; border-radius: 6px; width: 150px; flex: none; box-sizing: border-box; }
+.wifi-qr svg { display: block; width: 100%; height: auto; }
+.wifi-info { min-width: 0; flex: 1; }
+.wifi-label { font-weight: 600; margin-bottom: 4px; }
+.wifi-field { display: flex; flex-direction: column; margin-bottom: 6px; }
+.wifi-key { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.wifi-val { font-size: 22px; overflow-wrap: anywhere; }
+.wifi-pass { font-family: ui-monospace, Consolas, monospace; letter-spacing: .02em; }
+.wifi-note { font-size: 14px; }
+body.layout-phone .wifi-net { flex-direction: column; align-items: stretch; }
+body.layout-phone .wifi-qr { width: 200px; max-width: 100%; margin: 0 auto; }
+body.layout-wall .wifi-list { grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 32px; }
+body.layout-wall .wifi-qr { width: 300px; padding: 14px; }
+body.layout-wall .wifi-label { font-size: 34px; }
+body.layout-wall .wifi-key { font-size: 20px; }
+body.layout-wall .wifi-val { font-size: 44px; }
+body.layout-wall .wifi-note { font-size: 28px; }
+.card-sub { border: 1px solid var(--grid); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; }
