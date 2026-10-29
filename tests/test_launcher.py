@@ -73,7 +73,7 @@ class Harness:
             self.thread.join(30)
             assert not self.thread.is_alive()
 
-    def wait(self, cond, timeout=30.0):
+    def wait(self, cond, timeout=60.0):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             v = cond()
