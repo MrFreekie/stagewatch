@@ -20,6 +20,7 @@ This page is the one list of every card. Each card has its own page.
 | [Ontime Rundown](ontime-rundown.md) | Event position and ahead or behind, from Ontime | No | Yes | [Ontime](../integrations/ontime.md) |
 | Open on a tablet | This dashboard's address and a QR code to open it on a phone or tablet | Wall | No | Nothing |
 | [Barometer](barometer.md) | Sea-level pressure dial, 3-hour tendency and a rough outlook | No | No | A pressure sensor |
+| [Condensation risk](condensation.md) | Site dew point and how close the air is to it (Dry, Low risk, Near saturation, Condensing), plus an optional check of whether your kit is below the dew point. A guide, not a guarantee | No | No | Temperature and humidity sensors |
 | [Equipment](equipment.md) | Readings from Equipment-role sensors, such as amp racks. Hidden while there are none | No | No | An Equipment sensor |
 | [Sound level](sound-level.md) | Up to three sound level values from Smaart, and their timeline. Hidden until set up | No | No | [Smaart](../integrations/smaart.md) |
 | [Sound level limits](sound-level-limits.md) | The licence limit now, the next change and Smaart's live value beside it. Public wording only | No | No | [Smaart](../integrations/smaart.md) and limits entered in Admin |

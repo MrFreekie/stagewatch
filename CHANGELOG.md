@@ -15,6 +15,10 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+
+- **Condensation risk card.** Shows the site dew point and how far the air temperature is above it, in plain words (Dry, Low risk, Near saturation, Condensing), and warns that kit colder than the dew point will fog up. Tablets and phones have an optional kit temperature box that says whether that kit is below the dew point; the figure stays in that browser. Site readings only, no alarm, sound or marker, and "No reading" when there is no data. A guide, not a guarantee. Add it under Admin, User dashboards, Edit cards.
+
 ### Fixed
 
 - **DirectOut GLOBCON: the dB figures no longer change the height of the row under the meters** (half-width card, 16 channels). The upright figure was as long as the number, so "-9.5" and "-100" made different heights. Each figure now sits in a box of the same length and ends at the same place.

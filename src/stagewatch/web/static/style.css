@@ -1697,3 +1697,32 @@ body.layout-wall .rme-tile { padding: 16px 20px; }
 .rme-admin-unit .row { align-items: flex-end; flex-wrap: wrap; gap: 8px; }
 .rme-test-result p { margin: 4px 0; }
 .rme-tile [hidden]:not([data-slot]), .rme-empty[hidden], .rme-foot[hidden] { display: none; }
+
+/* Condensation risk: a band word first (colour is never the only signal), then three figures. */
+.cond-word { font-size: 30px; font-weight: 700; margin: 2px 0 8px; border-left: 6px solid var(--muted); padding-left: 10px; }
+.cond-dry .cond-word, .cond-low .cond-word { border-left-color: var(--ok); }
+.cond-near .cond-word { border-left-color: var(--warn); }
+.cond-condensing .cond-word { border-left-color: var(--alert); }
+.cond-none .cond-figs, .cond-none .cond-line { opacity: .6; }
+.cond-figs { display: flex; gap: 12px; margin-bottom: 8px; }
+.cond-fig { flex: 1 1 0; min-width: 0; }
+.cond-label { font-size: 14px; color: var(--muted); }
+.cond-value { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.cond-value .unit { font-size: 16px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+.cond-line { margin: 0 0 8px; min-height: 1.4em; }
+.cond-kit { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+.cond-kit-input { width: 90px; min-height: 44px; font-size: 18px; }
+.cond-kit-result { flex-basis: 100%; margin: 0; min-height: 1.4em; font-weight: 600; }
+.cond-kit-below { color: var(--alert); }
+.cond-kit-close { color: var(--warn); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .cond-kit-close { color: #8a5a0f; } }
+:root[data-theme="light"] .cond-kit-close { color: #8a5a0f; }
+.cond-foot { margin: 0 0 6px; }
+body.layout-phone .cond-word { font-size: 26px; }
+body.layout-phone .cond-value { font-size: 28px; }
+body.layout-wall .cond-word { font-size: 64px; border-left-width: 10px; }
+body.layout-wall .cond-label { font-size: 22px; }
+body.layout-wall .cond-value { font-size: 88px; }
+body.layout-wall .cond-value .unit { font-size: 40px; }
+body.layout-wall .cond-line { font-size: 30px; }
+body.layout-wall .cond-foot, body.layout-wall .cond .card-about { display: none; }

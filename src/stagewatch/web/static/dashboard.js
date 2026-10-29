@@ -1666,6 +1666,47 @@
     u.temp.hidden = !v.tempNote;
   }
 
+  // --------------------------------------------------------- condensation risk
+  // Site dew point and the margin between air temperature and dew point (SW.cond picks the band and
+  // the words). Site readings only; equipment never reaches them. Advisory: no alarm, sound or marker.
+  // The optional kit temperature stays in this browser (localStorage) and is never sent anywhere.
+  // The DOM is built once and updated in place so the typing box keeps focus; the wall hides the box.
+  const KIT_KEY = "stagewatch.condensation.kit";
+  const condUi = { ui: null };
+  function renderCondensation() {
+    const card = $("condensation-card");
+    if (!has("condensation")) { card.hidden = true; return; }
+    card.hidden = false;
+    if (!condUi.ui) {
+      const u = condUi.ui = {
+        word: h("div", { class: "cond-word", role: "status" }),
+        air: h("span", { class: "cond-num" }), dew: h("span", { class: "cond-num" }), margin: h("span", { class: "cond-num" }),
+        line: h("p", { class: "cond-line" }),
+        input: h("input", { type: "text", inputmode: "decimal", class: "cond-kit-input", id: "cond-kit", maxlength: "7", autocomplete: "off", "aria-describedby": "cond-kit-result" }),
+        result: h("p", { class: "cond-kit-result", id: "cond-kit-result", role: "status" }),
+      };
+      const fig = (label, num) => h("div", { class: "cond-fig" }, h("div", { class: "cond-label" }, label), h("div", { class: "cond-value" }, num, h("span", { class: "unit" }, "°C")));
+      u.input.value = localGet(KIT_KEY, "");
+      u.input.addEventListener("input", () => { localSet(KIT_KEY, u.input.value.trim()); renderCondensation(); });
+      card.append(u.word, h("div", { class: "cond-figs" }, fig("Air", u.air), fig("Dew point", u.dew), fig("Margin", u.margin)), u.line,
+        h("div", { class: "cond-kit only-interactive" }, h("label", { for: "cond-kit" }, "Kit temperature (°C)"), u.input, u.result),
+        h("p", { class: "cond-foot muted" }, SW.cond.FOOT), SW.about(h("p", { class: "muted" }, SW.cond.ABOUT)));
+    }
+    const u = condUi.ui;
+    const air = state.entities["site.temperature"], dew = state.entities["site.dew_point"];
+    const v = SW.cond.view(air ? air.value : null, dew ? dew.value : null);
+    setClass(card, `card cond cond-${v.state}`);
+    setText(u.word, v.headline);
+    setText(u.air, v.air === null ? "—" : SW.num(v.air, 1));
+    setText(u.dew, v.dew === null ? "—" : SW.num(v.dew, 1));
+    setText(u.margin, v.margin === null ? "—" : SW.num(v.margin, 1));
+    setText(u.line, v.line);
+    const kit = SW.cond.parseKit(u.input.value);
+    const kv = SW.cond.kitView(kit, v.dew);
+    setClass(u.result, `cond-kit-result cond-kit-${kv.level}`);
+    setText(u.result, u.input.value.trim() && kit === null ? "Type a temperature, for example 4" : kv.text);
+  }
+
   // ----------------------------------------------------------- documents
   // Event plans shared with this dashboard (plans/policy-documents.md). The list is fetched, never
   // in the snapshot; a "documents_changed" message (no data) makes it fetch again. Text documents
@@ -1827,6 +1868,8 @@
     ontime_rundown: { el: cardEl("ontime_rundown"), wide: true, render: renderOntimeRundown, empty: () => !state.ontimeRundown },
     // Hidden on the wall while there is no pressure sensor (renderBarometer keeps it in step).
     barometer: { el: cardEl("barometer"), render: renderBarometer, empty: () => isWall() && !!state.site.baro && state.site.baro.state === "no_sensor" },
+    // Site dew point and margin; shows "No reading" rather than hiding when there is no data.
+    condensation: { el: cardEl("condensation"), render: renderCondensation },
     // Hidden while no sensor has the Equipment role (renderEquipment keeps it in step).
     equipment: { el: cardEl("equipment"), render: renderEquipment, empty: () => equipmentGroups().length === 0 },
     // Live GLOBCON levels. Hidden until the first message arrives (the server sends one with the snapshot).
@@ -2096,6 +2139,7 @@
         if (has("env_tiles")) renderTiles();
         if (has("sensors")) renderSensors();
         if (has("barometer")) renderBarometer();
+        if (has("condensation")) renderCondensation();
         if (has("equipment")) renderEquipment();
         if (has("power")) renderPower();
         if (has("power_tree")) renderPowerTree();
