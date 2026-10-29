@@ -120,6 +120,9 @@ body.layout-wall .msg-btn, body.layout-wall .msg-panel { display: none; }
 .cs-btn.cs-ok { color: var(--ok); }
 .cs-btn.cs-off { color: var(--warn); }
 .cs-btn.cs-err { color: var(--stop); }
+.net-btn.net-up { color: var(--ok); }
+.net-btn.net-down, .net-btn.net-unknown { color: var(--muted, inherit); }
+body.layout-wall .net-btn, body.layout-wall .net-panel { display: none; }
 .cs-head { margin: 6px 0; font-weight: 600; }
 .cs-panel ul { list-style: none; margin: 0 0 6px; padding: 0; }
 .cs-panel li { padding: 4px 0; }

@@ -35,6 +35,7 @@ from .schedule import DemoDoesNotFit, ScheduleMarkers, ScheduleService
 from .ontimerundown import OntimeRundownService
 from .ontimetimer import OntimeTimerService
 from .wallclock import WallClockService
+from .netcheck import NetCheck
 
 log = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ class Hub:
         self.spl_limits = SplLimitService(self)  # sound level limits beside Smaart's values (0.4.0)
         self.baro = BarometerService(self)  # 3-hour tendency from one averaged sample a minute
         self.advice = AdviceService(self)  # alignment drift and HF air loss (advisory, read only)
+        self.netcheck = NetCheck(self)  # occasional "is there internet?" for the header icon (info only)
         self.wall_clock = WallClockService(self)  # runs a clock source only while a dashboard has the card
         self.ontime_timer = OntimeTimerService(self)  # holds the shared Ontime source while a dashboard has its card
         self.ontime_rundown = OntimeRundownService(self)  # likewise for the rundown card (same shared source)
@@ -172,6 +174,7 @@ class Hub:
             except Exception:
                 log.exception("Integration %s failed to start", integration.manifest.domain)
         await self.wall_clock.start()
+        await self.netcheck.start()
         await self.ontime_timer.start()
         await self.ontime_rundown.start()
         self._watchdog = LoopWatchdog()
@@ -190,6 +193,7 @@ class Hub:
         await self.advice.stop()
         await self.ontime_rundown.stop()
         await self.ontime_timer.stop()
+        await self.netcheck.stop()
         await self.wall_clock.stop()
         for integration in self.integrations.values():
             try:
@@ -932,6 +936,7 @@ class Hub:
             "ontime_rundown": self.ontime_rundown.snapshot(),  # likewise
             "globcon_meters": self._globcon_snapshot(),  # likewise
             "rme_units": self._rme_snapshot(),  # likewise: None while no RME unit is set up
+            "internet": self.netcheck.snapshot(),  # three words and an age bucket; no host, no address
             "advice": self.advice.snapshot(),  # drift paths and air-loss positions (names, distances, numbers)
             "devices": [d.to_dict(now) for d in self.devices.values()],
             "entities": [self.entity_dict(e, now, stale_after) for e in self.entities.values()],

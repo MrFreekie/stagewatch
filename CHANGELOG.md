@@ -15,6 +15,10 @@ them into a dated release section and tags the commit.
 
 ## [Unreleased]
 
+### Added
+
+- **Header internet icon.** Dashboards and Admin now show "Internet", "No internet" or "Not checked" (a word and a symbol, never colour alone). Every 5 minutes Stagewatch sends one small request to github.com, the place the updater already uses, with no site name, version or other identifying detail. "No internet" needs two checks in a row, and it is information only: no alarm, no notice, no marker. It is on automatically for a managed install and can be set to On or Off under Admin, Internet check. Hidden on the wall layout.
+
 ### Fixed
 
 - **DirectOut GLOBCON: the dB figures no longer change the height of the row under the meters** (half-width card, 16 channels). The upright figure was as long as the number, so "-9.5" and "-100" made different heights. Each figure now sits in a box of the same length and ends at the same place.

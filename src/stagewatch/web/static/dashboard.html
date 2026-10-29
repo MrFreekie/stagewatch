@@ -29,6 +29,11 @@
     <ul id="cs-list"></ul>
     <p class="cs-advice" id="cs-advice"></p>
   </div>
+  <button class="cs-btn net-btn net-unknown" id="net-btn" type="button" aria-expanded="false" aria-controls="net-panel" aria-label="Internet: not checked"><span class="cs-sym" id="net-sym" aria-hidden="true">–</span><span class="cs-word" id="net-word">Not checked</span></button>
+  <div class="msg-panel cs-panel" id="net-panel" role="region" aria-label="Internet" hidden>
+    <p class="cs-head" id="net-head"></p>
+    <p class="cs-advice" id="net-advice">Stagewatch only uses the internet to look for updates. Everything else works without it.</p>
+  </div>
   <button class="theme-toggle" id="theme-toggle" type="button"></button>
   <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="false"><span class="sound-icon" aria-hidden="true"></span><span id="sound-label">Alarm sound: Off</span></button>
   <span class="clock" id="clock"></span>

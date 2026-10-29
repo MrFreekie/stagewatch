@@ -208,6 +208,26 @@
     if (msgOpen && (ev.key === "Escape" || ev.key === "Esc")) setMessagesOpen(false, true);
   });
 
+  // ---- Internet status (header, beside the connection button): information only. ----
+  let netOpen = false;
+  function renderNet(net) {
+    const st = SW.netStatus(net);
+    const btn = $("net-btn");
+    btn.className = `cs-btn net-btn net-${st.cls}`;
+    btn.setAttribute("aria-label", st.label);
+    btn.title = st.label;
+    $("net-sym").textContent = st.symbol;
+    $("net-word").textContent = st.word;
+    $("net-head").textContent = st.head;
+  }
+  function setNetOpen(open) {
+    netOpen = open;
+    $("net-panel").hidden = !open;
+    $("net-btn").setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  $("net-btn").addEventListener("click", (ev) => { ev.stopPropagation(); setNetOpen(!netOpen); });
+  document.addEventListener("click", (ev) => { if (netOpen && !$("net-panel").contains(ev.target)) setNetOpen(false); });
+
   // ---- Connection status (header, beside the messages icon): Online / Offline / Error. ----
   // Fed by the existing live feed (SW.connect reconnects with back-off on its own). "Heard" is any
   // message from the server, including its reply to our 15 s ping, so a quiet but healthy feed stays
@@ -1975,6 +1995,7 @@
     SW.setScheduleWarn(msg.site.schedule_warn);
     state.show = msg.show;
     state.scheduleMeta = msg.schedule || null;   // {show_id, day, revision}: the items are fetched
+    renderNet(msg.internet);
     state.wallClock = msg.wall_clock || null;    // null until a dashboard has the card and the source is running
     state.ontimeTimer = msg.ontime_timer || null; // likewise
     state.ontimeRundown = msg.ontime_rundown || null; // likewise
@@ -2136,6 +2157,7 @@
         if (has("hf_air_loss")) renderAir();
         break;
       case "ontime_rundown": state.ontimeRundown = msg; if (has("ontime_rundown")) renderOntimeRundown(); break;
+      case "internet": renderNet(msg.internet); break;
       case "alarms": setAlarms(msg.alarms); state.sounding = msg.sounding; renderAlarms(); break;
       case "documents_changed": loadDocuments(); break;
       case "contacts_changed": loadContacts(); break;

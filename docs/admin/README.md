@@ -72,6 +72,7 @@ Admin has four tabs: **Show day**, **Sensors and nodes**, **Integrations** and *
 | **Clock** | Check the Pi's time against this device and set it, for a Pi with no network time or clock battery | [Clock](clock.md) |
 | **Security** | Change the PIN | [Security and data](security-and-data.md) |
 | **Software** | Check for updates, install, roll back, backups | [Updating and backups](../updating-and-backups.md) |
+| **Internet check** | Turn the header internet icon on or off | [Internet icon](../updating-and-backups.md#the-internet-icon) |
 | **Help** | Download diagnostics and links to these guides | [Troubleshooting](../troubleshooting.md) |
 
 Admin only changes Stagewatch's own settings. It never controls rigging, power or safety kit.

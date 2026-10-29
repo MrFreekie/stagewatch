@@ -138,6 +138,17 @@ SW.CONN_STATES = {
   offline: { word: "Offline", symbol: "✕", cls: "off" },
   error: { word: "Error", symbol: "!", cls: "err" },
 };
+// Internet indicator (information only, never an alarm). Words plus a symbol, never colour alone.
+SW.netStatus = function (net) {
+  const st = net && net.state;
+  if (st === "up") return { cls: "up", symbol: "✓", word: "Internet", label: "Internet: connected",
+    head: "Internet reachable" + (net.age ? ", checked " + net.age : "") + "." };
+  if (st === "down") return { cls: "down", symbol: "✕", word: "No internet", label: "No internet",
+    head: "No internet" + (net.for ? " since " + net.for : "") + ". This is normal on a show network." };
+  return { cls: "unknown", symbol: "–", word: "Not checked", label: "Internet: not checked",
+    head: "Internet is not being checked." };
+};
+
 SW.connStatus = function (o) {
   const secs = (ms) => Math.max(0, Math.floor(ms / 1000));
   const heardAge = o.lastHeard === null || o.lastHeard === undefined ? null : secs(o.now - o.lastHeard);

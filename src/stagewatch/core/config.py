@@ -829,6 +829,9 @@ class UpdaterConfig(_Model):
     """In-app updater settings.  ``channel`` is only the admin's *request*; the launcher
     re-validates every target itself (see core/updater.py).  None = use the installer's marker."""
     channel: Literal["stable", "nightly"] | None = None
+    # Header internet icon: one small check every 5 minutes. None = on only for a managed install
+    # (where updates are used). Additive with a default: no config schema bump.
+    check_internet: bool | None = None
 
 
 MAX_IGNORED = 200

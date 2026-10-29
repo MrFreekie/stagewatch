@@ -1004,6 +1004,21 @@
         SW.linkButton("Open Power distribution", "/power-distribution")));
   }
 
+  // ------------------------------------------------------------ internet check
+  // The header icon and this switch. One small check every 5 minutes to github.com, the same place the
+  // updater uses. Information only: it never raises an alarm.
+  function internetCard() {
+    const cur = sw ? sw.check_internet : null;
+    const sel = h("select", { id: "net-choice" }, [["auto", "Automatic (on for a managed install)"], ["on", "On"], ["off", "Off"]]
+      .map(([v, l]) => h("option", { value: v }, l)));
+    sel.value = cur === true ? "on" : cur === false ? "off" : "auto";
+    sel.onchange = () => run(() => api("PUT", "/api/admin/internet-check", { enabled: sel.value === "auto" ? null : sel.value === "on" }),
+      "Internet check saved").then(() => { loadSoftware().then(renderNetBadge); }, () => {});
+    return card("Internet check",
+      h("p", { class: "muted" }, "Shows in the header whether this computer can reach the internet. Stagewatch only needs it to look for updates. Every 5 minutes it sends one small request to github.com and nothing else: no site name, no version, no data. Having no internet is normal on a show network and never raises an alarm."),
+      field("Check for internet", sel));
+  }
+
   // ------------------------------------------------------------ alarm notices
   // How long advisory notices stay on dashboards. Only the dashboard list changes: the state behind
   // a notice (a node still Missing) stays visible in the sensor list and here.
@@ -2692,8 +2707,16 @@
   const changesText = (last) => [last.changelog, last.commits && last.commits.length ? "Commits:\n" + last.commits.map((c) => `- ${c}`).join("\n") : ""]
     .filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 
+  function renderNetBadge() {
+    const el = document.getElementById("net-badge");
+    if (!el) return;
+    const st = SW.netStatus(snap && snap.internet);
+    el.textContent = `${st.symbol} ${st.word}`;
+    el.title = st.head;
+  }
   async function loadSoftware() {
     try { sw = await api("GET", "/api/admin/software"); } catch (_) { sw = null; }
+    renderNetBadge();
     swBadge().hidden = !(sw && sw.update_available);   // header only, never on user dashboards
     if (sw && sw.restarting) watchRestart(sw.commit);   // page opened/reloaded mid-restart
   }
@@ -3200,6 +3223,7 @@
         foldCard(clockCard(), "clock", false),
         foldCard(securityCard(), "security", false),
         softwareCard(),
+        foldCard(internetCard(), "internet", false),
         foldCard(supportCard(), "help", false)));
     selectTab(activeTab);
   }
@@ -3234,6 +3258,7 @@
       const showKey = (x) => (x && x.show ? `${x.show.id}|${x.show.name}|${x.show.event_name}|${x.show.day}` : "");
       if (showKey(s) !== showKey(snap)) { if (canRebuild) await refresh(); return; }
       snap = s;
+      renderNetBadge();
       SW.setSiteTime(s.site && s.site.time);
       for (const e of s.entities) {
         const td = document.querySelector(`[data-live="${CSS.escape(e.id)}"]`);

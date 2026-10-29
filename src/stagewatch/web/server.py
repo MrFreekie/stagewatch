@@ -369,6 +369,14 @@ class QuietUnitBody(BaseModel):
     quiet: bool = Field(strict=True)
 
 
+class InternetCheckBody(BaseModel):
+    """PUT /api/admin/internet-check: true/false, or null for the automatic choice."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    enabled: bool | None = Field(strict=True)
+
+
 class AlarmsBody(BaseModel):
     """PUT /api/admin/alarms: how long advisory notices stay on dashboards (minutes, 0 = never).
     Strict: whole numbers only, no unknown keys."""
@@ -1272,6 +1280,8 @@ class LiveFeed:
         elif topic == "alarms":
             self._send_all({"type": "alarms", "alarms": payload,
                             "sounding": self.hub.alarms.sounding})
+        elif topic == "internet" and isinstance(payload, dict):
+            self._send_all({"type": "internet", "internet": payload})
         elif topic == "device" and isinstance(payload, Device):
             self._send_all({"type": "device", "device": payload.to_dict()})
         elif topic == "wall_clock" and isinstance(payload, dict):
@@ -1355,6 +1365,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
                   docs_url=None, redoc_url=None)
     app.state.hub = hub
     app.state.updater = updater
+    hub.netcheck.default_on = lambda: updater.managed
     app.add_middleware(BodySizeLimitMiddleware, default_limit=body_limit,
                        overrides={**DEFAULT_BODY_OVERRIDES, **(body_limit_overrides or {})},
                        limit_for=_logo_limit)
@@ -1984,6 +1995,15 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         body = hub.config.ontime_timer
         hub.save_config()
         return body
+    # Header internet icon on/off (null = automatic: on for a managed install).
+    @app.put("/api/admin/internet-check", dependencies=admin_deps)
+    async def put_internet_check(body: InternetCheckBody):
+        hub.config.updater.check_internet = body.enabled
+        hub.save_config()
+        if hub.netcheck.enabled():
+            asyncio.create_task(hub.netcheck.run_once())
+        return {"enabled": body.enabled, "effective": hub.netcheck.enabled()}
+
     # Alarm notice timers (dashboard list only; the state behind a notice is untouched).
     @app.put("/api/admin/alarms", dependencies=admin_deps)
     async def put_alarms(body: AlarmsBody):
@@ -3290,7 +3310,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     @app.get("/api/admin/software", dependencies=[Depends(require_admin)])
     async def software_status():
-        return await updater.status()
+        return {**await updater.status(), "check_internet": hub.config.updater.check_internet,
+                "check_internet_effective": hub.netcheck.enabled()}
 
     @app.post("/api/admin/software/check", dependencies=admin_deps)
     async def software_check():
