@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 
 from ...core import power_tree, sitetime
-from ...core.model import UNITS, Device, Entity, Kind, Status
+from ...core.model import Device, Entity, Kind, Status
 from . import calc, treecalc
 from .replay import Rebuild
 

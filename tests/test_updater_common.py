@@ -374,7 +374,6 @@ def test_production_default_runs_the_owner_check(env, monkeypatch):
 
 def test_replace_with_retry_survives_brief_windows_lock(tmp_path, monkeypatch):
     import os as _os
-    import sys as _sys
     from stagewatch import updater_common as uc
 
     src = tmp_path / "a.tmp"

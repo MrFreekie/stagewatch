@@ -22,7 +22,7 @@ from stagewatch.core.hub import Hub
 from stagewatch.core.recorder import Recorder
 from stagewatch.integrations.esphome import EsphomeIntegration
 from stagewatch.integrations.lanwm import importer
-from stagewatch.integrations.nebra import mapping, parse, status
+from stagewatch.integrations.nebra import parse, status
 from stagewatch.web.server import create_app
 from zoneinfo import ZoneInfo
 

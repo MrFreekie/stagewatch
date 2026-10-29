@@ -18,7 +18,7 @@ nothing is copied into Stagewatch's own schedule.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .ontimetimer import OntimeTimerService, Status

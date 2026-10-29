@@ -20,7 +20,7 @@ from typing import Any
 from ... import acoustics
 from ...version import __version__
 from . import fmt, redact
-from .query import (DEFAULT_DEADLINE_S, HOLD_S, Budget, CounterResult, ReportError, ReportScope, SeriesStats, Window,
+from .query import (DEFAULT_DEADLINE_S, Budget, CounterResult, ReportError, ReportScope, SeriesStats, Window,
                     columns, counter_delta, down_periods, dst_changes, entity_meta, is_deadline, iter_rows, merge_spans,
                     resolve_window, run_spans, silent_periods, subtract_spans, summarise, tables,
                     value_near)

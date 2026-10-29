@@ -322,7 +322,7 @@ def run_check(ctx: uc.GitContext, marker: uc.Marker, channel: str) -> dict:
         "config_schema": [cur_schema[0], tgt_schema[0]], "db_schema": [cur_schema[1], tgt_schema[1]],
     })
     if channel == "nightly":
-        out = uc.git_out(ctx, "log", f"--format=%s", "-n", str(NIGHTLY_COMMITS), f"{head}..{target}")
+        out = uc.git_out(ctx, "log", "--format=%s", "-n", str(NIGHTLY_COMMITS), f"{head}..{target}")
         result["commits"] = [line[:200] for line in out.splitlines() if line.strip()]
     return result
 

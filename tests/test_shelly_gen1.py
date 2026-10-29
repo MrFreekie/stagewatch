@@ -18,7 +18,7 @@ from stagewatch.integrations.shelly.readings import gen1_status, readings_from_s
 from stagewatch.integrations.shelly.transport import (HttpPollTransport, Target, identify, parse_gen1_info,
                                                       read_status)
 from test_ontime import until
-from test_shelly import FIX, FakeShelly, Recorder, by_id, fx, loose
+from test_shelly import FakeShelly, Recorder, by_id, fx, loose
 
 GEN1_MAC = "025e00000098"
 
