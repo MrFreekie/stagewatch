@@ -156,6 +156,15 @@ def dew_point_c(temp_c: float, rh_pct: float) -> float:
     return c * gamma / (b - gamma)
 
 
+def frost_point_c(temp_c: float, rh_pct: float) -> float:
+    """Frost point: Magnus over ice (b 22.46, c 272.62 degC; WMO No. 8 Annex 4.B), for the
+    same relative humidity as ``dew_point_c``. Meaningful below 0 degC."""
+    rh = max(0.1, min(100.0, rh_pct))
+    b, c = 22.46, 272.62
+    gamma = math.log(rh / 100.0) + b * temp_c / (c + temp_c)
+    return c * gamma / (b - gamma)
+
+
 def travel_time_ms(distance_m: float, c_m_s: float) -> float:
     """Time for sound to cover distance_m at speed c_m_s, milliseconds."""
     return 1000.0 * distance_m / c_m_s
