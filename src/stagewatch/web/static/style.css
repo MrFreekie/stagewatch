@@ -1801,3 +1801,6 @@ body.layout-wall .cond-foot, body.layout-wall .cond .card-about { display: none;
 .tile-extremes th, .tile-extremes td { text-align: left; padding: 2px 8px 2px 0; font-weight: 500; }
 .tile-extremes thead th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 body.layout-wall .tile-extremes table { font-size: 28px; }
+
+/* "Sensor in the sun" advisory under the site tiles: calm, full width. */
+.sun-note { grid-column: 1 / -1; }

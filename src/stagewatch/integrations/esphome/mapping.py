@@ -14,6 +14,7 @@ _DEVICE_CLASS_KIND = {
     "atmospheric_pressure": Kind.PRESSURE,
     "battery": Kind.BATTERY,
     "signal_strength": Kind.SIGNAL,
+    "voltage": Kind.VOLTAGE,   # e.g. a battery gauge's cell voltage; shown read-only beside the battery level
 }
 
 
@@ -29,6 +30,8 @@ def sensor_kind(device_class: str, unit: str) -> Kind:
         return Kind.PRESSURE
     if u == "dbm":
         return Kind.SIGNAL
+    if u == "v":
+        return Kind.VOLTAGE
     return Kind.GENERIC
 
 

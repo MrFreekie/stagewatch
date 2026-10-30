@@ -1747,9 +1747,9 @@
       return n.indexOf(g.name + " ") === 0 && n.length > g.name.length + 1 ? n.slice(g.name.length + 1) : n;
     };
 
-    const shareText = (sh) => (sh && sh.state === "equipment" ? "Never" : sh && sh.state === "in" ? SW.fmtShare(sh.share) + (sh.capped ? " (capped)" : "") : sh && sh.state === "stale" ? "Stale" : sh && sh.state === "outlier" ? "Left out" : "—");
+    const shareText = (sh) => (sh && sh.state === "equipment" ? "Never" : sh && sh.state === "in" ? SW.fmtShare(sh.share) + (sh.capped ? " (capped)" : "") : sh && sh.state === "stale" ? "Stale" : sh && (sh.state === "outlier" || sh.state === "sun") ? "Left out" : "—");
     const shareTitle = (sh) => (!sh ? "" : sh.state === "equipment" ? "Equipment readings are never averaged" : sh.state === "off" ? "Not in the site average (ticked off)"
-      : sh.state === "stale" ? "No recent reading, so left out of the average" : sh.state === "outlier" ? "Reading far from the others, so left out of the average"
+      : sh.state === "stale" ? "No recent reading, so left out of the average" : sh.state === "sun" ? "Looks warmed by direct sun, so left out of the average" : sh.state === "outlier" ? "Reading far from the others, so left out of the average"
       : sh.state === "none" ? "No reading yet" : sh.capped ? "Capped at 80 %: this sensor would otherwise have counted for more" : "Share of the site average now");
     const groupEl = (g) => {
       const offs = g.ents.map(offsetText).filter(Boolean);
@@ -3330,7 +3330,7 @@
         for (const k of Object.keys(live.averages)) {
           for (const [id, sh] of Object.entries(live.averages[k].sensors)) {
             const el = document.querySelector(`[data-share="${CSS.escape(id)}"]`);
-            if (el) el.textContent = sh.state === "in" ? SW.fmtShare(sh.share) + (sh.capped ? " (capped)" : "") : sh.state === "stale" ? "Stale" : sh.state === "outlier" ? "Left out" : "—";
+            if (el) el.textContent = sh.state === "in" ? SW.fmtShare(sh.share) + (sh.capped ? " (capped)" : "") : sh.state === "stale" ? "Stale" : (sh.state === "outlier" || sh.state === "sun") ? "Left out" : "—";
           }
         }
         const nl = document.querySelector("[data-weight-notes]");

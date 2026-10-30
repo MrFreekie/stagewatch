@@ -554,6 +554,9 @@ SW.scheduleMarkerDefault = function (kind, kinds) {
   return (Array.isArray(kinds) ? kinds : SW.SCHEDULE_MARKER_KINDS).indexOf(kind) >= 0;
 };
 
+// A node's battery cell voltage (a voltage reading named "...battery..."), shown beside its battery level.
+SW.isBatteryVolts = (e) => !!e && e.kind === "voltage" && /batt/i.test(e.name || e.id || "");
+
 // Display formatting. Values arrive in canonical units (degC, %, Pa, m/s).
 SW.KIND_FMT = {
   temperature: { unit: "°C", dec: 1, conv: (v) => v },
