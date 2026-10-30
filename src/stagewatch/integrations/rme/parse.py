@@ -128,7 +128,7 @@ SCHEMA: dict = {
         "source": _S, "sampling_rate": _S, "current_sampling_rate": _S, "soundness": _SNODE,
         "sources": {"*": {"rate": _S, "sync": _S, "soundness": _SNODE}},
     },
-    "input": {"avb": {"*": _PATHS}, "analog": {"*": {"label": _LABEL}}},
+    "input": {"avb": {"*": {**_PATHS, "channel_count": _S}}, "analog": {"*": {"label": _LABEL}}},
     "output": {"avb": {"*": _PATHS}},
 }
 
@@ -477,6 +477,23 @@ def _stream_item(node: object) -> Sound | None:
     return classify_item(words[0])
 
 
+_NOT_IN_USE = Sound("Not in use", "dash", 0, True)
+
+
+def _stream_cause(node: object) -> str:
+    """The first cause either path of an AVB stream gives, in plain words."""
+    for path in ("pri", "sec"):
+        cause = cause_text(_get(node, path, "soundness", "cause") if isinstance(node, dict) else None)
+        if cause:
+            return cause
+    return ""
+
+
+def _unassigned(node: object) -> bool:
+    """An AVB stream the unit has no channels set up on (channel_count 0), so there is nothing to watch."""
+    return isinstance(node, dict) and node.get("channel_count") == 0 and not isinstance(node.get("channel_count"), bool)
+
+
 def classify_item(item: SoundItem) -> Sound:
     return Sound(item.word, item.symbol, item.level, item.known)
 
@@ -552,11 +569,13 @@ def make_view(data: dict | None) -> View | None:
         s = _stream_item(node)
         if s is None:
             continue
+        if s.level > 0 and s.known and _unassigned(node):
+            s = _NOT_IN_USE
         total += 1
         active_n += 1 if s.symbol == "tick" else 0
         states[s.word] = states.get(s.word, 0) + 1
         if s.level > 0:
-            items.append(SoundItem(f"AVB in {n}", s.word, s.symbol, s.level, "", s.known,
+            items.append(SoundItem(f"AVB in {n}", s.word, s.symbol, s.level, _stream_cause(node), s.known,
                                    "" if s.known else s.word.removeprefix("Unrecognised: ")))
     for n, node in _avb_numbered(_get(data, "output", "avb")):
         s = _stream_item(node)

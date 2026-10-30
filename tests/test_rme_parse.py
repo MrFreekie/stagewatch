@@ -311,6 +311,17 @@ def test_avb_stream_words_combine_both_paths():
     assert [s.area for s in v.sound if s.area.startswith("AVB")] == ["AVB in 1"]
 
 
+def test_unassigned_avb_stream_notice_is_not_in_use_and_assigned_keeps_cause():
+    st = RmeState()
+    st.ingest(status({"input": {"avb": {
+        "1": {"channel_count": 0, "pri": {"soundness": {"state": "Notice", "cause": "InputNoSync"}}, "sec": {"soundness": {"state": "Inactive"}}},
+        "2": {"channel_count": 8, "pri": {"soundness": {"state": "Notice", "cause": "InputNoSync"}}, "sec": {"soundness": {"state": "Inactive"}}}}}}))
+    v = parse.make_view(st.data)
+    assert dict(v.avb_states) == {"Not in use": 1, "CHECK": 1}
+    items = [s for s in v.sound if s.area.startswith("AVB")]
+    assert [(s.area, s.cause) for s in items] == [("AVB in 2", "Input not in sync")]
+
+
 # ------------------------------------------------------------------ the public message
 def test_public_message_exact_field_set_and_nothing_private():
     st = baseline()

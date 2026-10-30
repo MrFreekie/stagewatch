@@ -35,6 +35,7 @@ them into a dated release section and tags the commit.
 - **Updated parts Stagewatch is built on.** FastAPI 0.162, aioesphomeapi 46.22, certifi and the GitHub setup-uv action are newer versions. Nothing to do.
 
 ### Fixed
+- **RME interfaces: unused AVB streams.** An AVB input stream with no channels set up on the unit now reads **Not in use**, not **CHECK**. A real AVB notice on a stream that is set up now shows the unit's reason.
 
 - **Day / Night on every page.** The Day or Night choice you make on the start page, Admin or a dashboard is now applied before any page appears, so pages no longer flash the wrong theme. The schedule editor, Edit cards and Power distribution pages follow it too. In Day mode, green and amber text ("Online", "ok", the Raspberry Pi power warning) and blue links on grey panels are darker so they read clearly.
 

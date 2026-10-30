@@ -15,7 +15,7 @@ There is one tile per unit, with the unit's name and model. Each tile shows:
 - **PSU 1 and PSU 2**: **On** or **Off**. If the unit does not say, the word is **n.a.**.
 - **Clock**: the source the unit follows, whether it is **Locked** or **Not locked**, and the sample rate, for example `Word clock, Locked, 48 kHz`.
 - **Preset**: the preset in use and the one loaded. When they differ, a **▲ Preset changed** flag appears.
-- **AVB**: how many of the unit's AVB streams are active, for example `4 of 8 streams active`.
+- **AVB**: how many of the unit's AVB streams are active, for example `4 of 8 streams active`. A stream with no channels set up on the unit reads **Not in use**, not CHECK.
 - **Channel names**: the names set on the unit's analogue inputs, for example `RF Mic 1`, each with its channel number. Only channels that have a name are listed. On a tablet the list is open; on a phone it is folded under **Channel names**. **These names are shown on every dashboard that has this card, so put nothing private in a channel name.** Gain, 48 V and phase are not read.
 - **Anything the unit itself is unhappy about**, listed under the tile with its area (for example Clock or Preset) and, where the unit gives one, the reason. Things that are fine are not listed. A closed **All checks** line lists every check, and the unit's firmware.
 
