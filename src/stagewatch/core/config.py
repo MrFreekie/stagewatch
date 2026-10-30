@@ -28,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from ..updater_common import atomic_write_bytes, fsync_dir, remove_stale_temps, replace_with_retry
 from ..version import CONFIG_SCHEMA_VERSION
 from . import power_tree, spl
-from .cards import CARD_ID_RE, MAX_CARDS, clean_card_sizes, default_cards, legacy_cards
+from .cards import CARD_ID_RE, MAX_CARDS, clean_card_sizes, clean_tiles, default_cards, legacy_cards
 from .model import normalise_mac, slugify
 
 log = logging.getLogger(__name__)
@@ -719,6 +719,8 @@ class Dashboard(_Model):
     card_sizes: dict[str, str] = Field(default_factory=dict)
     # Whether the site tiles include Dew point on this screen (on unless the admin unticks it).
     show_dew_point: bool = True
+    # Which tiles the Site readings card shows, in order (core/cards.py SITE_TILES).  Empty = the default set.
+    tiles: list[str] = Field(default_factory=list)
     # The GLOBCON levels card's controller and channel group on this screen.
     globcon: GlobconCardOptions = Field(default_factory=GlobconCardOptions)
     # Onsite contacts card: phone numbers on this screen (needs ContactsSettings.phones_enabled and the
@@ -755,6 +757,11 @@ class Dashboard(_Model):
     @classmethod
     def _contacts_area(cls, v):
         return " ".join(v.split())[:40] if isinstance(v, str) else ""
+
+    @field_validator("tiles", mode="before")
+    @classmethod
+    def _tiles(cls, v):
+        return clean_tiles(v)
 
     @field_validator("clock_style", mode="before")
     @classmethod

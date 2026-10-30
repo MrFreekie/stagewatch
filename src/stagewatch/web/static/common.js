@@ -1270,6 +1270,14 @@ SW.previewDraft = function (draft, saved, known) {
   for (const k of ["show_dew_point", "show_contact_phones"]) {
     if (own(draft, k)) { if (typeof draft[k] !== "boolean") return null; out[k] = draft[k]; }
   }
+  if (own(draft, "tiles")) {
+    const t = draft.tiles;
+    if (!Array.isArray(t) || t.length > 6) return null;
+    for (let i = 0; i < t.length; i++) {
+      if (["temperature", "humidity", "pressure", "speed_of_sound", "dew_point", "highs_lows"].indexOf(t[i]) < 0 || t.indexOf(t[i]) !== i) return null;
+    }
+    out.tiles = t.slice();
+  }
   if (own(draft, "globcon")) {
     const g = draft.globcon;
     if (!isObj(g)) return null;

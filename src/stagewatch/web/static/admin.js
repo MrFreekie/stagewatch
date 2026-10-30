@@ -1929,7 +1929,7 @@
   // /dashboard-editor), so this card keeps one size. A save here sends no card fields, and the
   // server keeps each dashboard's cards; a renamed dashboard sends its saved ones, so it keeps
   // them under the new name. A new dashboard gets its layout's default cards from the server.
-  const CARD_FIELDS = ["cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point", "show_contact_phones", "contacts_area"];
+  const CARD_FIELDS = ["cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point", "tiles", "show_contact_phones", "contacts_area"];
   function dashboardsCard() {
     const tbody = h("tbody");
     const addRow = (d = {}) => {

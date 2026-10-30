@@ -19,6 +19,13 @@
     ["site.speed_of_sound", "Speed of sound"],
     ["site.dew_point", "Dew point"],
   ];
+  // Tile ids the admin can choose (core/cards.py SITE_TILES); no choice = this set, in this order.
+  const TILE_IDS = { temperature: "site.temperature", humidity: "site.humidity", pressure: "site.pressure", speed_of_sound: "site.speed_of_sound", dew_point: "site.dew_point" };
+  const DEFAULT_TILES = ["temperature", "humidity", "pressure", "speed_of_sound", "dew_point"];
+  const tileOrder = () => {
+    const t = state.dash && Array.isArray(state.dash.tiles) ? state.dash.tiles.filter((id) => id === "highs_lows" || TILE_IDS[id]) : [];
+    return t.length ? t : DEFAULT_TILES;
+  };
   const SERIES_MODES = {
     // `range` is the chart's starting scale in canonical units (°C, %, Pa, m/s): the axis stays on
     // it while the readings fit and grows when they don't.
@@ -79,7 +86,7 @@
   // span (1 hour without that card), at most once a minute or when the span changes. The paths are
   // worked out once per fetch; renders in between reuse them.
   const TREND_POINTS = 60, TREND_W = 1000, TREND_H = 100, TREND_MIN = 6;   // fewer readings than TREND_MIN draw no line (a stub reads as a glitch)
-  const tileHist = { at: 0, span: null, busy: false, d: {} };
+  const tileHist = { at: 0, span: null, busy: false, d: {}, ext: null };
   const tileSpan = () => (has("chart") ? state.span : 3600);
   async function loadTileHistory(force) {
     if (!has("env_tiles") || tileHist.busy) return;
@@ -87,6 +94,9 @@
     if (!force && span === tileHist.span && Date.now() - tileHist.at < 60000) return;
     tileHist.busy = true; tileHist.at = Date.now(); tileHist.span = span;
     const ids = SITE_TILES.map(([id]) => id);
+    if (tileOrder().indexOf("highs_lows") >= 0) {
+      try { tileHist.ext = await SW.api("GET", "/api/site/extremes"); } catch (_) { tileHist.ext = null; }
+    }
     const t1 = serverNow(), t0 = t1 - spanSeconds(span);
     let data = {};
     try {
@@ -104,12 +114,31 @@
       SW.svg("path", { d, "vector-effect": "non-scaling-stroke" })) : null);
   }
 
+  // Today's highs and lows (site-local day so far) from what was recorded; "n.a." where nothing was.
+  function highsLowsTile() {
+    const ext = tileHist.ext || {};
+    const row = (label, key, kind) => {
+      const x = ext[key];
+      const cell = (pt) => (pt ? h("span", {}, fmt(kind, pt[1]), h("span", { class: "muted" }, ` ${SW.fmtTime(pt[0])}`)) : h("span", { class: "muted" }, "n.a."));
+      return h("tr", {}, h("th", { scope: "row" }, label), h("td", {}, cell(x && x.low)), h("td", {}, cell(x && x.high)));
+    };
+    return h("div", { class: "tile tile-extremes" },
+      h("div", { class: "label" }, "Today's lows and highs"),
+      h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, "Low"), h("th", {}, "High"))),
+        h("tbody", {}, row("Temp", "temperature", "temperature"), row("RH", "humidity", "humidity"), row("Pressure", "pressure", "pressure"))),
+      h("div", { class: "foot" }, "Since midnight, from recorded readings"));
+  }
+
   function renderTiles() {
     loadTileHistory(false);
     const tiles = $("tiles");
     tiles.replaceChildren();
-    for (const [id, label] of SITE_TILES) {
-      if (id === "site.dew_point" && state.dash && state.dash.show_dew_point === false) continue;   // unticked for this dashboard in Admin
+    const chosen = state.dash && Array.isArray(state.dash.tiles) && state.dash.tiles.length;
+    for (const key of tileOrder()) {
+      if (key === "highs_lows") { tiles.append(highsLowsTile()); continue; }
+      const id = TILE_IDS[key];
+      const label = (SITE_TILES.find((t) => t[0] === id) || [id, key])[1];
+      if (!chosen && id === "site.dew_point" && state.dash && state.dash.show_dew_point === false) continue;   // unticked for this dashboard in Admin (older setting; a tile choice replaces it)
       const e = state.entities[id];
       if (!e) continue;
       const [num, ...unit] = fmt(e.kind, e.value).split(" ");

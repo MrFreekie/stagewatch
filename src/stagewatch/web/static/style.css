@@ -1796,3 +1796,8 @@ body.layout-wall .cond-foot, body.layout-wall .cond .card-about { display: none;
   header.top a.title, header.top #logout { min-height: 44px; display: inline-flex; align-items: center; }
   .site-footer a { display: inline-block; padding: 12px 4px; }
 }
+
+.tile-extremes table { width: 100%; border-collapse: collapse; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.tile-extremes th, .tile-extremes td { text-align: left; padding: 2px 8px 2px 0; font-weight: 500; }
+.tile-extremes thead th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+body.layout-wall .tile-extremes table { font-size: 28px; }
