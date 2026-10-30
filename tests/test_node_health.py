@@ -17,7 +17,7 @@ STATIC = Path(__file__).resolve().parents[1] / "src" / "stagewatch" / "web" / "s
     ("", "dBm", Kind.SIGNAL),             # older YAML without a device class
     ("battery", "%", Kind.BATTERY),
     ("", "%", Kind.GENERIC),              # a bare % could be anything: not guessed as battery
-    ("voltage", "V", Kind.GENERIC),
+    ("voltage", "V", Kind.VOLTAGE),     # a battery gauge's cell voltage
     ("humidity", "%", Kind.HUMIDITY),
 ])
 def test_kinds(device_class, unit, kind):
