@@ -33,6 +33,7 @@ them into a dated release section and tags the commit.
 
 - **QR codes use the lowest error correction level (L).** The Wi-Fi card and the About Stagewatch card now draw a smaller, simpler code that is quicker to scan from a screen. A scratched or glary screen is a little more likely to fail to scan.
 - **Updated parts Stagewatch is built on.** FastAPI 0.162, aioesphomeapi 46.22, certifi and the GitHub setup-uv action are newer versions. Nothing to do.
+- **Admin tidy-up (GUI review):** the alarm log shows one line per alarm with raised and cleared times and no "(silent)" tail; the Site and Device errors long paragraphs sit under "More detail", with a one-line Stop, Alert and Advisory key; the Add integration pop-out closes when you change tab; Load Checker and "Dropped out" wording; the Admin header link and Log out are 44 px on touch screens; the RME "Off" power supply is no longer underlined; the phone Wi-Fi QR code is smaller.
 
 ### Fixed
 - **RME interfaces: unused AVB streams.** An AVB input stream with no channels set up on the unit now reads **Not in use**, not **CHECK**. A real AVB notice on a stream that is set up now shows the unit's reason.

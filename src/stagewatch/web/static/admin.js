@@ -214,10 +214,10 @@
       h("div", { class: "row", style: "margin-top:10px" },
         field("Time zone", tz), tzList,
         field("New show day starts at (HH:MM, 24-hour)", rollover)),
-      h("p", { class: "muted hint" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before. Use 03:00 or later for the new day, to stay clear of the hour when the clocks change."),
+      h("details", { class: "card-about" }, h("summary", {}, "More detail"), h("p", { class: "muted hint" }, "All times on dashboards use this time zone, whatever the tablet is set to. A show day runs until the start time next morning, so 01:30 still counts as the night before. Use 03:00 or later for the new day, to stay clear of the hour when the clocks change.")),
       h("div", { class: "row", style: "margin-top:10px" },
         field("Warning times (minutes)", warn)),
-      h("p", { class: "muted hint" }, "Add ! after a time to flash the card at that time. Applies to every dashboard. The schedule card goes amber at the first time before an item ends and orange at the later ones. The next item turns amber within the last time."),
+      h("details", { class: "card-about" }, h("summary", {}, "More detail"), h("p", { class: "muted hint" }, "Add ! after a time to flash the card at that time. Applies to every dashboard. The schedule card goes amber at the first time before an item ends and orange at the later ones. The next item turns amber within the last time.")),
       tzNote,
       h("div", { class: "row", style: "margin-top:10px" },
         h("button", { class: "primary", onclick: () => save() }, "Save site")));
@@ -1482,7 +1482,7 @@
         ...data.gaps.slice(0, 5).map((g) => h("p", { class: "muted hint" }, `Stagewatch was not running ${span(g.from, g.to)}, so problems in that time can't be counted.`)),
         data.gaps.length > 5 ? h("p", { class: "muted hint" }, `and ${data.gaps.length - 5} more breaks.`) : null,
       ];
-      const head = h("thead", {}, h("tr", {}, ["Device", "Now", "Stop", "Alert", "Advisory", "Drop-outs", "Time in fault", "Last problem"].map((x) => h("th", {}, x))));
+      const head = h("thead", {}, h("tr", {}, ["Device", "Now", "Stop", "Alert", "Advisory", "Dropped out", "Time in fault", "Last problem"].map((x) => h("th", {}, x))));
       const shown = showQuiet ? busy.concat(quiet) : busy;
       const table = shown.length ? h("div", { class: "table-scroll" }, h("table", {}, head, h("tbody", {}, shown.flatMap(rowEls)))) : null;
       const quietBtn = quiet.length ? h("button", { class: "small", style: "min-height:44px", type: "button", onclick: () => { showQuiet = !showQuiet; draw(); } },
@@ -1498,7 +1498,8 @@
     load();
 
     const c = card("Device errors",
-      h("p", { class: "muted" }, "How many problems each device had, and when, so you can see which box keeps dropping out. A problem is counted once however long it lasts or however many units report it at the same moment. Imported LA Network Manager logs add their units here. Limit alarms (a stage that is too hot) are not device problems and stay in the alarm log. A unit that keeps disconnecting and you already know about can be quieted: its problems stay listed but show as Advisory and do not add to the Stop and Alert totals."),
+      h("p", { class: "muted" }, "How many problems each device had, and when, so you can see which box keeps dropping out. Stop means act now, Alert means look soon, Advisory is for information."),
+      h("details", { class: "card-about" }, h("summary", {}, "More detail"), h("p", { class: "muted" }, "How many problems each device had, and when, so you can see which box keeps dropping out. A problem is counted once however long it lasts or however many units report it at the same moment. Imported LA Network Manager logs add their units here. Limit alarms (a stage that is too hot) are not device problems and stay in the alarm log. A unit that keeps disconnecting and you already know about can be quieted: its problems stay listed but show as Advisory and do not add to the Stop and Alert totals.")),
       h("div", { class: "row" }, field("Show", showSel), field("How much", scopeSel)),
       box);
     c.id = "device-errors-card";
@@ -1522,7 +1523,7 @@
     const sessionMarkers = h("input", { type: "checkbox", onchange: () => preview() });
     const loadCheckerMarkers = h("input", { type: "checkbox", onchange: () => preview() });
     const sessionLabel = h("label", { class: "field inline" }, sessionMarkers, " Also add markers for going online or offline and for Acknowledge all");
-    const loadCheckerLabel = h("label", { class: "field inline" }, loadCheckerMarkers, " Also add markers for entering and leaving Load Checker (it can make inputs unlock)");
+    const loadCheckerLabel = h("label", { class: "field inline" }, loadCheckerMarkers, " Also add markers for entering and leaving Load Checker (a mode where inputs can unlock)");
     const formatSel = h("select", { class: "touch", "aria-label": "Kind of log file", onchange: () => { syncFormat(); preview(); } },
       h("option", { value: "lanwm" }, "L-Acoustics Network Manager log (.xml)"),
       h("option", { value: "nebra" }, "Meyer Sound Nebra Events CSV (.csv)"));
@@ -2203,6 +2204,7 @@
       h("div", { class: "row sw-dlg-actions" }, removeBtn, h("span", { class: "grow" }), h("button", { type: "button", class: "touch", onclick: close }, choices.length ? "Cancel" : "Close"),
         choices.length ? testBtn : null, choices.length ? saveBtn : null)].filter(Boolean));   // append() would print a null
     dlg.addEventListener("cancel", () => dlg.remove());   // Escape
+    window.addEventListener("hashchange", () => dlg.remove(), { once: true });   // a tab change takes the pop-out with it
     document.body.append(dlg);
     dlg.showModal();
     if (choices.length) fill();
@@ -2723,11 +2725,32 @@
           h("td", { class: "muted" }, Object.entries(i).filter(([k]) => k !== "manifest").map(([k, v]) => `${k}: ${v !== null && typeof v === "object" ? JSON.stringify(v) : v}`).join(" · "))))))));
   }
 
+  // One line per alarm ("raised 11:53, cleared 11:54") instead of one per event. The log comes newest first.
+  // The " (silent)" tail the server adds is dropped: the Level column already says advisory.
+  function groupAlarmLog(log) {
+    const out = [], open = {};
+    log.slice().reverse().forEach((a) => {
+      const msg = String(a.message || "").replace(/ \(silent\)$/, "");
+      if (a.event === "raise" || !open[a.alarm_id]) {
+        const g = { id: a.alarm_id, level: a.level, message: msg, raised: a.event === "raise" ? a.ts : null, first: a.ts, cleared: null, acked: null };
+        out.push(g); open[a.alarm_id] = g;
+      }
+      const g = open[a.alarm_id];
+      if (a.event === "clear") { g.cleared = a.ts; delete open[a.alarm_id]; }
+      else if (a.event === "ack") g.acked = a.ts;
+    });
+    return out.reverse();
+  }
   function alarmLogCard() {
+    const rows = groupAlarmLog(admin.alarm_log || []);
+    const t = (x) => SW.fmtTime(x, { seconds: true });
     return card("Alarm log (this show)",
-      admin.alarm_log.length ? h("div", { class: "table-scroll", style: "max-height:260px;overflow-y:auto" }, h("table", {},
-        h("tbody", {}, admin.alarm_log.map((a) => h("tr", {},
-          h("td", { class: "muted" }, SW.fmtTime(a.ts, { seconds: true })), h("td", {}, a.event), h("td", {}, ["", "advisory", "alert", "stop"][a.level] || ""), h("td", {}, a.message))))))
+      rows.length ? h("div", { class: "table-scroll", style: "max-height:260px;overflow-y:auto" }, h("table", {},
+        h("thead", {}, h("tr", {}, ["Level", "Alarm", "Raised", "Cleared"].map((x) => h("th", {}, x)))),
+        h("tbody", {}, rows.map((g) => h("tr", {},
+          h("td", {}, ["", "advisory", "alert", "stop"][g.level] || ""), h("td", {}, g.message),
+          h("td", { class: "muted" }, t(g.raised === null ? g.first : g.raised)),
+          h("td", { class: "muted" }, g.cleared === null ? "still on" : t(g.cleared)))))))
         : h("p", { class: "muted" }, "No alarms yet."));
   }
 

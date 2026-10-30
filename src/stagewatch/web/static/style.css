@@ -1688,7 +1688,7 @@ body.layout-wall .about-url { font-size: 20px; }
 .rme-check .rme-status, .rme-warning .rme-status { text-decoration: underline; text-underline-offset: 4px; }
 .rme-temp { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; margin: 6px 0; }
 .rme-psus { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 18px; font-weight: 600; margin-bottom: 6px; }
-.rme-psu-off { font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+.rme-psu-off { font-weight: 800; }   /* the word Off and the weight carry it; an underline would read as a link */
 .rme-psu-unknown { color: var(--muted); }
 .rme-row { display: flex; gap: 10px; font-size: 15px; padding: 3px 0; min-width: 0; }
 .rme-label { flex: 0 0 64px; color: var(--muted); }
@@ -1744,7 +1744,7 @@ body.layout-wall .rme-tile { padding: 16px 20px; }
 .wifi-pass { font-family: ui-monospace, Consolas, monospace; letter-spacing: .02em; }
 .wifi-note { font-size: 14px; }
 body.layout-phone .wifi-net { flex-direction: column; align-items: stretch; }
-body.layout-phone .wifi-qr { width: 200px; max-width: 100%; margin: 0 auto; }
+body.layout-phone .wifi-qr { width: 180px; max-width: 100%; margin: 0 auto; }
 body.layout-wall .wifi-list { grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 32px; }
 body.layout-wall .wifi-qr { width: 300px; padding: 14px; }
 body.layout-wall .wifi-label { font-size: 34px; }
@@ -1790,3 +1790,9 @@ body.layout-wall .cond-foot, body.layout-wall .cond .card-about { display: none;
   .tiles > .tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 .de-wallhint { border-left: 4px solid var(--warn); padding-left: 10px; color: var(--text); }
+
+/* Admin header on touch screens: the Stagewatch link and Log out are 44 px tall; the footer link has room to tap. */
+@media (pointer: coarse), (max-width: 640px) {
+  header.top a.title, header.top #logout { min-height: 44px; display: inline-flex; align-items: center; }
+  .site-footer a { display: inline-block; padding: 12px 4px; }
+}

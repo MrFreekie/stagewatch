@@ -33,3 +33,22 @@ def test_barometer_text_is_at_least_11_units():
     for sel in ("text.baro-num", ".baro-word", ".baro-setlabel"):
         m = re.search(re.escape(sel) + r" \{[^}]*font-size: ([\d.]+)px", css)
         assert m and float(m.group(1)) >= 11, sel
+
+
+def test_admin_alarm_log_groups_by_alarm_and_hides_silent_tail():
+    js = read("admin.js")
+    assert "function groupAlarmLog" in js and '"Raised", "Cleared"' in js
+    assert r"/ \(silent\)$/" in js
+
+
+def test_admin_long_paragraphs_sit_behind_more_detail_and_popout_closes_on_tab_change():
+    js = read("admin.js")
+    assert js.count('h("summary", {}, "More detail")') >= 3
+    assert 'window.addEventListener("hashchange", () => dlg.remove()' in js
+    assert "Stop means act now" in js
+
+
+def test_admin_header_and_rme_psu_off_touch_and_link_look():
+    css = read("style.css")
+    assert "header.top a.title, header.top #logout { min-height: 44px" in css
+    assert re.search(r"\.rme-psu-off \{[^}]*\}", css).group(0).count("underline") == 0
