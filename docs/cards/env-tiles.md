@@ -20,6 +20,22 @@ Why it matters: sound travels faster in warm air and slower in cold air. On a 30
 10 °C change is about 1.5 ms. To see how far your system has drifted since soundcheck, set a
 marker. See [Markers](markers.md).
 
+## Today's lows and highs
+
+An extra tile, **Today's lows and highs**, shows the lowest and highest temperature, humidity and
+pressure since midnight at your site, with the time of each. It is worked out from the readings
+Stagewatch actually recorded. If nothing was recorded for a reading, it shows **n.a.**; Stagewatch
+never fills a gap or guesses. The tile is off by default.
+
+## Choosing the readings
+
+**Admin → User dashboards → Edit cards**: tick **Site readings**, then under **Choose readings**
+tick the tiles this dashboard shows and use ▲ and ▼ to put them in order. The tiles share the card's
+width, so fewer tiles are bigger on a wall screen. Speed of sound is still worked out from
+temperature, humidity and pressure even if you hide those tiles. The History chart and the marker
+change panel keep every reading. Leaving the default set (the five readings above, in that order)
+changes nothing for existing dashboards.
+
 ## The site average
 
 The **site average** is the combined reading from all your **Environment** sensors. The small line

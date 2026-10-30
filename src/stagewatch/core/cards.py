@@ -111,3 +111,30 @@ def strict_card_sizes_error(v) -> str | None:
         if not isinstance(size, str) or size not in CARD_SIZES:
             return "Card size must be full or half"
     return None
+
+
+# Site readings card (env_tiles): the tiles a dashboard can show, in the default order. An empty
+# Dashboard.tiles means DEFAULT_TILES (today's set); "highs_lows" is only shown when chosen.
+SITE_TILES: tuple[str, ...] = ("temperature", "humidity", "pressure", "speed_of_sound", "dew_point", "highs_lows")
+DEFAULT_TILES: tuple[str, ...] = ("temperature", "humidity", "pressure", "speed_of_sound", "dew_point")
+MAX_TILES = len(SITE_TILES) + 4   # room for ids from a newer release
+
+
+def clean_tiles(v) -> list[str]:
+    """Lenient load: keep well-formed ids once each, in order (ids from a newer release are kept)."""
+    if not isinstance(v, list):
+        return []
+    out: list[str] = []
+    for t in v:
+        if isinstance(t, str) and CARD_ID_RE.fullmatch(t) and t not in out:
+            out.append(t)
+    return out[:MAX_TILES]
+
+
+def strict_tiles_error(v) -> str | None:
+    """For the API: a fixed-text problem with a submitted tile list, or None."""
+    if not isinstance(v, list) or len(v) > len(SITE_TILES):
+        return "Choose from the site readings listed"
+    if any(not isinstance(t, str) or t not in SITE_TILES for t in v) or len(set(v)) != len(v):
+        return "Site readings must be listed once each, from the choices given"
+    return None

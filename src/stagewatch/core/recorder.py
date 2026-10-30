@@ -830,6 +830,30 @@ class Recorder:
         out.sort()
         return out
 
+    def extremes(self, entity_id: str, since: float, until: float) -> dict | None:
+        """Read-only: {"low": [ts, value], "high": [ts, value]} over the readings recorded in
+        ``since..until`` across every show that overlaps it, or None when there are none. Only
+        what was recorded: a gap stays a gap."""
+        self.flush()
+        low = high = None
+        for show in self.shows():
+            if show["started"] > until or (show["ended"] is not None and show["ended"] < since):
+                continue
+            for order, cur in (("ASC", low), ("DESC", high)):
+                row = self._db.execute(
+                    "SELECT ts, value FROM states WHERE show_id = ? AND entity_id = ? AND ts >= ? AND ts <= ? "
+                    f"AND value IS NOT NULL ORDER BY value {order}, ts LIMIT 1",
+                    (show["id"], entity_id, since, until)).fetchone()
+                if row is None:
+                    continue
+                better = cur is None or (row[1] < cur[1] if order == "ASC" else row[1] > cur[1])
+                if better:
+                    if order == "ASC":
+                        low = [row[0], row[1]]
+                    else:
+                        high = [row[0], row[1]]
+        return {"low": low, "high": high} if low is not None else None
+
     def value_at(self, entity_id: str, ts: float, max_age_s: float = 600.0) -> float | None:
         """Last recorded value of entity_id at or before ts (current show)."""
         return self.value_near(entity_id, ts, self.show_id, before_s=max_age_s, after_s=0.0)

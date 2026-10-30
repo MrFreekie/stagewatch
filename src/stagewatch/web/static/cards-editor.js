@@ -8,7 +8,7 @@
   const field = (label, input) => h("label", { class: "field" }, label, input);
   const val = (el) => el.value.trim();
   const CARD_INFO = {
-    env_tiles: ["Site readings", "Tiles for temperature, humidity, pressure, speed of sound and dew point."],
+    env_tiles: ["Site readings", "Tiles for temperature, humidity, pressure, speed of sound and dew point; you can also add today's lows and highs."],
     schedule: ["Schedule", "What is on now and next, and the running order. Stays hidden until the show has a schedule."],
     chart: ["History chart", "Readings over time, with markers."],
     markers: ["Markers", "The marker list, the Add marker box, and how far things have drifted since a marker."],
@@ -73,7 +73,7 @@
         const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; if (lookField) lookField.style.display = box.checked ? "" : "none"; limitBoxes(); onChange(); } });
         boxes.push({ el: box, it });
         const lookField = it.id === "wall_clock" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Wall Clock look"), clockStyle)
-          : it.id === "env_tiles" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Show dew point"), dewBox) : null;
+          : it.id === "env_tiles" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Choose readings"), tileList) : null;
         const sizeSel = halfOk.indexOf(it.id) < 0 ? null : h("select", { class: "touch", "aria-label": `${info[0]} size`, onchange: () => { sizes[it.id] = sizeSel.value; onChange(); } }, h("option", { value: "full" }, "Full"), h("option", { value: "half" }, "Half"));
         if (sizeSel) sizeSel.value = sizes[it.id] === "half" ? "half" : "full";
         const gcField = it.id !== "globcon_meters" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
@@ -123,7 +123,27 @@
     const stage = h("input", { class: "touch", value: d.stage || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off" });
     const clockStyle = h("select", { class: "touch" }, h("option", { value: "digits" }, "Plain digits"), h("option", { value: "ring" }, "LED ring"), h("option", { value: "segments" }, "7-segment digits"));
     clockStyle.value = ["ring", "segments"].indexOf(d.clock_style) >= 0 ? d.clock_style : "digits";
-    const dewBox = h("input", { type: "checkbox", checked: d.show_dew_point !== false, onchange: () => onChange() });
+    // Site readings card: which tiles show, in order. No choice saved = the default five (tiles: []).
+    const TILE_INFO = { temperature: "Temperature", humidity: "Humidity", pressure: "Pressure", speed_of_sound: "Speed of sound", dew_point: "Dew point", highs_lows: "Today's lows and highs" };
+    const tileAll = (admin.cards && admin.cards.site_tiles) || Object.keys(TILE_INFO);
+    const tileDef = (admin.cards && admin.cards.default_tiles) || tileAll.filter((t) => t !== "highs_lows");
+    const tileSaved = (d.tiles || []).filter((t) => tileAll.indexOf(t) >= 0);
+    const tileStart = tileSaved.length ? tileSaved : tileDef.filter((t) => t !== "dew_point" || d.show_dew_point !== false);
+    let tiles = tileStart.map((id) => ({ id, on: true })).concat(tileAll.filter((t) => tileStart.indexOf(t) < 0).map((id) => ({ id, on: false })));
+    const tileList = h("ul", { class: "card-picker tile-picker" });
+    const tileDraw = () => tileList.replaceChildren(...tiles.map((t, i) => {
+      const mv = (dir) => { const j = i + dir; if (j < 0 || j >= tiles.length) return; const x = tiles[i]; tiles[i] = tiles[j]; tiles[j] = x; tileDraw(); onChange(); };
+      return h("li", {},
+        h("label", { class: "card-pick" }, h("input", { type: "checkbox", checked: t.on, onchange: (ev) => { t.on = ev.target.checked; onChange(); } }), h("span", {}, TILE_INFO[t.id] || t.id)),
+        h("button", { type: "button", class: "card-up", "aria-label": `Move ${TILE_INFO[t.id] || t.id} up`, title: "Move up", disabled: i === 0, onclick: () => mv(-1) }, "▲"),
+        h("button", { type: "button", class: "card-down", "aria-label": `Move ${TILE_INFO[t.id] || t.id} down`, title: "Move down", disabled: i === tiles.length - 1, onclick: () => mv(1) }, "▼"));
+    }));
+    tileDraw();
+    const tilesRead = () => {
+      const on = tiles.filter((t) => t.on).map((t) => t.id);
+      return on.join() === tileDef.join() ? [] : on;   // the default set in the default order is stored as "no choice"
+    };
+    const dewOn = () => { const t = tiles.find((x) => x.id === "dew_point"); return !t || t.on; };
     // Ids from a newer Stagewatch (kept in the settings after a downgrade) can't be saved by this one.
     const newer = (d.cards || []).filter((id) => known.indexOf(id) < 0);
     fill(d.cards || (admin.cards && admin.cards.defaults.tablet) || []);
@@ -137,7 +157,7 @@
       h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black. Half-size cards sit side by side with another half-size card on tablets and wall screens. On a phone every card is full width."));
     return {
       el,
-      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewBox.checked, show_contact_phones: ctPhones.checked, contacts_area: val(ctArea), card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
+      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewOn(), tiles: tilesRead(), show_contact_phones: ctPhones.checked, contacts_area: val(ctArea), card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
       setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
       count: () => items.filter((it) => it.on).length,
       max: MAX,

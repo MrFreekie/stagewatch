@@ -10,6 +10,7 @@ Roles:
 from __future__ import annotations
 
 import asyncio
+import datetime
 import hashlib
 import ipaddress
 import json
@@ -46,6 +47,7 @@ from .. import diagnostics, netinfo
 from . import report_api
 from ..core import barometer as baro_mod
 from ..core import cards as cards_mod
+from ..core import sitetime
 from ..core import power_tree as ptree
 from ..core import power_tree_io
 from ..core import device_errors as errors_mod
@@ -864,6 +866,14 @@ class DashboardBody(Dashboard):
             raise ValueError("Clock style must be digits, ring or segments")
         return v
 
+    @field_validator("tiles", mode="before")
+    @classmethod
+    def _tiles(cls, v):
+        problem = cards_mod.strict_tiles_error(v)
+        if problem:
+            raise ValueError(problem)
+        return v
+
     @field_validator("card_sizes", mode="before")
     @classmethod
     def _card_sizes(cls, v):
@@ -1520,6 +1530,20 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         since = since if since is not None else time.time() - 3600
         return hub.recorder.history(ids, since, until, max(10, min(points, 2000)))
 
+    @app.get("/api/site/extremes")
+    async def site_extremes():
+        """Today's highs and lows of the site temperature, humidity and pressure, for the
+        site-local calendar day so far (public: these are the same site readings the dashboards
+        show). Worked out from what was recorded; no data gives null, never a made-up value."""
+        now = time.time()
+        local = sitetime.local(now, hub.config.site)
+        start = sitetime.wall_ts(local.date(), datetime.time(0, 0), hub.config.site)
+        out = {"since": start, "now": now}
+        for key, eid in (("temperature", "site.temperature"), ("humidity", "site.humidity"),
+                         ("pressure", "site.pressure")):
+            out[key] = hub.recorder.extremes(eid, start, now)
+        return out
+
     @app.get("/api/markers/{marker_id}/delta")
     async def marker_delta(marker_id: int):
         delta = hub.marker_delta(marker_id)
@@ -1693,6 +1717,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             # For the "Edit cards" panel: the cards this build knows, in picker order, and the
             # defaults a new dashboard gets for each layout.
             "cards": {"known": list(cards_mod.KNOWN_CARDS), "half_capable": list(cards_mod.HALF_CAPABLE),
+                      "site_tiles": list(cards_mod.SITE_TILES), "default_tiles": list(cards_mod.DEFAULT_TILES),
                       "defaults": {layout: cards_mod.default_cards(layout) for layout in cards_mod.LAYOUT_DEFAULTS}},
             "stages": known_stages(),
             # For the Schedule card (WP8): the limits the server enforces, and whether
@@ -1985,7 +2010,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             data = d.model_dump()
             # A save that doesn't send cards/stage/clock_style/card_sizes (today's admin page) keeps what the
             # dashboard has; only a new dashboard gets its layout's default cards.
-            for key in ("cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point",
+            for key in ("cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point", "tiles",
                         "show_contact_phones", "contacts_area"):
                 if key not in d.model_fields_set and existing is not None:
                     data[key] = getattr(existing, key)
