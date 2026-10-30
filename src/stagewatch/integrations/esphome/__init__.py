@@ -64,7 +64,7 @@ MANIFEST = Manifest(
     direction="in",
     iot_class="local_push",   # the node sends each reading as it is taken
     protocols=("ESPHome native API", "mDNS"),
-    entity_kinds=("temperature", "humidity", "pressure", "contact", "battery", "signal_strength", "generic"),
+    entity_kinds=("temperature", "humidity", "pressure", "contact", "battery", "signal_strength", "voltage", "generic"),
     vendors=("ESPHome",),
 )
 

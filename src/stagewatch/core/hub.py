@@ -23,6 +23,7 @@ from .calibration import calibration_for as _calibration_for
 from .config import (ACCURACY_MAX, ACCURACY_MIN, ROLE_ENVIRONMENT, ROLE_EQUIPMENT, ROLES, Calibration, ConfigStore,
                      EntitySettings)
 from .derived import OUTLIER_LIMITS, AvgInput, AvgResult, Ema, average
+from .sunwatch import SunWatch, is_daytime
 from .model import ENV_KINDS, UNITS, Device, Entity, Kind, Marker, Status
 from .plugin import Integration
 from .recorder import REASON_POWER_OR_RESTART, Recorder
@@ -107,6 +108,9 @@ class Hub:
                                 "c_out_of_range": False, "c_out_of_range_bounds": []}
         self._baro_block: dict = {"state": "stale"}
         self._emas: dict[str, Ema] = {}
+        self.sun = SunWatch()
+        self._sun_flagged: list[str] = []
+        self._sun_out: set[str] = set()   # flagged sensors kept out of the temperature average now
         self._ema_sigs: dict[str, tuple] = {}
         self.average_info: dict[str, dict] = {}   # admin only (see _average_info)
         self._tasks: list[asyncio.Task] = []
@@ -523,7 +527,7 @@ class Hub:
         return (float(site.smoothing_tau_s), bool(site.outlier_reject), bool(site.weight_by_accuracy),
                 tuple(sorted(sensors)))
 
-    def _average_info(self, kind: Kind, now: float, result: AvgResult) -> dict:
+    def _average_info(self, kind: Kind, now: float, result: AvgResult, sun_out: frozenset = frozenset()) -> dict:
         """Admin-only description of one kind's average: what each sensor is doing (``in``,
         ``outlier``, ``stale``, ``off`` = left out by its tick box, ``none`` = no reading yet), its
         share of the average, and fixed text saying why weighting is not in use. Never public."""
@@ -540,6 +544,8 @@ class Hub:
                 state = "none"
             elif e.is_stale(now, self.stale_after_for(e)):
                 state = "stale"
+            elif e.id in sun_out:
+                state = "sun"   # kept out: it looks heated by direct sun
             elif e.id in result.rejected:
                 state = "outlier"
             else:
@@ -567,12 +573,26 @@ class Hub:
         info: dict[str, dict] = {}
         for kind in ENV_KINDS:
             inputs = self._env_inputs(kind, now)
+            sun_out: frozenset = frozenset()
+            if kind == Kind.TEMPERATURE:
+                try:
+                    flagged = self.sun.update({e.id: e.value for e in inputs}, now,
+                                              is_daytime(sitetime.local(now, site).hour))
+                except Exception:  # noqa: BLE001 - an advisory must never stop the tick
+                    log.exception("Sensor-in-the-sun check failed")
+                    flagged = set()
+                # Kept out of the average only while at least one other sensor remains.
+                if flagged and any(e.id not in flagged for e in inputs):
+                    sun_out = frozenset(flagged)
+                    inputs = [e for e in inputs if e.id not in flagged]
+                self._sun_flagged = sorted(flagged)
+                self._sun_out = set(sun_out)
             limit = OUTLIER_LIMITS.get(kind.value) if site.outlier_reject else None
             result = average([AvgInput(e.id, e.value, *self.accuracy_of(e)) for e in inputs],
                              limit, site.weight_by_accuracy)
             mean, used = result.mean, result.used
             counts[kind.value] = used
-            info[kind.value] = self._average_info(kind, now, result)
+            info[kind.value] = self._average_info(kind, now, result, sun_out)
             if mean is not None:
                 # Start the smoothing afresh when the settings behind it change (smoothing time,
                 # outlier rejection, which sensors count, their offsets), so a deliberate change
@@ -596,6 +616,9 @@ class Hub:
             "pressure_source": "measured" if pressure is not None else "altitude",
             "humidity_source": "measured" if rh is not None else "assumed 50%",
         }
+        if self._sun_flagged:
+            # Entity ids only (names are public already); "kept_out" false = the only sensor, still averaged.
+            self.site_meta["sun"] = [{"id": i, "kept_out": i in self._sun_out} for i in self._sun_flagged]
         values: dict[str, float | None] = {
             "site.temperature": temp,
             "site.humidity": rh,

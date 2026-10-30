@@ -117,7 +117,7 @@ is on tablet dashboards by default.
 | **Status** | The node's health. See the list below. |
 | **Temp**, **RH**, **Pressure** | The latest readings, in °C, %, and hPa. A blank means that node does not measure it. |
 | **Signal** | Wi-Fi strength in dBm, with a word: **good**, **fair** or **weak**. Shown in amber when weak. Only appears if a node reports it. |
-| **Battery** | Battery level in %. Shown in amber with the word **low** under 20 %. Only appears if a node reports it. |
+| **Battery** | Battery level in %, with the battery voltage beside it when the node reports one, for example `87 % · 3.98 V`. Shown in amber with the words **getting low** under 20 %. Only appears if a node reports it. Read-only: Stagewatch works out nothing about charging. |
 | **Updated** | How long ago the node last reported, for example `12s ago`. |
 
 Signal and battery are for your information. They are never part of the site average.

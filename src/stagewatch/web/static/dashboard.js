@@ -104,6 +104,21 @@
       SW.svg("path", { d, "vector-effect": "non-scaling-stroke" })) : null);
   }
 
+  // "Sensor in the sun": a calm advisory under the tiles. The server names the flagged sensors; this says so
+  // in words, with the fold explaining why. Silent: no alarm, sound or marker.
+  function sunNote() {
+    const flagged = (state.site.sun || []).map((s) => {
+      const e = state.entities[s.id], d = e && state.devices[e.device_id];
+      return { name: (d && d.name) || (e && e.name) || "A sensor", out: s.kept_out };
+    });
+    if (!flagged.length) return null;
+    const names = flagged.map((f) => f.name).join(", ");
+    return h("div", { class: "sun-note notice", role: "status" },
+      h("div", {}, `${names} ${flagged.length > 1 ? "look" : "looks"} warmed by direct sun. ` + (flagged.every((f) => f.out) ? "Left out of the site temperature." : "It is the only temperature sensor, so it is still used.")),
+      h("details", { class: "card-about" }, h("summary", {}, "Why is this shown?"),
+        h("p", { class: "muted" }, "A sensor in direct sun reads its own warm housing, not the air. This one read well above the others, or warmed much faster than they did, in daytime. Stagewatch keeps it out of the site temperature while that lasts. Move it into shade, or check it, and the note goes away by itself. This is advice only; nothing has been changed.")));
+  }
+
   function renderTiles() {
     loadTileHistory(false);
     const tiles = $("tiles");
@@ -130,6 +145,8 @@
         h("div", { class: "foot" }, foot),
         note ? h("div", { class: "foot approx" }, note) : null));
     }
+    const sun = sunNote();
+    if (sun) tiles.append(sun);
   }
 
   // Alarm notice timers: the server says how long is left on each (see SW.splitAlarms); this page
@@ -344,8 +361,8 @@
     const devs = sensorDevices();
     const ents = Object.values(state.entities);
     const any = (k) => devs.some((d) => ents.some((e) => e.device_id === d.id && e.kind === k));
-    const showSignal = any("signal_strength"), showBattery = any("battery");
-    const isHealth = (e) => e.kind === "signal_strength" || e.kind === "battery";
+    const showSignal = any("signal_strength"), showBattery = any("battery") || ents.some((e) => SW.isBatteryVolts(e) && devs.some((d) => d.id === e.device_id));
+    const isHealth = (e) => e.kind === "signal_strength" || e.kind === "battery" || SW.isBatteryVolts(e);
     // One row for what a node measures: `mine` is the entities this row shows, `health` whether the
     // node's own signal and battery go on it.
     const rowFor = (d, mine, health) => {
@@ -357,13 +374,24 @@
         const cls = "num wall-skip" + (e.stale ? " muted" : warn(e.value) ? " warn-text" : "");
         return h("td", { class: cls }, text(e.value));
       };
+      // Battery level with its cell voltage beside it ("87 % · 3.98 V"). Read-only; "getting low" under 20 %.
+      const batteryCell = () => {
+        const pct = health ? byKind("battery") : null, volts = health ? mine.find(SW.isBatteryVolts) : null;
+        const has = (e) => e && e.value !== null && e.value !== undefined;
+        if (!has(pct) && !has(volts)) return h("td", { class: "num wall-skip muted" }, "");
+        const low = has(pct) && pct.value < 20, stale = (has(pct) ? pct : volts).stale;
+        const parts = [];
+        if (has(pct)) parts.push(fmt("battery", pct.value));
+        if (has(volts)) parts.push(`${Number(volts.value).toFixed(2)} V`);
+        return h("td", { class: "num wall-skip" + (stale ? " muted" : low ? " warn-text" : "") }, parts.join(" · ") + (low ? ", getting low" : ""));
+      };
       const last = Math.max(0, ...mine.filter((e) => !isHealth(e)).map((e) => e.updated || 0));
       return h("tr", {},
         h("td", {}, d.name, d.area ? h("div", { class: "muted", style: "font-size:12px" }, d.area) : null),
         h("td", {}, (() => { const st = SW.deviceStatus(d, state.now); return h("span", { class: `status ${st.cls}`, title: st.title }, st.text); })()),
         cell("temperature"), cell("humidity"), cell("pressure", " wall-skip"),
         showSignal ? healthCell("signal_strength", (v) => v < -75, (v) => `${fmt("signal_strength", v)} ${SW.signalWord(v)}`) : null,
-        showBattery ? healthCell("battery", (v) => v < 20, (v) => (v < 20 ? `${fmt("battery", v)} low` : fmt("battery", v))) : null,
+        showBattery ? batteryCell(d, mine, health) : null,
         h("td", { class: "num muted" }, SW.age(last || null, state.now)));
     };
     // Environment rows first, then Equipment. A node whose sensors are all equipment is an
@@ -1095,7 +1123,7 @@
     for (const e of Object.values(state.entities)) {
       // RME units: only the core temperature here; the power supplies are On / Off words on the RME card.
       if (e.kind === "contact" && (state.devices[e.device_id] || {}).integration === "rme") continue;
-      if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery") continue;
+      if (!SW.isEquipment(e) || e.kind === "signal_strength" || e.kind === "battery" || SW.isBatteryVolts(e)) continue;
       // Inclinometers: only their body temperature, and only when Admin asks for it.
       const wmPub = (state.devices[e.device_id] || {}).witmotion;
       if (wmPub && wmPub.temp_on_equipment) { if (e.kind !== "temperature") continue; }
