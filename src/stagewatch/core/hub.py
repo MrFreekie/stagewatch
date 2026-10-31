@@ -576,8 +576,9 @@ class Hub:
             sun_out: frozenset = frozenset()
             if kind == Kind.TEMPERATURE:
                 try:
+                    lt = sitetime.local(now, site)
                     flagged = self.sun.update({e.id: e.value for e in inputs}, now,
-                                              is_daytime(sitetime.local(now, site).hour))
+                                              is_daytime(lt.hour, lt.minute))
                 except Exception:  # noqa: BLE001 - an advisory must never stop the tick
                     log.exception("Sensor-in-the-sun check failed")
                     flagged = set()

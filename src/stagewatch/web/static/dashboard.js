@@ -139,9 +139,9 @@
     if (!flagged.length) return null;
     const names = flagged.map((f) => f.name).join(", ");
     return h("div", { class: "sun-note notice", role: "status" },
-      h("div", {}, `${names} ${flagged.length > 1 ? "look" : "looks"} warmed by direct sun. ` + (flagged.every((f) => f.out) ? "Left out of the site temperature." : "It is the only temperature sensor, so it is still used.")),
+      h("div", {}, (flagged.every((f) => f.out) ? `${names} ${flagged.length > 1 ? "read" : "reads"} well above the others (direct sun or a heat source?). Left out of the site temperature.` : `${names} may be in direct sun. It is the only temperature sensor, so it is still used.`)),
       h("details", { class: "card-about" }, h("summary", {}, "Why is this shown?"),
-        h("p", { class: "muted" }, "A sensor in direct sun reads its own warm housing, not the air. This one read well above the others, or warmed much faster than they did, in daytime. Stagewatch keeps it out of the site temperature while that lasts. Move it into shade, or check it, and the note goes away by itself. This is advice only; nothing has been changed.")));
+        h("p", { class: "muted" }, "A sensor in direct sun, or next to a heat source, reads its own warm housing, not the air. This one read well above the others, or warmed much faster than they did, in daytime. Stagewatch keeps it out of the site temperature while that lasts. Move it into shade, or check it, and the note goes away by itself. This is advice only; nothing has been changed.")));
   }
 
   function renderTiles() {

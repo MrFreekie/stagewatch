@@ -58,18 +58,20 @@ not jump about.
 If your tech has applied a calibration offset to a sensor, the reading already includes it. The
 `*` that marks an offset is explained in [Sensors](sensors.md#the-asterisk-calibration-offset).
 
-## "Looks warmed by direct sun"
+## "Reads well above the others"
 
-A temperature sensor in direct sun reads its own warm housing, not the air. Stagewatch watches for
-this in daytime (08:00 to 19:00 site time). If one sensor reads **4 °C or more above the middle
-value of the others for 10 minutes** (it needs at least two others), or **warms by 3 °C or more in
-10 minutes while the others do not follow**, a calm note appears under the tiles naming it, and it
-is left out of the site temperature while that lasts. If it is your only temperature sensor it is
-still used, and the note says so.
+A temperature sensor in direct sun (or next to a heat source) reads its own warm housing, not the
+air. Stagewatch watches for this between 05:00 and 21:30 site time. With at least three sensors, if
+one reads **4 °C or more above the middle value of all the sensors for 10 minutes**, or **warms by
+3 °C or more in 10 minutes, ending at least 2 °C above the others, while they do not follow**, a calm
+note appears under the tiles naming it ("direct sun or a heat source?"), and it is left out of the
+site temperature while that lasts. Stagewatch never leaves out half or more of your sensors. A
+sensor that is only warming up from below (carried in from a cold van, say) is not flagged. If it is
+your only temperature sensor it is still used, and the note says it "may be in direct sun".
 
 It is advice only: no alarm, sound or marker, and nothing is changed. The note goes away on its
-own once the sensor is back within 2 °C of the others (or stops warming quickly). To fix it, move
-the sensor into shade. In Admin the sensor's share shows **Left out**.
+own once the sensor has been back within 2 °C of the others (or has stopped warming quickly) for
+about 5 minutes. To fix it, move the sensor into shade. In Admin the sensor's share shows **Left out**.
 
 ## Notes you may see under a tile
 
