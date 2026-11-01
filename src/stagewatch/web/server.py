@@ -2917,7 +2917,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     @app.get("/api/wifi")
     async def public_wifi(dashboard: str = Query(..., max_length=64)):
         """The Wi-Fi card's networks, only for a dashboard that has the card. Never in the snapshot, so a
-        dashboard without the card (or a start page) cannot see a password. Not cached."""
+        page that is not a dashboard with the card cannot ask for a password through it. This is not a lock:
+        the start page lists dashboards through /api/info, so anyone who can reach Stagewatch can name a
+        dashboard that has the card and read the passwords. The rule limits which pages show them, and the
+        owner puts the card only on non-public dashboards. Admin sees them in /api/admin/state. Not cached."""
         d = hub.config.dashboard(dashboard)
         nets = []
         if d is not None and "wifi" in d.cards:
