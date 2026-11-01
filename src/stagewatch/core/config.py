@@ -466,7 +466,9 @@ ACCURACY_BASES = ("typical", "maximum")
 class EntitySettings(_Model):
     """Legacy per-entity calibration, keyed by entity id.  Kept as the pending map: entries move to
     ``Config.calibrations`` once the hardware behind the entity is known."""
-    offset: float = 0.0
+    # Finite only (NaN or infinity is refused with a 422). The range is the widest per-kind limit (pressure, Pa);
+    # the admin API applies the tighter limit for temperature and humidity.
+    offset: float = Field(0.0, ge=-20000, le=20000, allow_inf_nan=False)
     include_in_average: bool = True
     # Datasheet accuracy (canonical units) and whether it is a typical or a maximum figure.
     # None = not set. Additive: older builds ignore both keys.
@@ -662,10 +664,10 @@ class Threshold(_Model):
     id: str
     entity: str
     label: str = ""
-    above: float | None = None
-    below: float | None = None
+    above: float | None = Field(None, allow_inf_nan=False)
+    below: float | None = Field(None, allow_inf_nan=False)
     level: int = Field(2, ge=1, le=3)
-    hysteresis: float = Field(0.0, ge=0)
+    hysteresis: float = Field(0.0, ge=0, allow_inf_nan=False)
     hold_s: float = Field(0.0, ge=0, le=3600)
     enabled: bool = True
     # OSC actions on raised / cleared / acknowledged (core/actions.py validates the messages).
@@ -955,8 +957,8 @@ class SplConfig(_Model):
     locations: dict[str, str] = Field(default_factory=dict)
     # The timeline's vertical range: "auto" fits the data; "custom" is exactly min..max dB.
     chart_range: Literal["auto", "custom"] = "auto"
-    chart_min_db: float = spl.CHART_MIN_DEFAULT
-    chart_max_db: float = spl.CHART_MAX_DEFAULT
+    chart_min_db: float = Field(spl.CHART_MIN_DEFAULT, allow_inf_nan=False)
+    chart_max_db: float = Field(spl.CHART_MAX_DEFAULT, allow_inf_nan=False)
     limits_alert: SplLimitsAlert = Field(default_factory=SplLimitsAlert)
 
     @field_validator("limits_alert", mode="before")

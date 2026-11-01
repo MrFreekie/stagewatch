@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscDestination, OscOutConfig,
     ContactsSettings, DeviceErrorsConfig, WIFI_MAX_NETWORKS, WifiConfig, WifiNetwork, PowerPointConfig, PowerSiteConfig, ShellyChannelConfig, SiteConfig, UnmonitoredAllowance, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error, valid_quiet_key, QUIET_MAX,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
@@ -830,6 +830,42 @@ WALL_CLOCK_TEST_TEXT = {
 def _has_hidden_chars(text: str) -> bool:
     """Control or format characters (newlines, zero-width, bidi overrides such as U+202E)."""
     return any(unicodedata.category(ch).startswith("C") for ch in text)
+
+
+SITE_NAME_MAX = 100
+OSC_MAX_DESTINATIONS = 16
+
+
+class SiteBody(SiteConfig):
+    """PUT /api/admin/site: the site name is plain text of reasonable length (loading a saved config is lenient)."""
+
+    name: str = Field("Stagewatch", max_length=SITE_NAME_MAX)
+
+    @field_validator("name")
+    @classmethod
+    def _plain_name(cls, v: str) -> str:
+        v = v.strip()
+        if _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+
+class OscDestinationBody(OscDestination):
+    host: str = Field(min_length=1, max_length=253)
+
+    @field_validator("host")
+    @classmethod
+    def _plain_host(cls, v: str) -> str:
+        v = v.strip()
+        if not v or _has_hidden_chars(v) or any(c.isspace() for c in v):
+            raise ValueError("Enter a host name or address")
+        return v
+
+
+class OscBody(OscOutConfig):
+    """PUT /api/admin/osc: a host is required and a sensible number of destinations is the most that is kept."""
+
+    destinations: list[OscDestinationBody] = Field(default_factory=list, max_length=OSC_MAX_DESTINATIONS)
 
 
 class DashboardBody(Dashboard):
@@ -1796,7 +1832,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         return sorted(seen.values(), key=str.casefold)[:100]
 
     @app.put("/api/admin/site", dependencies=admin_deps)
-    async def put_site(body: SiteConfig):
+    async def put_site(body: SiteBody):
+        body = SiteConfig.model_validate(body.model_dump(exclude_unset=True))
         if "schedule_auto_markers" not in body.model_fields_set:
             # Set on the schedule page; the Site card doesn't send it, so keep it as it is.
             body = body.model_copy(update={"schedule_auto_markers": hub.config.site.schedule_auto_markers})
@@ -2038,7 +2075,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         return body
 
     @app.put("/api/admin/osc", dependencies=admin_deps)
-    async def put_osc(body: OscOutConfig):
+    async def put_osc(body: OscBody):
+        body = OscOutConfig.model_validate(body.model_dump(exclude_unset=True))
         if "include_advice" not in body.model_fields_set:   # an older page keeps the FOH advice switch
             body.include_advice = hub.config.osc_out.include_advice
         hub.config.osc_out = body
