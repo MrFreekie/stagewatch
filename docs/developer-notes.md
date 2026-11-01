@@ -17,3 +17,9 @@ Without `-m ui`, or without Playwright, the tests skip and the normal suite is u
 The Nightly workflow runs them on a manual trigger (Actions, Nightly, "Run workflow") and on the nightly schedule, in a separate `ui` job that does not hold up promotion.
 
 Known finding: on the wall layout the Power card (about 3,700 px) and the Power tree card (about 1,800 px) are far taller than the 1,500 px cap, because the wall cannot fold them. `KNOWN_TALL_ON_WALL` in `tests/ui/test_layout.py` lists them so the test stays green; remove them from it once they are fixed.
+
+## How readings are stored
+
+`Recorder.record_state` thins what it writes (constants beside `HEARTBEAT_S` in `core/recorder.py`): a changed value is written at once, an unchanged one only as a heartbeat row every `UNCHANGED_HEARTBEAT_S` (30 s), and a changed calculated `site.*` value at most every `SITE_MIN_INTERVAL_S` (10 s). The schema is unchanged and dense rows from older versions read as before.
+
+Rules for readers: never assume one row per second; a reading holds until the next row (as the show report does, up to its 120 s `HOLD_S`), and a longer silence is a gap, never filled in. Keep the heartbeat inside that hold and the chart gap (90 s). Averages per time bucket are of the stored rows, so with steady values they are not weighted by time; extremes are unaffected, as every change is stored.

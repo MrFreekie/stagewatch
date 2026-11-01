@@ -40,6 +40,8 @@ them into a dated release section and tags the commit.
 
 ### Changed
 
+- **The history grows far more slowly.** A reading that has not changed is now saved again only every 30 seconds (the calculated site values at most every 10 seconds) instead of every second; a changed reading is still saved at once, and a source that goes quiet still shows as a gap. Charts, today's lows and highs, reports and exports read the same results. Old histories are read as before and nothing is converted.
+
 - **GUI review fixes.** The Power card folds each meter's per-phase load, voltage and frequency bars behind "Per-phase detail" and shows one line above them ("All circuits OK" or what needs a look); the wall always shows the bars. The phone header is two rows with a word on every status chip and a small "Sound On/Off" button. Chart ranges, List/Diagram, Add marker and fields are 44 px tall on touch screens. Barometer scale text is larger. Wall dashboards use the full width. A lone last site tile fills the row on a phone, and a trend line only draws with enough readings. Edit cards greys out the unticked cards at 16 ("Maximum 16 cards"), cleans the error text and warns that a wall screen does not scroll.
 - **Admin wording.** Plainer Site and Clock labels ("Smoothing (seconds)", "Ignore odd readings", "Distance for time difference (m)", "Computer time", "Clock matches the network"), "Hardware and offsets" for the calibration card, hints on the ESPHome adopt form, labels on the dashboards table and Change PIN fields, and a contacts empty state a viewer can act on.
 

@@ -203,6 +203,15 @@ SAFETY_COPY_KEEP = 2  # outside the updater's backup retention, so bounded here
 NOTE_MAX = 1000  # characters in a marker note
 UPDATER_BACKUP_MAX_AGE_S = 3600.0
 HEARTBEAT_S = 30.0
+# Thinning of the stored readings (rows only; the schema is unchanged and old dense data reads as before).
+# A reading that has not changed is written again only after this long: a "still alive" row, so charts,
+# the reports and the stale check see the source was there. It stays well inside the report's HOLD_S
+# (120 s) and chart gap (90 s), and a source that goes quiet is still a real gap, never filled in.
+UNCHANGED_HEARTBEAT_S = 30.0
+# The calculated site values (average, speed of sound, dew point...) are offered every second and wobble
+# in the last digit: a changed one is written at most this often. The newest value is never dropped,
+# it is written at the next chance, so nothing stays stuck on an old figure.
+SITE_MIN_INTERVAL_S = 10.0
 CHECKPOINT_S = 60.0
 MAX_PENDING_ROWS = 200_000  # ~1.5 h of 35 rows/s kept in memory while the DB refuses writes
 RAW_SHOW_SLACK_S = 3600.0  # raw_states: a show is still searched this long after its recorded end
@@ -328,6 +337,7 @@ class Recorder:
         self._remove_torn_safety_copies()
         self._migrate()
         self._pending: list[tuple[int, float, str, float | None]] = []
+        self._last_written: dict[tuple[int, str], tuple[float, float | None]] = {}   # (show, entity) -> (ts, value)
         self._dropped = 0
         self.run_id: int | None = None
         self._last_heartbeat = 0.0
@@ -604,6 +614,19 @@ class Recorder:
 
     # ----------------------------------------------------------------- states
     def record_state(self, entity_id: str, value: float | None, ts: float) -> None:
+        """Queue one reading. A changed value is written at once (calculated site.* values at most every
+        SITE_MIN_INTERVAL_S); an unchanged one only as a heartbeat every UNCHANGED_HEARTBEAT_S. A clock
+        step back always writes. Nothing is invented: the rows left out repeat the row before them."""
+        key = (self.show_id, entity_id)
+        last = self._last_written.get(key)
+        if last is not None and ts >= last[0]:
+            age = ts - last[0]
+            if value == last[1]:
+                if age < UNCHANGED_HEARTBEAT_S:
+                    return
+            elif entity_id.startswith("site.") and age < SITE_MIN_INTERVAL_S:
+                return
+        self._last_written[key] = (ts, value)
         self._pending.append((self.show_id, ts, entity_id, value))
 
     # ------------------------------------------------------- sound level limits
