@@ -330,8 +330,9 @@ def test_public_message_exact_field_set_and_nothing_private():
     msg = mapping.unit_message("stage_l", "Stage L", v, phase="up", frame_age_s=0.2, text_age_s=1.0)
     assert set(msg) == {"id", "name", "model", "status", "status_word", "status_symbol", "level", "link_up",
                         "last_frame_age_s", "no_updates_min", "temp_c", "psu", "redundancy", "clock", "preset",
-                        "avb", "soundness", "firmware", "inputs"}
+                        "avb", "soundness", "inputs"}
     assert msg["inputs"] == [{"n": 1, "label": "Placeholder Mic 1"}]
+    assert "firmware" not in msg and v.firmware == "2.0.1"      # firmware is admin only
     assert set(msg) == set(mapping.UNIT_FIELDS)
     assert set(msg["clock"]) == {"source_label", "locked", "rate_hz", "state"}
     assert set(msg["preset"]) == {"active_no", "loaded_no", "active_name", "loaded_name", "changed"}

@@ -1,6 +1,6 @@
 # Admin: Clock
 
-This page is for the person who looks after Stagewatch. It covers the **Clock** card on the **System**
+This page is for the person who looks after Stagewatch. It covers the **Clock** card on the **Setup and system**
 tab of Admin: checking the Pi's time against your tablet or phone, and setting it.
 
 Back to [Admin](README.md). Install and RTC notes: [Raspberry Pi guide](../install/raspberry-pi.md#the-pi-has-no-clock-battery).
@@ -56,12 +56,14 @@ crash, a restart or a frozen server.
 
 ## Not set up on this Pi
 
-A Pi that was installed before this button existed says **Not set up on this Pi**. Type the one line
-the card shows in a Terminal window on the Pi (it asks for your Pi password), then reload Admin. The
+The button is off until you switch it on, so a Pi says **Not set up on this Pi** at first. Type the one line
+the card shows in a Terminal window on the Pi, in your own Stagewatch folder (the one you ran `install.sh`
+from, `~/stagewatch` by default; never `/opt/stagewatch`), then reload Admin. It asks for your Pi password.
+Or add `--clock-button` when you run `install.sh`. The
 line installs a small program that can set the clock and nothing else, and a rule that lets
 Stagewatch run only that program. It restarts Stagewatch for about 10 seconds. See
 [SECURITY.md](../../SECURITY.md) for what it allows. To remove it, add `--uninstall` to the end of
-the same line.
+the same line, run from the same folder.
 
 ## Emulate mode
 

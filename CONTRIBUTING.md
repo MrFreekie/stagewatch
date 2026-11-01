@@ -48,7 +48,7 @@ src/stagewatch/
   acoustics.py        speed of sound (Cramer 1993), dew point, unit conversion
   core/               hub, model, config, recorder, alarms, derived values, cards, schedule,
                       updater, plugin API
-  integrations/       esphome (+ emulator), globcon, ontime, shelly, smaart, osc_out
+  integrations/       esphome (+ emulator), globcon, lanwm, nebra, ontime, pihost, rme, shelly, smaart, witmotion, osc_out
   web/                FastAPI server, auth, static dashboard/admin UI (no build step)
 esphome/              example node configs
 deploy/               Windows and Raspberry Pi autostart

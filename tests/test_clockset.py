@@ -223,7 +223,8 @@ def test_status_fields(hub, world):
     assert set(st) == {"hub_epoch", "site_timezone", "system_timezone", "ntp_synchronized", "can_set",
                        "reason_if_not", "is_emulate", "setup_command"}
     assert st["can_set"] is False and st["reason_if_not"] == cs.NOT_SET_UP
-    assert re.fullmatch(r"sudo bash [A-Za-z0-9_./-]+install-clock-helper\.sh", st["setup_command"])
+    assert st["setup_command"] == "cd ~/stagewatch && sudo bash deploy/pi/install-clock-helper.sh"
+    assert "/opt/stagewatch" not in st["setup_command"]      # never root-run a script the service user owns
     assert st["ntp_synchronized"] is False and st["system_timezone"] == "Europe/London"
     ok = setter(hub, world).status()
     assert ok["can_set"] and ok["setup_command"] is None and ok["hub_epoch"] == T0

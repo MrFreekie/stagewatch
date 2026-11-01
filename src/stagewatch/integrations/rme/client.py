@@ -63,6 +63,7 @@ PROBE_MAX_FRAMES = 40
 
 TEXT = {
     "not_local": "That address is not on a private network",
+    "bad_port": "Use port 80 or 443, or the port of a unit already added",
     "unreachable": "Nothing answered at that address",
     "not_rme": "Something answered, but not like an RME unit",
     "silent": f"Connected, but the unit sent nothing in {FIRST_FRAME_S:g} seconds",

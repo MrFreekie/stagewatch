@@ -50,8 +50,11 @@ Only the latest release on the Stable channel (and the current Nightly) receive 
   refused from another web page, and is limited to one change every 10 seconds; a jump of more
   than 5 seconds must be confirmed. The trade-off: `sudo` needs the service's "no new privileges"
   and "restrict SUID" systemd protections turned off, so the installer adds a drop-in,
-  `/etc/systemd/system/stagewatch.service.d/clock-helper.conf`, for that. Skip it with
-  `install.sh --no-clock-button`, or remove it with `install-clock-helper.sh --uninstall`. The
+  `/etc/systemd/system/stagewatch.service.d/clock-helper.conf`, for that. Because of this
+  trade-off it is **off by default**: switch it on with `install.sh --clock-button` or by running
+  `install-clock-helper.sh` from your own checkout, and remove it with
+  `install-clock-helper.sh --uninstall`. The script runs as root, so it refuses to run from
+  `/opt/stagewatch` (a folder the service user owns and the updater rewrites). The
   copy in `/usr/local/sbin` is not updated by in-app updates; run the installer line again to refresh it.
 - The in-app updater refuses downgrades, targets that are not on `main`, moved release tags and
   changes to where dependencies come from, and only runs code from the pinned GitHub origin. It

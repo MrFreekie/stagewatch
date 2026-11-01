@@ -42,7 +42,7 @@ const unit = (over = {}) => Object.assign({
   redundancy: true, clock: { source_label: "Word clock", locked: true, rate_hz: 48000, state: "Good" },
   preset: { active_no: 2, loaded_no: 2, active_name: "Live-2", loaded_name: "Live-2", changed: false },
   avb: { active: 4, total: 8, states: [{ word: "Good", count: 4 }] },
-  soundness: [{ area: "Device", word: "OK", symbol: "tick", level: 0, cause: "" }], firmware: "2.0.1",
+  soundness: [{ area: "Device", word: "OK", symbol: "tick", level: 0, cause: "" }],
 }, over);
 
 // ---- ok
@@ -121,7 +121,7 @@ eq(rme.cardClass([rme.unitView(unit({ status: "warning", status_word: "WARNING",
 eq(rme.cardClass([rme.unitView(unit({ status: "check", status_word: "CHECK", status_symbol: "triangle" }), 0, "wall")]), "", "check has no edge");
 // ---- hostile text stays text
 const evil = "<img src=x onerror=alert(1)>";
-const evilUnit = unit({ name: evil, model: evil, firmware: evil, soundness: [{ area: evil, word: evil, symbol: "triangle", level: 1, cause: evil }] });
+const evilUnit = unit({ name: evil, model: evil, soundness: [{ area: evil, word: evil, symbol: "triangle", level: 1, cause: evil }] });
 v = rme.unitView(evilUnit, 0, "tablet");
 const ui = rme.createUi();
 ui.update([evilUnit], 0, "tablet");

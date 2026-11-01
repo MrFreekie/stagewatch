@@ -17,7 +17,7 @@ There is one tile per unit, with the unit's name and model. Each tile shows:
 - **Preset**: the preset in use and the one loaded. When they differ, a **▲ Preset changed** flag appears.
 - **AVB**: how many of the unit's AVB streams are active, for example `4 of 8 streams active`. A stream with no channels set up on the unit reads **Not in use**, not CHECK.
 - **Channel names**: the names set on the unit's analogue inputs, for example `RF Mic 1`, each with its channel number. Only channels that have a name are listed. On a tablet the list is open; on a phone it is folded under **Channel names**. **These names are shown on every dashboard that has this card, so put nothing private in a channel name.** Gain, 48 V and phase are not read.
-- **Anything the unit itself is unhappy about**, listed under the tile with its area (for example Clock or Preset) and, where the unit gives one, the reason. Things that are fine are not listed. A closed **All checks** line lists every check, and the unit's firmware.
+- **Anything the unit itself is unhappy about**, listed under the tile with its area (for example Clock or Preset) and, where the unit gives one, the reason. Things that are fine are not listed. A closed **All checks** line lists every check. The firmware version is shown in Admin only.
 
 If a unit has not given a value yet, the card shows **—**. A missing value is never shown as zero.
 
@@ -36,7 +36,7 @@ A word the unit uses that Stagewatch has not seen before is shown as **Unrecogni
 ## When a unit is away or quiet
 
 - **OFFLINE** units keep their last values on screen, **dimmed and struck through**, with a line such as `OFFLINE, last seen 3 min ago`. Those figures are not live. Nothing is filled in for the time the unit was away.
-- **No updates for 5 min** is information, not a fault: the unit is connected but has had nothing new to say.
+- **No updates for 2 min** is information, not a fault: the unit is connected but has had nothing new to say.
 - The card's **Online / Offline** label in the top-right corner shows the worst unit. Click it for what to check.
 
 ## On the wall and the phone

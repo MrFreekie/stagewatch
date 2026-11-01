@@ -269,7 +269,7 @@ of these:
   This is the best answer if you can.
 - **Fit an RTC** (real-time clock) add-on board with a battery. The Pi then keeps time with the
   power off. Follow the board maker's steps to switch it on, then set the clock once.
-- **Set the clock from your tablet or phone.** In **Admin**, open the **System** tab, find the
+- **Set the clock from your tablet or phone.** In **Admin**, open the **Setup and system** tab, find the
   **Clock** card and press **Set the clock from this device**. See [below](#set-the-clock-from-your-tablet-or-phone).
 - Use a local time server such as **chrony** (advanced). Run `sudo apt install chrony`, point it at
   a time source on your network, and leave Stagewatch's button alone.
@@ -282,7 +282,7 @@ This is a stopgap for a Pi with no network time and no clock battery. If the Pi 
 the button writes the new time to it as well, so it keeps it after a power cut.
 
 1. Open **Admin** on a tablet or phone whose own clock is right.
-2. Open the **System** tab and find the **Clock** card. It shows the Pi's time, this device's time and the difference.
+2. Open the **Setup and system** tab and find the **Clock** card. It shows the Pi's time, this device's time and the difference.
 3. Press **Set the clock from this device**.
 4. If the difference is more than 5 seconds, Stagewatch tells you how far the clock will jump and asks you to confirm.
 
@@ -294,13 +294,25 @@ were saved with. Stagewatch does not rewrite or back-fill them. If the clock jum
 charts show a gap. If it jumps back, the charts show an overlap for that stretch. A small
 correction of a few seconds is nothing to worry about.
 
-The first time, the Clock card may say **Not set up on this Pi** and show one line to type in a
-Terminal window on the Pi. Type it once (it asks for your Pi password), then reload Admin. A new
-install made with `install.sh` sets this up for you (leave it out with `--no-clock-button`).
+The button is off until you switch it on. The Clock card then says **Not set up on this Pi** and
+shows one line to type in a Terminal window on the Pi, in your own Stagewatch folder (the one you
+ran `install.sh` from, `~/stagewatch` by default). Type it once (it asks for your Pi password),
+then reload Admin:
+
+```bash
+cd ~/stagewatch && sudo bash deploy/pi/install-clock-helper.sh
+```
+
+Or add `--clock-button` when you run `install.sh`. It is off by default because it lets the
+Stagewatch service use `sudo` for this one job (see [SECURITY.md](../../SECURITY.md)). Never run
+that script from `/opt/stagewatch`: the service owns that folder, and the script runs as root.
 
 The button works with a network time source as well, but the Pi will correct itself again
-at its next network time update. To take the button away, run
-`sudo bash /opt/stagewatch/deploy/pi/install-clock-helper.sh --uninstall`.
+at its next network time update. To take the button away, run this in your own Stagewatch folder:
+
+```bash
+cd ~/stagewatch && sudo bash deploy/pi/install-clock-helper.sh --uninstall
+```
 
 ---
 

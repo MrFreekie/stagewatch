@@ -127,7 +127,6 @@ SW.rme = (function () {
       const s = rme.soundness(waiting ? [] : u.soundness);
       v.notes = s.notes;
       v.checks = s.all;
-      v.firmware = text(u.firmware, 30);
     }
     return v;
   };
@@ -158,7 +157,7 @@ SW.rme = (function () {
       clock: h("span", {}), preset: h("span", {}), presetFlag: h("span", { class: "rme-flag", hidden: true }, "▲ Preset changed"),
       avb: h("span", {}), age: h("p", { class: "rme-age", role: "status" }),
       names: h("ul", { class: "rme-names" }), namesMore: h("p", { class: "rme-names-more muted" }),
-      notes: h("ul", { class: "rme-notes" }), checks: h("ul", { class: "rme-checks" }), fw: h("p", { class: "rme-fw muted" }),
+      notes: h("ul", { class: "rme-notes" }), checks: h("ul", { class: "rme-checks" }),
     };
     const row = (label, ...kids) => h("div", { class: "rme-row" }, h("span", { class: "rme-label" }, label), h("span", { class: "rme-val" }, ...kids));
     t.rowClock = row("Clock", t.clock);
@@ -168,7 +167,7 @@ SW.rme = (function () {
     t.namesSummary = h("summary", {}, "Channel names");
     t.namesBox = h("details", { class: "rme-chans" }, t.namesSummary, t.namesList);
     t.namesWall = h("div", { class: "rme-names-wall" }, t.names, t.namesMore);
-    t.more = h("details", { class: "rme-more" }, h("summary", {}, "All checks"), t.checks, t.fw);
+    t.more = h("details", { class: "rme-more" }, h("summary", {}, "All checks"), t.checks);
     t.el = h("article", { class: "rme-tile" },
       h("div", { class: "rme-head" }, h("div", { class: "rme-title" }, t.name, t.model), h("div", { class: "rme-status", role: "status" }, t.sym, t.word)),
       t.temp,
@@ -196,8 +195,7 @@ SW.rme = (function () {
         setText(t.avb, v.avb);
         fillList(t.notes, v.notes, true);
         fillList(t.checks, v.checks, false);
-        setText(t.fw, v.firmware ? `Firmware ${v.firmware}` : "");
-        setHidden(t.more, !v.checks.length && !v.firmware);
+        setHidden(t.more, !v.checks.length);
       }
       const hasNames = v.channels.list.length > 0;
       setHidden(t.namesWall, !(hasNames && v.layout === "wall"));

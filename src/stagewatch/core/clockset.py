@@ -34,7 +34,7 @@ RUN_TIMEOUT_S = 15.0
 NOT_LINUX = "Windows and macOS set their own clock."
 NOT_SET_UP = "Not set up on this Pi."
 _OK_LINE = re.compile(r"^OK (\d{10}) rtc=(yes|no|failed)$")
-_SAFE_PATH = re.compile(r"^[A-Za-z0-9_./-]{1,200}$")
+SETUP_COMMAND = "cd ~/stagewatch && sudo bash deploy/pi/install-clock-helper.sh"
 
 Runner = Callable[..., "subprocess.CompletedProcess"]
 
@@ -131,12 +131,11 @@ class ClockSetter:
         return self._can_set[1], self._can_set[2]
 
     def setup_command(self) -> str | None:
-        """The one line to type on the Pi, from the folder this program runs from."""
-        script = self.source_dir / "deploy" / "pi" / "install-clock-helper.sh"
-        path = str(script).replace("\\", "/") if script.is_file() else "/opt/stagewatch/deploy/pi/install-clock-helper.sh"
-        if not _SAFE_PATH.match(path):
-            path = "/opt/stagewatch/deploy/pi/install-clock-helper.sh"
-        return f"sudo bash {path}"
+        """The one line to type on the Pi, from the admin's own checkout.
+
+        Never a path under /opt/stagewatch: the service user owns that folder and the updater rewrites it,
+        so a script run as root from there could be changed by the service."""
+        return SETUP_COMMAND
 
     def system_time_info(self) -> dict:
         """Whether the system clock is network-synchronised and its time zone (read only; None when unknown)."""

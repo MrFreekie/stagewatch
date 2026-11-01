@@ -2279,6 +2279,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         """Look at a unit without saving it: model, firmware and the name it gives itself. Fixed-text
         failures; the address typed is never repeated and the serial number is never returned."""
         rme_rate_limit("test")
+        # Test is a way to make the server connect somewhere: keep it to the usual web ports and saved units.
+        if body.port not in (80, 443) and all(c.port != body.port for c in hub.config.rme_devices):
+            return {"ok": False, "category": "bad_port", "message": RME_TEXT["bad_port"]}
         try:
             with rme_probe_slot():
                 info = await rme_integ().test(body.host, body.port)
