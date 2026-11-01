@@ -572,7 +572,11 @@ def test_helper_and_installer_text():
     assert "visudo -cf" in inst and inst.index("visudo -cf") < inst.index("mv -f")
     assert 'ALL=(root) NOPASSWD: $HELPER' in inst and "install -o root -g root -m 0755" in inst
     assert "--uninstall" in inst and "set -euo pipefail" in inst
-    assert "install-clock-helper.sh" in (REPO / "deploy/pi/install.sh").read_text(encoding="utf-8")
+    pi_install = (REPO / "deploy/pi/install.sh").read_text(encoding="utf-8")
+    assert "install-clock-helper.sh" in pi_install
+    assert "CLOCK_BUTTON=0" in pi_install and "--clock-button) CLOCK_BUTTON=1" in pi_install     # opt in
+    assert "--no-clock-button) CLOCK_BUTTON=0" in pi_install                                          # still accepted
+    assert "/opt/stagewatch" in inst and "exit 1" in inst.split("/opt/stagewatch", 1)[1]            # refuses to run from there
     assert "--uninstall" in (REPO / "deploy/pi/uninstall.sh").read_text(encoding="utf-8")
     attrs = (REPO / ".gitattributes").read_text(encoding="utf-8")
     assert "deploy/pi/stagewatch-set-time text eol=lf" in attrs
