@@ -47,6 +47,9 @@ class SunWatch:
         self._hist: dict[str, deque] = {}     # id -> deque of (ts, value), at most one window long
         self._since: dict[str, float] = {}    # id -> when it first read SUN_ABOVE_OTHERS_C above the others
         self._clear_since: dict[str, float] = {}   # id -> when a flagged sensor first looked normal again
+        self._gone_since: dict[str, float] = {}    # id -> when a flagged sensor stopped reporting
+        self._full_n = 0                      # how many sensors there were when last there were enough to judge...
+        self._full_at = -1e9                  # ...and when
         self.flagged: set[str] = set()
 
     def _rise(self, sid: str, now: float) -> float | None:
@@ -58,18 +61,28 @@ class SunWatch:
 
     def update(self, readings: dict[str, float], now: float, daytime: bool) -> set[str]:
         """``readings``: the live environment temperature sensors (id -> degC). Returns the ids
-        flagged now. A sensor that drops out (stale, ticked off) loses its history and flag."""
+        flagged now. A sensor that drops out (stale, ticked off) loses its history, and its flag once it has
+        been away for SUN_CLEAR_HOLD_S. A flag also survives a short dropout of another sensor (fewer than
+        SUN_MIN_SENSORS left): it is judged against the count before, and clears only after the usual hold."""
         for sid in list(self._hist):
-            if sid not in readings:
-                for d in (self._hist, self._since, self._clear_since):
-                    d.pop(sid, None)
-                self.flagged.discard(sid)
+            if sid in readings:
+                self._gone_since.pop(sid, None)
+                continue
+            if sid in self.flagged:
+                if now - self._gone_since.setdefault(sid, now) < SUN_CLEAR_HOLD_S:
+                    continue                 # a short dropout: keep the flag for when it comes back
+            for d in (self._hist, self._since, self._clear_since, self._gone_since):
+                d.pop(sid, None)
+            self.flagged.discard(sid)
         for sid, v in readings.items():
             h = self._hist.setdefault(sid, deque())
             h.append((now, v))
             while len(h) > 1 and now - h[1][0] >= SUN_RISE_WINDOW_S:
                 h.popleft()   # keep the newest sample at or before the window start as its anchor
         n = len(readings)
+        if n >= SUN_MIN_SENSORS:
+            self._full_n, self._full_at = n, now
+        n_cap = self._full_n if n < SUN_MIN_SENSORS and now - self._full_at <= SUN_CLEAR_HOLD_S else n
         rises = {sid: self._rise(sid, now) for sid in readings}
         mid = statistics.median(readings.values()) if readings else 0.0
         excesses: dict[str, float | None] = {}
@@ -102,9 +115,11 @@ class SunWatch:
                 if held or fast:
                     self.flagged.add(sid)
                     self._clear_since.pop(sid, None)
-        if n >= 2 and len(self.flagged) > max_kept_out(n):
-            keep = sorted(self.flagged, key=lambda i: excesses.get(i) or 0.0, reverse=True)[:max_kept_out(n)]
-            for sid in self.flagged - set(keep):
+        present = self.flagged & readings.keys()
+        if n >= 2 and len(present) > max_kept_out(n_cap):
+            keep = sorted(present, key=lambda i: excesses.get(i) or 0.0, reverse=True)[:max_kept_out(n_cap)]
+            for sid in present - set(keep):
                 self._clear_since.pop(sid, None)
-            self.flagged = set(keep)
-        return set(self.flagged)
+            self.flagged = (self.flagged - present) | set(keep)
+            present = set(keep)
+        return present

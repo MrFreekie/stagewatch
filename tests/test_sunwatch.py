@@ -200,3 +200,51 @@ def test_battery_voltage_maps_to_voltage_kind_and_dashboard_shows_it():
     assert sensor_kind("battery", "%") == Kind.BATTERY
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     assert "getting low" in js and "toFixed(2)} V" in js
+
+
+def _flag_c(sw):
+    """a 20, b 21, c 26 for 600 s: median 21, excess 5 >= 4, so c is flagged at i=10 (t=1600)."""
+    assert _run(sw, 10, lambda i: {"a": 20.0, "b": 21.0, "c": 26.0})[-1] == {"c"}
+
+
+def test_a_flag_survives_a_short_dropout_of_another_sensor_and_is_there_on_return():
+    """After c is flagged, b goes quiet at i=11 (t=1660), leaving a and c: with two sensors there is no
+    median to judge by, but the flag was set with three, so it stays (the hot sensor must not re-enter the
+    average). b is back at i=13 (t=1780): c reads 26 against a median of 21 again, still 5 >= 2, still flagged."""
+    sw = SunWatch()
+    _flag_c(sw)
+    for i in (11, 12):
+        assert sw.update({"a": 20.0, "c": 26.0}, 1000.0 + 60.0 * i, True) == {"c"}
+    assert sw.update({"a": 20.0, "b": 21.0, "c": 26.0}, 1000.0 + 60.0 * 13, True) == {"c"}
+    assert sw.update({"a": 20.0, "b": 21.0, "c": 26.0}, 1000.0 + 60.0 * 20, True) == {"c"}
+
+
+def test_a_dropout_longer_than_the_clear_hold_lets_the_flag_go():
+    """b quiet from i=11 (t=1660). The clear timer starts then and the flag lasts 300 s: still flagged at
+    t=1900 (240 s), and gone at t=1960 (300 s, and the last full count is 360 s old)."""
+    sw = SunWatch()
+    _flag_c(sw)
+    assert sw.update({"a": 20.0, "c": 26.0}, 1660.0, True) == {"c"}
+    assert sw.update({"a": 20.0, "c": 26.0}, 1900.0, True) == {"c"}
+    assert sw.update({"a": 20.0, "c": 26.0}, 1960.0, True) == set()
+
+
+def test_the_flagged_sensor_itself_going_quiet_briefly_keeps_its_flag_for_its_return():
+    """c is flagged, then silent from t=1660 to t=1780 (120 s < 300 s): nothing is reported for it while it
+    is away, and it is flagged the moment it is back, without waiting another 600 s."""
+    sw = SunWatch()
+    _flag_c(sw)
+    assert sw.update({"a": 20.0, "b": 21.0}, 1660.0, True) == set()
+    assert sw.update({"a": 20.0, "b": 21.0}, 1780.0, True) == set()
+    assert sw.update({"a": 20.0, "b": 21.0, "c": 26.0}, 1840.0, True) == {"c"}
+
+
+def test_the_flagged_sensor_away_for_over_the_hold_is_forgotten_and_must_earn_the_flag_again():
+    """Away from t=1660; at t=1960 (300 s) the flag is dropped. Back at t=2020 it starts a fresh 600 s timer."""
+    sw = SunWatch()
+    _flag_c(sw)
+    for t in (1660.0, 1960.0):
+        assert sw.update({"a": 20.0, "b": 21.0}, t, True) == set()
+    assert sw.update({"a": 20.0, "b": 21.0, "c": 26.0}, 2020.0, True) == set()
+    assert sw.update({"a": 20.0, "b": 21.0, "c": 26.0}, 2020.0 + 599.0, True) == set()
+    assert sw.update({"a": 20.0, "b": 21.0, "c": 26.0}, 2020.0 + 600.0, True) == {"c"}
