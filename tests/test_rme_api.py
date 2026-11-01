@@ -73,6 +73,15 @@ def test_test_says_model_firmware_name_and_nothing_else(client):
     assert "SIM-" not in r.text and HOST not in r.text and "serial" not in r.text
 
 
+def test_test_only_probes_web_ports_or_saved_ones(client):
+    later(client)
+    r = client.post("/api/admin/rme/test", json={"host": HOST, "port": 22})
+    assert r.status_code == 200 and r.json() == {"ok": False, "category": "bad_port",
+                                                 "message": "Use port 80 or 443, or the port of a unit already added"}
+    later(client)
+    assert client.post("/api/admin/rme/test", json={"host": HOST, "port": 443}).json()["ok"] is True
+
+
 def test_test_refuses_public_addresses_and_names_with_fixed_text_and_no_echo(client):
     for host in ("8.8.8.8", "12mic.local", "localhost", "127.0.0.1", "169.254.1.1", "0.0.0.0", "999.1.1.1", "http://192.168.1.5", "134744072"):
         later(client)

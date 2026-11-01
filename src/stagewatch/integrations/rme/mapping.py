@@ -172,7 +172,6 @@ def unit_message(uid: str, name: str, view: View | None, *, phase: str, frame_ag
         "avb": {"active": v.avb_active, "total": v.avb_total,
                 "states": [{"word": w, "count": n} for w, n in v.avb_states]},
         "soundness": [s.public() for s in v.sound],
-        "firmware": v.firmware,
         "inputs": public_inputs(v.inputs),
     }
 

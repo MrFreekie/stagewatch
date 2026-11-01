@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscDestination, OscOutConfig,
     ContactsSettings, DeviceErrorsConfig, WIFI_MAX_NETWORKS, WifiConfig, WifiNetwork, PowerPointConfig, PowerSiteConfig, ShellyChannelConfig, SiteConfig, UnmonitoredAllowance, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error, valid_quiet_key, QUIET_MAX,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
@@ -71,6 +71,7 @@ from .auth import COOKIE, SESSION_S, SessionSigner, hash_pin, verify_pin
 from . import branding as brand
 from ..core import documents as docs_mod
 from ..core import contacts as contacts_mod
+from .hostcheck import HostCheckMiddleware
 from .limits import DEFAULT_BODY_LIMIT, WS_MAX_MESSAGE, BodySizeLimitMiddleware
 
 log = logging.getLogger(__name__)
@@ -813,6 +814,7 @@ class BaroDemoBody(BaseModel):
     scenario: Literal["steady", "slow_fall", "front", "storm", "rising", "dropout", "none"]
 
 
+EXTREMES_CACHE_S = 30.0
 QNH_MIN_HPA, QNH_MAX_HPA = 940.0, 1060.0   # record extremes are about 870 and 1,085 hPa: a typo is caught
 ALTITUDE_RANGE_M = (-500.0, 6000.0)        # the same as SiteConfig.altitude_m
 
@@ -828,6 +830,42 @@ WALL_CLOCK_TEST_TEXT = {
 def _has_hidden_chars(text: str) -> bool:
     """Control or format characters (newlines, zero-width, bidi overrides such as U+202E)."""
     return any(unicodedata.category(ch).startswith("C") for ch in text)
+
+
+SITE_NAME_MAX = 100
+OSC_MAX_DESTINATIONS = 16
+
+
+class SiteBody(SiteConfig):
+    """PUT /api/admin/site: the site name is plain text of reasonable length (loading a saved config is lenient)."""
+
+    name: str = Field("Stagewatch", max_length=SITE_NAME_MAX)
+
+    @field_validator("name")
+    @classmethod
+    def _plain_name(cls, v: str) -> str:
+        v = v.strip()
+        if _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+
+class OscDestinationBody(OscDestination):
+    host: str = Field(min_length=1, max_length=253)
+
+    @field_validator("host")
+    @classmethod
+    def _plain_host(cls, v: str) -> str:
+        v = v.strip()
+        if not v or _has_hidden_chars(v) or any(c.isspace() for c in v):
+            raise ValueError("Enter a host name or address")
+        return v
+
+
+class OscBody(OscOutConfig):
+    """PUT /api/admin/osc: a host is required and a sensible number of destinations is the most that is kept."""
+
+    destinations: list[OscDestinationBody] = Field(default_factory=list, max_length=OSC_MAX_DESTINATIONS)
 
 
 class DashboardBody(Dashboard):
@@ -1412,6 +1450,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     app.state.hub = hub
     app.state.updater = updater
     hub.netcheck.default_on = lambda: updater.managed
+    app.add_middleware(HostCheckMiddleware, names=lambda: (hub.config.mdns_name, hub.config.allowed_hosts))
     app.add_middleware(BodySizeLimitMiddleware, default_limit=body_limit,
                        overrides={**DEFAULT_BODY_OVERRIDES, **(body_limit_overrides or {})},
                        limit_for=_logo_limit)
@@ -1530,19 +1569,31 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         since = since if since is not None else time.time() - 3600
         return hub.recorder.history(ids, since, until, max(10, min(points, 2000)))
 
+    extremes_cache: dict = {"key": None, "until": 0.0, "body": None}
+    extremes_lock = asyncio.Lock()
+
     @app.get("/api/site/extremes")
     async def site_extremes():
         """Today's highs and lows of the site temperature, humidity and pressure, for the
         site-local calendar day so far (public: these are the same site readings the dashboards
-        show). Worked out from what was recorded; no data gives null, never a made-up value."""
+        show). Worked out from what was recorded; no data gives null, never a made-up value.
+        Public and unauthenticated, so the answer is kept for EXTREMES_CACHE_S and worked out in a
+        worker thread on its own read-only connection (the event loop is never held up)."""
         now = time.time()
         local = sitetime.local(now, hub.config.site)
         start = sitetime.wall_ts(local.date(), datetime.time(0, 0), hub.config.site)
-        out = {"since": start, "now": now}
-        for key, eid in (("temperature", "site.temperature"), ("humidity", "site.humidity"),
-                         ("pressure", "site.pressure")):
-            out[key] = hub.recorder.extremes(eid, start, now)
-        return out
+        mono = time.monotonic()
+        if extremes_cache["key"] == start and mono < extremes_cache["until"]:
+            return extremes_cache["body"]
+        async with extremes_lock:
+            mono = time.monotonic()
+            if extremes_cache["key"] == start and mono < extremes_cache["until"]:
+                return extremes_cache["body"]
+            ids = {"temperature": "site.temperature", "humidity": "site.humidity", "pressure": "site.pressure"}
+            found = await asyncio.to_thread(hub.recorder.extremes_threaded, list(ids.values()), start, now)
+            body = {"since": start, "now": now, **{k: found.get(e) for k, e in ids.items()}}
+            extremes_cache.update(key=start, until=mono + EXTREMES_CACHE_S, body=body)
+            return body
 
     @app.get("/api/markers/{marker_id}/delta")
     async def marker_delta(marker_id: int):
@@ -1781,7 +1832,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         return sorted(seen.values(), key=str.casefold)[:100]
 
     @app.put("/api/admin/site", dependencies=admin_deps)
-    async def put_site(body: SiteConfig):
+    async def put_site(body: SiteBody):
+        body = SiteConfig.model_validate(body.model_dump(exclude_unset=True))
         if "schedule_auto_markers" not in body.model_fields_set:
             # Set on the schedule page; the Site card doesn't send it, so keep it as it is.
             body = body.model_copy(update={"schedule_auto_markers": hub.config.site.schedule_auto_markers})
@@ -2023,7 +2075,8 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         return body
 
     @app.put("/api/admin/osc", dependencies=admin_deps)
-    async def put_osc(body: OscOutConfig):
+    async def put_osc(body: OscBody):
+        body = OscOutConfig.model_validate(body.model_dump(exclude_unset=True))
         if "include_advice" not in body.model_fields_set:   # an older page keeps the FOH advice switch
             body.include_advice = hub.config.osc_out.include_advice
         hub.config.osc_out = body
@@ -2061,8 +2114,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def put_internet_check(body: InternetCheckBody):
         hub.config.updater.check_internet = body.enabled
         hub.save_config()
-        if hub.netcheck.enabled():
-            asyncio.create_task(hub.netcheck.run_once())
+        hub.netcheck.run_manual()
         return {"enabled": body.enabled, "effective": hub.netcheck.enabled()}
 
     # Alarm notice timers (dashboard list only; the state behind a notice is untouched).
@@ -2279,6 +2331,9 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         """Look at a unit without saving it: model, firmware and the name it gives itself. Fixed-text
         failures; the address typed is never repeated and the serial number is never returned."""
         rme_rate_limit("test")
+        # Test is a way to make the server connect somewhere: keep it to the usual web ports and saved units.
+        if body.port not in (80, 443) and all(c.port != body.port for c in hub.config.rme_devices):
+            return {"ok": False, "category": "bad_port", "message": RME_TEXT["bad_port"]}
         try:
             with rme_probe_slot():
                 info = await rme_integ().test(body.host, body.port)
@@ -2900,7 +2955,10 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     @app.get("/api/wifi")
     async def public_wifi(dashboard: str = Query(..., max_length=64)):
         """The Wi-Fi card's networks, only for a dashboard that has the card. Never in the snapshot, so a
-        dashboard without the card (or a start page) cannot see a password. Not cached."""
+        page that is not a dashboard with the card cannot ask for a password through it. This is not a lock:
+        the start page lists dashboards through /api/info, so anyone who can reach Stagewatch can name a
+        dashboard that has the card and read the passwords. The rule limits which pages show them, and the
+        owner puts the card only on non-public dashboards. Admin sees them in /api/admin/state. Not cached."""
         d = hub.config.dashboard(dashboard)
         nets = []
         if d is not None and "wifi" in d.cards:

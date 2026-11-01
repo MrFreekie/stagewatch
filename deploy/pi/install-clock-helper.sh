@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Set up (or remove) the "Set the clock from this device" button on a Raspberry Pi / Debian install.
 #
-#   sudo bash /opt/stagewatch/deploy/pi/install-clock-helper.sh [--user stagewatch] [--uninstall]
+#   cd ~/stagewatch && sudo bash deploy/pi/install-clock-helper.sh [--user stagewatch] [--uninstall]
 #
-# Run as root (put sudo in front). It installs, from this source folder:
+# Run it from your own checkout, as root (put sudo in front). Never from /opt/stagewatch: the service
+# user owns that folder and the updater rewrites it, and this script runs as root. It installs, from
+# this source folder:
 #   /usr/local/sbin/stagewatch-set-time           the tiny helper (root-owned, mode 0755)
 #   /etc/sudoers.d/stagewatch-set-time            lets the Stagewatch service user run THAT ONE FILE as root
 #   /etc/systemd/system/stagewatch.service.d/clock-helper.conf
@@ -29,10 +31,15 @@ DROPIN_DIR=/etc/systemd/system/stagewatch.service.d
 DROPIN="$DROPIN_DIR/clock-helper.conf"
 
 if [[ "$(id -u)" != "0" ]]; then
-  echo "Run this with sudo in front:  sudo bash $HERE/install-clock-helper.sh"
+  echo "Run this with sudo in front:  cd ~/stagewatch && sudo bash deploy/pi/install-clock-helper.sh"
   exit 1
 fi
 [[ "$SVC_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "That is not a valid user name."; exit 1; }
+if [[ $UNINSTALL -eq 0 && ( "$HERE" == /opt/stagewatch || "$HERE" == /opt/stagewatch/* ) ]]; then
+  echo "Do not run this from /opt/stagewatch: the Stagewatch service owns that folder."
+  echo "Run it from your own checkout instead:  cd ~/stagewatch && sudo bash deploy/pi/install-clock-helper.sh"
+  exit 1
+fi
 
 restart_service() {
   systemctl daemon-reload

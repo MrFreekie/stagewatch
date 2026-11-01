@@ -53,3 +53,32 @@ def test_fetcher_error_reads_as_failure():
     nc, _, _ = make([]); nc.fetcher = boom
     run(nc); run(nc)
     assert nc.state == "down"
+
+
+def test_manual_run_skips_while_running_and_is_limited_to_one_every_few_seconds():
+    calls = []
+    gate = {}
+
+    async def scenario():
+        nc, _, _ = make([])
+        release = asyncio.Event()
+
+        async def slow():
+            calls.append(1)
+            await release.wait()
+        nc.run_once = slow                       # a check that stays running until released
+        clock = {"t": 100.0}
+        assert nc.run_manual(lambda: clock["t"]) is True
+        assert nc._manual is not None            # a reference is kept so the task cannot be collected
+        assert nc.run_manual(lambda: clock["t"]) is False       # one is still running
+        release.set()
+        await nc._manual
+        clock["t"] += 2
+        assert nc.run_manual(lambda: clock["t"]) is False       # too soon after the last
+        clock["t"] += 5
+        assert nc.run_manual(lambda: clock["t"]) is True
+        await nc._manual
+        gate["done"] = True
+
+    asyncio.run(scenario())
+    assert gate and len(calls) == 2

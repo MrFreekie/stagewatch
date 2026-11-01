@@ -10,7 +10,8 @@ the card under **Admin, User dashboards, Edit cards**. It stays hidden until the
 Back to [Dashboard cards](README.md).
 
 > **Only share guest or crew internet here. Never the network your show equipment runs on.**
-> Anyone who can open a dashboard with this card can read the password.
+> Anyone who can open a dashboard with this card can read the password, and so can anyone who
+> signs in to Admin. Put the card only on dashboards that are not public.
 
 ## Good to know
 

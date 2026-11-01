@@ -324,7 +324,7 @@ Log lines mention your Wi-Fi name. Remove personal details before you post one o
 **What you should see:** a message "Node adopted". The node appears under **Adopted** with
 the status **ok**. Its readings show up in the **Sensors** card and on the dashboards.
 
-**If the node is not in the Discovered list**, use **Add by host / IP** on the same card.
+**If the node is not in the Discovered list**, use **Add integration**, then **ESPHome**, and type the node's address in the **Address** field.
 Type the node's address (its IP address is on the TFT screen, in your router's list of
 devices, or in the node's log) or `your-node-name.local`. Leave the port at `6053`, and fill
 in the name, area, role and key. Then click **Adopt**.
@@ -445,8 +445,8 @@ Problems that belong to one build are in that build's page. These ones apply to 
 | What you see | Likely cause | What to do |
 |---|---|---|
 | The computer does not find the board (no COM port) | A charge-only USB cable, or the board is not in flashing mode. | Try another USB **data** cable and another USB port. Then use the button trick for your board in Step 5. |
-| The build fails with a secrets error | A line in `secrets.yaml` is missing, or a quote mark is missing. | Compare with `secrets.example.yaml`. The key must be a proper 44-character key, not the words in the example. A key that is all `A`s is refused. |
-| The node is not in the **Discovered** list | It is on a different network, or the network blocks node discovery (mDNS, how devices find each other by name). | Check it is on the same 2.4 GHz network as the Stagewatch computer, not a guest network. Turn off "client isolation" or "AP isolation" on the router. Check `wifi_ssid` and the password. Then use **Add by host / IP**. |
+| The build fails with a secrets error | A line in `secrets.yaml` is missing, or a quote mark is missing. | Compare with `secrets.example.yaml`. The key must be a proper 44-character key, not the words in the example. |
+| The node is not in the **Discovered** list | It is on a different network, or the network blocks node discovery (mDNS, how devices find each other by name). | Check it is on the same 2.4 GHz network as the Stagewatch computer, not a guest network. Turn off "client isolation" or "AP isolation" on the router. Check `wifi_ssid` and the password. Then use **Add integration**, then **ESPHome**, and type the node's address in the **Address** field. |
 | Status shows **fault**: "encryption key missing or wrong" | The key in Stagewatch is not the key on the node. | Paste the exact key from `secrets.yaml` that was there when you flashed. If you lost it, put a new key in `secrets.yaml`, flash the node again, then remove and adopt it again. |
 | Status shows **fault**: "different hardware at this address" | A different board now answers at that node's address (for example you swapped boards). Stagewatch holds its readings back so one board's calibration is not applied to another. | In Admin, under **Adopted**, click **Remove** next to the node (history is kept), then adopt the new board with **Adopt…**. Set its **Offset** again. If you did not swap anything, another board may be using the same name or address. |
 | Status shows **fault**: "same board as another device" | The same board has been adopted twice. | Remove one of the two. Also check two files do not share the same `node_name`. |
@@ -468,7 +468,7 @@ For installers. Crew can skip this.
 ### A fixed IP address
 
 To give the node a fixed address on the show network, open the node file and find the
-commented-out `manual_ip` block under `wifi:`. Thirteen of the 15 files have it (the two
+commented-out `manual_ip` block under `wifi:`. Fourteen of the 16 files have it (the two
 exceptions are `stagewatch-env-sht45.yaml` and `stagewatch-env-poe.yaml`). Remove the `#`
 from the start of each line of the block. Change the numbers to suit your network. Keep the
 spaces at the start of each line.
@@ -505,7 +505,7 @@ wifi:
   127) to make it win whenever it is in range.
 - It does not move to another listed network while it is still connected. Power it off and
   on when you change site, or wait: if it cannot connect for 15 minutes it restarts and
-  looks again (on the ten files that restart themselves).
+  looks again (on the eleven files that restart themselves).
 - If none of the networks is found, it starts its own back-up network, named after
   `node_name`, using `wifi_ap_password`. The five older files have no back-up network.
 - A fixed IP address belongs to one network, so put `manual_ip:` under that network in the

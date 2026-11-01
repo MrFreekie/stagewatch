@@ -1708,7 +1708,6 @@ body.layout-wall .about-url { font-size: 20px; }
 .rme-names-wall { margin: 4px 0 8px; }
 .rme-more { margin-top: 6px; }
 .rme-more summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 14px; }
-.rme-fw { margin: 6px 0 0; font-size: 13px; }
 .rme-foot { margin: 10px 0 0; font-size: 12px; }
 .rme-dim > :not(.rme-head):not(.rme-age) { opacity: .5; }
 .rme-dim .rme-temp, .rme-dim .rme-psus { text-decoration: line-through; text-decoration-thickness: 2px; }

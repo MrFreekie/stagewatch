@@ -61,6 +61,9 @@ def age_bucket(seconds: float | None) -> str:
     return "over an hour ago"
 
 
+MANUAL_MIN_GAP_S = 5.0
+
+
 class NetCheck:
     def __init__(self, hub, clock: Callable[[], float] = time.time, fetcher: Fetcher = default_fetch,
                  default_on: Callable[[], bool] = lambda: False) -> None:
@@ -73,6 +76,8 @@ class NetCheck:
         self.since: float | None = None
         self.fails = 0
         self._task: asyncio.Task | None = None
+        self._manual: asyncio.Task | None = None
+        self._manual_at = -1e9
 
     def enabled(self) -> bool:
         choice = self.hub.config.updater.check_internet
@@ -93,6 +98,19 @@ class NetCheck:
             self.state, self.since = new, now
             self.hub.bus.publish("internet", self.snapshot())
 
+    def run_manual(self, now: Callable[[], float] = time.monotonic) -> bool:
+        """A check asked for from Admin: starts one in the background and keeps hold of the task. Skipped (False)
+        while one is still running or if the last was less than MANUAL_MIN_GAP_S ago, so toggling cannot pile up
+        requests to the check address."""
+        if not self.enabled() or (self._manual is not None and not self._manual.done()):
+            return False
+        t = now()
+        if t - self._manual_at < MANUAL_MIN_GAP_S:
+            return False
+        self._manual_at = t
+        self._manual = asyncio.get_running_loop().create_task(self.run_once(), name="net-check-manual")
+        return True
+
     def next_delay(self) -> float:
         return RETRY_S if self.fails and self.state != "down" else INTERVAL_S
 
@@ -111,6 +129,10 @@ class NetCheck:
         self._task = asyncio.create_task(self._loop(), name="net-check")
 
     async def stop(self) -> None:
+        if self._manual is not None:
+            self._manual.cancel()
+            await asyncio.gather(self._manual, return_exceptions=True)
+            self._manual = None
         if self._task is not None:
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)

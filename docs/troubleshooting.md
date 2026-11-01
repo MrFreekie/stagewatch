@@ -125,8 +125,9 @@ Get-NetFirewallRule -DisplayName "Stagewatch*" | Select-Object DisplayName, Enab
 | The dashboard address just bounces back to the home page | There is no dashboard with that name. Use the tiles on the home page. |
 | The page only says **This browser is too old for Stagewatch** | That device's browser is too old. Dashboards need an iPad or iPhone on iOS 12 or later, or a recent Chrome, Edge, Firefox or Safari. The admin page needs iOS 13 or later. Use another device, or update this one. |
 | An **EMULATE MODE** banner at the top | This is a demo with fake sensors, not the real install. |
-| Times are wrong | The times come from the Stagewatch computer. On a Raspberry Pi with no internet, its clock may be out. Use **Admin → System → Clock → Set the clock from this device**, before the show ([Pi guide](install/raspberry-pi.md#the-pi-has-no-clock-battery)). |
-| The Clock card says **Not set up on this Pi** | This Pi was installed before the clock button existed. Type the one line the card shows, in a Terminal window on the Pi, then reload Admin ([Pi guide](install/raspberry-pi.md#set-the-clock-from-your-tablet-or-phone)). |
+| The page says **This address is not allowed** | Stagewatch only answers when it is opened by an IP address, `localhost`, the computer's name or a `.local` name. Use one of those, or add the name you use (for example `showpc.lan`) under `allowed_hosts:` in `config.yaml`, then restart Stagewatch. |
+| Times are wrong | The times come from the Stagewatch computer. On a Raspberry Pi with no internet, its clock may be out. Use **Admin → Setup and system → Clock → Set the clock from this device**, before the show ([Pi guide](install/raspberry-pi.md#the-pi-has-no-clock-battery)). |
+| The Clock card says **Not set up on this Pi** | The clock button is optional and has not been switched on. Type the one line the card shows, in a Terminal window on the Pi, in your own Stagewatch folder, then reload Admin ([Pi guide](install/raspberry-pi.md#set-the-clock-from-your-tablet-or-phone)). |
 | Temperature or speed of sound looks silly | Check each sensor in the **Sensors** card. One sensor in the sun or by a lamp can be wrong. Untick **Average** for it in Admin, or move it. |
 | The **Barometer** says **No pressure sensor** | No pressure sensor is reporting. Add a node with a BME280 (see [Build a sensor node](nodes/README.md)) and check it shows in the **Sensors** card. |
 | The **Barometer** says **Collecting** or **Pressure gap** | It needs 3 hours of unbroken readings for the 3-hour change and the hint. A gap of more than 3 minutes (a sensor or Stagewatch stopped) starts the wait again. It does not guess what it missed. The card says when it will be ready. |
@@ -140,7 +141,7 @@ See also the table at the end of [Build a sensor node](nodes/README.md#if-it-did
 
 | What you see | Try this |
 |---|---|
-| Node not in the **Discovered** list in Admin | Same Wi-Fi as the Stagewatch computer, and 2.4 GHz. Check `wifi_ssid` and password. Turn off client isolation. Use **Add by host / IP** instead. |
+| Node not in the **Discovered** list in Admin | Same Wi-Fi as the Stagewatch computer, and 2.4 GHz. Check `wifi_ssid` and password. Turn off client isolation. Use **Add integration**, then **ESPHome**, and type the node's address in the **Address** field instead. |
 | Node status **fault**, "encryption key missing or wrong" | The key pasted into Stagewatch is not the one on the node. Use the exact key from `secrets.yaml`. |
 | Node status **missing**, "connection lost" | The node lost power or Wi-Fi. Check the USB power and the distance to the access point. Stagewatch reconnects by itself. |
 | Node status **initializing** for a long time | It is still connecting. Wait a minute, then check its power and Wi-Fi. |
