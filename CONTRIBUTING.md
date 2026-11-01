@@ -36,7 +36,8 @@ committed.
 
 ```bash
 uv sync                       # install, including dev tools
-uv run pytest                 # tests
+uv run pytest                 # everything (about 13 minutes)
+uv run pytest -m "not slow"   # smoke tier (about 7 minutes): skips tests over about 5 s
 uv run stagewatch --emulate   # run with simulated nodes
 uv run python scripts/check_secrets.py --all   # scan tracked files for secrets
 ```

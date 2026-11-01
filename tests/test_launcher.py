@@ -15,6 +15,9 @@ from stagewatch import launcher as lc
 from stagewatch import updater_common as uc
 from updater_env import make_env
 
+pytestmark = pytest.mark.slow  # whole file: real servers, git or long timeouts
+
+
 SRC = Path(__file__).resolve().parents[1] / "src" / "stagewatch"
 
 # The fake "server": behaviour is chosen by mode.txt in the checked-out repo, so a checkout
@@ -365,7 +368,9 @@ def test_failed_manual_rollback_returns_displaced_data(h):
     (h.env.data / "config.yaml").write_text("v: newer\n")
     hist = uc.append_history(h.sd, {"action": "update", "result": "ok", "from_sha": old_bad,
                                     "to_sha": new_good, "backup_id": "pre", "schema_changed": True})
-    h.launcher.health_timeout = 1.5
+    # The old code crashes at once, so this costs nothing; the budget only has to cover the
+    # restored newer code starting up on a loaded machine.
+    h.launcher.health_timeout = 30.0
     h.start()
     h.wait_handshake()
     h.request_exit75(action="rollback", history_id=hist["id"], from_sha=new_good, to_sha=old_bad,

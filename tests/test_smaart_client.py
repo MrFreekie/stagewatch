@@ -580,6 +580,7 @@ async def test_an_oversize_stream_message_closes_the_connection_and_it_comes_bac
             await src.stop()
 
 
+@pytest.mark.slow
 async def test_the_client_looks_at_only_so_many_messages_a_second():
     frames = [stream_message({A: 90.0 + i / 10}) for i in range(40)]
     async with FakeSmaartServer(stream_frames=frames, period_s=5.0) as srv:

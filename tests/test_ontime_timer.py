@@ -468,6 +468,7 @@ async def test_real_source_with_both_cards_opens_one_websocket(tmp_path):
         assert fake.received == []
 
 
+@pytest.mark.slow
 async def test_unreachable_ontime_with_only_the_timer_card_is_a_silent_alarm(tmp_path):
     hub = Hub(tmp_path)
     url = f"http://127.0.0.1:{free_port()}"

@@ -17,6 +17,8 @@ import pytest
 from stagewatch.core.recorder import Recorder
 from stagewatch.core.report.demo import seed_demo_day
 
+pytestmark = pytest.mark.slow  # whole file: real servers, git or long timeouts
+
 ROOT = Path(__file__).resolve().parent.parent
 SITE = SimpleNamespace(timezone="Europe/London", day_rollover="06:00")
 

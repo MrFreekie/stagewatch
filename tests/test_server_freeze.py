@@ -27,6 +27,8 @@ from stagewatch.integrations.shelly import ShellyIntegration, _Meter, calc, repl
 from stagewatch.integrations.shelly.emulate import DEMO3_HOST, EmulatedFleet, emulated_mac
 from test_ontime import until
 
+pytestmark = pytest.mark.slow  # whole file: real servers, git or long timeouts
+
 T0 = 1_790_000_000.0
 N_METERS = 16
 POLL_S = 2.0
@@ -264,7 +266,11 @@ async def test_the_watchdog_says_where_a_blocked_loop_is_stuck(caplog):
     with caplog.at_level(logging.WARNING, logger="stagewatch.core.loopguard"):
         wd.start()
         await asyncio.sleep(0.4)
-        time.sleep(1.0)                                  # block the loop on purpose
+        # Block the loop on purpose until the watchdog thread has reported (it may be starved
+        # on a loaded machine), so the stack it captures is this frame.
+        end = time.monotonic() + 30.0
+        while wd.reports < 1 and time.monotonic() < end:
+            time.sleep(0.05)
         await until(lambda: wd.reports >= 1, timeout=5.0)
         await wd.stop()
     assert "The event loop has not run for" in caplog.text and "test_the_watchdog_says_where" in caplog.text

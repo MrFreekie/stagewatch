@@ -162,6 +162,7 @@ def test_reveal_pin(client):
     assert state == {"phones_enabled": True, "reveal_pin_set": True}
 
 
+@pytest.mark.slow
 def test_reveal_rate_limited(client):
     slug = setup_phones(client, pin="246813")
     codes = [client.post("/api/contacts/reveal", json={"dashboard": slug, "pin": "1"}).status_code for _ in range(6)]

@@ -164,9 +164,13 @@ ok(SW.mdSafeUrl("") === null, "mdSafeUrl rejects empty");
 
 // ---- limits: must finish quickly and stay bounded
 function timed(what, s, maxMs) {
-  const t0 = Date.now();
-  const f = render(s);
-  const ms = Date.now() - t0;
+  // best of three, so one descheduled run on a loaded machine does not fail the limit
+  let f, ms = Infinity;
+  for (let i = 0; i < 3 && ms >= maxMs; i++) {
+    const t0 = Date.now();
+    f = render(s);
+    ms = Math.min(ms, Date.now() - t0);
+  }
   ok(ms < maxMs, `${what} took ${ms} ms (limit ${maxMs})`);
   return f;
 }

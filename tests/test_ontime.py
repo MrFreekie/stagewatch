@@ -265,6 +265,7 @@ async def test_emulated_dropout_is_a_silent_missing_alarm(tmp_path):
         await hub.stop()
 
 
+@pytest.mark.slow
 async def test_unreachable_ontime_goes_missing_with_a_silent_alarm(tmp_path):
     hub = Hub(tmp_path)   # not emulate
     url = f"http://127.0.0.1:{free_port()}"

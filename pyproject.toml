@@ -38,6 +38,10 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "slow: takes more than about 5 seconds (real servers, git, long timeouts); deselect with -m \"not slow\"",
+]
+addopts = "--strict-markers"
 
 [tool.uv]
 # Stagewatch targets Windows and Linux (incl. Raspberry Pi). Locking only these platforms

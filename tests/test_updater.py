@@ -19,6 +19,8 @@ from stagewatch.web.limits import BodySizeLimitMiddleware
 from stagewatch.web.server import create_app
 from updater_env import commit, git, make_env
 
+pytestmark = pytest.mark.slow  # whole file: real servers, git or long timeouts
+
 PIN = "1234"
 
 
