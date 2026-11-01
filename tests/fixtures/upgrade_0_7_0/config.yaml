@@ -177,7 +177,6 @@ spl:
   enabled: true
   host: 192.0.2.80
   port: 26000
-  password: ''
   slots:
   - a_slow
   - c_slow
@@ -188,7 +187,6 @@ spl:
 globcon:
   host: 192.0.2.90
   port: 9091
-  password: ''
 witmotion:
   enabled: true
   temp_on_equipment: false
