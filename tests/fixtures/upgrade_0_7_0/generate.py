@@ -7,7 +7,6 @@ Writes config.yaml and stagewatch.sqlite3 next to this file, using 0.7.0's own c
 exactly what 0.7.0 saves.  All names, addresses (RFC 5737 / .invalid) and secrets are made up.
 """
 import sys
-import time
 from pathlib import Path
 
 from stagewatch.core.config import Config, ConfigStore

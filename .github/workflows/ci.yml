@@ -26,6 +26,7 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - run: uv python install 3.12
       - run: uv sync --frozen
+      - run: uv run ruff check .
       - run: uv run pytest -q
       - run: uv run python scripts/check_secrets.py --all
 
@@ -39,6 +40,7 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - run: uv python install 3.12
       - run: uv sync --frozen
+      - run: uv run ruff check .
       - run: uv run pytest -q
       - run: uv run python scripts/check_secrets.py --all
       - name: Syntax-check the Pi scripts

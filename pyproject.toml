@@ -33,6 +33,7 @@ dev = [
     "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.3",
 ]
 
 [tool.pytest.ini_options]
@@ -49,3 +50,7 @@ addopts = "--strict-markers"
 # lets security fixes land even when a dependency caps a package on other platforms
 # (aioesphomeapi caps cryptography < 49 on Intel macOS only).
 environments = ["sys_platform == 'win32'", "sys_platform == 'linux'"]
+
+[tool.ruff.lint]
+# Pyflakes only: unused imports and variables, undefined names.
+select = ["F"]

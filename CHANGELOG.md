@@ -51,6 +51,8 @@ them into a dated release section and tags the commit.
 - **Admin tidy-up (GUI review):** the alarm log shows one line per alarm with raised and cleared times and no "(silent)" tail; the Site and Device errors long paragraphs sit under "More detail", with a one-line Stop, Alert and Advisory key; the Add integration pop-out closes when you change tab; Load Checker and "Dropped out" wording; the Admin header link and Log out are 44 px on touch screens; the RME "Off" power supply is no longer underlined; the phone Wi-Fi QR code is smaller.
 
 ### Fixed
+- **Admin on a phone.** The Show day list on the Sensors tab could make the whole page scroll sideways when the dates were long; it now fits the screen.
+- **Checks on every change.** The build now runs ruff (unused imports and variables, undefined names), and the nightly run reports known security advisories in the locked dependencies as a warning that never blocks a release. Two leftover unused lines in the tests were removed.
 - Sensor in the sun: a flag now survives a short dropout of another sensor (up to the usual 5 minutes) instead of letting the hot sensor back into the site average, and is there when the sensor returns.
 - **RME interfaces: unused AVB streams.** An AVB input stream with no channels set up on the unit now reads **Not in use**, not **CHECK**. A real AVB notice on a stream that is set up now shows the unit's reason.
 

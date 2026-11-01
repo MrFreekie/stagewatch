@@ -1,6 +1,5 @@
 """'Sensor in the sun' advisory and battery voltage. Expected values are worked by hand in each docstring."""
 
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 

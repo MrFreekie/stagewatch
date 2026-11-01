@@ -59,7 +59,7 @@ def test_clock_step_back_and_new_show_write(tmp_path):
 
 
 def test_extremes_history_and_report_match_dense(tmp_path):
-    thin, dense = _rec(tmp_path), None
+    thin = _rec(tmp_path)
     vals = [20.0] * 40 + [22.5] * 40 + [19.0] * 40 + [20.0] * 40     # 160 s at 1 Hz
     for i, v in enumerate(vals):
         thin.record_state("n.temp", v, T0 + i)
