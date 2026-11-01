@@ -387,6 +387,7 @@ async def test_the_rundown_card_alone_with_the_real_source_opens_one_websocket(t
         assert fake.received == []
 
 
+@pytest.mark.slow
 async def test_unreachable_ontime_with_only_the_rundown_card_is_a_silent_alarm(tmp_path):
     hub = Hub(tmp_path)
     url = f"http://127.0.0.1:{free_port()}"

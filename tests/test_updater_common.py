@@ -7,6 +7,8 @@ import pytest
 from stagewatch import updater_common as uc
 from updater_env import commit, git, make_env
 
+pytestmark = pytest.mark.slow  # whole file: real servers, git or long timeouts
+
 
 @pytest.fixture()
 def env(tmp_path):

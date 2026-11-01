@@ -19,6 +19,8 @@ from stagewatch.core.config import Config, ConfigStore, EsphomeDeviceConfig, res
 from stagewatch.web.auth import hash_pin
 from updater_env import make_env
 
+pytestmark = pytest.mark.slow  # whole file: real servers, git or long timeouts
+
 
 # ---------------------------------------------------------------- 1. durable saves + .bak
 
