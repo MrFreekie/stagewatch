@@ -25,7 +25,7 @@ from typing import Callable
 
 from ...core.model import Device, Status
 from ...core.plugin import Integration, Manifest
-from . import mapping, protocol
+from . import mapping
 from .client import GlobconClient
 from .emulate import EmulatedGlobconSource
 from .mapping import GlobconState
