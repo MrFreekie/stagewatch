@@ -71,6 +71,7 @@ from .auth import COOKIE, SESSION_S, SessionSigner, hash_pin, verify_pin
 from . import branding as brand
 from ..core import documents as docs_mod
 from ..core import contacts as contacts_mod
+from .hostcheck import HostCheckMiddleware
 from .limits import DEFAULT_BODY_LIMIT, WS_MAX_MESSAGE, BodySizeLimitMiddleware
 
 log = logging.getLogger(__name__)
@@ -813,6 +814,7 @@ class BaroDemoBody(BaseModel):
     scenario: Literal["steady", "slow_fall", "front", "storm", "rising", "dropout", "none"]
 
 
+EXTREMES_CACHE_S = 30.0
 QNH_MIN_HPA, QNH_MAX_HPA = 940.0, 1060.0   # record extremes are about 870 and 1,085 hPa: a typo is caught
 ALTITUDE_RANGE_M = (-500.0, 6000.0)        # the same as SiteConfig.altitude_m
 
@@ -1412,6 +1414,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     app.state.hub = hub
     app.state.updater = updater
     hub.netcheck.default_on = lambda: updater.managed
+    app.add_middleware(HostCheckMiddleware, names=lambda: (hub.config.mdns_name, hub.config.allowed_hosts))
     app.add_middleware(BodySizeLimitMiddleware, default_limit=body_limit,
                        overrides={**DEFAULT_BODY_OVERRIDES, **(body_limit_overrides or {})},
                        limit_for=_logo_limit)
@@ -1530,19 +1533,31 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         since = since if since is not None else time.time() - 3600
         return hub.recorder.history(ids, since, until, max(10, min(points, 2000)))
 
+    extremes_cache: dict = {"key": None, "until": 0.0, "body": None}
+    extremes_lock = asyncio.Lock()
+
     @app.get("/api/site/extremes")
     async def site_extremes():
         """Today's highs and lows of the site temperature, humidity and pressure, for the
         site-local calendar day so far (public: these are the same site readings the dashboards
-        show). Worked out from what was recorded; no data gives null, never a made-up value."""
+        show). Worked out from what was recorded; no data gives null, never a made-up value.
+        Public and unauthenticated, so the answer is kept for EXTREMES_CACHE_S and worked out in a
+        worker thread on its own read-only connection (the event loop is never held up)."""
         now = time.time()
         local = sitetime.local(now, hub.config.site)
         start = sitetime.wall_ts(local.date(), datetime.time(0, 0), hub.config.site)
-        out = {"since": start, "now": now}
-        for key, eid in (("temperature", "site.temperature"), ("humidity", "site.humidity"),
-                         ("pressure", "site.pressure")):
-            out[key] = hub.recorder.extremes(eid, start, now)
-        return out
+        mono = time.monotonic()
+        if extremes_cache["key"] == start and mono < extremes_cache["until"]:
+            return extremes_cache["body"]
+        async with extremes_lock:
+            mono = time.monotonic()
+            if extremes_cache["key"] == start and mono < extremes_cache["until"]:
+                return extremes_cache["body"]
+            ids = {"temperature": "site.temperature", "humidity": "site.humidity", "pressure": "site.pressure"}
+            found = await asyncio.to_thread(hub.recorder.extremes_threaded, list(ids.values()), start, now)
+            body = {"since": start, "now": now, **{k: found.get(e) for k, e in ids.items()}}
+            extremes_cache.update(key=start, until=mono + EXTREMES_CACHE_S, body=body)
+            return body
 
     @app.get("/api/markers/{marker_id}/delta")
     async def marker_delta(marker_id: int):
@@ -2061,8 +2076,7 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
     async def put_internet_check(body: InternetCheckBody):
         hub.config.updater.check_internet = body.enabled
         hub.save_config()
-        if hub.netcheck.enabled():
-            asyncio.create_task(hub.netcheck.run_once())
+        hub.netcheck.run_manual()
         return {"enabled": body.enabled, "effective": hub.netcheck.enabled()}
 
     # Alarm notice timers (dashboard list only; the state behind a notice is untouched).

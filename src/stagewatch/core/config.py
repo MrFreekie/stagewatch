@@ -1325,6 +1325,15 @@ class Config(_Model):
     site: SiteConfig = Field(default_factory=SiteConfig)
     admin: AdminConfig = Field(default_factory=AdminConfig)
     mdns_name: str = "stagewatch"
+    # Extra host names this computer may be opened by (a router name, a reverse proxy). IP addresses,
+    # localhost, single-word names and <name>.local are always allowed. Edit config.yaml; see SECURITY.md.
+    allowed_hosts: list[str] = Field(default_factory=list)
+
+    @field_validator("allowed_hosts", mode="before")
+    @classmethod
+    def _allowed_hosts(cls, v):
+        from ..web.hostcheck import clean_allowed
+        return clean_allowed(v) if isinstance(v, list) else []
     esphome_devices: list[EsphomeDeviceConfig] = Field(default_factory=list)
     # Discovered ESPHome nodes the admin chose to hide (other people's gear on a shared network).
     # Keys come from esphome.discovery_key(): the MAC when the node advertises one, else its name.

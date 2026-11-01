@@ -51,8 +51,23 @@ def test_extremes_are_the_site_local_day_only_and_gaps_stay_gaps(client):
     rec.record_state("site.temperature", 12.5, start + 10)
     rec.record_state("site.temperature", 21.0, start + 20)
     rec.record_state("site.temperature", 17.0, start + 30)
+    rec.flush()                      # the endpoint no longer flushes: it reads what is already written
     r = client.get("/api/site/extremes").json()
     assert r["temperature"] == {"low": [pytest.approx(start + 10), 12.5], "high": [pytest.approx(start + 20), 21.0]}
     assert r["since"] == pytest.approx(start)
     assert r["pressure"] is None or r["pressure"]["low"][0] >= start        # never back-filled
     assert client.hub.recorder.extremes("site.nothing", start, now) is None
+
+
+def test_extremes_are_kept_for_thirty_seconds_and_do_not_flush(client, monkeypatch):
+    rec = client.hub.recorder
+    start = sitetime.wall_ts(sitetime.local(time.time(), client.hub.config.site).date(), __import__("datetime").time(0, 0), client.hub.config.site)
+    rec.record_state("site.temperature", 11.0, start + 5)
+    rec.flush()
+    first = client.get("/api/site/extremes").json()
+    assert first["temperature"]["low"][1] == 11.0
+    rec.record_state("site.temperature", 3.0, start + 6)
+    rec.flush()
+    assert client.get("/api/site/extremes").json() == first            # served from the cache
+    monkeypatch.setattr(rec, "flush", lambda: (_ for _ in ()).throw(AssertionError("the endpoint must not flush")))
+    assert client.get("/api/site/extremes").status_code == 200

@@ -854,6 +854,34 @@ class Recorder:
                         high = [row[0], row[1]]
         return {"low": low, "high": high} if low is not None else None
 
+    def extremes_threaded(self, entity_ids: list[str], since: float, until: float) -> dict[str, dict | None]:
+        """``extremes`` for several entities, for a worker thread: its own read-only connection, no flush
+        (readings still waiting to be written are picked up on the next call), one indexed query per
+        show and entity and direction. None for an entity with no readings."""
+        ro = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            shows = ro.execute("SELECT id FROM shows WHERE started <= ? AND (ended IS NULL OR ended >= ?)",
+                               (until, since)).fetchall()
+            out: dict[str, dict | None] = {}
+            for entity_id in entity_ids:
+                low = high = None
+                for (show_id,) in shows:
+                    for order in ("ASC", "DESC"):
+                        row = ro.execute(
+                            "SELECT ts, value FROM states WHERE show_id = ? AND entity_id = ? AND ts >= ? AND ts <= ? "
+                            f"AND value IS NOT NULL ORDER BY value {order}, ts LIMIT 1",
+                            (show_id, entity_id, since, until)).fetchone()
+                        if row is None:
+                            continue
+                        if order == "ASC" and (low is None or row[1] < low[1]):
+                            low = [row[0], row[1]]
+                        elif order == "DESC" and (high is None or row[1] > high[1]):
+                            high = [row[0], row[1]]
+                out[entity_id] = {"low": low, "high": high} if low is not None else None
+            return out
+        finally:
+            ro.close()
+
     def value_at(self, entity_id: str, ts: float, max_age_s: float = 600.0) -> float | None:
         """Last recorded value of entity_id at or before ts (current show)."""
         return self.value_near(entity_id, ts, self.show_id, before_s=max_age_s, after_s=0.0)
