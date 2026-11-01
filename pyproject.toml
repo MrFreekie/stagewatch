@@ -37,6 +37,7 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = ["ui: browser layout tests (need Playwright and chromium; run with -m ui)"]
 testpaths = ["tests"]
 markers = [
     "slow: takes more than about 5 seconds (real servers, git, long timeouts); deselect with -m \"not slow\"",
