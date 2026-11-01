@@ -1,0 +1,252 @@
+schema_version: 2
+site:
+  name: Fixture Arena
+  altitude_m: 123.0
+  reference_distance_m: 42.0
+  stale_after_s: 90.0
+  smoothing_tau_s: 20.0
+  outlier_reject: true
+  weight_by_accuracy: false
+  timezone: Europe/London
+  day_rollover: 05:30
+  schedule_auto_markers: false
+  schedule_warn_minutes:
+  - 15
+  - 5
+  schedule_warn_flash_minutes: []
+admin:
+  pin_hash: pbkdf2_sha256$200000$G0X5/WUxy5qIKk6NAv9mcg==$8IPIz0/7X1ne4KYSIPdRUMkNbGtRbtNxCRwFErrG5so=
+mdns_name: fixture-sw
+esphome_devices:
+- id: fosr_a
+  host: 192.0.2.11
+  port: 6053
+  name: FOH node
+  area: FOH
+  noise_psk: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+  mac: aabbcc000001
+  role: environment
+  sleep_minutes: 0
+- id: stage_b
+  host: 192.0.2.12
+  port: 6053
+  name: Stage left
+  area: SL
+  noise_psk: ''
+  mac: ''
+  role: equipment
+  sleep_minutes: 5
+esphome_ignored:
+- 192.0.2.99
+entities: {}
+calibrations:
+  mac:aabbcc000001/temperature:
+    offset: -0.4
+    include_in_average: true
+    accuracy: 0.5
+    accuracy_basis: typical
+    role: environment
+    history: []
+    chip: ''
+    applied_on_node: false
+thresholds:
+- id: wind-hi
+  entity: foh_wind
+  label: Wind high
+  above: 12.0
+  below: null
+  level: 3
+  hysteresis: 0.0
+  hold_s: 10.0
+  enabled: true
+  actions:
+    raised: null
+    cleared: null
+    acked: null
+    cooldown_s: 60
+- id: temp-lo
+  entity: foh_temperature
+  label: ''
+  above: null
+  below: 2.0
+  level: 2
+  hysteresis: 0.5
+  hold_s: 0.0
+  enabled: true
+  actions:
+    raised: null
+    cleared: null
+    acked: null
+    cooldown_s: 60
+dashboards:
+- slug: foh
+  title: FOH
+  layout: tablet
+  allow_marker: true
+  allow_ack: true
+  cards:
+  - site
+  - alarms
+  - markers
+  - wall_clock
+  stage: ''
+  clock_style: digits
+  card_sizes:
+    wall_clock: half
+  show_dew_point: false
+  globcon:
+    controller: 1
+    strips: 8
+    range: null
+  show_contact_phones: false
+  contacts_area: ''
+- slug: wall
+  title: Wall
+  layout: wall
+  allow_marker: true
+  allow_ack: false
+  cards:
+  - site
+  - wall_clock
+  stage: ''
+  clock_style: digits
+  card_sizes: {}
+  show_dew_point: true
+  globcon:
+    controller: 1
+    strips: 8
+    range: null
+  show_contact_phones: false
+  contacts_area: ''
+- slug: phone
+  title: Phone
+  layout: phone
+  allow_marker: false
+  allow_ack: false
+  cards:
+  - env_tiles
+  - schedule
+  - markers
+  - chart
+  stage: ''
+  clock_style: digits
+  card_sizes: {}
+  show_dew_point: true
+  globcon:
+    controller: 1
+    strips: 8
+    range: null
+  show_contact_phones: false
+  contacts_area: ''
+osc_out:
+  destinations:
+  - host: 192.0.2.50
+    port: 9001
+    enabled: true
+    alarm_messages: true
+  per_node: false
+  rate_hz: 2.0
+  include_advice: false
+actions:
+  targets:
+  - id: qlab1
+    name: QLab
+    host: 192.0.2.60
+    port: 53000
+    enabled: true
+updater:
+  channel: stable
+wall_clock:
+  source: ontime
+  display:
+    hour12: false
+    show_date: false
+    ring: sweep
+  ontime_url: http://192.0.2.70:4001
+  warn_offset_s: 3.0
+ontime_timer:
+  show_title: false
+barometer:
+  hemisphere: north
+  rapid_fall_alarm: true
+  rapid_fall_hpa_3h: 4.0
+alarms:
+  hide_acked_min: 5
+  fold_old_min: 45
+spl:
+  enabled: true
+  host: 192.0.2.80
+  port: 26000
+  password: ''
+  slots:
+  - a_slow
+  - c_slow
+  - laeq_15m
+  chart_range: auto
+  chart_min_db: 30.0
+  chart_max_db: 120.0
+globcon:
+  host: 192.0.2.90
+  port: 9091
+  password: ''
+witmotion:
+  enabled: true
+  temp_on_equipment: false
+  markers: true
+  address: AA:BB:CC:00:00:02
+  axis: both
+  smoothing_s: 2.0
+  target_x: 0.0
+  target_y: 1.5
+  on_target_deg: 0.2
+  close_deg: 1.0
+  sensors: []
+shelly_devices:
+- role: ''
+  unit_no: null
+  upstream: ''
+  way: null
+  id: shelly_1
+  host: 192.0.2.100
+  mac: aabbcc000003
+  name: Dist 1
+  area: ''
+  poll_interval_s: 3.0
+  rating_a: 32.0
+  breaker_a: null
+  combined_bar: false
+  channels: []
+  circuit_keys: []
+  three_phase_keys: []
+power_site:
+  demand_window_min: 5
+  gen_loading_pct: 80.0
+  gen_power_factor: 0.8
+  gen_size_kva: 60.0
+  show_advanced: true
+power_points:
+- role: ''
+  unit_no: null
+  upstream: ''
+  way: null
+  id: pp1
+  name: Dist A
+  rating_a: 63.0
+  rating_kva: null
+  ups_type: unknown
+  monitored: true
+  allowance: null
+contacts:
+  phones_enabled: true
+  reveal_pin_hash: pbkdf2_sha256$200000$G0X5/WUxy5qIKk6NAv9mcg==$8IPIz0/7X1ne4KYSIPdRUMkNbGtRbtNxCRwFErrG5so=
+advice:
+  paths: []
+  positions: []
+  drift_reference: Aligned
+  air_loss_reference: Soundcheck
+  air_loss_resolution: octave
+  alarm: silent
+  hold_s: 90.0
+  marker_on_alert: true
+device_errors:
+  quiet: []

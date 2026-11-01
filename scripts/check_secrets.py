@@ -28,7 +28,7 @@ ALLOWED_PATHS = [re.compile(p) for p in (r"^esphome/secrets\.example\.yaml$",)]
 # them; the migration tests need real files.  They are still scanned: the only secrets allowed in
 # them are the fixture's own made-up values below (PIN 1234 hash, key bytes 0x00..0x1f, and the
 # legacy ESPHome password placeholder).
-FIXTURE_PATHS = re.compile(r"^tests/fixtures/v[0-9]{1,2}/(config\.yaml|stagewatch\.sqlite3)$")
+FIXTURE_PATHS = re.compile(r"^tests/fixtures/(v[0-9]{1,2}|upgrade_0_7_0)/(config\.yaml|stagewatch\.sqlite3)$")
 FIXTURE_ALLOWED_VALUES = (
     "pbkdf2_sha256$200000$G0X5/WUxy5qIKk6NAv9mcg==$8IPIz0/7X1ne4KYSIPdRUMkNbGtRbtNxCRwFErrG5so=",
     "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
