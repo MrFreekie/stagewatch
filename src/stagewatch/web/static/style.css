@@ -60,6 +60,8 @@ input, select { background: var(--bg); border: 1px solid var(--grid); border-rad
 input[type="checkbox"] { min-height: auto; width: 20px; height: 20px; }
 input.num { width: 90px; }
 label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+label.field { min-width: 0; }
+label.field select, label.field input:not([type="checkbox"]):not([type="radio"]) { max-width: 100%; min-width: 0; box-sizing: border-box; }
 
 header.top { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
   background: var(--panel); border-bottom: 1px solid var(--grid); flex-wrap: wrap; }
