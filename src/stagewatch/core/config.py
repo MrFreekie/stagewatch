@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import ipaddress
 import logging
+import math
 import os
 import re
 import tempfile
@@ -682,14 +683,58 @@ GLOBCON_RANGES: dict[str, tuple[int, int]] = {
 }
 
 
+# Lights mode (GLOBCON card): fixed lists, so a dashboard can only ever name a colour or icon the browser knows.
+GLOBCON_LIGHT_COLOURS = ("green", "amber", "red", "blue", "cyan", "magenta", "white", "orange")
+GLOBCON_LIGHT_ICONS = ("microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "signal")
+GLOBCON_LIGHTS_MAX = 16
+GLOBCON_LIGHT_DEFAULT = {"threshold_db": -40.0, "colour": "green", "icon": "microphone", "hold_s": 1.0}
+
+
+def _is_num(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def globcon_light_problem(e) -> str:
+    """Why one Lights entry is not acceptable ("" when fine). Shared by the lenient loader and the strict API."""
+    if not isinstance(e, dict):
+        return "A GLOBCON light is not valid"
+    if type(e.get("strip")) is not int or not 1 <= e["strip"] <= 16:
+        return "A GLOBCON light needs a channel from 1 to 16"
+    t = e.get("threshold_db", GLOBCON_LIGHT_DEFAULT["threshold_db"])
+    if not _is_num(t) or not -72 <= t <= 0:
+        return "A GLOBCON light threshold must be from -72 to 0 dB"
+    if e.get("colour", "green") not in GLOBCON_LIGHT_COLOURS or not isinstance(e.get("colour", "green"), str):
+        return "That GLOBCON light colour is not one of the choices"
+    if e.get("icon", "microphone") not in GLOBCON_LIGHT_ICONS or not isinstance(e.get("icon", "microphone"), str):
+        return "That GLOBCON light icon is not one of the choices"
+    hs = e.get("hold_s", GLOBCON_LIGHT_DEFAULT["hold_s"])
+    if not _is_num(hs) or not (hs == 0 or 0.5 <= hs <= 10):
+        return "A GLOBCON light hold is 0 (instant) or 0.5 to 10 seconds"
+    if set(e) - {"strip", "threshold_db", "colour", "icon", "hold_s"}:
+        return "A GLOBCON light has an unknown setting"
+    return ""
+
+
+class GlobconLight(_Model):
+    """One channel's square in Lights mode. hold_s 0 = instant, else 0.5 to 10 seconds."""
+    strip: int = Field(ge=1, le=16)
+    threshold_db: float = Field(-40.0, ge=-72, le=0, allow_inf_nan=False)
+    colour: Literal["green", "amber", "red", "blue", "cyan", "magenta", "white", "orange"] = "green"
+    icon: Literal["microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "signal"] = "microphone"
+    hold_s: float = Field(1.0, ge=0, le=10, allow_inf_nan=False)
+
+
 class GlobconCardOptions(_Model):
     """Which GLOBCON controller (1 to 16) and which channels this dashboard's GLOBCON levels card shows.
     ``range`` is one of GLOBCON_RANGES; unset (None) keeps the older behaviour: the first ``strips`` (4 or 8)
-    strips that GLOBCON says have a level. Loading is lenient (anything unusable falls back to the default,
-    with a warning that never carries the value); the API is strict."""
+    strips that GLOBCON says have a level. ``mode`` is "meters" (bars, the default) or "lights" (one big square
+    per channel in ``lights``). Loading is lenient (anything unusable falls back to the default, with a warning
+    that never carries the value); the API is strict. Additive: an older build ignores mode and lights."""
     controller: int = Field(1, ge=1, le=16)
     strips: Literal[4, 8] = 8
     range: Optional[Literal["1-4", "5-8", "1-8", "9-12", "13-16", "9-16", "1-16"]] = None
+    mode: Literal["meters", "lights"] = "meters"
+    lights: list[GlobconLight] = Field(default_factory=list, max_length=GLOBCON_LIGHTS_MAX)
 
     @model_validator(mode="before")
     @classmethod
@@ -701,7 +746,19 @@ class GlobconCardOptions(_Model):
         out["controller"] = c if isinstance(c, int) and not isinstance(c, bool) and 1 <= c <= 16 else 1
         out["strips"] = s if isinstance(s, int) and not isinstance(s, bool) and s in (4, 8) else 8
         out["range"] = r if isinstance(r, str) and r in GLOBCON_RANGES else None
-        if out["controller"] != c or out["strips"] != s or out["range"] != r:
+        m = data.get("mode", "meters")
+        out["mode"] = m if m in ("meters", "lights") and isinstance(m, str) else "meters"
+        raw = data.get("lights", [])
+        bad = not isinstance(raw, list)
+        keep, seen = [], set()
+        for e in (raw if isinstance(raw, list) else []):
+            if len(keep) >= GLOBCON_LIGHTS_MAX or globcon_light_problem(e) or e["strip"] in seen:
+                bad = True
+                continue
+            seen.add(e["strip"])
+            keep.append({**GLOBCON_LIGHT_DEFAULT, **e})
+        out["lights"] = keep
+        if out["controller"] != c or out["strips"] != s or out["range"] != r or out["mode"] != m or bad:
             log.warning("A dashboard's GLOBCON card options were not usable and were reset to the defaults")
         return out
 

@@ -64,6 +64,9 @@ use a password you use nowhere else.
 7. Under **User dashboards**, click **Edit cards** on a dashboard and tick **DirectOut GLOBCON**.
 8. Next to the card, choose the **GLOBCON controller** (1 to 16) and **Channels shown**, then click
    **Save dashboards**. See [Dashboards](../admin/dashboards.md#globcon-controller-and-channels).
+   To show one big on/off square per channel instead of bars (for an intercom mic or a timecode
+   check), set **Display** to **Lights** and tick the channels. See
+   [the card page](../cards/globcon.md#lights-one-big-square-per-channel).
 
 The address must be this computer or a computer on your own network. Public addresses are refused.
 

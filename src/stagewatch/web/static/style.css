@@ -1805,3 +1805,61 @@ body.layout-wall .tile-extremes table { font-size: 28px; }
 
 /* "Sensor in the sun" advisory under the site tiles: calm, full width. */
 .sun-note { grid-column: 1 / -1; }
+
+/* GLOBCON Lights mode: one big square per chosen channel, an auto grid (fewer channels = bigger squares and bigger names).
+   On = the channel's own colour, a tick and the word ON; off = dull with the word "off"; no data = hatched with "no data" and
+   the age, never dark. No flashing. The colour pairs below are checked for contrast by tests/test_globcon_lights.py: keep
+   them as `--lc: <#hex>; --lf: <#hex>;` (background, text) on one line each. */
+.gc-c-green { --lc: #3ddc84; --lf: #0b0f14; }
+.gc-c-amber { --lc: #ffc107; --lf: #0b0f14; }
+.gc-c-red { --lc: #ff5a4d; --lf: #0b0f14; }
+.gc-c-blue { --lc: #1d5fd8; --lf: #ffffff; }
+.gc-c-cyan { --lc: #22d3ee; --lf: #0b0f14; }
+.gc-c-magenta { --lc: #e056fd; --lf: #0b0f14; }
+.gc-c-white { --lc: #ffffff; --lf: #0b0f14; }
+.gc-c-orange { --lc: #ff8a1f; --lf: #0b0f14; }
+.gc-lights { --gc-cols: 2; --gc-max: 300px; display: grid; grid-template-columns: repeat(var(--gc-cols), minmax(0, var(--gc-max))); gap: 12px; justify-content: center; font-size: 22px; }
+.gc-lights[hidden] { display: none; }
+.gc-lights[data-n="1"] { --gc-cols: 1; font-size: 40px; }
+.gc-lights[data-n="2"] { --gc-cols: 2; font-size: 36px; }
+.gc-lights[data-n="3"] { --gc-cols: 3; font-size: 28px; }
+.gc-lights[data-n="4"] { --gc-cols: 4; font-size: 28px; }
+.gc-lights[data-n="5"], .gc-lights[data-n="6"] { --gc-cols: 3; font-size: 24px; }
+.gc-lights[data-n="7"], .gc-lights[data-n="8"] { --gc-cols: 4; font-size: 22px; }
+.gc-lights[data-n="9"], .gc-lights[data-n="10"], .gc-lights[data-n="11"], .gc-lights[data-n="12"] { --gc-cols: 4; --gc-max: 220px; font-size: 18px; }
+.gc-lights[data-n="13"], .gc-lights[data-n="14"], .gc-lights[data-n="15"], .gc-lights[data-n="16"] { --gc-cols: 4; --gc-max: 200px; font-size: 16px; }
+.gc-light { position: relative; border: 3px solid var(--grid); border-radius: 14px; background: var(--panel-2); color: var(--muted); min-width: 0; overflow: hidden; }
+.gc-light::before { content: ""; display: block; padding-top: 100%; }
+.gc-lin { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .15em; padding: .3em; text-align: center; min-width: 0; }
+.gc-licon { display: block; width: 1.8em; height: 1.8em; flex: none; }
+.gc-icon { display: block; width: 100%; height: 100%; }
+.gc-lname { display: block; max-width: 100%; font-size: 1em; font-weight: 800; line-height: 1.1; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.gc-lstate { display: block; font-size: max(14px, .55em); font-weight: 800; letter-spacing: .05em; }
+.gc-lago { display: block; font-size: max(13px, .45em); font-weight: 600; }
+.gc-lago:empty { display: none; }
+.gc-l-on { background: var(--lc); border-color: var(--lc); color: var(--lf); }
+.gc-c-white.gc-l-on { border-color: var(--text); }
+.gc-l-nodata { background: repeating-linear-gradient(45deg, var(--panel-2) 0, var(--panel-2) 10px, var(--grid) 10px, var(--grid) 20px); border: 3px dashed var(--warn); color: var(--text); }
+.gc-l-nodata .gc-lname, .gc-l-nodata .gc-lstate, .gc-l-nodata .gc-lago { background: var(--panel-2); padding: 0 .25em; border-radius: 4px; }
+body.layout-phone .gc-lights { gap: 8px; --gc-max: 400px; }
+body.layout-phone .gc-lights[data-n="1"] { font-size: 28px; --gc-max: 300px; }
+body.layout-phone .gc-lights[data-n="2"] { font-size: 22px; }
+body.layout-phone .gc-lights[data-n="3"], body.layout-phone .gc-lights[data-n="4"] { --gc-cols: 2; font-size: 20px; }
+body.layout-phone .gc-lights[data-n="5"], body.layout-phone .gc-lights[data-n="6"], body.layout-phone .gc-lights[data-n="7"], body.layout-phone .gc-lights[data-n="8"], body.layout-phone .gc-lights[data-n="9"] { --gc-cols: 3; font-size: 15px; }
+body.layout-phone .gc-lights[data-n="10"], body.layout-phone .gc-lights[data-n="11"], body.layout-phone .gc-lights[data-n="12"], body.layout-phone .gc-lights[data-n="13"], body.layout-phone .gc-lights[data-n="14"], body.layout-phone .gc-lights[data-n="15"], body.layout-phone .gc-lights[data-n="16"] { --gc-cols: 4; font-size: 12px; }
+body.layout-phone .gc-light { border-width: 2px; border-radius: 10px; }
+body.layout-phone .gc-lights[data-n="10"] .gc-lstate, body.layout-phone .gc-lights[data-n="16"] .gc-lstate { font-size: 11px; }
+body.layout-wall .gc-lights { gap: 20px; --gc-max: 360px; }
+body.layout-wall .gc-lights[data-n="1"] { font-size: 90px; --gc-max: 520px; }
+body.layout-wall .gc-lights[data-n="2"] { font-size: 80px; --gc-max: 460px; }
+body.layout-wall .gc-lights[data-n="3"], body.layout-wall .gc-lights[data-n="4"] { font-size: 56px; }
+body.layout-wall .gc-lights[data-n="5"], body.layout-wall .gc-lights[data-n="6"], body.layout-wall .gc-lights[data-n="7"], body.layout-wall .gc-lights[data-n="8"] { --gc-cols: 4; --gc-max: 280px; font-size: 40px; }
+body.layout-wall .gc-lights[data-n="9"], body.layout-wall .gc-lights[data-n="10"], body.layout-wall .gc-lights[data-n="11"], body.layout-wall .gc-lights[data-n="12"] { --gc-cols: 6; --gc-max: 220px; font-size: 30px; }
+body.layout-wall .gc-lights[data-n="13"], body.layout-wall .gc-lights[data-n="14"], body.layout-wall .gc-lights[data-n="15"], body.layout-wall .gc-lights[data-n="16"] { --gc-cols: 8; --gc-max: 225px; font-size: 26px; }
+body.layout-wall .gc-light { border-radius: 20px; border-width: 4px; }
+.gc-lights-edit { margin-top: 8px; }
+.gc-lights-table td, .gc-lights-table th { padding: 4px 6px; text-align: left; vertical-align: middle; }
+.gc-lights-table input[type="number"] { width: 6em; }
+.gc-lights-table select { min-width: 7em; }
+.gc-lights-edit .table-wrap { overflow-x: auto; }
+@media (prefers-reduced-motion: reduce) { .gc-light { transition: none; } }

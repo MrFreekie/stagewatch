@@ -28,6 +28,19 @@ The channel groups are 1-4, 5-8, 1-8, 9-12, 13-16, 9-16 and 1-16. These are the 
 - **The bar changes colour at high levels:** amber with one triangle (▲) from about -9 dB, and orange with two (▲▲) from about -3 dB. The triangles and the words "high level" and "very high level" go with the colour. This is a display guide only. It is not a statement about clipping or headroom.
 - **MUTED** on a bar, with an orange outline and a dimmed bar, means the channel is muted on the GLOBCON controller. Stagewatch only reads this. It can never set a mute.
 
+## Lights: one big square per channel
+
+In Admin, under **User dashboards**, **Edit cards**, set **Display** to **Lights (one square per channel)**. The card then shows one big square for each channel you tick, instead of bars. Use it where a glance matters more than a number: an intercom or shout mic that someone is talking into, or a confidence check that timecode or a playback source is present.
+
+- **On** means the channel is at or above its **threshold**. The square is bright in the colour you chose, with the icon, a tick and the word **ON**.
+- **Off** means it is below the threshold. The square is dull grey with the word **off**. GLOBCON's "no signal" counts as off.
+- **No data** means the levels have stopped arriving. The square keeps the state it last had, but is hatched, says **no data** and how old that is. It never goes dark, because dark would say "quiet" and nobody knows that.
+- Each channel has its own **threshold** (in dB, exactly as GLOBCON reports it), **colour** (green, amber, red, blue, cyan, magenta, white, orange), **icon** (microphone, speaker, timecode clock, play, megaphone, camera, headset, signal) and **hold**. A hold of **Instant** turns the square off as soon as the level drops. Any other hold keeps it on for that many seconds longer. A square that is on also stays on until the level is 2 dB under the threshold, so a level sitting on the line does not flicker.
+- Ticking a channel starts it at -40 dB, green, microphone and a 1 s hold, so most people only tick channels. The channel name is the name GLOBCON gives it, shown large; the full name is in the tooltip.
+- The squares share the card's width: fewer channels give bigger squares and bigger names. Nothing flashes.
+
+The thresholds are only as meaningful as GLOBCON's own meters. The metering scale for each type of channel has not yet been checked on real kit, so try a threshold against GLOBCON's own screen. Lights are display only: they raise no alarm, make no sound and send nothing to GLOBCON.
+
 ## What the card says
 
 | Badge | What it means |

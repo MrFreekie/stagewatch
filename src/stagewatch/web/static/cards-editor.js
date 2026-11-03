@@ -21,7 +21,7 @@
     barometer: ["Barometer", "Sea-level pressure dial, 3-hour trend and a rough outlook. A guide only, not a forecast. Needs a pressure sensor (a BME280 node)."],
     spl_limits: ["Sound level limits", "Every limit in force now with its weighting (dB(A), dB(C)), whether it is over, and the next changes. Public wording only. Stays hidden on phones and walls until limits are entered (Sound level limits)."],
     spl_live: ["Sound level", "Up to three sound level values from Smaart, exactly as Smaart reports them, with their timeline. Set it up in the Sound level settings. Stays hidden until values are set up."],
-    globcon_meters: ["DirectOut GLOBCON", "Live level meters for a group of channels (for example 1 to 8 or 9 to 16) of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Pick the controller and channels here; set the GLOBCON address in the GLOBCON settings."],
+    globcon_meters: ["DirectOut GLOBCON", "Live level meters for a group of channels (for example 1 to 8 or 9 to 16) of one DirectOut GLOBCON controller, with the controller's name and current layer, as GLOBCON reports them. Read-only. Choose Meters (bars) or Lights (one big square per channel that lights above a threshold). Pick the controller and channels here; set the GLOBCON address in the GLOBCON settings."],
     rme_units: ["RME interfaces", "One tile per RME unit (for example a 12Mic): whether it is OK, its core temperature, both power supplies, the clock it follows, the loaded preset and its AVB streams. Reads the unit and never changes it. Not a protection system. Add units in Admin (Integrations). Stays hidden until a unit is set up. Never added by default."],
     power_tree: ["Power tree", "Supplies, intake and distribution units and equipment as a tree: live power, a load bar against each rating, and the unmonitored load at each unit (calculated). Several supplies can stand side by side. Set it up in Power distribution (Admin). Never added by default."],
     power: ["Power", "Watts, volts, amps, frequency and energy from Shelly power meters, as the meters report them. Read only. Never part of a site average. Add meters in the Shelly power meters settings. Stays hidden until a meter has been added."],
@@ -78,7 +78,9 @@
         if (sizeSel) sizeSel.value = sizes[it.id] === "half" ? "half" : "full";
         const gcField = it.id !== "globcon_meters" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
           h("label", { class: "field" }, h("span", {}, "GLOBCON controller"), gcCtrl),
-          h("label", { class: "field" }, h("span", {}, "Channels shown"), gcStrips));
+          h("label", { class: "field" }, h("span", {}, "Channels shown"), gcStrips),
+          h("label", { class: "field" }, h("span", {}, "Display"), gcMode),
+          gcLightsBox);
         if (gcField) box.addEventListener("change", () => { gcField.style.display = box.checked ? "" : "none"; });
         const ctField = it.id !== "contacts" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
           h("label", { class: "field" }, h("span", {}, "Only this area (empty = all)"), ctArea),
@@ -111,9 +113,63 @@
       gcOld ? h("option", { value: "old-8" }, "First 8 channels with a level (older setting)") : null,
       ...gcGroups.map(([v, t]) => h("option", { value: v }, t)));
     gcStrips.value = gcOld ? (gcSaved.strips === 4 ? "old-4" : "old-8") : gcSaved.range;
-    const gcRead = () => (gcStrips.value.indexOf("old-") === 0 ? { controller: Number(gcCtrl.value), strips: Number(gcStrips.value.slice(4)), range: null } : { controller: Number(gcCtrl.value), strips: 8, range: gcStrips.value });
+    // Display: Meters (bars) or Lights (one big square per ticked channel). In Lights mode each channel has a table row;
+    // a new row starts with sensible defaults (-40 dB, green, microphone, hold 1 s) so most people only tick channels.
+    // Thresholds are in dB exactly as GLOBCON reports them.
+    const gcMode = h("select", { class: "touch", "aria-label": "GLOBCON display" }, h("option", { value: "meters" }, "Meters (bars)"), h("option", { value: "lights" }, "Lights (one square per channel)"));
+    gcMode.value = gcSaved.mode === "lights" ? "lights" : "meters";
+    const GC_COLOURS = [["green", "Green"], ["amber", "Amber"], ["red", "Red"], ["blue", "Blue"], ["cyan", "Cyan"], ["magenta", "Magenta"], ["white", "White"], ["orange", "Orange"]];
+    const GC_ICONS = [["microphone", "Microphone"], ["speaker", "Speaker"], ["timecode", "Timecode clock"], ["play", "Play"], ["megaphone", "Megaphone"], ["camera", "Camera"], ["headset", "Headset"], ["signal", "Signal"]];
+    const GC_HOLDS = [0, 0.5, 1, 2, 3, 5, 10];
+    const GC_DEF = { threshold_db: -40, colour: "green", icon: "microphone", hold_s: 1 };
+    const gcLights = {};     // channel number -> {threshold_db, colour, icon, hold_s} for the ticked channels
+    for (const e of (Array.isArray(gcSaved.lights) ? gcSaved.lights : [])) if (e && Number.isInteger(e.strip)) gcLights[e.strip] = { threshold_db: e.threshold_db, colour: e.colour, icon: e.icon, hold_s: e.hold_s };
+    const gcRangeNow = () => {
+      const v = gcStrips.value;
+      if (v.indexOf("old-") === 0) return [1, 16];
+      const p = v.split("-");
+      return [Number(p[0]), Number(p[1])];
+    };
+    const gcLightsBox = h("div", { class: "gc-lights-edit" });
+    const gcLightsDraw = () => {
+      const r = gcRangeNow(), rows = [];
+      gcLightsBox.style.display = gcMode.value === "lights" ? "" : "none";
+      for (let n = r[0]; n <= r[1]; n++) {
+        const cur = gcLights[n], on = !!cur, v = cur || GC_DEF;
+        const box = h("input", { type: "checkbox", checked: on, "aria-label": `Light for channel ${n}` });
+        const thr = h("input", { class: "touch", type: "number", min: "-72", max: "0", step: "1", value: String(isFinite(v.threshold_db) ? v.threshold_db : GC_DEF.threshold_db), "aria-label": `Channel ${n} threshold in dB`, disabled: !on });
+        const col = h("select", { class: "touch", "aria-label": `Channel ${n} colour`, disabled: !on }, GC_COLOURS.map(([k, t]) => h("option", { value: k }, t)));
+        col.value = GC_COLOURS.some((c) => c[0] === v.colour) ? v.colour : GC_DEF.colour;
+        const ico = h("select", { class: "touch", "aria-label": `Channel ${n} icon`, disabled: !on }, GC_ICONS.map(([k, t]) => h("option", { value: k }, t)));
+        ico.value = GC_ICONS.some((c) => c[0] === v.icon) ? v.icon : GC_DEF.icon;
+        const holds = GC_HOLDS.indexOf(v.hold_s) >= 0 || !isFinite(v.hold_s) ? GC_HOLDS : GC_HOLDS.concat([v.hold_s]).sort((a, b) => a - b);
+        const hold = h("select", { class: "touch", "aria-label": `Channel ${n} hold`, disabled: !on }, holds.map((s) => h("option", { value: String(s) }, s === 0 ? "Instant" : `${s} s`)));
+        hold.value = String(isFinite(v.hold_s) ? v.hold_s : GC_DEF.hold_s);
+        const sync = () => {
+          if (box.checked) gcLights[n] = { threshold_db: Math.max(-72, Math.min(0, Number(thr.value) || 0)), colour: col.value, icon: ico.value, hold_s: Number(hold.value) };
+          else delete gcLights[n];
+          for (const c of [thr, col, ico, hold]) c.disabled = !box.checked;
+          onChange();
+        };
+        for (const c of [box, thr, col, ico, hold]) c.addEventListener("change", sync);
+        rows.push(h("tr", {}, h("td", {}, h("label", { class: "check" }, box, ` Channel ${n}`)), h("td", {}, thr), h("td", {}, col), h("td", {}, ico), h("td", {}, hold)));
+      }
+      gcLightsBox.replaceChildren(
+        h("p", { class: "muted hint" }, "Tick the channels to show as lights. A light is on when its channel is at or above the threshold, in dB exactly as GLOBCON reports it, and stays on for the hold time after it drops. Not yet checked against every GLOBCON channel type: please try a threshold against GLOBCON's own meters."),
+        h("div", { class: "table-wrap" }, h("table", { class: "gc-lights-table" },
+          h("thead", {}, h("tr", {}, h("th", {}, "Channel"), h("th", {}, "Threshold (dB)"), h("th", {}, "Colour"), h("th", {}, "Icon"), h("th", {}, "Hold"))),
+          h("tbody", {}, rows))));
+    };
+    const gcRead = () => {
+      const base = gcStrips.value.indexOf("old-") === 0 ? { controller: Number(gcCtrl.value), strips: Number(gcStrips.value.slice(4)), range: null } : { controller: Number(gcCtrl.value), strips: 8, range: gcStrips.value };
+      const r = gcRangeNow();
+      const lights = Object.keys(gcLights).map(Number).filter((n) => n >= r[0] && n <= r[1]).sort((a, b) => a - b).map((n) => Object.assign({ strip: n }, gcLights[n]));
+      return Object.assign(base, { mode: gcMode.value, lights });
+    };
     gcCtrl.addEventListener("change", onChange);
-    gcStrips.addEventListener("change", onChange);
+    gcStrips.addEventListener("change", () => { gcLightsDraw(); onChange(); });
+    gcMode.addEventListener("change", () => { gcLightsDraw(); onChange(); });
+    gcLightsDraw();
     // Onsite contacts card: phone numbers on this screen (also needs the switch in Onsite contacts and the contact's own tick).
     const ctArea = h("input", { class: "touch", value: d.contacts_area || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off", oninput: () => onChange() });
     const ctWarn = h("p", { class: "warn-text hint" });

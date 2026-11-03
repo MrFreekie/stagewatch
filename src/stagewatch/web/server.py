@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, Stri
 
 from .. import __version__, acoustics
 from ..core.config import (
-    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_RANGES, GlobconConfig, OntimeTimerConfig, OscDestination, OscOutConfig,
+    ACCURACY_MAX, ACCURACY_MIN, CALIBRATION_HISTORY_MAX, ADVICE_MAX_PATHS, ADVICE_MAX_POSITIONS, AdviceConfig, AdvicePath, AdvicePosition, CalibrationEntry, CLOCK_STYLES, PASSWORD_MAX, AlarmsConfig, BarometerConfig, Dashboard, EntitySettings, EsphomeDeviceConfig, GLOBCON_LIGHTS_MAX, GLOBCON_RANGES, GlobconConfig, globcon_light_problem, OntimeTimerConfig, OscDestination, OscOutConfig,
     ContactsSettings, DeviceErrorsConfig, WIFI_MAX_NETWORKS, WifiConfig, WifiNetwork, PowerPointConfig, PowerSiteConfig, ShellyChannelConfig, SiteConfig, UnmonitoredAllowance, SplConfig, SplSlot, Threshold, WallClockConfig, WitmotionSensorConfig, spl_host_error, spl_password_error, valid_quiet_key, QUIET_MAX,
 )
 from ..core.calibration import change_text, set_calibration, utc_now_iso
@@ -925,7 +925,7 @@ class DashboardBody(Dashboard):
     def _globcon(cls, v):
         """Overrides the lenient loader: the controller must be a whole number 1 to 16, the strips 4 or 8 and the
         range (optional) one of the channel groups."""
-        if not isinstance(v, dict) or set(v) - {"controller", "strips", "range"}:
+        if not isinstance(v, dict) or set(v) - {"controller", "strips", "range", "mode", "lights"}:
             raise ValueError("GLOBCON card options are not valid")
         c, s = v.get("controller", 1), v.get("strips", 8)
         if type(c) is not int or not 1 <= c <= 16:
@@ -935,6 +935,21 @@ class DashboardBody(Dashboard):
         r = v.get("range")
         if r is not None and (not isinstance(r, str) or r not in GLOBCON_RANGES):
             raise ValueError("That GLOBCON channel group is not one of the choices")
+        if v.get("mode", "meters") not in ("meters", "lights") or not isinstance(v.get("mode", "meters"), str):
+            raise ValueError("The GLOBCON card mode is Meters or Lights")
+        lights = v.get("lights", [])
+        if not isinstance(lights, list) or len(lights) > GLOBCON_LIGHTS_MAX:
+            raise ValueError(f"The GLOBCON card has at most {GLOBCON_LIGHTS_MAX} lights")
+        seen = set()
+        for e in lights:
+            problem = globcon_light_problem(e)
+            if problem:
+                raise ValueError(problem)
+            if e["strip"] in seen:
+                raise ValueError("A GLOBCON channel can have only one light")
+            seen.add(e["strip"])
+            if r is not None and not GLOBCON_RANGES[r][0] <= e["strip"] <= GLOBCON_RANGES[r][1]:
+                raise ValueError("A GLOBCON light must be on a channel in the chosen group")
         return v
 
     @field_validator("cards", mode="before")

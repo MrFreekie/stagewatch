@@ -998,10 +998,10 @@ def test_dashboard_put_round_trips_options_and_is_strict(client):
     rows[0]["globcon"] = {"controller": 9, "strips": 4}
     assert client.put("/api/admin/dashboards", json=rows).status_code == 200
     assert client.hub.config.dashboards[0].globcon == GlobconCardOptions(controller=9, strips=4)
-    assert client.get("/api/dashboard/foh").json()["globcon"] == {"controller": 9, "strips": 4, "range": None}
+    assert client.get("/api/dashboard/foh").json()["globcon"] == {"controller": 9, "strips": 4, "range": None, "mode": "meters", "lights": []}
     rows[0]["globcon"] = {"controller": 2, "strips": 8, "range": "9-16"}
     assert client.put("/api/admin/dashboards", json=rows).status_code == 200
-    assert client.get("/api/dashboard/foh").json()["globcon"] == {"controller": 2, "strips": 8, "range": "9-16"}
+    assert client.get("/api/dashboard/foh").json()["globcon"] == {"controller": 2, "strips": 8, "range": "9-16", "mode": "meters", "lights": []}
     rows[0]["globcon"] = {"controller": 2, "strips": 8, "range": None}
     assert client.put("/api/admin/dashboards", json=rows).status_code == 200
     for bad_range in ("9-17", 9, "", ["1-4"], True):

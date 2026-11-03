@@ -1083,7 +1083,7 @@
   // (globcon.js). A one-second tick keeps the frozen check and its age honest between messages. The
   // levels are shown as GLOBCON reports them; nothing here sounds, raises an alarm or sends anything
   // to GLOBCON.
-  const gcc = { timer: null, ui: null };
+  const gcc = { timer: null, ui: null, prev: null };
   function stopGlobcon() { if (gcc.timer) { clearTimeout(gcc.timer); gcc.timer = null; } }
   const gcOpts = () => (state.dash && state.dash.globcon) || { controller: 1, strips: 8 };
 
@@ -1109,9 +1109,13 @@
     if (!ui || !state.globcon || !has("globcon_meters")) return;
     const now = serverNow();
     const v = SW.gc.view(state.globcon, gcOpts(), now);
-    ui.update(v);
+    const o = gcOpts();
+    let L = null;
+    if (o.mode === "lights") { L = SW.gc.lights(v, o, gcc.prev, now); gcc.prev = L.state; }
+    else gcc.prev = null;
+    ui.update(v, L);
     gcc.status.update(SW.sourceInput.globcon(state.globcon, SW.gc.pick(state.globcon, gcOpts().controller || 1), SW.gc.STALE_S), now);
-    setClass($("globcon-card"), `card ${v.cls}`);
+    setClass($("globcon-card"), `card ${v.cls}${L ? " gc-lights-mode" : ""}`);
     gcc.timer = setTimeout(tickGlobcon, 1000);
   }
 

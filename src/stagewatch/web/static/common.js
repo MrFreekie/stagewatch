@@ -1289,6 +1289,11 @@ SW.previewDraft = function (draft, saved, known) {
     if (s !== 4 && s !== 8) return null;
     if (r !== undefined && r !== null && ["1-4", "5-8", "1-8", "9-12", "13-16", "9-16", "1-16"].indexOf(r) < 0) return null;
     out.globcon = { controller: c, strips: s, range: r === undefined ? null : r };
+    if (g.mode === "lights") {
+      if (!Array.isArray(g.lights) || g.lights.length > 16) return null;
+      out.globcon.mode = "lights";
+      out.globcon.lights = g.lights.filter(isObj).map((e) => ({ strip: e.strip, threshold_db: e.threshold_db, colour: e.colour, icon: e.icon, hold_s: e.hold_s }));
+    }
   }
   return out;
 };
