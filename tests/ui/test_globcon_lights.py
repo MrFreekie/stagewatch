@@ -52,9 +52,8 @@ def test_lights_layout(open_page, base_url, size, theme, n):
         assert bw >= 60, f"square only {bw}px wide"
     card_h = page.evaluate("document.getElementById('globcon-card').getBoundingClientRect().height")
     assert card_h <= (h if size == "wall" else 1500), f"card is {card_h}px high"
-    # every square says its state in words (ON, off or no data), not colour alone, and has a name
+    # on and off carry no words (owner's choice); every square has a name
     for text in page.evaluate("""() => [...document.querySelectorAll('#globcon-card .gc-light')].map((e) => e.innerText)"""):
-        assert any(word in text for word in ("ON", "off", "no data")), text
         assert text.strip().splitlines()[0].strip(), "square has no name"
     # no flashing or animation anywhere in the card
     assert page.evaluate("document.getElementById('globcon-card').getAnimations({subtree: true}).length") == 0

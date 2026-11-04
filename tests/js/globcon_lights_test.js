@@ -89,7 +89,7 @@ eq(JSON.stringify(p0), snapshot, "prev state is not mutated");
 
 // words and marks: colour is never the only signal
 r = gc.lights(view([-30, -90]), cfg([L(1), L(2)]), null, 1);
-eq([r.squares[0].word, r.squares[0].mark, r.squares[1].word, r.squares[1].mark], ["ON", "✓", "off", ""], "ON with a tick, off with the word off");
+eq([r.squares[0].word, r.squares[0].mark, r.squares[1].word, r.squares[1].mark], ["", "", "", ""], "on and off carry no words or tick (owner's choice); only no data has a word");
 eq(r.squares[0].name, "Ch 1", "the name is GLOBCON's label");
 r = gc.lights(view([-30]), cfg([L(1)]), null, 1);
 r = gc.lights({ state: "ok", ago: "", note: "", strips: [{ num: 1, label: "", db: -30 }] }, cfg([L(1)]), null, 1);

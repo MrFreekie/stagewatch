@@ -32,8 +32,8 @@ The channel groups are 1-4, 5-8, 1-8, 9-12, 13-16, 9-16 and 1-16. These are the 
 
 In Admin, under **User dashboards**, **Edit cards**, set **Display** to **Lights (one square per channel)**. The card then shows one big square for each channel you tick, instead of bars. Use it where a glance matters more than a number: an intercom or shout mic that someone is talking into, or a confidence check that timecode or a playback source is present.
 
-- **On** means the channel is at or above its **threshold**. The square is bright in the colour you chose, with the icon, a tick and the word **ON**.
-- **Off** means it is below the threshold. The square is dull grey with the word **off**. GLOBCON's "no signal" counts as off.
+- **On** means the channel is at or above its **threshold**. The square is bright in the colour you chose, with its icon and name.
+- **Off** means it is below the threshold. The square is dull grey. GLOBCON's "no signal" counts as off.
 - **No data** means the levels have stopped arriving. The square keeps the state it last had, but is hatched, says **no data** and how old that is. It never goes dark, because dark would say "quiet" and nobody knows that.
 - Each channel has its own **threshold** (in dB, exactly as GLOBCON reports it), **colour** (green, amber, red, blue, cyan, magenta, white, orange), **icon** (microphone, speaker, timecode clock, play, megaphone, camera, headset, signal) and **hold**. A hold of **Instant** turns the square off as soon as the level drops. Any other hold keeps it on for that many seconds longer. A square that is on also stays on until the level is 2 dB under the threshold, so a level sitting on the line does not flicker.
 - Ticking a channel starts it at -40 dB, green, microphone and a 1 s hold, so most people only tick channels. The channel name is the name GLOBCON gives it, shown large; the full name is in the tooltip.

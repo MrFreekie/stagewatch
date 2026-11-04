@@ -186,7 +186,7 @@ SW.gc = (function () {
       const before = p[L.strip] || { on: false, above: null, seen: false };
       const st = { on: before.on, above: before.above, seen: before.seen };
       const name = s && s.label ? s.label : `Channel ${L.strip}`;
-      const sq = { num: L.strip, name, tip: `${name} (channel ${L.strip}): on at ${gc.fmtDb(L.threshold_db)} dB or louder, as GLOBCON reports it`, colour: L.colour, icon: L.icon, status: "off", on: false, mark: "", word: "off", ago: "" };
+      const sq = { num: L.strip, name, tip: `${name} (channel ${L.strip}): on at ${gc.fmtDb(L.threshold_db)} dB or louder, as GLOBCON reports it`, colour: L.colour, icon: L.icon, status: "off", on: false, mark: "", word: "", ago: "" };
       if (live) {
         const db = s && isNum(s.db) ? s.db : null;
         if (db !== null && db >= L.threshold_db) { st.on = true; st.above = now; }
@@ -199,7 +199,6 @@ SW.gc = (function () {
         if (!st.seen) st.on = false;
       }
       sq.on = st.on;
-      if (sq.status === "on") { sq.mark = "✓"; sq.word = "ON"; }
       by[L.strip] = st;
       return sq;
     });
@@ -280,9 +279,9 @@ SW.gc = (function () {
           if (b.iconName !== s.icon) { b.iconName = s.icon; b.icon.replaceChildren(gc.iconSvg(s.icon)); }
           setText(b.name, s.name);
           b.el.setAttribute("title", s.tip);
-          setText(b.state, s.mark ? `${s.mark} ${s.word}` : s.word);
+          setText(b.state, s.word);
           setText(b.ago, s.ago ? `${s.ago} old` : "");
-          const label = `${s.name}: ${s.word}${s.ago ? `, ${s.ago} old` : ""}`;
+          const label = `${s.name}: ${s.word || s.status}${s.ago ? `, ${s.ago} old` : ""}`;
           if (b.el.getAttribute("aria-label") !== label) b.el.setAttribute("aria-label", label);
         });
         setText(ui.note, L.note);

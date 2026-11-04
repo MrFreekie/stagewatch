@@ -1807,7 +1807,7 @@ body.layout-wall .tile-extremes table { font-size: 28px; }
 .sun-note { grid-column: 1 / -1; }
 
 /* GLOBCON Lights mode: one big square per chosen channel, an auto grid (fewer channels = bigger squares and bigger names).
-   On = the channel's own colour, a tick and the word ON; off = dull with the word "off"; no data = hatched with "no data" and
+   On = the channel's own colour, off = dull (no words, the owner's choice); no data = hatched with "no data" and
    the age, never dark. No flashing. The colour pairs below are checked for contrast by tests/test_globcon_lights.py: keep
    them as `--lc: <#hex>; --lf: <#hex>;` (background, text) on one line each. */
 .gc-c-green { --lc: #3ddc84; --lf: #0b0f14; }
