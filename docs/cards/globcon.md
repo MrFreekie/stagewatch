@@ -41,6 +41,12 @@ In Admin, under **User dashboards**, **Edit cards**, set **Display** to **Lights
 
 The thresholds are only as meaningful as GLOBCON's own meters. The metering scale for each type of channel has not yet been checked on real kit, so try a threshold against GLOBCON's own screen. Lights are display only: they raise no alarm, make no sound and send nothing to GLOBCON.
 
+## More than one GLOBCON card
+
+A dashboard can show several GLOBCON cards, for example a Lights card for the intercom next to a Meters card, or two controllers on one wall. In Admin, under **User dashboards**, **Edit cards**, press **Add another GLOBCON card**. The new card is numbered (**DirectOut GLOBCON 2**, **3** and so on) and has its own **GLOBCON controller**, **Channels shown**, **Display** and lights, and its own **Card width** (Full or Half). Use ▲ and ▼ to put it where you want it, and **Remove** to take it off. Each counts as one of the dashboard's 16 cards.
+
+Stagewatch asks GLOBCON for each controller's levels once, however many cards show it, so extra cards add no load on GLOBCON. If you go back to an older Stagewatch, it shows only the first GLOBCON card and ignores the others; saving there forgets them.
+
 ## What the card says
 
 | Badge | What it means |

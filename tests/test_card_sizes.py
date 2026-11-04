@@ -20,7 +20,7 @@ from stagewatch.web.server import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "stagewatch" / "web" / "static"
-DASHBOARD_FIELDS = {"slug", "title", "layout", "allow_marker", "allow_ack", "cards", "stage", "clock_style", "card_sizes", "globcon", "show_dew_point", "tiles", "show_contact_phones", "contacts_area"}
+DASHBOARD_FIELDS = {"slug", "title", "layout", "allow_marker", "allow_ack", "cards", "stage", "clock_style", "card_sizes", "globcon", "globcon_more", "show_dew_point", "tiles", "show_contact_phones", "contacts_area"}
 
 
 def test_default_is_full_everywhere_and_the_allow_list_is_small():
@@ -164,3 +164,10 @@ def test_dew_point_tile_is_optional_per_dashboard(client):
     assert client.hub.config.dashboards[0].show_dew_point is False
     js = (STATIC / "dashboard.js").read_text(encoding="utf-8")
     assert 'id === "site.dew_point" && state.dash && state.dash.show_dew_point === false' in js
+
+
+def test_half_lookups_ignore_the_instance_suffix():
+    out, dropped = cards.clean_card_sizes({"globcon_meters#2": "half", "wall_clock#2": "half"})
+    assert out == {"globcon_meters#2": "half"} and dropped == 1
+    d = Dashboard.model_validate({"slug": "x", "cards": ["globcon_meters", "globcon_meters#2"], "card_sizes": {"globcon_meters#2": "half"}})
+    assert d.card_sizes == {"globcon_meters#2": "half"}

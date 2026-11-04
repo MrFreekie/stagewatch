@@ -1083,41 +1083,54 @@
   // (globcon.js). A one-second tick keeps the frozen check and its age honest between messages. The
   // levels are shown as GLOBCON reports them; nothing here sounds, raises an alarm or sends anything
   // to GLOBCON.
-  const gcc = { timer: null, ui: null, prev: null };
-  function stopGlobcon() { if (gcc.timer) { clearTimeout(gcc.timer); gcc.timer = null; } }
-  const gcOpts = () => (state.dash && state.dash.globcon) || { controller: 1, strips: 8 };
+  // Each GLOBCON card on the dashboard ("globcon_meters", "globcon_meters#2" ...) has its own options, its
+  // own DOM and its own small state here. They all read the one "globcon_meters" message, so GLOBCON is
+  // asked once per controller however many cards show it.
+  const gcInst = {};   // card id -> { timer, ui, prev, status }
+  const gcState = (id) => gcInst[id] || (gcInst[id] = { timer: null, ui: null, prev: null, status: null });
+  const gcIds = () => assignedCards().filter((id) => SW.cardBase(id) === "globcon_meters");
+  function stopGlobcon(id) {
+    for (const k of (id ? [id] : Object.keys(gcInst))) { const g = gcInst[k]; if (g && g.timer) { clearTimeout(g.timer); g.timer = null; } }
+  }
+  const gcOpts = (id) => SW.globconOpts(state.dash, id);
+  const gcEl = (id) => (CARDS[id] && CARDS[id].el) || null;
 
-  function renderGlobcon() {
-    const card = $("globcon-card");
-    if (!has("globcon_meters") || !state.globcon) {
-      stopGlobcon();
+  function renderGlobcon(id) {
+    const card = gcEl(id);
+    if (!card) return;
+    if (!has(id) || !state.globcon) {
+      stopGlobcon(id);
       card.hidden = true;
       return;
     }
     card.hidden = false;
+    const gcc = gcState(id);
     if (!gcc.ui) {
       gcc.ui = SW.gc.createUi();
       card.replaceChildren(h("h2", {}, gcc.ui.head, h("span", { class: "grow" }), h("img", { class: "card-logo", src: "/static/directout-badge.png", alt: "DirectOut", width: "26", height: "26", onerror: (e) => { e.target.hidden = true; } })), ...gcc.ui.nodes);
       gcc.status = addCardStatus(card, "globcon");
     }
-    tickGlobcon();
+    tickGlobcon(id);
   }
+  function renderGlobconAll() { for (const id of gcIds()) renderGlobcon(id); }
 
-  function tickGlobcon() {
-    stopGlobcon();
-    const ui = gcc.ui;
-    if (!ui || !state.globcon || !has("globcon_meters")) return;
+  function tickGlobcon(id) {
+    stopGlobcon(id);
+    const gcc = gcState(id), ui = gcc.ui;
+    if (!ui || !state.globcon || !has(id)) return;
     const now = serverNow();
-    const v = SW.gc.view(state.globcon, gcOpts(), now);
-    const o = gcOpts();
+    const o = gcOpts(id);
+    const v = SW.gc.view(state.globcon, o, now);
     let L = null;
     if (o.mode === "lights") { L = SW.gc.lights(v, o, gcc.prev, now); gcc.prev = L.state; }
     else gcc.prev = null;
     ui.update(v, L);
-    gcc.status.update(SW.sourceInput.globcon(state.globcon, SW.gc.pick(state.globcon, gcOpts().controller || 1), SW.gc.STALE_S), now);
-    setClass($("globcon-card"), `card ${v.cls}${L ? " gc-lights-mode" : ""}`);
-    gcc.timer = setTimeout(tickGlobcon, 1000);
+    gcc.status.update(SW.sourceInput.globcon(state.globcon, SW.gc.pick(state.globcon, o.controller || 1), SW.gc.STALE_S), now);
+    setClass(gcEl(id), `card globcon-card ${v.cls}${L ? " gc-lights-mode" : ""}`);
+    gcc.timer = setTimeout(() => tickGlobcon(id), 1000);
   }
+  // A card taken off the dashboard: stop its timer and forget its state.
+  function dropGlobcon(id) { stopGlobcon(id); delete gcInst[id]; }
 
   // ------------------------------------------------------ RME interfaces
   // One tile per RME unit from the "rme_units" message (SW.rme, rme.js). The server sends a message when
@@ -1998,7 +2011,7 @@
     // Hidden while no sensor has the Equipment role (renderEquipment keeps it in step).
     equipment: { el: cardEl("equipment"), render: renderEquipment, empty: () => equipmentGroups().length === 0 },
     // Live GLOBCON levels. Hidden until the first message arrives (the server sends one with the snapshot).
-    globcon_meters: { el: cardEl("globcon_meters"), wide: true, render: renderGlobcon, empty: () => !state.globcon },
+    globcon_meters: { el: cardEl("globcon_meters"), wide: true, render: () => renderGlobcon("globcon_meters"), empty: () => !state.globcon },
     // RME units. Hidden while none is set up (the server sends null).
     rme_units: { el: cardEl("rme_units"), wide: true, render: renderRme, empty: () => !SW.rme.units(state.rme).length },
     // Power meters (Shelly). Hidden while no meter has been added (renderPower keeps it in step).
@@ -2031,9 +2044,32 @@
   // Without a dashboard (an admin on an unknown slug) show the 0.2.0 set.
   const FALLBACK_CARDS = ["env_tiles", "chart", "markers", "sensors"];
 
+  // A further copy of a multi-instance card ("globcon_meters#2"): a section like the first one, made when the
+  // dashboard lists it. Its DOM id is the card id with # as - (globcon-card-2).
+  function ensureInstance(id) {
+    if (Object.prototype.hasOwnProperty.call(CARDS, id)) return CARDS[id];
+    const base = SW.cardBase(id);
+    if (id === base || !SW.validCardId(id) || base !== "globcon_meters") return null;
+    const el = h("section", { class: "card globcon-card", "data-card": id, id: `globcon-card-${id.split("#")[1]}`, hidden: true },
+      h("h2", {}, h("span", {}, "DirectOut GLOBCON")));
+    $("main").appendChild(el);
+    CARDS[id] = { el, wide: true, render: () => renderGlobcon(id), empty: () => !state.globcon, instance: true };
+    if (sizeHold) sizeHold.observe(el);
+    return CARDS[id];
+  }
+  // Instances no longer listed on the dashboard are removed from the page.
+  function pruneInstances(want) {
+    for (const id of Object.keys(CARDS)) {
+      if (!CARDS[id].instance || want.indexOf(id) >= 0) continue;
+      dropGlobcon(id);
+      if (sizeHold) sizeHold.unobserve(CARDS[id].el);
+      CARDS[id].el.remove();
+      delete CARDS[id];
+    }
+  }
   function assignedCards() {
     const list = state.dash && Array.isArray(state.dash.cards) ? state.dash.cards : FALLBACK_CARDS;
-    return list.filter((id, i) => Object.prototype.hasOwnProperty.call(CARDS, id) && list.indexOf(id) === i);
+    return list.filter((id, i) => list.indexOf(id) === i && (Object.prototype.hasOwnProperty.call(CARDS, id) || ensureInstance(id)));
   }
   function has(id) { return assignedCards().indexOf(id) >= 0; }
 
@@ -2042,6 +2078,7 @@
   function layoutCards() {
     const main = $("main");
     const want = assignedCards();
+    pruneInstances(want);
     const oldRows = Array.prototype.slice.call(main.querySelectorAll(".card-flow"));
     let row = null;
     for (const id of want) {
@@ -2177,7 +2214,7 @@
     if (!has("wall_clock")) stopWallClockTimer();
     if (!has("ontime_timer")) stopOntimeTimer();
     if (!has("ontime_rundown")) stopOntimeRundown();
-    if (!has("globcon_meters")) stopGlobcon();
+    if (!gcIds().length) stopGlobcon();
     if (!has("rme_units")) stopRme();
     syncSchedule();
     if (PREVIEW && state.isAdmin) {
@@ -2241,7 +2278,7 @@
     if (!has("wall_clock")) stopWallClockTimer();
     if (!has("ontime_timer")) stopOntimeTimer();
     if (!has("ontime_rundown")) stopOntimeRundown();
-    if (!has("globcon_meters")) stopGlobcon();
+    if (!gcIds().length) stopGlobcon();
     if (!has("rme_units")) stopRme();
     syncSchedule();
   }
@@ -2300,7 +2337,7 @@
         break;
       case "wall_clock": state.wallClock = msg; if (has("wall_clock")) renderWallClock(); break;
       case "ontime_timer": state.ontimeTimer = msg; if (has("ontime_timer")) renderOntimeTimer(); break;
-      case "globcon_meters": state.globcon = msg; if (has("globcon_meters")) renderGlobcon(); break;
+      case "globcon_meters": state.globcon = msg; renderGlobconAll(); break;
       case "rme_units": state.rme = msg; rmeC.at = Date.now() / 1000; if (has("rme_units")) renderRme(); break;
       case "advice":   // the same block as the snapshot's; the cards patch their cells in place
         state.advice = { drift_ref: msg.drift_ref, air_ref: msg.air_ref, resolution: msg.resolution, paths: msg.paths || [], positions: msg.positions || [] };

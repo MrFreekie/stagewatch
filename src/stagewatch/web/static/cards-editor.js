@@ -46,7 +46,7 @@
     let items = [];
     const ul = h("ul", { class: "card-picker" });
     const fill = (list) => {
-      const on = list.filter((id, i) => known.indexOf(id) >= 0 && list.indexOf(id) === i);
+      const on = list.filter((id, i) => SW.validCardId(id) && known.indexOf(SW.cardBase(id)) >= 0 && list.indexOf(id) === i);
       items = on.map((id) => ({ id, on: true })).concat(known.filter((id) => on.indexOf(id) < 0).map((id) => ({ id, on: false })));
       draw();
     };
@@ -65,22 +65,43 @@
     const limitBoxes = () => {
       const full = items.filter((it) => it.on).length >= MAX;
       for (const b of boxes) b.el.disabled = full && !b.it.on;
+      addBtn.disabled = full || items.filter((it) => SW.cardBase(it.id) === "globcon_meters").length >= 16;
     };
+    // Further copies of the GLOBCON card ("globcon_meters#2" ...): added and removed here, never ticked off.
+    const removeItem = (i) => {
+      const id = items[i].id;
+      items.splice(i, 1);
+      delete gcEditors[id]; delete sizes[id]; delete moreSaved[id];
+      draw();
+    };
+    const addGlobcon = () => {
+      if (items.filter((it) => it.on).length >= MAX) return;
+      let n = 2;
+      while (items.some((it) => it.id === `globcon_meters#${n}`) && n < 16) n++;
+      const id = `globcon_meters#${n}`;
+      if (items.some((it) => it.id === id)) return;
+      let at = -1;
+      items.forEach((it, i) => { if (SW.cardBase(it.id) === "globcon_meters") at = i; });
+      items.splice(at + 1, 0, { id, on: true });
+      draw();
+      const li = ul.children[at + 1];
+      if (li) { const f = li.querySelector("select"); if (f) f.focus(); }
+    };
+    const addBtn = h("button", { type: "button", class: "btn", onclick: addGlobcon }, "Add another GLOBCON card");
     const draw = () => {
       boxes.length = 0;
       ul.replaceChildren(...items.map((it, i) => {
-        const info = CARD_INFO[it.id] || [it.id, ""];
-        const box = h("input", { type: "checkbox", checked: it.on, onchange: () => { it.on = box.checked; if (lookField) lookField.style.display = box.checked ? "" : "none"; limitBoxes(); onChange(); } });
+        const base = SW.cardBase(it.id), inst = it.id !== base;
+        const info0 = CARD_INFO[base] || [base, ""];
+        const info = inst ? [`${info0[0]} ${it.id.split("#")[1]}`, "Another card with its own controller, channels and display."] : info0;
+        const box = h("input", { type: "checkbox", checked: it.on, hidden: inst, onchange: () => { it.on = box.checked; if (lookField) lookField.style.display = box.checked ? "" : "none"; limitBoxes(); onChange(); } });
         boxes.push({ el: box, it });
         const lookField = it.id === "wall_clock" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Wall Clock look"), clockStyle)
           : it.id === "env_tiles" ? h("label", { class: "field card-look", style: it.on ? "" : "display:none" }, h("span", {}, "Choose readings"), tileList) : null;
-        const sizeSel = halfOk.indexOf(it.id) < 0 ? null : h("select", { class: "touch", "aria-label": `${info[0]} size`, onchange: () => { sizes[it.id] = sizeSel.value; onChange(); } }, h("option", { value: "full" }, "Full"), h("option", { value: "half" }, "Half"));
+        const sizeSel = halfOk.indexOf(base) < 0 ? null : h("select", { class: "touch", "aria-label": `${info[0]} size`, onchange: () => { sizes[it.id] = sizeSel.value; onChange(); } }, h("option", { value: "full" }, "Full"), h("option", { value: "half" }, "Half"));
         if (sizeSel) sizeSel.value = sizes[it.id] === "half" ? "half" : "full";
-        const gcField = it.id !== "globcon_meters" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
-          h("label", { class: "field" }, h("span", {}, "GLOBCON controller"), gcCtrl),
-          h("label", { class: "field" }, h("span", {}, "Channels shown"), gcStrips),
-          h("label", { class: "field" }, h("span", {}, "Display"), gcMode),
-          gcLightsBox);
+        const gcField = base !== "globcon_meters" ? null : editorFor(it.id).el;
+        if (gcField) gcField.style.display = it.on ? "" : "none";
         if (gcField) box.addEventListener("change", () => { gcField.style.display = box.checked ? "" : "none"; });
         const ctField = it.id !== "contacts" ? null : h("div", { class: "card-look", style: it.on ? "" : "display:none" },
           h("label", { class: "field" }, h("span", {}, "Only this area (empty = all)"), ctArea),
@@ -94,21 +115,25 @@
           gcField,
           ctField,
           sizeField,
+          inst ? h("button", { type: "button", class: "card-remove", "aria-label": `Remove ${info[0]}`, title: "Remove this card", onclick: () => removeItem(i) }, "Remove") : null,
           h("button", { type: "button", class: "card-up", "aria-label": `Move ${info[0]} up`, title: "Move up", disabled: i === 0, onclick: () => move(i, -1) }, "▲"),
           h("button", { type: "button", class: "card-down", "aria-label": `Move ${info[0]} down`, title: "Move down", disabled: i === items.length - 1, onclick: () => move(i, 1) }, "▼"));
       }));
       limitBoxes();
       onChange();
     };
-    // GLOBCON levels card: which controller (1 to 16) and which channels this screen shows.
-    const gcSaved = d.globcon || {};
-    const gcCtrl = h("select", { class: "touch", "aria-label": "GLOBCON controller" }, Array.from({ length: 16 }, (_, i) => h("option", { value: String(i + 1) }, `Controller ${i + 1}`)));
+    // One GLOBCON levels card's options: which controller (1 to 16), which channels, Meters or Lights.
+    // Each GLOBCON card on the dashboard (the first and any "#2" ...) gets its own set. `saved` is that card's
+    // saved options (undefined for a card just added); `sfx` makes the field labels unique (" 2" ...).
+    function gcEditor(saved, sfx) {
+    const gcSaved = saved || { controller: 1, strips: 8, range: "1-8" };
+    const gcCtrl = h("select", { class: "touch", "aria-label": `GLOBCON controller${sfx}` }, Array.from({ length: 16 }, (_, i) => h("option", { value: String(i + 1) }, `Controller ${i + 1}`)));
     gcCtrl.value = String(gcSaved.controller >= 1 && gcSaved.controller <= 16 ? gcSaved.controller : 1);
     // Channels are the strip numbers on the controller's current layer. A dashboard saved before the groups existed
     // (no range) keeps its "first 4 / 8 with a level" choice as two extra options, shown only while it is in use.
     const gcGroups = [["1-4", "Channels 1 to 4"], ["5-8", "Channels 5 to 8"], ["1-8", "Channels 1 to 8"], ["9-12", "Channels 9 to 12"], ["13-16", "Channels 13 to 16"], ["9-16", "Channels 9 to 16"], ["1-16", "Channels 1 to 16"]];
     const gcOld = !gcSaved.range;
-    const gcStrips = h("select", { class: "touch", "aria-label": "GLOBCON channels shown" },
+    const gcStrips = h("select", { class: "touch", "aria-label": `GLOBCON channels shown${sfx}` },
       gcOld ? h("option", { value: "old-4" }, "First 4 channels with a level (older setting)") : null,
       gcOld ? h("option", { value: "old-8" }, "First 8 channels with a level (older setting)") : null,
       ...gcGroups.map(([v, t]) => h("option", { value: v }, t)));
@@ -116,7 +141,7 @@
     // Display: Meters (bars) or Lights (one big square per ticked channel). In Lights mode each channel has a table row;
     // a new row starts with sensible defaults (-40 dB, green, microphone, hold 1 s) so most people only tick channels.
     // Thresholds are in dB exactly as GLOBCON reports them.
-    const gcMode = h("select", { class: "touch", "aria-label": "GLOBCON display" }, h("option", { value: "meters" }, "Meters (bars)"), h("option", { value: "lights" }, "Lights (one square per channel)"));
+    const gcMode = h("select", { class: "touch", "aria-label": `GLOBCON display${sfx}` }, h("option", { value: "meters" }, "Meters (bars)"), h("option", { value: "lights" }, "Lights (one square per channel)"));
     gcMode.value = gcSaved.mode === "lights" ? "lights" : "meters";
     const GC_COLOURS = [["green", "Green"], ["amber", "Amber"], ["red", "Red"], ["blue", "Blue"], ["cyan", "Cyan"], ["magenta", "Magenta"], ["white", "White"], ["orange", "Orange"]];
     const GC_ICONS = [["microphone", "Microphone"], ["speaker", "Speaker"], ["timecode", "Timecode clock"], ["play", "Play"], ["megaphone", "Megaphone"], ["camera", "Camera"], ["headset", "Headset"], ["signal", "Signal"]];
@@ -136,14 +161,14 @@
       gcLightsBox.style.display = gcMode.value === "lights" ? "" : "none";
       for (let n = r[0]; n <= r[1]; n++) {
         const cur = gcLights[n], on = !!cur, v = cur || GC_DEF;
-        const box = h("input", { type: "checkbox", checked: on, "aria-label": `Light for channel ${n}` });
-        const thr = h("input", { class: "touch", type: "number", min: "-72", max: "0", step: "1", value: String(isFinite(v.threshold_db) ? v.threshold_db : GC_DEF.threshold_db), "aria-label": `Channel ${n} threshold in dB`, disabled: !on });
-        const col = h("select", { class: "touch", "aria-label": `Channel ${n} colour`, disabled: !on }, GC_COLOURS.map(([k, t]) => h("option", { value: k }, t)));
+        const box = h("input", { type: "checkbox", checked: on, "aria-label": `Light for channel ${n}${sfx}` });
+        const thr = h("input", { class: "touch", type: "number", min: "-72", max: "0", step: "1", value: String(isFinite(v.threshold_db) ? v.threshold_db : GC_DEF.threshold_db), "aria-label": `Channel ${n} threshold in dB${sfx}`, disabled: !on });
+        const col = h("select", { class: "touch", "aria-label": `Channel ${n} colour${sfx}`, disabled: !on }, GC_COLOURS.map(([k, t]) => h("option", { value: k }, t)));
         col.value = GC_COLOURS.some((c) => c[0] === v.colour) ? v.colour : GC_DEF.colour;
-        const ico = h("select", { class: "touch", "aria-label": `Channel ${n} icon`, disabled: !on }, GC_ICONS.map(([k, t]) => h("option", { value: k }, t)));
+        const ico = h("select", { class: "touch", "aria-label": `Channel ${n} icon${sfx}`, disabled: !on }, GC_ICONS.map(([k, t]) => h("option", { value: k }, t)));
         ico.value = GC_ICONS.some((c) => c[0] === v.icon) ? v.icon : GC_DEF.icon;
         const holds = GC_HOLDS.indexOf(v.hold_s) >= 0 || !isFinite(v.hold_s) ? GC_HOLDS : GC_HOLDS.concat([v.hold_s]).sort((a, b) => a - b);
-        const hold = h("select", { class: "touch", "aria-label": `Channel ${n} hold`, disabled: !on }, holds.map((s) => h("option", { value: String(s) }, s === 0 ? "Instant" : `${s} s`)));
+        const hold = h("select", { class: "touch", "aria-label": `Channel ${n} hold${sfx}`, disabled: !on }, holds.map((s) => h("option", { value: String(s) }, s === 0 ? "Instant" : `${s} s`)));
         hold.value = String(isFinite(v.hold_s) ? v.hold_s : GC_DEF.hold_s);
         const sync = () => {
           if (box.checked) gcLights[n] = { threshold_db: Math.max(-72, Math.min(0, Number(thr.value) || 0)), colour: col.value, icon: ico.value, hold_s: Number(hold.value) };
@@ -170,6 +195,16 @@
     gcStrips.addEventListener("change", () => { gcLightsDraw(); onChange(); });
     gcMode.addEventListener("change", () => { gcLightsDraw(); onChange(); });
     gcLightsDraw();
+    const el = h("div", { class: "card-look" },
+      h("label", { class: "field" }, h("span", {}, "GLOBCON controller"), gcCtrl),
+      h("label", { class: "field" }, h("span", {}, "Channels shown"), gcStrips),
+      h("label", { class: "field" }, h("span", {}, "Display"), gcMode),
+      gcLightsBox);
+    return { el, read: gcRead };
+    }
+    const gcEditors = {};   // card id -> gcEditor
+    const moreSaved = Object.assign({}, d.globcon_more);
+    const editorFor = (id) => gcEditors[id] || (gcEditors[id] = gcEditor(id === "globcon_meters" ? (d.globcon || {}) : moreSaved[id], id.indexOf("#") > 0 ? ` ${id.split("#")[1]}` : ""));
     // Onsite contacts card: phone numbers on this screen (also needs the switch in Onsite contacts and the contact's own tick).
     const ctArea = h("input", { class: "touch", value: d.contacts_area || "", maxlength: 40, list: "stage-list", placeholder: "e.g. Main stage", autocomplete: "off", oninput: () => onChange() });
     const ctWarn = h("p", { class: "warn-text hint" });
@@ -201,19 +236,20 @@
     };
     const dewOn = () => { const t = tiles.find((x) => x.id === "dew_point"); return !t || t.on; };
     // Ids from a newer Stagewatch (kept in the settings after a downgrade) can't be saved by this one.
-    const newer = (d.cards || []).filter((id) => known.indexOf(id) < 0);
+    const newer = (d.cards || []).filter((id) => SW.validCardId(id) && known.indexOf(SW.cardBase(id)) < 0);
     fill(d.cards || (admin.cards && admin.cards.defaults.tablet) || []);
     const el = h("div", { class: "cards-panel" },
       h("p", { class: "muted hint" }, "Tick the cards this dashboard shows. Use ▲ and ▼ to change the order, top to bottom. With no cards ticked, the screen shows only alarms. Wall Clock is never switched on by default: tick it here if you want it."),
       newer.length ? h("p", { class: "warn-text hint" }, `This dashboard also lists cards from a newer version of Stagewatch (${newer.join(", ")}). This version can't show them, and saving here removes them.`) : null,
       d.layout === "wall" ? h("p", { class: "hint de-wallhint" }, "A wall screen does not scroll: pick the few cards that matter. Anything below the bottom of the screen cannot be seen.") : null,
       ul,
+      h("div", { class: "row", style: "margin-top:10px" }, addBtn),
       h("div", { class: "row", style: "margin-top:10px" },
         field("Stage", stage)),
       h("p", { class: "muted hint" }, "Stage: which stage this screen follows, for cards that show one stage (like the schedule). Leave it empty to show every stage. The Wall Clock look (beside the Wall Clock card) is how that card is drawn on this screen. The ring and 7-segment looks are always red on black. Half-size cards sit side by side with another half-size card on tablets and wall screens. On a phone every card is full width."));
     return {
       el,
-      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewOn(), tiles: tilesRead(), show_contact_phones: ctPhones.checked, contacts_area: val(ctArea), card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(id) >= 0)), globcon: gcRead() }),
+      read: () => ({ cards: items.filter((it) => it.on).map((it) => it.id), stage: val(stage), clock_style: clockStyle.value, show_dew_point: dewOn(), tiles: tilesRead(), show_contact_phones: ctPhones.checked, contacts_area: val(ctArea), card_sizes: Object.fromEntries(Object.entries(sizes).filter(([id, v]) => v === "half" && halfOk.indexOf(SW.cardBase(id)) >= 0)), globcon: editorFor("globcon_meters").read(), globcon_more: Object.fromEntries(items.filter((it) => it.on && it.id.indexOf("#") > 0).map((it) => [it.id, editorFor(it.id).read()])) }),
       setDefaults: (layout) => fill((admin.cards && admin.cards.defaults[layout]) || []),
       count: () => items.filter((it) => it.on).length,
       max: MAX,

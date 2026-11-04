@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from ..updater_common import atomic_write_bytes, fsync_dir, remove_stale_temps, replace_with_retry
 from ..version import CONFIG_SCHEMA_VERSION
 from . import power_tree, spl
-from .cards import CARD_ID_RE, MAX_CARDS, clean_card_sizes, clean_tiles, default_cards, legacy_cards
+from .cards import MAX_CARDS, clean_card_sizes, clean_tiles, default_cards, is_instance_id, legacy_cards, card_base, valid_card_id
 from .model import normalise_mac, slugify
 
 log = logging.getLogger(__name__)
@@ -715,6 +715,36 @@ def globcon_light_problem(e) -> str:
     return ""
 
 
+def globcon_options_problem(v) -> str:
+    """Strict check of one GLOBCON card's options for the API: "" when fine, else fixed text (never the value)."""
+    if not isinstance(v, dict) or set(v) - {"controller", "strips", "range", "mode", "lights"}:
+        return "GLOBCON card options are not valid"
+    c, s = v.get("controller", 1), v.get("strips", 8)
+    if type(c) is not int or not 1 <= c <= 16:
+        return "The GLOBCON controller must be a whole number from 1 to 16"
+    if type(s) is not int or s not in (4, 8):
+        return "The GLOBCON card shows 4 or 8 strips"
+    r = v.get("range")
+    if r is not None and (not isinstance(r, str) or r not in GLOBCON_RANGES):
+        return "That GLOBCON channel group is not one of the choices"
+    if v.get("mode", "meters") not in ("meters", "lights") or not isinstance(v.get("mode", "meters"), str):
+        return "The GLOBCON card mode is Meters or Lights"
+    lights = v.get("lights", [])
+    if not isinstance(lights, list) or len(lights) > GLOBCON_LIGHTS_MAX:
+        return f"The GLOBCON card has at most {GLOBCON_LIGHTS_MAX} lights"
+    seen = set()
+    for e in lights:
+        problem = globcon_light_problem(e)
+        if problem:
+            return problem
+        if e["strip"] in seen:
+            return "A GLOBCON channel can have only one light"
+        seen.add(e["strip"])
+        if r is not None and not GLOBCON_RANGES[r][0] <= e["strip"] <= GLOBCON_RANGES[r][1]:
+            return "A GLOBCON light must be on a channel in the chosen group"
+    return ""
+
+
 class GlobconLight(_Model):
     """One channel's square in Lights mode. hold_s 0 = instant, else 0.5 to 10 seconds."""
     strip: int = Field(ge=1, le=16)
@@ -782,6 +812,9 @@ class Dashboard(_Model):
     tiles: list[str] = Field(default_factory=list)
     # The GLOBCON levels card's controller and channel group on this screen.
     globcon: GlobconCardOptions = Field(default_factory=GlobconCardOptions)
+    # Options of further GLOBCON levels cards ("globcon_meters#2" ...), by card id. Additive: an older build
+    # ignores this key and drops the "#n" ids from the card list, so it shows the first card as before.
+    globcon_more: dict[str, GlobconCardOptions] = Field(default_factory=dict)
     # Onsite contacts card: phone numbers on this screen (needs ContactsSettings.phones_enabled and the
     # contact's own switch too), and which area's contacts it lists ("" = all).
     show_contact_phones: bool = False
@@ -800,12 +833,32 @@ class Dashboard(_Model):
             return v
         out: list[str] = []
         for c in v:
-            if isinstance(c, str) and CARD_ID_RE.fullmatch(c) and c not in out:
+            if valid_card_id(c) and c not in out:
                 out.append(c)
         if len(out) > MAX_CARDS:  # a newer release may allow more: keep the first ones, don't fail
             log.warning("A dashboard lists %d cards; only the first %d are kept", len(out), MAX_CARDS)
             out = out[:MAX_CARDS]
         return out
+
+    @field_validator("globcon_more", mode="before")
+    @classmethod
+    def _globcon_more(cls, v):
+        """Lenient: keep only well-formed GLOBCON instance ids (#2 to #16), each with usable options."""
+        if not isinstance(v, dict):
+            return {}
+        out = {}
+        for k, opts in v.items():
+            if isinstance(k, str) and is_instance_id(k) and card_base(k) == "globcon_meters" and len(out) < MAX_CARDS:
+                out[k] = opts
+        if len(out) != len(v):
+            log.warning("A dashboard's extra GLOBCON card options: %d entr%s this version can't use were left out", len(v) - len(out), "y" if len(v) - len(out) == 1 else "ies")
+        return out
+
+    def globcon_for(self, card_id: str) -> GlobconCardOptions:
+        """The GLOBCON options of one card on this dashboard: the bare card's, or an instance's (defaults if unset)."""
+        if card_id == "globcon_meters":
+            return self.globcon
+        return self.globcon_more.get(card_id) or GlobconCardOptions()
 
     @field_validator("stage", mode="before")
     @classmethod

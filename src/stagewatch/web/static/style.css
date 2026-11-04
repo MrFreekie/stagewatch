@@ -1007,10 +1007,10 @@ body.layout-wall main > #ontime-rundown-card[data-size="half"].rd-s-off .rd-big,
 .gc-mark { font-size: 16px; font-weight: 800; min-width: 1.6em; }
 .gc-note { margin: 10px 0 0; font-size: 15px; color: var(--text); font-weight: 600; }
 .gc-foot { margin: 8px 0 0; font-size: 12px; }
-#globcon-card.gc-s-frozen, #globcon-card.gc-s-offline, #globcon-card.gc-s-locked { border-left: 6px solid var(--warn); }
-#globcon-card.gc-s-frozen .gc-strips, #globcon-card.gc-s-offline .gc-strips { opacity: .45; }
-#globcon-card.gc-s-frozen .gc-value, #globcon-card.gc-s-offline .gc-value { text-decoration: line-through; text-decoration-thickness: 3px; }
-#globcon-card.gc-s-frozen .gc-fill, #globcon-card.gc-s-offline .gc-fill { background: var(--muted); }
+.globcon-card.gc-s-frozen, .globcon-card.gc-s-offline, .globcon-card.gc-s-locked { border-left: 6px solid var(--warn); }
+.globcon-card.gc-s-frozen .gc-strips, .globcon-card.gc-s-offline .gc-strips { opacity: .45; }
+.globcon-card.gc-s-frozen .gc-value, .globcon-card.gc-s-offline .gc-value { text-decoration: line-through; text-decoration-thickness: 3px; }
+.globcon-card.gc-s-frozen .gc-fill, .globcon-card.gc-s-offline .gc-fill { background: var(--muted); }
 body.layout-phone .gc-strips { gap: 6px; }
 body.layout-phone .gc-strips:not([data-n="4"]) { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 14px; }
 body.layout-phone .gc-bar { height: 120px; }
@@ -1475,6 +1475,8 @@ header.top .back { display: inline-flex; align-items: center; min-height: 44px; 
 .de-cards .card-picker li .card-down { grid-column: 3; grid-row: 1; }
 .de-cards .card-picker li > .card-look { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; padding-left: 36px; }
 .de-cards .card-picker li > label.card-look { flex-direction: column; align-items: flex-start; }
+.de-cards .card-picker li > .card-look { min-width: 0; max-width: 100%; }   /* the GLOBCON lights table scrolls inside its box, not the page */
+.de-cards .card-picker li .card-remove { grid-column: 1 / -1; justify-self: start; min-height: 44px; margin-left: 36px; }
 .de-cards .card-up, .de-cards .card-down { min-width: 44px; min-height: 44px; }
 .de-cards .cards-panel { background: none; padding: 0; }
 /* Connections (admin.js connectionsCard): one row per product, and one pop-out to add or edit, the
@@ -1857,7 +1859,7 @@ body.layout-wall .gc-lights[data-n="5"], body.layout-wall .gc-lights[data-n="6"]
 body.layout-wall .gc-lights[data-n="9"], body.layout-wall .gc-lights[data-n="10"], body.layout-wall .gc-lights[data-n="11"], body.layout-wall .gc-lights[data-n="12"] { --gc-cols: 6; --gc-max: 220px; font-size: 30px; }
 body.layout-wall .gc-lights[data-n="13"], body.layout-wall .gc-lights[data-n="14"], body.layout-wall .gc-lights[data-n="15"], body.layout-wall .gc-lights[data-n="16"] { --gc-cols: 8; --gc-max: 225px; font-size: 26px; }
 body.layout-wall .gc-light { border-radius: 20px; border-width: 4px; }
-.gc-lights-edit { margin-top: 8px; }
+.gc-lights-edit { margin-top: 8px; min-width: 0; max-width: 100%; flex: 1 1 100%; }
 .gc-lights-table td, .gc-lights-table th { padding: 4px 6px; text-align: left; vertical-align: middle; }
 .gc-lights-table input[type="number"] { width: 6em; }
 .gc-lights-table select { min-width: 7em; }

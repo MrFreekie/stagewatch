@@ -55,6 +55,33 @@ MAX_CARDS = 16
 # contacts) are kept through a downgrade and re-upgrade; renderers skip ids they don't know.
 CARD_ID_RE = re.compile(r"[a-z_]{1,32}")  # use fullmatch
 
+# A few cards can appear more than once on a dashboard. The first is the bare id; further ones add
+# "#2" to "#16" (globcon_meters, globcon_meters#2 ...). Everything that looks a card up by kind
+# (KNOWN_CARDS, HALF_CAPABLE, the renderer) uses card_base(). An older build drops a "#n" id when it
+# loads the file (it is not a well-formed id there) and shows the rest of the dashboard unchanged.
+MULTI_CARDS: tuple[str, ...] = ("globcon_meters",)
+INSTANCE_RE = re.compile(r"([a-z_]{1,32})#([2-9]|1[0-6])")  # use fullmatch
+
+
+def card_base(card_id: str) -> str:
+    """The card kind without any instance suffix: 'globcon_meters#2' -> 'globcon_meters'."""
+    return card_id.split("#", 1)[0]
+
+
+def valid_card_id(card_id) -> bool:
+    """A well-formed id: a plain one, or a multi-instance card with a #2 to #16 suffix."""
+    if not isinstance(card_id, str):
+        return False
+    if CARD_ID_RE.fullmatch(card_id):
+        return True
+    m = INSTANCE_RE.fullmatch(card_id)
+    return bool(m) and m.group(1) in MULTI_CARDS
+
+
+def is_instance_id(card_id) -> bool:
+    """True for 'globcon_meters#2' style ids (not the bare first card)."""
+    return isinstance(card_id, str) and INSTANCE_RE.fullmatch(card_id) is not None and valid_card_id(card_id)
+
 
 def default_cards(layout: str) -> list[str]:
     return list(LAYOUT_DEFAULTS.get(layout, LAYOUT_DEFAULTS["tablet"]))
@@ -69,7 +96,7 @@ def strict_cards_error(cards) -> str | None:
     """For the API (loading is lenient): a fixed-text problem with a submitted card list, or None."""
     if not isinstance(cards, list) or len(cards) > MAX_CARDS:
         return f"A dashboard can have at most {MAX_CARDS} cards"
-    if any(not isinstance(c, str) or not CARD_ID_RE.fullmatch(c) for c in cards) or len(set(cards)) != len(cards):
+    if any(not valid_card_id(c) for c in cards) or len(set(cards)) != len(cards):
         return "Card names must be listed once each"
     if unknown_cards(cards):
         return "Unknown card"
@@ -78,7 +105,7 @@ def strict_cards_error(cards) -> str | None:
 
 def unknown_cards(cards: list[str]) -> list[str]:
     """Ids this build can't render (for the API, which refuses them; loading keeps them)."""
-    return [c for c in cards if c not in KNOWN_CARDS]
+    return [c for c in cards if card_base(c) not in KNOWN_CARDS]
 
 
 # Per-dashboard card size ("full" is the default and is never needed in the map). A card can be
@@ -94,7 +121,7 @@ def clean_card_sizes(v) -> tuple[dict[str, str], int]:
     out: dict[str, str] = {}
     dropped = 0
     for k, size in v.items():
-        if isinstance(k, str) and k in HALF_CAPABLE and isinstance(size, str) and size in CARD_SIZES:
+        if valid_card_id(k) and card_base(k) in HALF_CAPABLE and isinstance(size, str) and size in CARD_SIZES:
             out[k] = size
         else:
             dropped += 1
@@ -106,7 +133,7 @@ def strict_card_sizes_error(v) -> str | None:
     if not isinstance(v, dict):
         return "Card sizes must be a list of card and size"
     for k, size in v.items():
-        if not isinstance(k, str) or k not in HALF_CAPABLE:
+        if not valid_card_id(k) or card_base(k) not in HALF_CAPABLE:
             return "That card can't be made half size"
         if not isinstance(size, str) or size not in CARD_SIZES:
             return "Card size must be full or half"

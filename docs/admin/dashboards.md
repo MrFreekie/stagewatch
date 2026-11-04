@@ -185,7 +185,9 @@ The ring and 7-segment looks are always red on black. Each dashboard has its own
 Beside **DirectOut GLOBCON**, once it is ticked, you choose the **GLOBCON controller** (1 to 16)
 and the **Channels shown** (1 to 4, 5 to 8, 1 to 8, 9 to 12, 13 to 16, 9 to 16 or 1 to 16) for this
 dashboard. **Display** switches between **Meters** (bars) and **Lights** (one big square per ticked
-channel, each with its own threshold, colour, icon and hold). See [GLOBCON](../cards/globcon.md).
+channel, each with its own threshold, colour, icon and hold). **Add another GLOBCON card** puts a
+second one on the same dashboard (for example Lights beside Meters, or another controller), each with
+its own settings and width; **Remove** takes it off. See [GLOBCON](../cards/globcon.md).
 
 ### Stage
 

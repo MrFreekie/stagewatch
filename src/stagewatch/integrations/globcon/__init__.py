@@ -23,6 +23,8 @@ import logging
 import time
 from typing import Callable
 
+from ...core.cards import card_base
+from ...core.config import GlobconCardOptions, GlobconLight
 from ...core.model import Device, Status
 from ...core.plugin import Integration, Manifest
 from . import mapping
@@ -68,12 +70,15 @@ def seed_emulate_globcon(config) -> bool:
     """Emulate mode only (called from __main__): a fresh emulate config gets the GLOBCON levels card on
     the stock wall dashboard so it can be seen offline. Does nothing once the settings have been saved or any dashboard has it.
     Returns True if it changed the config."""
-    if "globcon" in config.model_fields_set or any(CARD_ID in d.cards for d in config.dashboards):
+    if "globcon" in config.model_fields_set or any(card_base(c) == CARD_ID for d in config.dashboards for c in d.cards):
         return False
     changed = False
     for d in config.dashboards:
         if d.slug == "wall":
-            d.cards = [*d.cards[:1], CARD_ID, *d.cards[1:]]
+            # Two cards, to show several on one screen: meters, and a Lights card for the first two channels of controller 2.
+            d.cards = [*d.cards[:1], CARD_ID, f"{CARD_ID}#2", *d.cards[1:]]
+            d.globcon_more = {f"{CARD_ID}#2": GlobconCardOptions(controller=2, strips=4, range="1-4", mode="lights",
+                                                               lights=[GlobconLight(strip=1), GlobconLight(strip=2, colour="amber", icon="signal")])}
             changed = True
     return changed
 
@@ -82,8 +87,9 @@ def wanted_controllers(config) -> list[int]:
     """The 0-based controllers some dashboard with the card shows, in order, once each."""
     out: list[int] = []
     for d in config.dashboards:
-        if CARD_ID in d.cards and d.globcon.controller - 1 not in out:
-            out.append(d.globcon.controller - 1)
+        for cid in d.cards:
+            if card_base(cid) == CARD_ID and d.globcon_for(cid).controller - 1 not in out:
+                out.append(d.globcon_for(cid).controller - 1)
     return out
 
 

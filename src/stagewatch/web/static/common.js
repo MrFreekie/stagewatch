@@ -1187,8 +1187,27 @@ SW.slot = function (el, hide) { if (el.dataset) el.dataset.slot = ""; if (el.hid
 // the dashboard says "half" for it, the card is allowed to be half, and the layout is not the
 // phone (a phone always shows full width). Anything else is full.
 SW.HALF_CAPABLE = ["wall_clock", "ontime_timer", "ontime_rundown", "globcon_meters", "power", "pi_host", "about", "wifi"];
+// Cards that may appear more than once on a dashboard (core/cards.py MULTI_CARDS). The first is the bare id,
+// the next ones add "#2" to "#16": "globcon_meters", "globcon_meters#2". Kind lookups use SW.cardBase.
+SW.MULTI_CARDS = ["globcon_meters"];
+SW.cardBase = function (id) { return typeof id === "string" ? id.split("#")[0] : ""; };
+// A plain id, or a multi-instance card with a #2 to #16 suffix.
+SW.validCardId = function (id) {
+  if (typeof id !== "string") return false;
+  if (/^[a-z_]{1,32}$/.test(id)) return true;
+  const m = /^([a-z_]{1,32})#([2-9]|1[0-6])$/.exec(id);
+  return !!m && SW.MULTI_CARDS.indexOf(m[1]) >= 0;
+};
+// The options of one GLOBCON card on a dashboard: the bare card uses dash.globcon, further ones dash.globcon_more[id].
+SW.globconOpts = function (dash, id) {
+  const dflt = { controller: 1, strips: 8 };
+  if (!dash) return dflt;
+  if (id === "globcon_meters") return dash.globcon || dflt;
+  const more = dash.globcon_more;
+  return (more && typeof more === "object" && Object.prototype.hasOwnProperty.call(more, id) && more[id]) || dflt;
+};
 SW.cardIsHalf = function (dash, id, layout) {
-  if (layout === "phone" || SW.HALF_CAPABLE.indexOf(id) < 0) return false;
+  if (layout === "phone" || SW.HALF_CAPABLE.indexOf(SW.cardBase(id)) < 0) return false;
   const sizes = dash && dash.card_sizes;
   return !!sizes && typeof sizes === "object" && Object.prototype.hasOwnProperty.call(sizes, id) && sizes[id] === "half";
 };
@@ -1257,13 +1276,14 @@ SW.previewDraft = function (draft, saved, known) {
   const cards = draft.cards;
   if (!Array.isArray(cards) || cards.length > SW.PREVIEW_MAX_CARDS) return null;
   for (let i = 0; i < cards.length; i++) {
-    if (typeof cards[i] !== "string" || known.indexOf(cards[i]) < 0 || cards.indexOf(cards[i]) !== i) return null;
+    if (typeof cards[i] !== "string" || known.indexOf(SW.cardBase(cards[i])) < 0 || cards.indexOf(cards[i]) !== i) return null;
+    if (cards[i] !== SW.cardBase(cards[i]) && !SW.validCardId(cards[i])) return null;
   }
   const sizes = draft.card_sizes === undefined ? {} : draft.card_sizes;
   if (!isObj(sizes)) return null;
   const outSizes = {};
   for (const k of Object.keys(sizes)) {
-    if (SW.HALF_CAPABLE.indexOf(k) < 0 || (sizes[k] !== "half" && sizes[k] !== "full")) return null;
+    if (SW.HALF_CAPABLE.indexOf(SW.cardBase(k)) < 0 || (k !== SW.cardBase(k) && !SW.validCardId(k)) || (sizes[k] !== "half" && sizes[k] !== "full")) return null;
     if (sizes[k] === "half") outSizes[k] = "half";
   }
   const out = Object.assign({}, saved, { cards: cards.slice(), card_sizes: outSizes });
@@ -1281,18 +1301,32 @@ SW.previewDraft = function (draft, saved, known) {
     }
     out.tiles = t.slice();
   }
-  if (own(draft, "globcon")) {
-    const g = draft.globcon;
+  const gcOne = (g) => {
     if (!isObj(g)) return null;
     const c = g.controller, s = g.strips, r = g.range;
     if (typeof c !== "number" || !Number.isInteger(c) || c < 1 || c > 16) return null;
     if (s !== 4 && s !== 8) return null;
     if (r !== undefined && r !== null && ["1-4", "5-8", "1-8", "9-12", "13-16", "9-16", "1-16"].indexOf(r) < 0) return null;
-    out.globcon = { controller: c, strips: s, range: r === undefined ? null : r };
+    const o = { controller: c, strips: s, range: r === undefined ? null : r };
     if (g.mode === "lights") {
       if (!Array.isArray(g.lights) || g.lights.length > 16) return null;
-      out.globcon.mode = "lights";
-      out.globcon.lights = g.lights.filter(isObj).map((e) => ({ strip: e.strip, threshold_db: e.threshold_db, colour: e.colour, icon: e.icon, hold_s: e.hold_s }));
+      o.mode = "lights";
+      o.lights = g.lights.filter(isObj).map((e) => ({ strip: e.strip, threshold_db: e.threshold_db, colour: e.colour, icon: e.icon, hold_s: e.hold_s }));
+    }
+    return o;
+  };
+  if (own(draft, "globcon")) {
+    out.globcon = gcOne(draft.globcon);
+    if (!out.globcon) return null;
+  }
+  if (own(draft, "globcon_more")) {
+    const m = draft.globcon_more;
+    if (!isObj(m)) return null;
+    out.globcon_more = {};
+    for (const k of Object.keys(m)) {
+      if (!SW.validCardId(k) || k === SW.cardBase(k) || cards.indexOf(k) < 0) return null;
+      out.globcon_more[k] = gcOne(m[k]);
+      if (!out.globcon_more[k]) return null;
     }
   }
   return out;
