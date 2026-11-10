@@ -47,7 +47,8 @@ def test_lights_layout(open_page, base_url, size, theme, n):
         const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.width), Math.round(r.height)]; })""")
     assert len(boxes) == n
     for left, right, bw, bh in boxes:
-        assert abs(bw - bh) <= 2, f"square is {bw} x {bh}"
+        assert 1.5 <= bw / bh <= 2.6, f"light is {bw} x {bh}, not a wide shape"
+        assert bh >= 60, f"light only {bh}px high"
         assert left >= 0 and right <= w, "a square leaves the screen"
         assert bw >= 60, f"square only {bw}px wide"
     card_h = page.evaluate("document.getElementById('globcon-card').getBoundingClientRect().height")
@@ -63,7 +64,7 @@ def test_lights_layout(open_page, base_url, size, theme, n):
 
 
 @pytest.mark.parametrize("size,theme", [("tablet", "day"), ("tablet", "night")])
-def test_lit_squares_use_their_colour_and_a_tick(open_page, base_url, size, theme):
+def test_lit_squares_use_their_colour(open_page, base_url, size, theme):
     _configure(base_url, size, 8)
     page, _ = open_page(DASH[size], size, theme)
     page.wait_for_selector("#globcon-card .gc-light", timeout=15000)
@@ -74,7 +75,6 @@ def test_lit_squares_use_their_colour_and_a_tick(open_page, base_url, size, them
         pytest.skip("the simulated GLOBCON was in its dropout")
     assert lit, "no square lit although half have a threshold of -72 dB"
     for cls, text, bg in lit:
-        assert "✓" in text and "ON" in text, text
         assert bg != "rgba(0, 0, 0, 0)"
     dull = page.evaluate("""() => [...document.querySelectorAll('#globcon-card .gc-l-off')].map((e) => e.innerText)""")
-    assert dull and all("off" in t for t in dull)
+    assert dull

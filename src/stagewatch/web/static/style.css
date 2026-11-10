@@ -1856,12 +1856,12 @@ body.layout-phone .gc-lights[data-n="10"], body.layout-phone .gc-lights[data-n="
 body.layout-phone .gc-light { border-width: 2px; border-radius: 10px; }
 body.layout-phone .gc-lights[data-n="10"] .gc-lstate, body.layout-phone .gc-lights[data-n="16"] .gc-lstate { font-size: 11px; }
 body.layout-wall .gc-lights { gap: 20px; --gc-max: 360px; --gc-ar: 55%; }
-body.layout-wall .gc-lights[data-n="1"] { font-size: 90px; --gc-max: 520px; }
-body.layout-wall .gc-lights[data-n="2"] { font-size: 80px; --gc-max: 460px; }
-body.layout-wall .gc-lights[data-n="3"], body.layout-wall .gc-lights[data-n="4"] { font-size: 56px; }
-body.layout-wall .gc-lights[data-n="5"], body.layout-wall .gc-lights[data-n="6"], body.layout-wall .gc-lights[data-n="7"], body.layout-wall .gc-lights[data-n="8"] { --gc-cols: 4; --gc-max: 280px; font-size: 40px; }
-body.layout-wall .gc-lights[data-n="9"], body.layout-wall .gc-lights[data-n="10"], body.layout-wall .gc-lights[data-n="11"], body.layout-wall .gc-lights[data-n="12"] { --gc-cols: 6; --gc-max: 220px; font-size: 30px; }
-body.layout-wall .gc-lights[data-n="13"], body.layout-wall .gc-lights[data-n="14"], body.layout-wall .gc-lights[data-n="15"], body.layout-wall .gc-lights[data-n="16"] { --gc-cols: 8; --gc-max: 225px; font-size: 26px; }
+body.layout-wall .gc-lights[data-n="1"] { font-size: 64px; --gc-max: 620px; }
+body.layout-wall .gc-lights[data-n="2"] { font-size: 56px; --gc-max: 520px; }
+body.layout-wall .gc-lights[data-n="3"], body.layout-wall .gc-lights[data-n="4"] { font-size: 40px; }
+body.layout-wall .gc-lights[data-n="5"], body.layout-wall .gc-lights[data-n="6"], body.layout-wall .gc-lights[data-n="7"], body.layout-wall .gc-lights[data-n="8"] { --gc-cols: 4; --gc-max: 300px; font-size: 28px; }
+body.layout-wall .gc-lights[data-n="9"], body.layout-wall .gc-lights[data-n="10"], body.layout-wall .gc-lights[data-n="11"], body.layout-wall .gc-lights[data-n="12"] { --gc-cols: 6; --gc-max: 220px; font-size: 22px; }
+body.layout-wall .gc-lights[data-n="13"], body.layout-wall .gc-lights[data-n="14"], body.layout-wall .gc-lights[data-n="15"], body.layout-wall .gc-lights[data-n="16"] { --gc-cols: 8; --gc-max: 225px; font-size: 20px; }
 body.layout-wall .gc-light { border-radius: 20px; border-width: 4px; }
 .gc-lights-edit { margin-top: 8px; min-width: 0; max-width: 100%; flex: 1 1 100%; }
 .gc-lights-table td, .gc-lights-table th { padding: 4px 6px; text-align: left; vertical-align: middle; }
