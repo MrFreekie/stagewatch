@@ -128,7 +128,7 @@ SW.gc = (function () {
   // One big square per chosen channel. The same fixed lists as core/config.py GLOBCON_LIGHT_COLOURS / _ICONS; the
   // colours themselves are in style.css (.gc-c-<name>), each with text chosen for contrast (tests/test_globcon_lights.py).
   gc.LIGHT_COLOURS = ["green", "amber", "red", "blue", "cyan", "magenta", "white", "orange"];
-  gc.LIGHT_ICONS = ["microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "signal"];
+  gc.LIGHT_ICONS = ["microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "radio", "signal"];
   gc.HYST_DB = 2;            // a light that is on stays on until the level is this far under its threshold
   gc.LIGHT_DEFAULT = { threshold_db: -40, colour: "green", icon: "microphone", hold_s: 1 };
 
@@ -141,6 +141,7 @@ SW.gc = (function () {
     megaphone: [["M3 10h4l9-5v14l-9-5H3z", 0], ["M7 15l1.5 5h3L10 14.5M19 9v6", 0]],
     camera: [["M3 7h4l2-2h6l2 2h4v12H3z", 0], ["M8 13a4 4 0 1 0 8 0a4 4 0 1 0-8 0", 0]],
     headset: [["M4 14v-2a8 8 0 0 1 16 0v2", 0], ["M4 14h3v5H4zM17 14h3v5h-3z", 0], ["M20 19c0 2-2 2-5 2", 0]],
+    radio: [["M6 8h9v13H6z", 0], ["M8.5 8V3M9 12h4M9 15h4M15 11h2.5v4H15", 0]],
     signal: [["M4 20v-4M9 20v-8M14 20V8M19 20V4", 0]],
   };
   gc.iconSvg = function (name) {

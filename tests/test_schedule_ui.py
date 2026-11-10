@@ -258,7 +258,7 @@ def test_schedule_page_is_static_html_with_a_way_back():
 def test_editor_kinds_come_from_the_server_with_a_title_case_fallback():
     js = _js("schedule-editor.js")
     assert "admin.schedule_limits.kinds" in js and "schedKinds()" in js
-    for k in ("venue_access", "load_in", "crew_call", "soundcheck", "doors", "act", "changeover", "curfew", "load_out", "other"):
+    for k in ("venue_access", "load_in", "crew_call", "soundcheck", "doors", "act", "changeover", "catering", "interval", "curfew", "load_out", "other"):
         assert f"{k}:" in js, k
     assert 'split("_")' in js and "toUpperCase()" in js
     assert "10:00 Load In" in js and "23:15 Load Out" in js

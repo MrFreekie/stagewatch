@@ -11,7 +11,7 @@ from .test_layout import CONTRAST_JS, DASH
 COMBOS = [(s, t) for s in SIZES for t in ("day", "night")]
 SLUGS = {"phone": "phone", "tablet": "foh", "wall": "wall"}
 COLOURS = ["green", "amber", "red", "blue", "cyan", "magenta", "white", "orange"]
-ICONS = ["microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "signal"]
+ICONS = ["microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "radio", "signal"]
 
 
 def _lights(n):

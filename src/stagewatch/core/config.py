@@ -685,7 +685,7 @@ GLOBCON_RANGES: dict[str, tuple[int, int]] = {
 
 # Lights mode (GLOBCON card): fixed lists, so a dashboard can only ever name a colour or icon the browser knows.
 GLOBCON_LIGHT_COLOURS = ("green", "amber", "red", "blue", "cyan", "magenta", "white", "orange")
-GLOBCON_LIGHT_ICONS = ("microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "signal")
+GLOBCON_LIGHT_ICONS = ("microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "radio", "signal")
 GLOBCON_LIGHTS_MAX = 16
 GLOBCON_LIGHT_DEFAULT = {"threshold_db": -40.0, "colour": "green", "icon": "microphone", "hold_s": 1.0}
 
@@ -750,7 +750,7 @@ class GlobconLight(_Model):
     strip: int = Field(ge=1, le=16)
     threshold_db: float = Field(-40.0, ge=-72, le=0, allow_inf_nan=False)
     colour: Literal["green", "amber", "red", "blue", "cyan", "magenta", "white", "orange"] = "green"
-    icon: Literal["microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "signal"] = "microphone"
+    icon: Literal["microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "radio", "signal"] = "microphone"
     hold_s: float = Field(1.0, ge=0, le=10, allow_inf_nan=False)
 
 

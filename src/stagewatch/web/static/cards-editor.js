@@ -144,7 +144,7 @@
     const gcMode = h("select", { class: "touch", "aria-label": `GLOBCON display${sfx}` }, h("option", { value: "meters" }, "Meters (bars)"), h("option", { value: "lights" }, "Lights (one square per channel)"));
     gcMode.value = gcSaved.mode === "lights" ? "lights" : "meters";
     const GC_COLOURS = [["green", "Green"], ["amber", "Amber"], ["red", "Red"], ["blue", "Blue"], ["cyan", "Cyan"], ["magenta", "Magenta"], ["white", "White"], ["orange", "Orange"]];
-    const GC_ICONS = [["microphone", "Microphone"], ["speaker", "Speaker"], ["timecode", "Timecode clock"], ["play", "Play"], ["megaphone", "Megaphone"], ["camera", "Camera"], ["headset", "Headset"], ["signal", "Signal"]];
+    const GC_ICONS = [["microphone", "Microphone"], ["speaker", "Speaker"], ["timecode", "Timecode clock"], ["play", "Play"], ["megaphone", "Megaphone"], ["camera", "Camera"], ["headset", "Headset"], ["radio", "PTT radio"], ["signal", "Signal"]];
     const GC_HOLDS = [0, 0.5, 1, 2, 3, 5, 10];
     const GC_DEF = { threshold_db: -40, colour: "green", icon: "microphone", hold_s: 1 };
     const gcLights = {};     // channel number -> {threshold_db, colour, icon, hold_s} for the ticked channels

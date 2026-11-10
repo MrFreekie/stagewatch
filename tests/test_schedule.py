@@ -295,7 +295,7 @@ def test_load_out_after_the_curfew_runs_normally():
 
 def test_new_kinds_and_inferring_them_from_titles():
     assert sched.KINDS == ("venue_access", "load_in", "crew_call", "soundcheck", "doors", "act",
-                           "changeover", "curfew", "load_out", "other")
+                           "changeover", "catering", "interval", "curfew", "load_out", "other")
     for k in ("venue access", "load in", "crew call", "soundcheck", "load out"):
         assert k in sched.MSG_KIND
     for title, kind in [

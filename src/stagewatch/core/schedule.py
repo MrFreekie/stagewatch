@@ -57,7 +57,7 @@ log = logging.getLogger(__name__)
 
 # In logical running order (the order the admin page lists them).
 KINDS: tuple[str, ...] = ("venue_access", "load_in", "crew_call", "soundcheck", "doors", "act",
-                          "changeover", "curfew", "load_out", "other")
+                          "changeover", "catering", "interval", "curfew", "load_out", "other")
 # Kinds that put a marker on the timeline unless the item says otherwise (schedule_items.marker).
 MARKER_KINDS: tuple[str, ...] = ("soundcheck", "doors", "act")
 # An OSC action row (core/actions.py): admin only, never on dashboards, never in NOW / NEXT, never a
@@ -88,7 +88,7 @@ MSG_TITLE_HIDDEN = "Titles can't contain hidden or control characters, line brea
 MSG_STAGE_LEN = f"Stage names can be up to {STAGE_MAX} characters"
 MSG_STAGE_HIDDEN = "Stage names can't contain hidden or control characters, line breaks or stacked accent marks"
 MSG_KIND = ("Kind must be venue access, load in, crew call, soundcheck, doors, act, changeover, "
-            "curfew, load out or other")
+            "catering, interval, curfew, load out or other")
 MSG_SETLIST_LEN = "Each setlist can be up to 8 KB"
 MSG_SETLIST_HIDDEN = "Setlists can't contain hidden or control characters (new lines are fine)"
 MSG_SETLIST_TOTAL = "All the setlists together can be up to 256 KB"

@@ -721,7 +721,7 @@
   const timeRange = (it) => (it.planned_end !== null && it.planned_end !== undefined
     ? `${SW.fmtTime(it.planned_start)}–${SW.fmtTime(it.planned_end)}` : SW.fmtTime(it.planned_start));
   const KIND_NAMES = { venue_access: "Venue Access", load_in: "Load In", crew_call: "Crew Call", soundcheck: "Soundcheck",
-    doors: "Doors", act: "", changeover: "Changeover", curfew: "Curfew", load_out: "Load Out", other: "" };
+    doors: "Doors", act: "", changeover: "Changeover", catering: "Catering", interval: "Interval", curfew: "Curfew", load_out: "Load Out", other: "" };
   // "Changeover" beside an item, unless its title already says so (anywhere in it; "Load-In" counts).
   const kindNote = (it) => {
     const k = KIND_NAMES[it.kind] || "";

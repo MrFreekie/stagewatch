@@ -122,7 +122,7 @@ eq(cleaned[2], { strip: 4, threshold_db: -40, colour: "green", icon: "microphone
 
 // the palette and icon lists are the ones the server accepts (core/config.py): the Python test compares the same words
 eq(gc.LIGHT_COLOURS, ["green", "amber", "red", "blue", "cyan", "magenta", "white", "orange"], "colour list");
-eq(gc.LIGHT_ICONS, ["microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "signal"], "icon list");
+eq(gc.LIGHT_ICONS, ["microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "radio", "signal"], "icon list");
 for (const name of gc.LIGHT_ICONS) {
   const svg = gc.iconSvg(name);
   eq([svg.tagName, svg.getAttribute("aria-hidden"), svg.children.length > 0], ["svg", "true", true], `icon ${name} is an svg built with DOM methods`);

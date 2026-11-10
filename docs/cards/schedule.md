@@ -129,7 +129,7 @@ network can read the schedule. Only someone with the PIN can change it.
 3. Type the start time in 24-hour form (**Start (HH:MM)**, for example `19:30`). Add an end time if
    you want one.
 4. Choose the **Kind**: Venue Access, Load In, Crew Call, Soundcheck, Doors, Act, Changeover,
-   Curfew, Load Out or Other.
+   Catering, Interval, Curfew, Load Out or Other.
 5. Type the **Title**. Leave **Stage** empty for items that apply to every stage.
 6. Optional: click **Setlist** to type a setlist (plain text or simple Markdown). A preview shows
    how it will look on dashboards.

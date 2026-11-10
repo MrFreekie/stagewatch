@@ -24,7 +24,7 @@
   // Unknown values get a title-cased label ("some_kind" -> "Some Kind"); the fixed list is only the
   // fallback for a server that doesn't send one.
   const KIND_LABEL = { venue_access: "Venue Access", load_in: "Load In", crew_call: "Crew Call", soundcheck: "Soundcheck",
-    doors: "Doors", act: "Act", changeover: "Changeover", curfew: "Curfew", load_out: "Load Out", other: "Other", action: "Action (OSC)" };
+    doors: "Doors", act: "Act", changeover: "Changeover", catering: "Catering", interval: "Interval", curfew: "Curfew", load_out: "Load Out", other: "Other", action: "Action (OSC)" };
   let acts = null;          // /api/admin/actions (armed, targets, log)
   const openActions = new Set();    // row keys whose actions panel is open
   const ICONS = { generic: "▸", music: "♪", record: "●" };

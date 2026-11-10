@@ -43,7 +43,7 @@ def test_a_light_has_the_agreed_defaults():
 
 def test_lists_are_the_agreed_palette_and_icons():
     assert GLOBCON_LIGHT_COLOURS == ("green", "amber", "red", "blue", "cyan", "magenta", "white", "orange")
-    assert GLOBCON_LIGHT_ICONS == ("microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "signal")
+    assert GLOBCON_LIGHT_ICONS == ("microphone", "speaker", "timecode", "play", "megaphone", "camera", "headset", "radio", "signal")
     assert GLOBCON_LIGHTS_MAX == 16
 
 
