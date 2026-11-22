@@ -47,7 +47,10 @@ def test_lights_layout(open_page, base_url, size, theme, n):
         const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.width), Math.round(r.height)]; })""")
     assert len(boxes) == n
     for left, right, bw, bh in boxes:
-        assert 1.5 <= bw / bh <= 2.6, f"light is {bw} x {bh}, not a wide shape"
+        if size == "phone":      # phones keep stacked squares
+            assert abs(bw - bh) <= 2, f"phone light is {bw} x {bh}, not square"
+        else:
+            assert 1.5 <= bw / bh <= 2.6, f"light is {bw} x {bh}, not a wide shape"
         assert bh >= 60, f"light only {bh}px high"
         assert left >= 0 and right <= w, "a square leaves the screen"
         assert bw >= 60, f"square only {bw}px wide"
