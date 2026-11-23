@@ -70,10 +70,22 @@ SW.api = async function (method, url, body) {
 };
 
 // Small pieces the admin pages share (Admin and the Schedule editor).
+// A short message at the bottom of the screen: fades in, stays (longer for an error), fades out.
 SW.toast = function (msg, isError) {
   const el = SW.h("div", { class: "toast" + (isError ? " error" : "") }, msg);
   document.body.append(el);
-  setTimeout(() => el.remove(), 3500);
+  void el.offsetWidth;                       // so the fade-in has a starting point
+  el.classList.add("is-in");
+  setTimeout(() => {
+    el.classList.remove("is-in");
+    setTimeout(() => el.remove(), 150);
+  }, isError ? 6000 : 3500);
+};
+// A progress or load bar fill, 0 to 100. It scales instead of changing width: smooth on old iPads.
+SW.setFill = function (el, pct) {
+  const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+  const t = `scaleX(${(p / 100).toFixed(4)})`;
+  if (el.style.transform !== t) el.style.transform = t;
 };
 // Alarm notice timers. The server sends, for each alarm, how many seconds are left until an
 // acknowledged advisory leaves the list (hide_in) or an unacknowledged one moves into "older

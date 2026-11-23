@@ -855,13 +855,13 @@ SW.pw = (function () {
             const e = entities[gg.entity];
             if (gg.kind === "combined") {
               const lv = pw.combinedView(gg.ids, entities, gg.rating, m.state === "live", gg.by);
-              gg.fill.style.width = lv.bar + "%";
+              SW.setFill(gg.fill, lv.bar);
               gg.text.textContent = lv.ok ? lv.text : "Unavailable: a circuit is not reading";
               gg.word.textContent = lv.word;
               gg.el.className = `pw-track pw-l-${lv.level}`;
             } else if (gg.kind === "load") {
               const lv = pw.loadView(e ? e.value : null, gg.rating, gg.by);
-              gg.fill.style.width = lv.bar + "%";
+              SW.setFill(gg.fill, lv.bar);
               gg.text.textContent = lv.text;
               gg.word.textContent = lv.word;
               gg.el.className = `pw-track pw-l-${lv.level}`;

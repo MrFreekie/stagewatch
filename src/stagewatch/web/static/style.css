@@ -296,7 +296,10 @@ body.layout-wall .alarm-bar { max-height: 25vh; overflow-y: auto; }
 body.layout-wall .offset-note { font-size: 15px; }
 .error { color: var(--stop); }
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel-2);
-  border: 1px solid var(--grid); padding: 10px 16px; border-radius: 8px; z-index: 20; }
+  border: 1px solid var(--grid); padding: 10px 16px; border-radius: 8px; z-index: 20;
+  opacity: 0; transition: opacity 150ms cubic-bezier(.23, 1, .32, 1); }
+.toast.is-in { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 
 /* ---- dashboard: Schedule card (NOW / NEXT, running order, setlist) ----
    NOW counts down only for an item with its own end time: a thick coloured border plus a filled
@@ -320,7 +323,7 @@ body.layout-wall #schedule-card.sched-stale { display: none !important; }
 .sched-count:empty, .sched-line:empty { display: none; }
 .sched-bar { height: 10px; margin: 8px 0 4px; border-radius: 999px; background: var(--grid); overflow: hidden; }
 .sched-bar[hidden] { display: none; }
-.sched-bar-fill { height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width 1s linear; }
+.sched-bar-fill { height: 100%; width: 100%; transform: scaleX(0); transform-origin: left; background: var(--accent); transition: transform 1s linear; }   /* the track clips the ends; scaleX is smooth on old iPads */
 .sched-bar.lvl-warn .sched-bar-fill { background: var(--warn-fill); }
 .sched-bar.lvl-alert .sched-bar-fill { background: var(--alert); }
 @media (prefers-reduced-motion: reduce) { .sched-bar-fill { transition: none; } }
@@ -1152,7 +1155,7 @@ body.layout-wall .eq-tile .foot { font-size: 16px; }
 .pw-glabel { font-size: 18px; font-variant-numeric: tabular-nums; margin-bottom: 3px; }
 .pw-gword { font-weight: 700; margin-left: 4px; }
 .pw-track { position: relative; height: 12px; border-radius: 8px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--grid); }
-.pw-fill { height: 100%; background: var(--ok); transition: width .3s; }
+.pw-fill { height: 100%; width: 100%; transform: scaleX(0); transform-origin: left; background: var(--ok); transition: transform .3s cubic-bezier(.23, 1, .32, 1); }
 .pw-l-high .pw-fill, .pw-v-near .pw-live { background: var(--warn, #e0a100); }
 .pw-l-over .pw-fill { background: var(--stop); }
 .pw-l-high .pw-gword, .pw-v-near .pw-gword { color: var(--warn, #e0a100); }

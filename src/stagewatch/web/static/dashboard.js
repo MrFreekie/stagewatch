@@ -56,11 +56,7 @@
 
   function localGet(k, d) { try { return localStorage.getItem(k) || d; } catch (_) { return d; } }
   function localSet(k, v) { try { localStorage.setItem(k, v); } catch (_) { /* private mode */ } }
-  function toast(msg) {
-    const el = h("div", { class: "toast" }, msg);
-    document.body.append(el);
-    setTimeout(() => el.remove(), 3000);
-  }
+  function toast(msg) { SW.toast(msg); }
 
   const chart = new TimeChart($("chart"), {
     format: (v) => fmt(SERIES_MODES[state.mode].kind, v, false),
@@ -866,8 +862,7 @@
     if (showBar) {
       const pct = Math.max(0, Math.min(100, ((now - cur.planned_start) / total) * 100));
       const fill = ui.now.bar.firstChild;
-      const w = `${pct.toFixed(1)}%`;
-      if (fill.style.width !== w) fill.style.width = w;
+      SW.setFill(fill, pct);
       setClass(ui.now.bar, `sched-bar${lvl ? ` lvl-${lvl}` : ""}${fl}`);
     }
     // NEXT: planned time and countdown; amber with a tag for the last 5 minutes. When it starts

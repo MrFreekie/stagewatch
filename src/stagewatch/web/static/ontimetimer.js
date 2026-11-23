@@ -224,9 +224,7 @@ SW.ot = (function () {
       setHidden(ui.note, !v.note);
       setHidden(ui.bar, v.barPct === null);
       if (v.barPct !== null) {
-        const w = `${v.barPct.toFixed(1)}%`;
-        const fill = ui.bar.firstChild;
-        if (fill.style.width !== w) fill.style.width = w;
+        SW.setFill(ui.bar.firstChild, v.barPct);
         setClass(ui.bar, `sched-bar${v.level ? ` lvl-${v.level}` : ""}${fl}`);
       }
     };

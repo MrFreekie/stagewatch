@@ -325,7 +325,7 @@ SW.ptree = (function () {
         e.amps.hidden = !(shown && lines);
         const ld = t.load(n, rd, devices);
         e.bar.hidden = ld.level === "none";
-        e.bar.firstChild.firstChild.style.width = ld.bar + "%";
+        SW.setFill(e.bar.firstChild.firstChild, ld.bar);
         setText(e.bar.lastChild, ld.level === "none" ? "" : `${ld.word} ${ld.text}`);
         setCls(e.bar, "pt-bar" + (ld.level === "over" ? " pw-l-over" : ld.level === "high" ? " pw-l-high" : ""));
         const fedText = t.fedText(n);
