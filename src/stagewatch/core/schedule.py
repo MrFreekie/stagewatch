@@ -208,6 +208,8 @@ def infer_kind(title: str, default: str = "act") -> str:
         return "doors"
     if first == "curfew":
         return "curfew"
+    if first in ("catering", "interval"):
+        return first
     for kind, pattern in _KIND_WORDS:
         if pattern.search(t):
             return kind

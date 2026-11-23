@@ -56,14 +56,18 @@
       const t = items[i]; items[i] = items[j]; items[j] = t;
       draw();
       // keep the keyboard on the card that moved
+      if (ul.children[j]) ul.children[j].classList.add("card-moved");   // a short fade shows which row moved
       const btn = ul.children[j] && ul.children[j].querySelector(dir < 0 ? ".card-up" : ".card-down");
       if (btn && !btn.disabled) btn.focus();
     };
     // At the card limit the unticked boxes are greyed out (untick one to free a place).
     const MAX = 16;   // core/cards.py MAX_CARDS
     const boxes = [];
+    const countEl = h("p", { class: "muted hint card-count", "aria-live": "polite" });
     const limitBoxes = () => {
-      const full = items.filter((it) => it.on).length >= MAX;
+      const ticked = items.filter((it) => it.on).length;
+      countEl.textContent = ticked === 0 ? "No cards ticked: this screen shows only alarms." : `${ticked} of ${MAX} cards ticked.`;
+      const full = ticked >= MAX;
       for (const b of boxes) b.el.disabled = full && !b.it.on;
       addBtn.disabled = full || items.filter((it) => SW.cardBase(it.id) === "globcon_meters").length >= 16;
     };
@@ -243,6 +247,7 @@
       newer.length ? h("p", { class: "warn-text hint" }, `This dashboard also lists cards from a newer version of Stagewatch (${newer.join(", ")}). This version can't show them, and saving here removes them.`) : null,
       d.layout === "wall" ? h("p", { class: "hint de-wallhint" }, "A wall screen does not scroll: pick the few cards that matter. Anything below the bottom of the screen cannot be seen.") : null,
       ul,
+      countEl,
       h("div", { class: "row", style: "margin-top:10px" }, addBtn),
       h("div", { class: "row", style: "margin-top:10px" },
         field("Stage", stage)),

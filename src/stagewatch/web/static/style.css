@@ -1,6 +1,7 @@
 /* Stagewatch: dark by default (FOH and backstage are dark); light theme
    follows the OS preference. */
 :root {
+  --ease-out: cubic-bezier(.23, 1, .32, 1);   /* the one easing curve for all movement */
   --bg: #0d1017;
   --panel: #161b26;
   --panel-2: #1d2432;
@@ -50,7 +51,7 @@ a { color: var(--accent); }
 button, input, select { font: inherit; color: inherit; }
 button { background: var(--panel-2); border: 1px solid var(--grid); border-radius: 8px;
   padding: 8px 14px; cursor: pointer; min-height: 40px; }
-button { transition: transform 120ms cubic-bezier(.23, 1, .32, 1), border-color 120ms; }
+button { transition: transform 120ms var(--ease-out), border-color 120ms; }
 button:active:not(:disabled) { transform: scale(.97); }   /* a gloved tap sees it land */
 @media (hover: hover) and (pointer: fine) { button:hover { border-color: var(--accent); } }   /* old iPads keep :hover after a tap */
 @media (prefers-reduced-motion: reduce) { button { transition: none; } button:active:not(:disabled) { transform: none; } }
@@ -103,6 +104,8 @@ body:not(.layout-wall) header.top { position: -webkit-sticky; position: sticky; 
   background: var(--panel); border: 1px solid var(--grid); border-radius: var(--radius); padding: 6px 12px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, .4); -webkit-overflow-scrolling: touch; }
 .msg-panel[hidden] { display: none; }
+.msg-panel:not([hidden]), .ss-panel:not([hidden]) { animation: sw-fade-in 140ms var(--ease-out); }   /* opacity only */
+@media (prefers-reduced-motion: reduce) { .msg-panel, .ss-panel { animation: none; } }
 .msg-panel ul { list-style: none; margin: 0; padding: 0; }
 .msg-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 10px 0; border-bottom: 1px solid var(--grid); }
 .msg-row:last-child { border-bottom: 0; }
@@ -297,7 +300,7 @@ body.layout-wall .offset-note { font-size: 15px; }
 .error { color: var(--stop); }
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel-2);
   border: 1px solid var(--grid); padding: 10px 16px; border-radius: 8px; z-index: 20;
-  opacity: 0; transition: opacity 150ms cubic-bezier(.23, 1, .32, 1); }
+  opacity: 0; transition: opacity 150ms var(--ease-out); }
 .toast.is-in { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 
@@ -537,7 +540,7 @@ dialog.sw-dialog { background: var(--panel); color: var(--text); border: 1px sol
   border-radius: var(--radius); width: min(560px, 94vw); padding: 16px; max-height: 92vh; overflow-y: auto; }
 dialog.sw-dialog::backdrop { background: rgba(0, 0, 0, .7); }
 @keyframes sw-fade-in { from { opacity: 0; } to { opacity: 1; } }
-dialog.sw-dialog[open] { animation: sw-fade-in 160ms ease-out; }   /* opacity only: no movement */
+dialog.sw-dialog[open] { animation: sw-fade-in 160ms var(--ease-out); }   /* opacity only: no movement */
 @media (prefers-reduced-motion: reduce) { dialog.sw-dialog[open] { animation: none; } }
 dialog.sw-dialog h3 { margin: 0 0 8px; font-size: 18px; }
 dialog.sw-dialog button, dialog.sw-dialog input { min-height: 44px; }
@@ -577,7 +580,7 @@ dialog.sw-dialog .pre-wrap { max-height: 32vh; }
 /* Small support footer on the landing and admin pages (never on user dashboards). */
 .site-footer { text-align: center; color: var(--muted); font-size: 13px; padding: 16px 16px 24px; }
 .site-footer a { color: var(--muted); text-decoration: underline; }
-.site-footer a:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .site-footer a:hover { color: var(--text); } }
 
 /* ---- sound toggle, disconnected banner, connect card ---- */
 button.sound-toggle { min-height: 44px; padding: 6px 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
@@ -798,7 +801,7 @@ body.layout-phone text.baro-num.alt { display: none; }   /* every second pressur
 .baro-setmark { fill: var(--accent); }
 .baro-setline { stroke: var(--accent); stroke-width: 1.5; }
 .baro-setlabel { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.baro-needle, .baro-sethand { transform-origin: 100px 100px; transition: transform .3s cubic-bezier(.23, 1, .32, 1); }
+.baro-needle, .baro-sethand { transform-origin: 100px 100px; transition: transform .3s var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .baro-needle, .baro-sethand { transition: none; } }
 .baro-dial.dim { opacity: .6; }
 .baro-figures { flex: 1 1 220px; min-width: 0; }
@@ -1155,7 +1158,7 @@ body.layout-wall .eq-tile .foot { font-size: 16px; }
 .pw-glabel { font-size: 18px; font-variant-numeric: tabular-nums; margin-bottom: 3px; }
 .pw-gword { font-weight: 700; margin-left: 4px; }
 .pw-track { position: relative; height: 12px; border-radius: 8px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--grid); }
-.pw-fill { height: 100%; width: 100%; transform: scaleX(0); transform-origin: left; background: var(--ok); transition: transform .3s cubic-bezier(.23, 1, .32, 1); }
+.pw-fill { height: 100%; width: 100%; transform: scaleX(0); transform-origin: left; background: var(--ok); transition: transform .3s var(--ease-out); }
 .pw-l-high .pw-fill, .pw-v-near .pw-live { background: var(--warn, #e0a100); }
 .pw-l-over .pw-fill { background: var(--stop); }
 .pw-l-high .pw-gword, .pw-v-near .pw-gword { color: var(--warn, #e0a100); }
@@ -1431,12 +1434,16 @@ body.layout-wall #ontime-timer-card[data-level], body.layout-wall #ontime-rundow
 .admin-tabs { position: sticky; top: var(--admin-head, 0px); z-index: 20; display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden;
   white-space: nowrap; background: var(--bg); border-bottom: 2px solid var(--grid); margin-top: -16px; padding-top: 6px; min-width: 0;
   scrollbar-width: thin; }
-.admin-tab { flex: none; min-height: 44px; padding: 0 16px; border: 1px solid transparent; border-bottom: none;
+.admin-tab { flex: none; min-height: 44px; transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out); padding: 0 16px; border: 1px solid transparent; border-bottom: none;
   border-radius: 8px 8px 0 0; background: transparent; color: var(--muted); font-weight: 600; font-size: 15px; cursor: pointer; }
 .admin-tab[aria-selected="true"] { background: var(--panel); color: inherit; border-color: var(--grid); box-shadow: inset 0 -3px 0 var(--accent); }
 .admin-tab:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
-.admin-panel { display: grid; gap: 16px; min-width: 0; }
+.admin-panel { display: grid; gap: 16px; min-width: 0; align-content: start; min-height: 60vh; }   /* the page does not jump when "Loading…" is replaced */
 .admin-panel[hidden] { display: none; }
+.admin-panel:not([hidden]) { animation: sw-fade-in 140ms var(--ease-out); }   /* opacity only */
+.gc-lights-edit, .card-picker li.card-moved { animation: sw-fade-in 140ms var(--ease-out); }
+.card-count { margin: 6px 0 0; }
+@media (prefers-reduced-motion: reduce) { .admin-panel, .gc-lights-edit, .card-picker li.card-moved, .admin-tab, button.int-main { animation: none; transition: none; } }
 #app .card { scroll-margin-top: calc(var(--admin-head, 0px) + 64px); }
 /* Integration tiles: all the same size. Status shows on each product's card header, not here. */
 .int-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
@@ -1445,7 +1452,8 @@ body.layout-wall #ontime-timer-card[data-level], body.layout-wall #ontime-rundow
 .int-main { flex: 1; display: grid; grid-template-columns: 26px 1fr; grid-template-rows: auto auto; gap: 4px 10px; align-content: start;
   text-align: left; padding: 12px 12px 4px; min-height: 44px; border: 0; background: transparent; color: inherit; font: inherit; }
 button.int-main { cursor: pointer; }
-button.int-main:hover { background: var(--panel); }
+button.int-main { transition: background-color 120ms var(--ease-out); }
+@media (hover: hover) and (pointer: fine) { button.int-main:hover { background: var(--panel); } }
 button.int-main:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 .int-main .card-logo { margin: 0; grid-row: 1 / span 2; }
 .int-name { font-size: 16px; }

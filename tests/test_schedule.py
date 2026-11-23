@@ -305,6 +305,8 @@ def test_new_kinds_and_inferring_them_from_titles():
         ("Pre-Roll", "act"), ("doors", "doors"), ("Doors 19:00", "doors"), ("Curfew", "curfew"),
         ("Changeover", "changeover"), ("Changeover and load in", "changeover"),
         ("Download", "act"), ("Upload in progress", "act"), ("Reload Intro", "act"),
+        ("Catering", "catering"), ("Catering - crew meal", "catering"), ("Interval", "interval"),
+        ("Interval 20 min", "interval"), ("Intervals band", "act"),
     ]:
         assert sched.infer_kind(title) == kind, title
 
