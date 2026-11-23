@@ -50,7 +50,10 @@ a { color: var(--accent); }
 button, input, select { font: inherit; color: inherit; }
 button { background: var(--panel-2); border: 1px solid var(--grid); border-radius: 8px;
   padding: 8px 14px; cursor: pointer; min-height: 40px; }
-button:hover { border-color: var(--accent); }
+button { transition: transform 120ms cubic-bezier(.23, 1, .32, 1), border-color 120ms; }
+button:active:not(:disabled) { transform: scale(.97); }   /* a gloved tap sees it land */
+@media (hover: hover) and (pointer: fine) { button:hover { border-color: var(--accent); } }   /* old iPads keep :hover after a tap */
+@media (prefers-reduced-motion: reduce) { button { transition: none; } button:active:not(:disabled) { transform: none; } }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 button.danger { color: var(--stop); }
 button.small { min-height: 30px; padding: 4px 10px; font-size: 13px; }
@@ -243,8 +246,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .alarm-bar.notice { background: var(--panel-2); border: 1px solid var(--grid); }
 .alarm-bar li.silent { font-weight: 400; }
 .alarm-bar.notice li { color: var(--text); }
-.alarm-bar.sounding { animation: pulse 1s ease-in-out infinite alternate; }
-@media (prefers-reduced-motion: reduce) { .alarm-bar.sounding { animation: none; } }
+/* A few slow pulses, then it holds a steady stronger look: never a flicker. */
+.alarm-bar.sounding { animation: pulse 1s ease-in-out 4 alternate forwards; box-shadow: inset 0 0 0 3px var(--alert); }
+@media (prefers-reduced-motion: reduce) { .alarm-bar.sounding { animation: none; filter: brightness(1.2); } }
 @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.35); } }
 .alarm-bar ul { margin: 0; padding: 0; list-style: none; flex: 1; }
 .alarm-bar li { font-weight: 600; }
@@ -253,7 +257,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 body.layout-wall .alarm-bar { max-height: 25vh; overflow-y: auto; }
 .alarm-bar li.older { font-weight: 400; margin-top: 4px; }
 .alarm-bar li.older summary { cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 10px 0; display: list-item; }
-.alarm-bar li.older summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.alarm-bar li.older summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .alarm-bar li.older ul { margin-top: 4px; }
 .alarm-bar li .lvl { text-transform: uppercase; font-size: 12px; margin-right: 8px; opacity: .85; }
 
@@ -272,7 +276,7 @@ body.layout-wall .alarm-bar { max-height: 25vh; overflow-y: auto; }
 .marker-hidden-toggle { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px;
   color: var(--muted); cursor: pointer; margin-top: 4px; }
 .marker-hidden-toggle[hidden] { display: none; }
-.marker-hidden-toggle input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.marker-hidden-toggle input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .legend i.dashed { height: 0; border-top: 3px dashed currentColor; }
 .marker-hidden-toggle input { width: 22px; height: 22px; margin: 0; }
 .marker-note { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--grid); }
@@ -321,11 +325,11 @@ body.layout-wall #schedule-card.sched-stale { display: none !important; }
 .sched-bar.lvl-alert .sched-bar-fill { background: var(--alert); }
 @media (prefers-reduced-motion: reduce) { .sched-bar-fill { transition: none; } }
 /* Optional flash in the last warning step (Site card): a slow fade of the left edge, the tag and
-   the bar fill only, about once a second, never the whole card. The tag text stays. */
+   the bar fill only, about every three seconds, never the whole card. The tag text stays. */
 @keyframes sched-flash-fade { from { opacity: 1; } to { opacity: .4; } }
 @keyframes sched-flash-edge { from { border-left-color: var(--alert); } to { border-left-color: var(--panel-2); } }
-.sched-block.now.flash { animation: sched-flash-edge .5s ease-in-out infinite alternate; }
-.sched-tag.flash, .sched-bar.flash .sched-bar-fill { animation: sched-flash-fade .5s ease-in-out infinite alternate; }
+.sched-block.now.flash { animation: sched-flash-edge 1.5s ease-in-out infinite alternate; }
+.sched-tag.flash, .sched-bar.flash .sched-bar-fill { animation: sched-flash-fade 1.5s ease-in-out infinite alternate; }
 @media (prefers-reduced-motion: reduce) {
   /* No movement: a steady, stronger highlight instead. */
   .sched-block.now.flash, .sched-tag.flash, .sched-bar.flash .sched-bar-fill { animation: none; }
@@ -494,7 +498,7 @@ body.layout-wall .sched-tag { font-size: 24px; padding: 2px 14px; }
 .pill { display: inline-flex; align-items: center; min-height: 36px; padding: 4px 14px; border-radius: 999px; font-size: 13px; font-weight: 700;
   background: var(--accent); color: var(--on-accent); text-decoration: none; }
 .pill[hidden] { display: none; }
-.pill:focus-visible, button:focus-visible, select:focus-visible, .pre-wrap:focus-visible, dialog h3:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pill:focus-visible, button:focus-visible, select:focus-visible, .pre-wrap:focus-visible, dialog h3:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .pre-wrap { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel-2); border-radius: 8px;
   padding: 8px 10px; font-size: 13px; max-height: 240px; overflow-y: auto; margin: 6px 0; overscroll-behavior: contain; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
@@ -529,6 +533,9 @@ button.theme-toggle { min-height: 44px; padding: 6px 12px; font-weight: 600; whi
 dialog.sw-dialog { background: var(--panel); color: var(--text); border: 1px solid var(--grid);
   border-radius: var(--radius); width: min(560px, 94vw); padding: 16px; max-height: 92vh; overflow-y: auto; }
 dialog.sw-dialog::backdrop { background: rgba(0, 0, 0, .7); }
+@keyframes sw-fade-in { from { opacity: 0; } to { opacity: 1; } }
+dialog.sw-dialog[open] { animation: sw-fade-in 160ms ease-out; }   /* opacity only: no movement */
+@media (prefers-reduced-motion: reduce) { dialog.sw-dialog[open] { animation: none; } }
 dialog.sw-dialog h3 { margin: 0 0 8px; font-size: 18px; }
 dialog.sw-dialog button, dialog.sw-dialog input { min-height: 44px; }
 .sw-dlg-actions input { flex: 1 1 160px; }
@@ -788,7 +795,7 @@ body.layout-phone text.baro-num.alt { display: none; }   /* every second pressur
 .baro-setmark { fill: var(--accent); }
 .baro-setline { stroke: var(--accent); stroke-width: 1.5; }
 .baro-setlabel { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.baro-needle, .baro-sethand { transform-origin: 100px 100px; transition: transform .6s ease; }
+.baro-needle, .baro-sethand { transform-origin: 100px 100px; transition: transform .3s cubic-bezier(.23, 1, .32, 1); }
 @media (prefers-reduced-motion: reduce) { .baro-needle, .baro-sethand { transition: none; } }
 .baro-dial.dim { opacity: .6; }
 .baro-figures { flex: 1 1 220px; min-width: 0; }
@@ -871,7 +878,7 @@ label.field.inline input[type="checkbox"] { width: 24px; height: 24px; margin: 0
 .card > .card-fold > summary { min-height: 44px; box-sizing: border-box; cursor: pointer; }
 .card > .card-fold > summary h2 { margin: 0; flex: 1; }
 .card > .card-fold[open] > summary { margin-bottom: 10px; }
-.card > .card-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card > .card-fold > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .sw-fold > summary { min-width: 0; }
 .sw-fold .sw-fold-body { padding-bottom: 10px; overflow-wrap: anywhere; }
 .sw-fold .sw-flag { font-weight: 600; }
@@ -1059,7 +1066,7 @@ body.layout-wall main > [data-size="half"] .gc-badge { font-size: 22px; }
 .help-links h4 { margin: 14px 0 4px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .help-links ul { list-style: none; margin: 0; padding: 0; }
 .help-link { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; min-height: 44px; box-sizing: border-box; padding: 6px 4px; }
-.help-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.help-link:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 /* DirectOut GLOBCON, every channel count: ONE row at every card width, the same fixed meter width for 4, 8 or 16 channels
    (it only shrinks when the card is too narrow to fit them), tall skinny meters, channel name turned to read upwards.
@@ -1869,3 +1876,7 @@ body.layout-wall .gc-light { border-radius: 20px; border-width: 4px; }
 .gc-lights-table select { min-width: 7em; }
 .gc-lights-edit .table-wrap { overflow-x: auto; }
 @media (prefers-reduced-motion: reduce) { .gc-light { transition: none; } }
+/* Touch screens: the small controls get a full 44 px target (gloves). Mouse and wall layouts keep their compact size. */
+@media (pointer: coarse) {
+  body:not(.layout-wall) button.small, body:not(.layout-wall) .wm-head .ss-btn, body:not(.layout-wall) .pw-histbar select { min-height: 44px; }
+}

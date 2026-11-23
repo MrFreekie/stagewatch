@@ -20,6 +20,6 @@ Known finding: on the wall layout the Power card (about 3,700 px) and the Power 
 
 ## How readings are stored
 
-`Recorder.record_state` thins what it writes (constants beside `HEARTBEAT_S` in `core/recorder.py`): a changed value is written at once, an unchanged one only as a heartbeat row every `UNCHANGED_HEARTBEAT_S` (30 s), and a changed calculated `site.*` value at most every `SITE_MIN_INTERVAL_S` (10 s). The schema is unchanged and dense rows from older versions read as before.
+`Recorder.record_state` thins what it writes (constants beside `HEARTBEAT_S` in `core/recorder.py`): a changed value is written at once, an unchanged one only as a heartbeat row every `UNCHANGED_HEARTBEAT_S` (60 s), and a changed calculated `site.*` value at most every `SITE_MIN_INTERVAL_S` (10 s). The schema is unchanged and dense rows from older versions read as before.
 
 Rules for readers: never assume one row per second; a reading holds until the next row (as the show report does, up to its 120 s `HOLD_S`), and a longer silence is a gap, never filled in. Keep the heartbeat inside that hold and the chart gap (90 s). Averages per time bucket are of the stored rows, so with steady values they are not weighted by time; extremes are unaffected, as every change is stored.

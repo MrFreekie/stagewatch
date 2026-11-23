@@ -121,12 +121,12 @@ class EmulatedNode:
         if self.rack:
             # An amp rack warming up through the evening: well above the room, drifting.
             temp = 34.0 + 9.0 * math.sin(min(hours, 6.0) / 6.0 * math.pi / 2) + 0.8 * math.sin(now / 300.0)
-            self.hub.update_state(f"{self.device_id}.temperature", round(temp + random.gauss(0, 0.05), 2), now)
+            self.hub.update_state(f"{self.device_id}.temperature", round(temp + random.gauss(0, 0.03), 1), now)   # to the sensor's 0.1 resolution, like a real one
         else:
             temp = 24.0 - 3.0 * math.sin(min(hours, 6.0) / 6.0 * math.pi / 2) + self.temp_offset
-            temp += 0.4 * math.sin(now / 420.0) + random.gauss(0, 0.05)
-            rh = 48.0 + 6.0 * math.sin(min(hours, 6.0) / 6.0 * math.pi / 2) + random.gauss(0, 0.4)
-            self.hub.update_state(f"{self.device_id}.temperature", round(temp, 2), now)
+            temp += 0.4 * math.sin(now / 420.0) + random.gauss(0, 0.03)
+            rh = 48.0 + 6.0 * math.sin(min(hours, 6.0) / 6.0 * math.pi / 2) + random.gauss(0, 0.1)
+            self.hub.update_state(f"{self.device_id}.temperature", round(temp, 1), now)
             self.hub.update_state(f"{self.device_id}.humidity", round(rh, 1), now)
         if self.has_pressure:
             self._sync_pressure_entity()
@@ -135,9 +135,9 @@ class EmulatedNode:
             else:
                 p = self.hub.baro.emulated_pa(now)   # the demo weather; None while a sensor "drops out"
             if p is not None and f"{self.device_id}.pressure" in self.hub.entities:
-                self.hub.update_state(f"{self.device_id}.pressure", round(p + random.gauss(0, 8), 0), now)
+                self.hub.update_state(f"{self.device_id}.pressure", round((p + random.gauss(0, 3)) / 10.0) * 10.0, now)   # 10 Pa steps, like a real sensor
         base = {"sim_stage_l": -62.0, "sim_foh": -54.0, "sim_rack_1": -58.0}.get(self.device_id, -78.0)
-        self.hub.update_state(f"{self.device_id}.wifi_signal", round(base + random.gauss(0, 1.5)), now)
+        self.hub.update_state(f"{self.device_id}.wifi_signal", round(base + random.gauss(0, 0.6)), now)
         if self.flaky:
             self.hub.update_state(f"{self.device_id}.battery", max(5.0, round(26.0 - 12.0 * hours)), now)
 

@@ -16,10 +16,10 @@ def _rows(rec, eid):
 
 def test_unchanged_value_written_once_per_heartbeat(tmp_path):
     rec = _rec(tmp_path)
-    for i in range(61):                       # 61 s at 1 Hz, always 20.0
+    for i in range(121):                      # 121 s at 1 Hz, always 20.0
         rec.record_state("n.temp", 20.0, T0 + i)
-    # rows at 0, 30 and 60 s
-    assert [r[0] - T0 for r in _rows(rec, "n.temp")] == [0, 30, 60]
+    # rows at 0, 60 and 120 s
+    assert [r[0] - T0 for r in _rows(rec, "n.temp")] == [0, 60, 120]
 
 
 def test_change_is_written_at_once(tmp_path):
@@ -41,11 +41,11 @@ def test_site_values_at_most_every_ten_seconds_and_latest_not_stuck(tmp_path):
 def test_gap_stays_a_gap_and_none_is_kept(tmp_path):
     rec = _rec(tmp_path)
     rec.record_state("n.temp", 20.0, T0)
-    rec.record_state("n.temp", 20.0, T0 + 30)
-    rec.record_state("n.temp", 20.0, T0 + 600)     # nothing offered for 570 s: nothing stored
+    rec.record_state("n.temp", 20.0, T0 + 60)
+    rec.record_state("n.temp", 20.0, T0 + 600)     # nothing offered for 540 s: nothing stored
     rec.record_state("n.temp", None, T0 + 601)
     rec.record_state("n.temp", None, T0 + 602)
-    assert _rows(rec, "n.temp") == [(T0, 20.0), (T0 + 30, 20.0), (T0 + 600, 20.0), (T0 + 601, None)]
+    assert _rows(rec, "n.temp") == [(T0, 20.0), (T0 + 60, 20.0), (T0 + 600, 20.0), (T0 + 601, None)]
 
 
 def test_clock_step_back_and_new_show_write(tmp_path):
@@ -81,7 +81,7 @@ def test_growth_per_hour_one_hertz_feed(tmp_path):
         rec.record_state("n.temp", 20.0 + (i // 600) * 0.1, T0 + i)   # steps every 10 min
     rec.flush()
     n = rec._db.execute("SELECT COUNT(*) FROM states").fetchone()[0]
-    # five unchanged site values: 120 rows each; node: 6 steady spells of 600 s = 20 rows each (the first
+    # five unchanged site values: 60 rows each; node: 6 steady spells of 600 s = 10 rows each (the first
     # row of a spell is the change itself) -> 720 instead of 21 600
-    assert n == 5 * 120 + 6 * 20
-    assert UNCHANGED_HEARTBEAT_S == 30.0
+    assert n == 5 * 60 + 6 * 10
+    assert UNCHANGED_HEARTBEAT_S == 60.0

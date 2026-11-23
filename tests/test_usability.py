@@ -195,7 +195,7 @@ def test_connect_a_tablet_card_folds_away_using_the_shared_fold_store():
     assert 'connectFolds.bind(whole, "_card", true)' in body
     css = (STATIC / "style.css").read_text(encoding="utf-8")
     assert ".card > .card-fold > summary { min-height: 44px;" in css
-    assert ".card > .card-fold > summary:focus-visible { outline: 2px solid var(--accent)" in css
+    assert ".card > .card-fold > summary:focus-visible { outline: 3px solid var(--accent)" in css
 
 
 def test_admin_cards_fold_with_unique_keys_defaults_and_one_page_control():

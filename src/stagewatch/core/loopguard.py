@@ -80,7 +80,7 @@ class LoopWatchdog:
             if reported:
                 continue
             reported = True
-            self.reports += 1
             frame = sys._current_frames().get(self._loop_thread_id)
             where = "".join(traceback.format_stack(frame, limit=6)).strip() if frame is not None else "unknown"
             log.warning("The event loop has not run for %.1f s; it is busy in:\n%s", late, where)
+            self.reports += 1      # after the log line, so a reader of `reports` can rely on it being written
