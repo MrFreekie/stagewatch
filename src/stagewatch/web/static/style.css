@@ -104,8 +104,6 @@ body:not(.layout-wall) header.top { position: -webkit-sticky; position: sticky; 
   background: var(--panel); border: 1px solid var(--grid); border-radius: var(--radius); padding: 6px 12px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, .4); -webkit-overflow-scrolling: touch; }
 .msg-panel[hidden] { display: none; }
-.msg-panel:not([hidden]), .ss-panel:not([hidden]) { animation: sw-fade-in 140ms var(--ease-out); }   /* opacity only */
-@media (prefers-reduced-motion: reduce) { .msg-panel, .ss-panel { animation: none; } }
 .msg-panel ul { list-style: none; margin: 0; padding: 0; }
 .msg-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 10px 0; border-bottom: 1px solid var(--grid); }
 .msg-row:last-child { border-bottom: 0; }
