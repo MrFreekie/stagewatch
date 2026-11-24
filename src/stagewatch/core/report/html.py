@@ -220,6 +220,7 @@ def _wind(w: dict, data: ReportData) -> str:
 
 def _power(p: dict, data: ReportData) -> str:
     out = [f'<p class="mut">{e(p["peak_note"])}</p>']
+    h = data.header
 
     def block(title: str, rows: list[dict], dec: int = 1) -> None:
         if not rows:
@@ -229,8 +230,46 @@ def _power(p: dict, data: ReportData) -> str:
                 for r in rows]
         out.append(f"<h3>{e(title)}</h3>" + table(["Reading", "Unit", "Highest recorded sample", "Lowest", "Mean", "Coverage"], body))
 
-    block("Current (highest per phase)", p["current"], 2)
-    block("Earth leakage", p["leakage"], 2)
+    if p["current"]:
+        has_limit = any(r.get("limit_a") for r in p["current"])
+        hdr = ["Reading", "Unit", "Highest recorded sample", "Lowest", "Mean", "Coverage"]
+        body = []
+        for r in p["current"]:
+            row = [r["label"], r["unit"], f'{fmt.num(r["max"], 2)} at {_t(r["max_ts"], data)}',
+                   f'{fmt.num(r["min"], 2)} at {_t(r["min_ts"], data)}', fmt.num(r["mean"], 2), fmt.pct(r["coverage"])]
+            if has_limit:
+                if r.get("limit_a"):
+                    row += [f'{fmt.num(r["limit_a"], 1)} A ({r["limit_by"]})',
+                            f'{fmt.num(r["max_pct"], 0)}%' + (f' - {r["load_state"]}' if r["load_state"] else ""),
+                            f'{fmt.num(r["mean_pct"], 0)}%' if r["mean_pct"] is not None else ""]
+                else:
+                    row += ["no limit set", "", ""]
+            body.append(row)
+        if has_limit:
+            hdr += ["Limit", "Highest as % of limit", "Mean as % of limit"]
+        out.append("<h3>Current (highest per phase)</h3>" + table(hdr, body))
+        if p.get("limit_note"):
+            out.append(f'<p class="mut">{e(p["limit_note"])}</p>')
+    if p["leakage"]:
+        body = []
+        for r in p["leakage"]:
+            tr = r.get("trend")
+            if tr:
+                trend = (f'{tr["word"]}: {fmt.num(tr["early"], 2)} mA at the start, {fmt.num(tr["late"], 2)} mA at the end '
+                         f'({"+" if tr["change"] >= 0 else ""}{fmt.num(tr["change"], 2)} mA)')
+            else:
+                trend = "not enough readings to show a trend" if r["unit"] == "mA" else "not shown (unit not known)"
+            body.append([r["label"], r["unit"], f'{fmt.num(r["max"], 2)} at {_t(r["max_ts"], data)}',
+                         f'{fmt.num(r["min"], 2)} at {_t(r["min_ts"], data)}', fmt.num(r["mean"], 2),
+                         fmt.pct(r["coverage"]), trend])
+        out.append("<h3>Earth leakage</h3>")
+        c = data.charts.get("leakage")
+        if c:
+            out.append(svg.line_chart(c, data.charts.get("context", {}), h["range_start"], h["range_end"],
+                                      data.site, bool(h.get("dst")), "l"))
+        out.append(table(["Measuring point", "Unit", "Highest recorded sample", "Lowest", "Mean", "Coverage", "Trend"], body))
+        if p.get("leak_note"):
+            out.append(f'<p class="mut">{e(p["leak_note"])}</p>')
     if p["energy"]:
         body = [[x["label"], fmt.num(x["kwh"], 2), x["method"] + (" - estimated" if x["estimated"] else ""),
                  (f'{x["resets"]} counter reset(s); the step across each is not counted' if x["resets"] else "")
@@ -242,8 +281,27 @@ def _power(p: dict, data: ReportData) -> str:
             out.append(f'<p class="mut">{e(p["total_note"])}</p>')
     block("Voltage and frequency", p["voltage_frequency"], 1)
     block("Power and other readings", p["other"], 2)
+    g = p.get("generator")
+    if g:
+        out.append("<h3>Generator</h3>" + table(["Measure", "Value"], _generator_rows(g, data)))
+        out.append(f'<p class="mut">{e(g["note"])}</p><p class="mut">{e(g["fuel_note"])}</p>')
     out.append(f'<p class="mut">{e(p["advice"])}</p>')
     return "".join(out)
+
+
+def _generator_rows(g: dict, data: ReportData) -> list[list]:
+    basis = "three times the busiest line" if g["basis"] == "line" else "the whole site"
+    rows = [["Highest site demand", f'{fmt.num(g["peak_kva"], 1)} kVA (sized from {basis}) at {_t(g["peak_ts"], data)}'],
+            ["Loading limit used", f'{fmt.num(g["loading_pct"], 0)}%'],
+            ["Smallest generator suggested", f'{fmt.num(g["min_kva"], 1)} kVA ({fmt.num(g["min_kw"], 1)} kW at power factor {fmt.num(g["pf"], 2)})'],
+            ["Next standard size up", f'{g["next_kva"]} kVA' if g["next_kva"] else "above the sizes listed"]]
+    if g.get("size_kva"):
+        word = {"over": "at or over 100% of it", "limit": "at or above your loading limit",
+                "ok": "under your loading limit"}.get(g["state"], "")
+        rows.append(["Your generator", f'{fmt.num(g["size_kva"], 0)} kVA: loaded to {fmt.num(g["loaded_pct"], 0)}% ({word})'])
+    else:
+        rows.append(["Your generator", "no size set in Stagewatch, so no percentage is shown"])
+    return rows
 
 
 def _spl(s: dict, data: ReportData) -> str:
@@ -255,6 +313,15 @@ def _spl(s: dict, data: ReportData) -> str:
         out.append(f'<p class="mut">{e(s["peak_note"])}</p>')
     if s["measured_note"]:
         out.append(f'<p>{e(s["measured_note"])}</p>')
+    c = data.charts.get("spl")
+    if c:
+        h = data.header
+        out.append("<h3>Limit over time</h3>" + svg.step_chart(c, data.charts.get("context", {}), h["range_start"],
+                                                               h["range_end"], data.site, bool(h.get("dst"))))
+        rows = [[x["label"], _t(a, data), _t(b, data), f"{v:g} dB"] for x in s.get("steps", []) for a, b, v in x["steps"]]
+        out.append(table(["Limit", "From", "To", "Level"], rows, cap=ROW_CAP))
+        if s.get("steps_note"):
+            out.append(f'<p class="mut">{e(s["steps_note"])}</p>')
     if s["limits_at_start"]:
         out.append("<h3>Limits in force when the range began</h3><ul>" + "".join(f"<li>{e(x)}</li>" for x in s["limits_at_start"]) + "</ul>")
     for r in s["revisions"]:

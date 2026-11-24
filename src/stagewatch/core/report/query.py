@@ -556,6 +556,44 @@ def _down(a: float, b: float, prev: RunSpan | None) -> DownPeriod:
     return DownPeriod(a, b, "Ended without a clean stop: crash, power cut or the PC shutting down.", "unclean")
 
 
+CRASH_DAYS_MAX = 100
+
+
+def crash_days(conn: sqlite3.Connection, site, live_run_id: int | None = None,
+               limit: int = CRASH_DAYS_MAX) -> list[dict]:
+    """Past stops that were not clean, newest first: a run of the hub with no clean stop (a crash, a
+    kill, a power cut, or the computer shutting down).  Planned stops (a normal stop, an update, a
+    rollback) are not listed, and neither is the run that is going now (``live_run_id``).  This is the
+    same test the command line uses to flag a day.  Each one is placed on the show that was open at the
+    last sign of life, so it can be opened as a report; with no such show only the day is given.  Uses
+    what is already recorded (the run records and the show days), nothing is worked out beyond that.
+    Times are only as exact as the run heartbeat (about 30 seconds)."""
+    if "hub_runs" not in tables(conn):
+        return []
+    rows = conn.execute(
+        "SELECT id, started, last_seen, stop_reason, version FROM hub_runs WHERE stopped IS NULL "
+        "AND (? IS NULL OR id != ?) ORDER BY last_seen DESC, id DESC LIMIT ?",
+        (live_run_id, live_run_id, limit)).fetchall()
+    sel = _show_select(conn)
+    out = []
+    for rid, started, last_seen, reason, version in rows:
+        if not isinstance(last_seen, (int, float)) or isinstance(last_seen, bool) or not math.isfinite(last_seen):
+            continue
+        nxt = conn.execute("SELECT MIN(started) FROM hub_runs WHERE started > ? AND id != ?", (started, rid)).fetchone()[0]
+        back = nxt if isinstance(nxt, (int, float)) and math.isfinite(nxt) and nxt >= last_seen else None
+        show_row = conn.execute(sel + " WHERE started <= ? AND (ended IS NULL OR ended >= ?) ORDER BY id DESC LIMIT 1",
+                                (last_seen, last_seen)).fetchone()
+        if show_row is not None:
+            show = _show_dict(conn, show_row, set(), site)
+            day, show_id, name, event = show["day"], show["id"], show["name"], show["event_name"]
+        else:
+            day, show_id, name, event = sitetime.show_day(last_seen, site).isoformat(), None, "", ""
+        out.append({"day": day, "show_id": show_id, "show_name": name, "event": event, "stopped_at": last_seen,
+                    "restarted_at": back, "down_s": None if back is None else max(0.0, back - last_seen),
+                    "kind": "restart" if reason == "power_or_restart" else "unexpected", "version": version or ""})
+    return out
+
+
 def silent_periods(conn: sqlite3.Connection, show_id: int, start: float, end: float,
                    min_s: float = 180.0) -> list[tuple[float, float]]:
     """For a file with no hub runs: stretches with no reading from any entity (Stagewatch may have

@@ -2,6 +2,7 @@
 
 GET /api/admin/report/shows         the shows and days there are reports for
 GET /api/admin/report/markers       the markers of one show (for the "between markers" range)
+GET /api/admin/report/crash-days    past days when Stagewatch stopped without a clean stop (read-only list)
 GET /api/admin/report               the report as one printable page
 GET /api/admin/report/data.zip      the same report plus CSV files, as a download
 POST /api/admin/report/demo         emulate only: a finished demo day to report on
@@ -23,7 +24,7 @@ from ..core.report import demo as report_demo
 from ..core.report import redact
 from ..core.report.html import CSP
 from ..core.report.fmt import file_name, slug, span_label  # noqa: F401  (file_name is shared with the command line)
-from ..core.report.query import DEFAULT_DEADLINE_S, TOO_LONG_TEXT, columns, get_show, list_shows
+from ..core.report.query import CRASH_DAYS_MAX, DEFAULT_DEADLINE_S, TOO_LONG_TEXT, columns, crash_days, get_show, list_shows
 
 log = logging.getLogger("stagewatch.report")
 
@@ -154,6 +155,28 @@ def register(app: FastAPI, hub, admin_deps: list) -> None:
         except ReportError as e:
             raise error_for(e) from None
         return {"markers": [{"id": r[0], "ts": r[1], "label": redact.scrub(r[2])[:80]} for r in rows]}
+
+    @app.get("/api/admin/report/crash-days", dependencies=admin_deps)
+    async def report_crash_days():
+        """Days Stagewatch stopped without a clean stop (crash, power cut, computer shut down). Read-only,
+        from the run records already in the history. Names are cleaned like the show list."""
+        live_id = hub.recorder.run_id
+
+        def read():
+            conn = open_readonly(hub.recorder.path, app.state.report_deadline_s)
+            try:
+                return crash_days(conn, hub.config.site, live_id)
+            finally:
+                conn.close()
+        hub.recorder.flush()
+        try:
+            found = await asyncio.to_thread(read)
+        except ReportError as e:
+            raise error_for(e) from None
+        return {"days": [{"day": d["day"], "show_id": d["show_id"], "show_name": redact.scrub(d["show_name"]),
+                          "event": redact.scrub(d["event"]), "stopped_at": d["stopped_at"],
+                          "restarted_at": d["restarted_at"], "down_s": d["down_s"], "kind": d["kind"]} for d in found],
+                "capped": len(found) >= CRASH_DAYS_MAX}
 
     headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}
 

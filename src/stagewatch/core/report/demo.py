@@ -2,7 +2,9 @@
 
 Makes "Demo Festival", "Day 0 (yesterday)": about ten hours of three temperature nodes plus the site
 figures, a seven-minute unclean stop at 21:40, a node that went missing for a while, one temperature
-alert that was acknowledged and cleared, four markers and a doors/curfew schedule.  The values are
+alert that was acknowledged and cleared, four markers, a doors/curfew schedule, a sound level limit
+that was lowered at 20:45 and steps down at 22:00, and some power readings (a meter current, a slowly
+rising earth leakage and the site demand for the generator hint).  The values are
 calculated from the clock time (no random numbers), so the same day always looks the same.  Nothing
 here is used outside emulate mode.
 """
@@ -18,6 +20,14 @@ from .. import sitetime
 
 DEMO_EVENT = "Demo Festival"
 DEMO_SHOW = "Day 0 (yesterday)"
+# One limit with two windows, so the step chart shows both kinds of step: the licence level to 22:00,
+# then a lower level.  Revision 2 (saved 20:45) lowers the first window.
+_LIM = {"source": "FOH", "metric": "LAeq 15", "kind": "limit", "label": "FOH LAeq 15"}
+
+
+def _limit_doc(early_db: float) -> str:
+    return json.dumps({"limits": [{**_LIM, "id": "early", "value_db": early_db, "start": "", "end": "22:00"},
+                                  {**_LIM, "id": "late", "value_db": 95.0, "start": "22:00", "end": ""}]})
 
 
 def _wave(t: float, base: float, amp: float, period_h: float, phase: float = 0.0) -> float:
@@ -51,6 +61,18 @@ def seed_demo_day(recorder, now: float, site=None) -> int:
                        "VALUES (?,?,?,?,?,?,?,?,NULL)", (eid, dev, "temperature", "°C", "Temperature", dname, area, start))
         db.execute("INSERT OR REPLACE INTO entity_meta (entity_id, device_id, kind, unit, name, device_name, area, updated, doc) "
                    "VALUES ('demo.foh.humidity','demo-foh','humidity','%','Humidity','FOH desk node','FOH',?,NULL)", (start,))
+        # Power: a meter current (the emulate config gives meter "mic_rack_sim" a breaker, so it gets a percentage),
+        # an earth leakage reading that creeps up, and the site demand the generator hint is worked out from.
+        for eid, dev, kind, unit, name, dname, area, doc in (
+                ("mic_rack_sim.pm1_0_current", "mic_rack_sim", "current", "A", "Current", "Mic rack meter", "Stage left",
+                 {"decimals": 3, "category": "meter", "labels": {"channel": "pm1_0", "field": "current"}}),
+                ("demo.earth.leakage", "demo-rcm", "current", "mA", "Earth leakage", "Earth leakage monitor", "Dock",
+                 {"decimals": 2, "category": "meter", "labels": {"channel": "rcm", "field": "leakage"}}),
+                ("power_site.site_apparent_demand", "power_site", "apparent_power", "VA",
+                 "Site apparent power demand (calculated)", "Site power (calculated)", "",
+                 {"decimals": 1, "category": "meter", "labels": {"derived": "1", "field": "demand_va"}})):
+            db.execute("INSERT OR REPLACE INTO entity_meta (entity_id, device_id, kind, unit, name, device_name, area, updated, doc) "
+                       "VALUES (?,?,?,?,?,?,?,?,?)", (eid, dev, kind, unit, name, dname, area, start, json.dumps(doc)))
         # Runs: ids below any real run, so the live hub's own run order is never disturbed.
         low = min(0, db.execute("SELECT COALESCE(MIN(id), 0) FROM hub_runs").fetchone()[0]) - 3
         doc = json.dumps({"tz": getattr(site, "timezone", "") or "", "demo": True})
@@ -76,6 +98,10 @@ def seed_demo_day(recorder, now: float, site=None) -> int:
                 rows.append((show, t, "site.humidity", hum))
                 rows.append((show, t, "demo.foh.humidity", round(hum + 1.5, 1)))
                 rows.append((show, t, "site.speed_of_sound", round(331.3 * math.sqrt(1 + site_t / 273.15), 2)))
+                rows.append((show, t, "mic_rack_sim.pm1_0_current", round(_wave(t - start, 8.0, 3.5, 3.0), 3)))
+                rows.append((show, t, "demo.earth.leakage", round(3.0 + (t - start) / 3600 * 0.35 + 0.1 * math.sin((t - start) / 90.0), 2)))
+                rows.append((show, t, "power_site.site_apparent_demand",
+                             round(_wave(t - start, 10000.0, 3500.0, 4.0, 0.5) + (t - start) / 3600 * 100.0, 1)))
             t += 10.0
         db.executemany("INSERT INTO states (show_id, ts, entity_id, value) VALUES (?,?,?,?)", rows)
         alarms = [(at("18:20"), "device:demo-stage-r", "raise", 1, "Stage right node: missing"),
@@ -91,6 +117,10 @@ def seed_demo_day(recorder, now: float, site=None) -> int:
                    (at("20:30"), "Headliner on", "dashboard:foh"), (at("22:00"), "Curfew", "schedule")]
         db.executemany("INSERT INTO markers (show_id, ts, label, source) VALUES (?,?,?,?)",
                        [(show, *m) for m in markers])
+        for rev, saved, doc, by, note in ((1, start, _limit_doc(100.0), "Demo admin", "Licence limits"),
+                                          (2, at("20:45"), _limit_doc(98.0), "Demo admin", "Lowered after a word with the venue")):
+            db.execute("INSERT INTO spl_limit_revisions (event_id, show_id, rev, saved_at, entered_by, change_note, doc) "
+                       "VALUES (?, NULL, ?, ?, ?, ?, ?)", (ev, rev, saved, by, note, doc))
         for kind, title, hhmm in (("doors", "Doors", "17:00"), ("curfew", "Curfew", "22:00")):
             db.execute("INSERT INTO schedule_items (show_id, kind, title, planned_start, updated) VALUES (?,?,?,?,?)",
                        (show, kind, title, at(hhmm), now))

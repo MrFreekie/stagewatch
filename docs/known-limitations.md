@@ -41,8 +41,10 @@ These are advice, and the cards say so:
 - **Barometer outlook.** A rough hint from the 3-hour pressure change. It is not a forecast.
 - **Condensation risk.** A guide from the site dew point. Surfaces, airflow and warm-up time change what
   really happens.
-- **Show report.** The power part is not complete: it does not yet give percent of rating, a leakage
-  trend or generator rows. The sound level part has no step chart yet.
+- **Show report.** The percent-of-rating column uses the ratings set in Stagewatch now, not the ones on the
+  day. The leakage trend and generator rows are not yet tested on real kit. There is no "time above the
+  warning level" figure and no fuel row (Stagewatch does not record fuel). Past crash days come from the
+  run records, so history from before those were kept lists none.
 
 ## Time and data gaps
 

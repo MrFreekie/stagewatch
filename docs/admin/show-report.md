@@ -39,6 +39,15 @@ rows on the page, followed by "... N more, in the CSV"; the ZIP has every row. A
 need too much data (millions of readings) or would make a download over 50 MB is refused with a
 message asking for a shorter range.
 
+### Power extras and the sound level limit
+
+- **Power** shows each current reading against its limit: the lower of the breaker or fuse and the device rating, as set in Stagewatch now (not as it was on the day). It gives the highest and mean as a percentage of that limit and says **high load** at 80% or more, or **over** the rating. A reading with no rating set shows "no limit set" and no percentage.
+- **Earth leakage** has its own chart and a note: **rising**, **falling** or **steady**, from the first quarter of the range against the last. It needs 30 minutes or more of readings, otherwise it says there are not enough readings. This is a guide, not a safety check. Not yet tested on real kit.
+- **Generator** gives the highest site demand in the range, the smallest generator that keeps to your loading limit, the next standard size up and, if you set a generator size in the power settings, how loaded it was. It is not shown if Stagewatch has no site demand readings. Fuel is not recorded, so there is no fuel row.
+- **Sound level** has a **Limit over time** step chart from the limit changes. Where no limit was set the line has a gap. The chart shows limits only, never measured levels averaged.
+
+In a Sharing excerpt the limit chart stays, but who changed a limit and why does not.
+
 Stagewatch is a guide. The report does not replace the certified monitoring or the person responsible for safety in the event's plan.
 
 ## Sharing an excerpt
@@ -99,8 +108,19 @@ included. If the history file is damaged, the command says so and suggests tryin
 
 If you set the data folder yourself when you start Stagewatch, give the same `--data-dir` here.
 
+## Past crash days
+
+In Admin, the Show report card has **Past crash days** (open it to load the list). It lists each day
+that Stagewatch stopped without a clean stop, with the time it stopped, the time it came back and
+whether the computer restarted or lost power. Stops you chose (stop, update, roll back) are not listed.
+**Open report for this day** fills in the card for that day. The list is read-only and comes from the
+run records Stagewatch already keeps; history from before those were kept shows none.
+
 ## Try it without a show
 
 In emulate mode (`stagewatch --emulate`), the Show report card has **Add a demo day to report on**. It adds a
 finished "Demo Festival" day with a seven-minute unexpected stop at 21:40, a node that went missing,
-an alarm that was acknowledged, and some markers. It is never added outside emulate mode.
+an alarm that was acknowledged, and some markers. It also has two sound level limit changes, a
+slowly rising earth leakage reading, a rack current close to its breaker rating and a site demand for the
+generator table. It is never added outside emulate mode. A demo day added by an earlier version does not
+gain these.

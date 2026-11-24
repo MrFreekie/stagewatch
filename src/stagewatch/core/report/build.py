@@ -20,6 +20,7 @@ from typing import Any
 from ... import acoustics
 from ...version import __version__
 from . import fmt, redact
+from .. import power_tree
 from .query import (DEFAULT_DEADLINE_S, Budget, CounterResult, ReportError, ReportScope, SeriesStats, Window,
                     columns, counter_delta, down_periods, dst_changes, entity_meta, is_deadline, iter_rows, merge_spans,
                     resolve_window, run_spans, silent_periods, subtract_spans, summarise, tables,
@@ -47,6 +48,22 @@ POWER_KINDS = {"current": "A", "voltage": "V", "power": "W", "apparent_power": "
                "power_factor": "", "reactive_power": "var", "thd": "%"}
 _LEAK = re.compile(r"(?i)leak|earth|residual|rcd|rcm|\bpe\b")
 _DEVICE_MSG = re.compile(r"^(.*?): (\w+)(?: \((.*)\))?$", re.S)
+
+LOAD_HIGH_PCT, LOAD_OVER_PCT = 80.0, 100.0   # the same 80 % and 100 % warnings as the Power card
+# Earth leakage trend: the mean of the first quarter of the readings against the mean of the last
+# quarter (one-minute averages, covered time only).  Small changes are called steady.
+LEAK_MIN_SPAN_S = 1800.0      # fewer than 30 minutes of readings: no trend
+LEAK_MIN_BUCKETS = 5          # at least this many one-minute averages in each quarter
+LEAK_REL, LEAK_ABS_MA = 0.10, 0.5     # a change of at least 10 % of the start and 0.5 mA
+# Standard generator sizes (kVA); a test keeps this equal to integrations/shelly/calc.py.
+GEN_SIZES_KVA = (20, 30, 40, 50, 60, 80, 100, 125, 150, 200, 250, 300, 400, 500, 630, 800, 1000)
+GEN_DEMAND = "power_site.site_apparent_demand"
+GEN_LINE_DEMAND = "power_site.site_line_{}_apparent_demand"
+GEN_NOTE = ("Worked out from the highest recorded site demand (an average over the last {w} minutes, as the "
+            "window is set in Stagewatch now). It knows nothing of load that is not metered, starting currents "
+            "or future additions. A guide for choosing a generator, not a sizing or safety certificate.")
+SPL_MAX_REVS = 1000
+SPL_MAX_SERIES = 8
 
 POWER_ADVICE = ("Power figures come from the monitoring devices and are not a substitute for the "
                 "electrician's certified inspection and testing. Stagewatch never controls breakers or generators.")
@@ -150,9 +167,9 @@ def build_report(conn, cfg, scope: ReportScope, now: float, source_label: str = 
     if "wind" in wanted:
         run("wind", lambda: _wind(ctx))
     if "spl" in wanted:
-        run("spl", lambda: _spl(ctx))
+        run("spl", lambda: _spl(ctx, charts))
     if "power" in wanted:
-        run("power", lambda: _power(ctx))
+        run("power", lambda: _power(ctx, charts))
     if "alarms" in wanted and "alarms" not in sections:
         sections["alarms"] = _alarms_section(ctx, alarms_all["alarms"])
     if "devices" in wanted and "devices" not in sections:
@@ -195,10 +212,17 @@ def build_report(conn, cfg, scope: ReportScope, now: float, source_label: str = 
 
 
 def _scrub_charts(charts: dict, known: tuple[str, ...] = ()) -> dict:
-    for s in charts.get("env", []):
+    specs = list(charts.get("env", []))
+    if isinstance(charts.get("leakage"), dict):
+        specs.append(charts["leakage"])
+    for s in specs:
         s["title"] = redact.scrub(s.get("title", ""), known)
         for line in s.get("lines", []):
             line["label"] = redact.scrub(line.get("label", ""), known)
+    spl = charts.get("spl")
+    if isinstance(spl, dict):
+        for ser in spl.get("series", []):
+            ser["label"] = redact.scrub(ser.get("label", ""), known)
     return charts
 
 
@@ -483,7 +507,93 @@ def _wind(ctx: _Ctx) -> dict | None:
 
 
 # ------------------------------------------------------------------ sound level limits
-def _spl(ctx: _Ctx) -> dict | None:
+def _spl_rows(ctx: _Ctx) -> list[tuple]:
+    """Every saved limit set for this show's event that was saved up to the end of the range:
+    (rev, saved_at, entered_by, change_note, doc, show_id), oldest first.  Nothing saved after the
+    range ends is read."""
+    ev = ctx.win.show.get("event_id")
+    if ev is None or "spl_limit_revisions" not in ctx.tables:
+        return []
+    return ctx.conn.execute(
+        "SELECT rev, saved_at, entered_by, change_note, doc, show_id FROM spl_limit_revisions "
+        "WHERE event_id = ? AND (show_id IS NULL OR show_id = ?) AND saved_at <= ? ORDER BY rev LIMIT ?",
+        (ev, ctx.show_id, ctx.E, SPL_MAX_REVS)).fetchall()
+
+
+def _in_force(rows: list[tuple], show_id: int, t: float, strict: bool = False):
+    """The saved set in force at ``t``: this show's latest override, else the event's latest default
+    (the same rule the live limits use; a cleared override, doc "null", falls back to the default).
+    ``strict`` ignores a set saved at exactly ``t``.  None when there is none."""
+    def ok(r) -> bool:
+        return r[1] < t if strict else r[1] <= t
+    mine = [r for r in rows if r[5] == show_id and ok(r)]
+    if mine and mine[-1][4] not in (None, "", "null"):
+        return mine[-1]
+    base = [r for r in rows if r[5] is None and ok(r)]
+    if base and base[-1][4] not in (None, "", "null"):
+        return base[-1]
+    return None
+
+
+def _spl_steps(ctx: _Ctx, rows: list[tuple]) -> list[dict]:
+    """The limit in force over the range, one series per (source, metric, kind): a list of steps
+    [from, to, dB].  A time with no limit in force is simply not in a step (a gap).  Only limits are
+    used: nothing measured is mixed in.  A set saved before the range gives its values, but its
+    save time is never used."""
+    from datetime import date
+    try:
+        from ..spl_limits import SplLimitSet, label_of, windows
+    except Exception:  # noqa: BLE001
+        return []
+    S, E = ctx.S, ctx.E
+    try:
+        day = date.fromisoformat(str(ctx.win.day))
+    except ValueError:
+        return []
+    cand = {r[0]: r for r in (_in_force(rows, ctx.show_id, S, True),) if r}
+    for r in rows:
+        if S <= r[1] <= E:
+            cand[r[0]] = r
+    wins: dict[int, list] = {}
+    for rev, r in cand.items():
+        if r[4] in (None, "", "null"):
+            continue
+        try:
+            wins[rev] = windows(SplLimitSet.model_validate_json(r[4]), day, ctx.site)
+        except Exception:  # noqa: BLE001 - a set we cannot read has no steps
+            continue
+    cuts = {S, E}
+    for r in cand.values():
+        if S < r[1] < E:
+            cuts.add(r[1])
+    for ws in wins.values():
+        for a, b, _lim in ws:
+            for t in (a, b):
+                if S < t < E:
+                    cuts.add(t)
+    cuts_l = sorted(cuts)
+    series: dict[tuple, dict] = {}
+    for a, b in zip(cuts_l, cuts_l[1:]):
+        ctx.budget.check()
+        mid = (a + b) / 2.0
+        row = _in_force(rows, ctx.show_id, mid)
+        if row is None or row[0] not in wins:
+            continue
+        for wa, wb, lim in wins[row[0]]:
+            if wa <= mid < wb:
+                ser = series.get(lim.group)
+                if ser is None:
+                    name = " ".join(x for x in (lim.source, label_of(lim)) if x)
+                    ser = series[lim.group] = {"label": name + (" (guidance)" if lim.kind == "guidance" else ""),
+                                               "kind": lim.kind, "steps": []}
+                if ser["steps"] and ser["steps"][-1][1] == a and ser["steps"][-1][2] == lim.value_db:
+                    ser["steps"][-1][1] = b
+                else:
+                    ser["steps"].append([a, b, lim.value_db])
+    return list(series.values())
+
+
+def _spl(ctx: _Ctx, charts: dict | None = None) -> dict | None:
     rows = []
     for eid, m in sorted(ctx.meta.items()):
         if m["kind"] != "sound_level":
@@ -497,24 +607,27 @@ def _spl(ctx: _Ctx) -> dict | None:
         rows.append(r)
         for a, b in ctx.series(eid).gaps:
             ctx.sensor_gaps.append((r["label"], m["device_id"], a, b))
-    revisions, at_start = [], []
-    if "spl_limit_revisions" in ctx.tables:
-        ev = ctx.win.show.get("event_id")
-        if ev is not None:
-            rev_rows = ctx.conn.execute(
-                "SELECT rev, saved_at, entered_by, change_note, doc FROM spl_limit_revisions "
-                "WHERE event_id = ? AND (show_id IS NULL OR show_id = ?) AND saved_at <= ? ORDER BY saved_at, id",
-                (ev, ctx.show_id, ctx.E)).fetchall()
-            before = [r for r in rev_rows if r[1] < ctx.S]
-            if before:
-                at_start = _limit_lines(before[-1][4])
-            for r in rev_rows:
-                if r[1] >= ctx.S:
-                    revisions.append({"rev": r[0], "ts": r[1], "by": r[2], "note": r[3], "limits": _limit_lines(r[4])})
-    if not rows and not revisions and not at_start:
+    revisions, at_start, steps = [], [], []
+    rev_rows = _spl_rows(ctx)
+    if rev_rows:
+        first = _in_force(rev_rows, ctx.show_id, ctx.S, True)
+        if first is not None:
+            at_start = _limit_lines(first[4])
+        for r in rev_rows:
+            if r[1] >= ctx.S:
+                revisions.append({"rev": r[0], "ts": r[1], "by": r[2], "note": r[3], "limits": _limit_lines(r[4])})
+        steps = _spl_steps(ctx, rev_rows)
+    if not rows and not revisions and not at_start and not steps:
         return None
-    return {"measured": rows, "revisions": revisions, "limits_at_start": at_start, "advice": SPL_ADVICE,
+    if charts is not None and steps:
+        charts["spl"] = {"title": "Sound level limit (dB)", "series": steps[:SPL_MAX_SERIES],
+                         "more": max(0, len(steps) - SPL_MAX_SERIES),
+                         "revisions": [{"rev": r["rev"], "ts": r["ts"]} for r in revisions][:40]}
+    return {"measured": rows, "revisions": revisions, "limits_at_start": at_start, "steps": steps,
+            "advice": SPL_ADVICE,
             "peak_note": "Highest value is the highest recorded sample. Levels are shown as received.",
+            "steps_note": "The limits as entered in Stagewatch, as they were in force at each time. "
+                          "Where a line has a break, no limit was set.",
             "measured_note": "" if rows else "Measured SPL: not recorded. Stagewatch did not measure SPL."}
 
 
@@ -532,10 +645,107 @@ def _limit_lines(doc: str) -> list[str]:
 
 
 # ------------------------------------------------------------------ power
-def _power(ctx: _Ctx) -> dict | None:
+def _rating_for(ctx: _Ctx, m: dict) -> tuple[float | None, str]:
+    """The amps this meter's own current reading is judged against: the lower of the breaker or fuse
+    and the device limit, as set in Stagewatch NOW (not what was set on the day).  Only the meter's
+    own per-circuit or per-phase current counts: calculated sums, neutral and totals have none, and a
+    meter with several circuits never lends its own rating to one of them."""
+    labels = (m.get("doc") or {}).get("labels")
+    if not isinstance(labels, dict) or labels.get("field") != "current" or labels.get("derived") or labels.get("calculated"):
+        return None, ""
+    if (labels.get("group") or "") not in ("", "a", "b", "c"):
+        return None, ""
+    channel = labels.get("channel")
+    dev = next((d for d in getattr(ctx.cfg, "shelly_devices", None) or [] if getattr(d, "id", None) == m["device_id"]), None)
+    if dev is None or not isinstance(channel, str):
+        return None, ""
+    try:
+        key = power_tree.single_key(dev)
+        if key:
+            if key != channel:
+                return None, ""
+            holder = power_tree.holder_of_meter(dev)
+            return power_tree.effective_limit(holder.breaker_a, holder.rating_a)
+        ch = next((c for c in getattr(dev, "channels", None) or [] if getattr(c, "key", None) == channel), None)
+        if ch is None:
+            return None, ""
+        return power_tree.effective_limit(getattr(ch, "breaker_a", None), getattr(ch, "rating_a", None))
+    except Exception:  # noqa: BLE001 - a setting we cannot read means no rating, never a guess
+        return None, ""
+
+
+def _load_state(pct: float, by: str) -> str:
+    if pct >= LOAD_OVER_PCT:
+        return {"breaker": "over the breaker or fuse rating", "device": "over the device limit"}.get(by, "over the rating")
+    return "high load (80% or more)" if pct >= LOAD_HIGH_PCT else ""
+
+
+def _mean(vals: list[float]) -> float:
+    return sum(vals) / len(vals)
+
+
+def _leak_trend(st: SeriesStats, scale: float) -> dict | None:
+    """Leakage creep: the mean of the first quarter of the readings against the mean of the last
+    quarter, from the one-minute averages (time covered only).  None when there is too little to say."""
+    b = st.buckets
+    if len(b) < 2 * LEAK_MIN_BUCKETS:
+        return None
+    t0, t1 = b[0][0], b[-1][0]
+    span = t1 - t0
+    if span < LEAK_MIN_SPAN_S:
+        return None
+    early = [x[1] for x in b if x[0] < t0 + span / 4]
+    late = [x[1] for x in b if x[0] >= t1 - span / 4]
+    if len(early) < LEAK_MIN_BUCKETS or len(late) < LEAK_MIN_BUCKETS:
+        return None
+    e, l_ = _mean(early) * scale, _mean(late) * scale
+    change = l_ - e
+    guard = max(LEAK_ABS_MA, LEAK_REL * abs(e))
+    word = "rising" if change >= guard else "falling" if change <= -guard else "steady"
+    return {"word": word, "early": e, "late": l_, "change": change, "span_s": span}
+
+
+def _generator(ctx: _Ctx) -> dict | None:
+    """Generator size hint from the highest recorded site demand in the range (the demand figures the
+    Power card records), with the loading limit and size typed in Stagewatch.  Nothing recorded, no row."""
+    m = ctx.meta.get(GEN_DEMAND)
+    if not m or m["kind"] != "apparent_power":
+        return None
+    st = ctx.series(GEN_DEMAND)
+    if st.n == 0 or st.max is None or st.max <= 0:
+        return None
+    ps = getattr(ctx.cfg, "power_site", None)
+    loading = float(getattr(ps, "gen_loading_pct", None) or 80.0)
+    pf = float(getattr(ps, "gen_power_factor", None) or 0.8)
+    size = getattr(ps, "gen_size_kva", None)
+    window = getattr(ps, "demand_window_min", None) or 15
+    peak_kva, basis = st.max / 1000.0, "total"
+    names = [GEN_LINE_DEMAND.format(i) for i in (1, 2, 3)]
+    if all(n in ctx.meta for n in names):
+        lines = [ctx.series(n) for n in names]
+        if all(x.n > 0 and x.max is not None for x in lines):
+            three = 3 * max(x.max for x in lines) / 1000.0     # a generator gives only a third of its rating per line
+            if three > peak_kva:
+                peak_kva, basis = three, "line"
+    min_kva = peak_kva / (loading / 100.0)
+    out = {"peak_kva": peak_kva, "peak_ts": st.max_ts, "basis": basis, "loading_pct": loading, "pf": pf,
+           "min_kva": min_kva, "min_kw": min_kva * pf,
+           "next_kva": next((s for s in GEN_SIZES_KVA if s >= min_kva - 1e-9), None),
+           "size_kva": None, "loaded_pct": None, "state": "", "window_min": window,
+           "coverage": st.coverage, "interval_s": st.interval_s, "note": GEN_NOTE.format(w=window),
+           "fuel_note": "Fuel used: not recorded. Stagewatch does not read generator fuel."}
+    if isinstance(size, (int, float)) and not isinstance(size, bool) and size > 0:
+        pct = 100.0 * peak_kva / size
+        out.update(size_kva=float(size), loaded_pct=pct,
+                   state="over" if pct >= 100 else "limit" if pct >= loading else "ok")
+    return out
+
+
+def _power(ctx: _Ctx, charts: dict | None = None) -> dict | None:
     cur, leak, vf, pw = [], [], [], []
     energy = []
     per_device_energy: dict[str, int] = {}
+    leak_lines: list[dict] = []
     for eid, m in sorted(ctx.meta.items()):
         kind = m["kind"]
         if kind not in POWER_KINDS and kind != "energy":
@@ -553,21 +763,29 @@ def _power(ctx: _Ctx) -> dict | None:
         if st.n == 0:
             continue
         lab, _area = _label(ctx, eid)
-        row = _stat_row(ctx, eid, 1.0)
-        row["unit"] = m["unit"] or POWER_KINDS[kind]
+        is_leak = kind == "current" and (m["unit"] == "mA" or bool(_LEAK.search(lab)))
+        scale = 1000.0 if is_leak and m["unit"] == "A" else 1.0     # leakage is shown in milliamps
+        row = _stat_row(ctx, eid, scale)
+        row["unit"] = "mA" if is_leak and m["unit"] in ("A", "mA") else (m["unit"] or POWER_KINDS[kind])
         row["kind"] = kind
         for a, b in st.gaps:
             ctx.sensor_gaps.append((row["label"], m["device_id"], a, b))
-        if kind == "current" and (row["unit"] == "mA" or _LEAK.search(lab)):
+        if is_leak:
+            row["trend"] = _leak_trend(st, scale) if m["unit"] in ("A", "mA") else None
             leak.append(row)
+            leak_lines.append({"label": row["label"], "points": _line(st, scale)})
         elif kind == "current":
+            limit, by = _rating_for(ctx, m)
+            row.update(limit_a=None, limit_by="", max_pct=None, mean_pct=None, load_state="")
+            if limit and row["unit"] == "A":
+                row.update(limit_a=limit, limit_by=by, max_pct=100.0 * row["max"] / limit,
+                           mean_pct=None if row["mean"] is None else 100.0 * row["mean"] / limit,
+                           load_state=_load_state(100.0 * row["max"] / limit, by))
             cur.append(row)
         elif kind in ("voltage", "frequency"):
             vf.append(row)
         else:
             pw.append(row)
-        if kind == "power" and m["device_id"] not in {e["device_id"] for e in energy}:
-            pass
     have_counter = {e["device_id"] for e in energy}
     for eid, m in sorted(ctx.meta.items()):
         if m["kind"] == "power" and m["device_id"] not in have_counter:
@@ -577,15 +795,28 @@ def _power(ctx: _Ctx) -> dict | None:
                 energy.append({"label": lab, "device_id": m["device_id"], "kwh": st.integral / 3600.0 / 1000.0,
                                "method": "estimated from power readings", "estimated": True, "resets": 0,
                                "gap_s": sum(b - a for a, b in st.gaps)})
-    if not (cur or leak or vf or pw or energy):
+    gen = _generator(ctx)
+    if not (cur or leak or vf or pw or energy or gen):
         return None
+    if charts is not None and leak_lines:
+        charts["leakage"] = {"title": "Earth leakage (mA)", "band": [], "lines": leak_lines[:8],
+                             "more": max(0, len(leak_lines) - 8),
+                             "legend": "one line per measuring point"}
     multi = any(c > 1 for c in per_device_energy.values()) or len({e["device_id"] for e in energy}) != len(energy)
     total = None if multi else sum(e["kwh"] for e in energy)
     intervals = [r["interval_s"] for r in cur + leak + vf + pw if r.get("interval_s")]
     typical = sorted(intervals)[len(intervals) // 2] if intervals else None
+    has_limit = any(r.get("limit_a") for r in cur)
     return {"current": cur, "leakage": leak, "voltage_frequency": vf, "other": pw, "energy": energy,
-            "total_kwh": total, "total_note": "Not added up: a meter has more than one counter." if multi and energy else "",
+            "generator": gen, "total_kwh": total,
+            "total_note": "Not added up: a meter has more than one counter." if multi and energy else "",
             "interval_s": typical, "advice": POWER_ADVICE,
+            "limit_note": ("Percentages use the breaker, fuse or device limit as set in Stagewatch now, not as it "
+                           "may have been on the day. The lower of the two is used. Only readings with a limit set "
+                           "have a percentage.") if has_limit else "",
+            "leak_note": ("Trend compares the average of the first quarter of the readings with the last quarter "
+                          "(one-minute averages). It is a guide to spot leakage creeping up, and needs at least "
+                          "30 minutes of readings.") if leak else "",
             "peak_note": ("Peaks are the highest recorded sample"
                           + (f"; readings were recorded about every {fmt.duration(typical)}" if typical else "")
                           + ". Shorter peaks can be missed.")}

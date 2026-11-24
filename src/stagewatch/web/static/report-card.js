@@ -32,6 +32,7 @@ SW.reportCard = (function () {
     share: mem.share === true,
     sections: Array.isArray(mem.sections) ? mem.sections.filter((k) => SECTIONS.some((s) => s[0] === k)) : SECTIONS.map((s) => s[0]),
     fromMarker: 0, toMarker: 0, markers: [], markersFor: 0,
+    crash: null, crashFailed: false,       // past crash days: kept here so a redraw does not ask again
   };
 
   // The address for the server. Returns { url } or { error } (plain wording).
@@ -140,6 +141,46 @@ SW.reportCard = (function () {
         catch (err) { toast(err.message, true); }
       } }, "Add a demo day to report on")) : null;
 
+    // Past crash days: read-only, from the run records already saved. Asked for once, when the list is opened.
+    const crashBox = h("div", {});
+    const crashWhat = (d) => d.kind === "restart" ? "The computer restarted or lost power." : "Stagewatch stopped without a clean stop (a crash, or the computer shutting down).";
+    const drawCrash = () => {
+      crashBox.replaceChildren();
+      if (st.crashFailed) { crashBox.append(h("p", { class: "muted" }, "Could not read the list. Nothing has been changed.")); return; }
+      if (st.crash === null) { crashBox.append(h("p", { class: "muted" }, "Looking…")); return; }
+      if (!st.crash.length) { crashBox.append(h("p", { class: "muted" }, "No stops without a clean stop are recorded.")); return; }
+      st.crash.forEach((d) => {
+        const who = d.show_name ? ` · ${d.show_name}${d.event ? ` (${d.event})` : ""}` : "";
+        const back = d.restarted_at ? `, running again at ${SW.fmtTime(d.restarted_at)} (off for about ${SW.fmtDuration(d.down_s, false)})` : ", and not started again since";
+        const line = h("div", { class: "row" },
+          h("div", { class: "field" }, h("strong", {}, SW.fmtDay(d.day)), who, h("br", {}),
+            `Last seen at ${SW.fmtTime(d.stopped_at)}${back}. ${crashWhat(d)}`));
+        if (d.show_id) {
+          line.append(h("button", { type: "button", class: "touch", onclick: () => {
+            window.open(`/api/admin/report?show_id=${encodeURIComponent(d.show_id)}`, "_blank", "noopener");
+          } }, "Open report for this day"));
+        }
+        crashBox.append(line);
+      });
+      if (st.crashCapped) crashBox.append(h("p", { class: "muted hint" }, "Only the newest are listed."));
+    };
+    const loadCrash = async () => {
+      if (st.crash !== null || st.crashLoading) { drawCrash(); return; }
+      st.crashLoading = true; drawCrash();
+      try {
+        const r = await SW.api("GET", "/api/admin/report/crash-days");
+        st.crash = r.days || []; st.crashCapped = !!r.capped; st.crashFailed = false;
+      } catch (_) { st.crashFailed = true; }
+      st.crashLoading = false; drawCrash();
+    };
+    const crashAgain = h("button", { type: "button", class: "touch", onclick: () => { st.crash = null; st.crashFailed = false; loadCrash(); } }, "Check again");
+    const crashDetails = h("details", { class: "card-about" },
+      h("summary", {}, "Past crash days"),
+      h("p", { class: "muted hint" }, "Days when Stagewatch stopped without a clean stop: a crash, a power cut, or the computer shutting down. A normal stop or an update is not listed. Times are about right to within a minute. Gaps like these are also marked in each day's report."),
+      crashBox, crashAgain);
+    crashDetails.addEventListener("toggle", () => { if (crashDetails.open) loadCrash(); });
+    drawCrash();
+
     sync();
     return SW.card("Show report",
       h("p", { class: "muted hint" }, "A printable summary of a show day: temperatures, alarms, markers and any time Stagewatch or a node was not recording. It only reads what is saved. To save it as a PDF, open it and press Ctrl+P."),
@@ -151,6 +192,7 @@ SW.reportCard = (function () {
       h("div", { class: "row" },
         h("button", { type: "button", class: "primary touch", onclick: open }, "Open report"),
         h("button", { type: "button", class: "touch", onclick: download }, "Download ZIP")),
+      crashDetails,
       demo);
   }
   card.query = query;

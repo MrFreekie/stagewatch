@@ -136,18 +136,42 @@ def csv_files(data: ReportData) -> dict[str, bytes]:
                     [[f"Revision {rv['rev']}", "", ts(rv["ts"]), None, "", None, rv["note"]]]
         out["spl_limits.csv"] = _csv_bytes(["Kind", "Input or limit", "Changed at", "Highest recorded sample (dB)",
                                             "Highest at", "Lowest (dB)", "Note"], rows)
+        steps = [[x["label"], x["kind"], ts(a), ts(b), v] for x in spl.get("steps", []) for a, b, v in x["steps"]]
+        if steps:
+            out["spl_limit_steps.csv"] = _csv_bytes(["Limit", "Kind", "From", "To", "Limit in force (dB)"], steps)
 
     pw = sec.get("power")
     if isinstance(pw, dict) and "error" not in pw:
         rows = []
         for grp in ("current", "leakage", "voltage_frequency", "other"):
             for r in pw[grp]:
+                tr = r.get("trend") or {}
                 rows.append([grp.replace("_", " "), r["label"], r["unit"], _r(r["max"], 3), ts(r["max_ts"]),
-                             _r(r["min"], 3), _r(r["mean"], 3), _r(r["coverage"] * 100, 1), _r(r["interval_s"], 1)])
+                             _r(r["min"], 3), _r(r["mean"], 3), _r(r["coverage"] * 100, 1), _r(r["interval_s"], 1),
+                             _r(r.get("limit_a"), 1), r.get("limit_by", ""), _r(r.get("max_pct"), 1),
+                             _r(r.get("mean_pct"), 1), r.get("load_state", ""), tr.get("word", ""),
+                             _r(tr.get("early"), 3), _r(tr.get("late"), 3), _r(tr.get("change"), 3)])
         for x in pw["energy"]:
-            rows.append(["energy (kWh)", x["label"], "kWh", _r(x["kwh"], 3), "", None, None, None, None])
+            rows.append(["energy (kWh)", x["label"], "kWh", _r(x["kwh"], 3), "", None, None, None, None]
+                        + [None, "", None, None, "", "", None, None, None])
         out["power.csv"] = _csv_bytes(["Group", "Reading", "Unit", "Highest recorded sample / kWh", "Highest at", "Lowest",
-                                       "Mean", "Coverage (%)", "Recording interval (s)"], rows)
+                                       "Mean", "Coverage (%)", "Recording interval (s)", "Limit (A)", "Limit is the",
+                                       "Highest as % of limit", "Mean as % of limit", "Load note", "Leakage trend",
+                                       "Leakage at start (mA)", "Leakage at end (mA)", "Leakage change (mA)"], rows)
+        lc = data.charts.get("leakage") or {}
+        if lc.get("lines"):
+            out["leakage_1min.csv"] = _csv_bytes(
+                ["Measuring point", "Minute starting", "Lowest of minute (mA)", "Mean of minute (mA)", "Highest of minute (mA)"],
+                [[ln["label"], ts(p[0]), _r(p[2], 3), _r(p[1], 3), _r(p[3], 3)] for ln in lc["lines"] for p in ln["points"]])
+        g = pw.get("generator")
+        if g:
+            out["generator.csv"] = _csv_bytes(["Measure", "Value", "Unit"], [
+                ["Highest site demand", _r(g["peak_kva"], 3), "kVA"], ["Highest demand at", ts(g["peak_ts"]), ""],
+                ["Sized from", "three times the busiest line" if g["basis"] == "line" else "the whole site", ""],
+                ["Loading limit used", _r(g["loading_pct"], 1), "%"], ["Power factor used", _r(g["pf"], 2), ""],
+                ["Smallest generator suggested", _r(g["min_kva"], 3), "kVA"], ["Smallest generator suggested", _r(g["min_kw"], 3), "kW"],
+                ["Next standard size up", g["next_kva"], "kVA"], ["Your generator size", g["size_kva"], "kVA"],
+                ["Loaded to", _r(g["loaded_pct"], 1), "%"], ["Demand averaged over", g["window_min"], "min"]])
 
     sy = sec.get("system")
     if isinstance(sy, dict) and "rows" in sy:
