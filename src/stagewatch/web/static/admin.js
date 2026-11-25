@@ -886,6 +886,7 @@
         const area = h("input", { maxlength: "40", placeholder: "Area (optional)", "aria-label": `Area for ${u.model}` });
         parts.push(h("div", { class: "row" },
           h("span", {}, `${u.model}: ${u.label}`), h("span", { class: "muted", style: "font-size:12px" }, `${u.ip} · ${u.mac}`),
+          u.ip_changed ? h("span", { class: "warn-text", style: "font-size:12px" }, `Also heard from ${u.latest_ip}. Another device may be copying this one. Adding it uses the first address, ${u.ip}.`) : null,
           u.supported ? [name, area, h("button", { class: "small", type: "button", onclick: () => {
             if (!val(name)) { toast("Give it a name first", true); return; }
             run(() => api("POST", "/api/admin/shelly/found/adopt", { mac: u.mac, name: val(name), area: val(area) }), "Added").then(refresh, () => {});
@@ -894,7 +895,13 @@
       });
       if (found.length) parts.push(h("div", { class: "row" }, h("button", { class: "small", type: "button", onclick: () => run(() => api("POST", "/api/admin/shelly/found/clear"), "List cleared").then(refresh, () => {}) }, "Clear the list")));
     }
+    // A device heard from an address other than the one it was added at: not read until the admin says so.
+    const pendingRow = (id, name, ip, was) => h("div", { class: "row" },
+      h("span", { class: "warn-text" }, `${name} is now sending from ${ip} (it was added at ${was || "an earlier address"}). Not read until you accept it. Only accept an address you recognise.`),
+      h("button", { class: "small", type: "button", onclick: () => run(() => api("POST", "/api/admin/shelly/address", { id: id, ip: ip, accept: true }), "Address accepted").then(refresh, () => {}) }, "Accept"),
+      h("button", { class: "small", type: "button", onclick: () => run(() => api("POST", "/api/admin/shelly/address", { id: id, ip: ip, accept: false }), "Dismissed").then(refresh, () => {}) }, "Not now"));
     const sensors = rc.sensors || [];
+    ((admin.shelly || {}).meters || []).forEach((m) => { if (m.transport === "push" && m.pending_ip) parts.push(pendingRow(m.id, m.name, m.pending_ip, m.host)); });
     if (sensors.length) {
       parts.push(h("h3", {}, "Sensors"));
       sensors.forEach((s) => {
@@ -905,6 +912,7 @@
           h("strong", {}, s.name), h("span", { class: `status ${ss.cls}`, title: ss.title }, ss.text),
           h("span", { class: "muted", style: "font-size:12px" }, [s.detail, facts, `${s.last_ip || ""} · ${s.mac}`].filter(Boolean).join(" · ")),
           h("span", { class: "grow" }),
+          s.pending_ip ? pendingRow(s.id, s.name, s.pending_ip, s.last_ip) : null,
           h("button", { class: "small danger", type: "button", onclick: () => confirm(`Remove the sensor ${s.name}? Stagewatch stops reading it. Its history is kept.`) && run(() => api("DELETE", `/api/admin/shelly/sensor/${encodeURIComponent(s.id)}`), "Removed").then(refresh, () => {}) }, "Remove")));
       });
       parts.push(h("p", { class: "muted hint" }, "A Shelly sensor is left out of the site temperature and humidity average until you tick it under Calibration."));

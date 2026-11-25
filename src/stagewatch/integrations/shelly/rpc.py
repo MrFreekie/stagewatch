@@ -23,6 +23,7 @@ MAX_FRAME = 64 * 1024            # the same cap as the dashboards' socket
 MAX_DEPTH = 8                    # nesting allowed inside a frame
 MAX_COMPONENTS = 48              # components kept per device
 MAX_KEYS = 64                    # keys looked at in one object
+MAX_INT_DIGITS = 20              # no real reading has a longer whole number: refused at parse time
 METHODS = frozenset({"NotifyFullStatus", "NotifyStatus", "NotifyEvent"})
 _SRC = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 _COMPONENT = re.compile(r"^[a-z][a-z0-9_]{0,23}(:[0-9]{1,2})?$")
@@ -68,6 +69,12 @@ def _depth_ok(value: object, limit: int = MAX_DEPTH) -> bool:
     return True
 
 
+def _parse_int(text: str) -> int:
+    if len(text) > MAX_INT_DIGITS:
+        raise ValueError("number too long")
+    return int(text)
+
+
 def parse_frame(raw: object) -> Frame | Reject:
     """One frame as received. Anything that is not a well-formed notification from a Shelly is a Reject with a
     fixed reason; the content is never repeated."""
@@ -81,8 +88,8 @@ def parse_frame(raw: object) -> Frame | Reject:
                 return Reject("size")
         else:
             return Reject("not_json")
-        data = json.loads(raw)
-    except (ValueError, RecursionError, UnicodeDecodeError):
+        data = json.loads(raw, parse_int=_parse_int)
+    except (ValueError, RecursionError, UnicodeDecodeError, OverflowError):
         return Reject("not_json")
     if not isinstance(data, dict):
         return Reject("not_object")
@@ -106,9 +113,19 @@ def parse_frame(raw: object) -> Frame | Reject:
     sys_ = params.get("sys")
     if isinstance(sys_, dict) and "mac" in sys_ and normalise_mac(sys_.get("mac")) != mac:
         return Reject("mac_mismatch")
-    ts = params.get("ts")
-    ts = float(ts) if isinstance(ts, (int, float)) and not isinstance(ts, bool) and math.isfinite(ts) else None
+    ts = _finite(params.get("ts"))
     return Frame(method, src, mac, "".join(c for c in prefix.lower() if c.isalnum())[:40], ts, params)
+
+
+def _finite(value: object) -> float | None:
+    """A finite float, or None for anything else (including a number too large to be one)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        out = float(value)
+    except (OverflowError, ValueError):
+        return None
+    return out if math.isfinite(out) else None
 
 
 def component_names(params: dict) -> list[str]:

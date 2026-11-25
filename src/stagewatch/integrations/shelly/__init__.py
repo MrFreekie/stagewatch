@@ -808,6 +808,7 @@ class ShellyIntegration(Integration):
             key = power_tree.single_key(cfg)
             meters.append({
                 "id": cfg.id, "name": cfg.name, "area": cfg.area, "host": cfg.host, "mac": cfg.mac, "transport": cfg.transport,
+                "pending_ip": (self.push.pending_for(cfg.mac) or {}).get("ip", "") if cfg.transport == "push" else "",
                 "last_frame": m.last_frame if m else None,
                 "clock_note": "device clock not set" if m and m.skew is not None and abs(m.skew) > 120 else "",
                 "interval_s": cfg.poll_interval_s, "rating_a": held.rating_a, "breaker_a": held.breaker_a, "combined_bar": cfg.combined_bar,

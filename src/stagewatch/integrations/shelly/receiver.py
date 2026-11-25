@@ -4,9 +4,13 @@ Shelly devices with "Outbound WebSocket" switched on connect to Stagewatch and s
 the Shelly protocol lets Stagewatch check who is really sending, so the receiver is built to be safe anyway:
 
 * it is off until the admin switches it on, and a browser (which always sends an ``Origin`` header) is refused;
-* at most 32 connections (4 from one address) and 10 new connections a minute from one address;
+* at most 32 connections (4 from one address; 8 are kept for the addresses of devices you added) and 10 new
+  connections a minute from one address;
 * a frame limit of 64 KiB, 10 frames a second from one connection (a burst of 30) and 200 a second in all;
-* only devices the admin adopted are read. Any other sender goes on a short in-memory list (names of its
+* a connection that has not sent a frame from an adopted device within 10 seconds is closed, and so is one that
+  sends a bad frame first;
+* only devices the admin adopted are read, and only from the address they were added at (a different address
+  waits for the admin to accept it). Any other sender goes on a short in-memory list (names of its
   components, never its readings), is told goodbye and is forgotten at the next restart;
 * the server never sends a data frame: it only accepts, pings (done by the web server) and closes.
 
@@ -40,6 +44,10 @@ GLOBAL_RATE = 200.0
 FIRST_FRAME_S = 10.0
 IDLE_S = 30 * 60.0
 MAX_UNKNOWN = 32
+RECENT_S = 300.0             # a found-list entry seen this recently is never pushed out by a newcomer
+RESERVED = 8                 # of the 32 connection slots, kept for the addresses of adopted devices
+LOG_UNKNOWN_PER_HOUR = 6     # all unknown-device log lines together
+ERROR_LOG_EVERY_S = 60.0
 MAX_BAD_FRAMES = 20          # unusable frames on one connection before it is closed
 MAX_TRACKED_IPS = 256
 LOG_EVERY_S = 3600.0         # one "unknown device" line per MAC per hour
@@ -49,6 +57,8 @@ NORMAL, POLICY, TOO_BIG, GOING_AWAY = 1000, 1008, 1009, 1001
 
 class Sink(Protocol):
     def known_ip(self, mac: str) -> str: ...
+    def adopted_ips(self) -> set: ...
+    def pending(self, mac: str, ip: str, now: float) -> None: ...
     def deliver(self, mac: str, frame: "rpc.Frame", prev: dict | None, new: dict, ip: str, now: float) -> None: ...
 
 
@@ -78,24 +88,27 @@ class Conn:
     frames: int = 0
     bad: int = 0
     superseded: bool = False
+    adopted: bool = False        # a frame from an adopted device has been used on this connection
 
 
 @dataclass
 class Unknown:
     mac: str
     src: str
-    ip: str
+    ip: str                      # the address it was first seen at: pinned, and what adopting uses
     model: str
     components: list
     label: str
     first: float
     last: float
     count: int = 1
+    latest_ip: str = ""          # the address of its latest frame; differs from ``ip`` when it moved or is being copied
 
     def to_dict(self) -> dict:
         return {"mac": self.mac, "src": self.src, "ip": self.ip, "model": self.model, "components": list(self.components),
                 "label": self.label, "supported": self.label != "Not supported yet", "first_seen": self.first,
-                "last_seen": self.last, "count": self.count}
+                "last_seen": self.last, "count": self.count,
+                "ip_changed": bool(self.latest_ip and self.latest_ip != self.ip), "latest_ip": self.latest_ip or self.ip}
 
 
 @dataclass
@@ -106,6 +119,7 @@ class Receiver:
     sink: Sink | None = None
     max_total: int = MAX_TOTAL
     max_per_ip: int = MAX_PER_IP
+    reserved: int = RESERVED
     handshakes_per_min: int = HANDSHAKES_PER_MIN
     frame_rate: float = FRAME_RATE
     frame_burst: float = FRAME_BURST
@@ -123,6 +137,8 @@ class Receiver:
         self._handshakes: OrderedDict = OrderedDict()
         self._global = Bucket(GLOBAL_RATE, GLOBAL_RATE, self.clock)
         self._logged: OrderedDict = OrderedDict()
+        self._log_times: deque = deque()
+        self._error_logged = float("-inf")
         self._counters_logged = (0.0, 0)
 
     # ------------------------------------------------------------- who may be read
@@ -171,6 +187,11 @@ class Receiver:
         if sum(1 for c in live if c.ip == ip) >= self.max_per_ip:
             self.counters["refused_per_ip"] += 1
             return POLICY
+        # the last slots are for the addresses of devices that were added (an address cannot be faked on a TCP connection)
+        if sum(1 for c in live if not c.adopted) >= self.max_total - self.reserved \
+                and (self.sink is None or ip not in self.sink.adopted_ips()):
+            self.counters["refused_reserved"] += 1
+            return POLICY
         return None
 
     def open(self, ip: str) -> Conn:
@@ -194,10 +215,14 @@ class Receiver:
         """What to do with one frame: None to carry on, or a close code. Never raises."""
         try:
             return self._handle(conn, raw)
-        except Exception:  # noqa: BLE001 - a strange frame must never stop the hub
-            log.exception("Shelly receiver: could not handle a frame")
+        except Exception as exc:  # noqa: BLE001 - a strange frame must never stop the hub
             self.counters["error"] += 1
-            return None
+            conn.bad += 1                       # counts as a bad frame: a connection that keeps doing this is closed
+            now = self.clock()
+            if now - self._error_logged >= ERROR_LOG_EVERY_S:      # no traceback and no content, at most once a minute
+                self._error_logged = now
+                log.warning("Shelly receiver: a frame could not be used (%s)", type(exc).__name__)
+            return POLICY if conn.bad > (MAX_BAD_FRAMES if conn.adopted else 0) else None
 
     def _handle(self, conn: Conn, raw: object) -> int | None:
         now = self.clock()
@@ -214,7 +239,8 @@ class Receiver:
         if isinstance(frame, rpc.Reject):
             self.counters[frame.reason] += 1
             conn.bad += 1
-            return POLICY if conn.bad > MAX_BAD_FRAMES else None
+            # an unknown sender gets no second try; a device that was adopted may have a few odd frames
+            return POLICY if conn.bad > (MAX_BAD_FRAMES if conn.adopted else 0) else None
         if conn.mac and conn.mac != frame.mac:
             self.counters["mac_change"] += 1       # one connection speaks for one device
             return POLICY
@@ -232,26 +258,36 @@ class Receiver:
             return POLICY
         prev = self._status.get(mac)
         new = rpc.merge_status(prev, frame)
-        if frame.method != "NotifyEvent":
-            self._status[mac] = new
-        self.counters["frames"] += 1
+        conn.adopted = True
         if self.sink is not None:
-            self.sink.deliver(mac, frame, prev, new, conn.ip, now)
+            self.sink.deliver(mac, frame, prev, new, conn.ip, now)      # may raise: then nothing is stored
+        if frame.method != "NotifyEvent":
+            self._status[mac] = new                                     # so a frame that failed never poisons the next
+        self.counters["frames"] += 1
         self._log_counters(now)
         return None
 
     def _claim(self, conn: Conn, mac: str) -> bool:
-        """One live socket speaks for one adopted device. A second sender from another address is refused unless
-        it comes from the address the device was last at (then it replaces the old one)."""
+        """One live socket speaks for one adopted device, and only from the address it was added at. A frame from
+        any other address is refused and offered to the admin as "now at ..., accept?". From the right address, the
+        newest connection wins."""
         owner = self._owner.get(mac)
-        if owner is None or owner is conn or not owner.open or owner.ip == conn.ip:
-            if owner is not None and owner is not conn:
+        known = self.sink.known_ip(mac) if self.sink is not None else ""
+        if known:
+            if conn.ip != known:
+                self.counters["conflict"] += 1
+                self.conflicts[mac] = self.clock()
+                if self.sink is not None:
+                    self.sink.pending(mac, conn.ip, self.clock())
+                return False
+            if owner is not None and owner is not conn and owner.open:
                 owner.superseded = True
             self._owner[mac] = conn
             return True
-        known = self.sink.known_ip(mac) if self.sink is not None else ""
-        if known and conn.ip == known:
-            owner.superseded = True
+        # no address pinned yet (a sensor added before its first frame was kept)
+        if owner is None or owner is conn or not owner.open or owner.ip == conn.ip:
+            if owner is not None and owner is not conn:
+                owner.superseded = True
             self._owner[mac] = conn
             return True
         self.counters["conflict"] += 1
@@ -262,23 +298,36 @@ class Receiver:
         names = [n[:24] for n in rpc.component_names(frame.params)][:24]
         entry = self.unknown.pop(frame.mac, None)
         if entry is None:
+            if len(self.unknown) >= MAX_UNKNOWN:
+                oldest = next(iter(self.unknown.values()))
+                if now - oldest.last < RECENT_S:
+                    self.counters["unknown_full"] += 1      # every entry is recent: a newcomer never pushes one out
+                    return
+                self.unknown.popitem(last=False)             # the least recently seen goes
             entry = Unknown(frame.mac, frame.src[:64], ip[:45], rpc.model_label(frame.prefix), names,
-                            rpc.kind_label(names), now, now, 0)
-        entry.last, entry.ip, entry.count = now, ip[:45], entry.count + 1
+                            rpc.kind_label(names), now, now, 0, ip[:45])
+        entry.last, entry.latest_ip, entry.count = now, ip[:45], entry.count + 1     # ``ip`` stays the first-seen address
         if names:
             entry.components, entry.label = names, rpc.kind_label(names)
         self.unknown[frame.mac] = entry
-        while len(self.unknown) > MAX_UNKNOWN:
-            self.unknown.popitem(last=False)
         self.counters["unknown"] += 1
+        self._log_unknown(frame, now)
+
+    def _log_unknown(self, frame: "rpc.Frame", now: float) -> None:
+        """One line per device per hour and 6 an hour in all. No address or hardware address in the log."""
         last = self._logged.pop(frame.mac, None)
         self._logged[frame.mac] = last if last is not None and now - last < LOG_EVERY_S else now
-        if last is None or now - last >= LOG_EVERY_S:
-            # No address or hardware address in the log (house rule): the model and a count, at most hourly per device
-            log.info("Shelly: a device that is not on your list sent something (%s, %d on the found list)",
-                     rpc.model_label(frame.prefix), len(self.unknown))
         while len(self._logged) > 64:
             self._logged.popitem(last=False)
+        if last is not None and now - last < LOG_EVERY_S:
+            return
+        while self._log_times and now - self._log_times[0] >= 3600.0:
+            self._log_times.popleft()
+        if len(self._log_times) >= LOG_UNKNOWN_PER_HOUR:
+            return
+        self._log_times.append(now)
+        log.info("Shelly: a device that is not on your list sent something (%s, %d on the found list)",
+                 rpc.model_label(frame.prefix), len(self.unknown))
 
     def unknown_list(self) -> list[dict]:
         return [u.to_dict() for u in reversed(self.unknown.values())]
@@ -303,7 +352,7 @@ class Receiver:
         try:
             offered = ws.scope.get("subprotocols") or []
             await ws.accept(subprotocol="json-rpc" if "json-rpc" in offered else None)
-            timeout = self.first_frame_s
+            timeout = self.first_frame_s          # stays 10 s until a frame from an adopted device is used
             while True:
                 try:
                     msg = await asyncio.wait_for(ws.receive(), timeout)
@@ -320,7 +369,8 @@ class Receiver:
                 if code is not None:
                     await _close(ws, code)
                     return
-                timeout = self.idle_s
+                if conn.adopted:
+                    timeout = self.idle_s
         except Exception:  # noqa: BLE001 - a dropped connection is normal; nothing here may reach the hub
             return
         finally:

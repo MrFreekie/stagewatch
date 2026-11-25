@@ -53,8 +53,30 @@ def num(value: object) -> float | None:
     """A finite number, or None. Booleans, text, NaN and infinity are not numbers."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    out = float(value)
+    try:
+        out = float(value)
+    except (OverflowError, ValueError):      # a whole number too large to be a float
+        return None
     return out if math.isfinite(out) else None
+
+
+# The largest size a real reading can have, by kind. Anything beyond is a fault or a made-up frame: it becomes None
+# (a gap), never a recorded value. Generous on purpose: a wrong limit would hide a real reading.
+SANE = {
+    Kind.VOLTAGE: (-1000.0, 1000.0), Kind.CURRENT: (-10000.0, 10000.0), Kind.POWER: (-1e7, 1e7),
+    Kind.APPARENT_POWER: (-1e7, 1e7), Kind.REACTIVE_POWER: (-1e7, 1e7), Kind.FREQUENCY: (0.0, 120.0),
+    Kind.POWER_FACTOR: (-2.0, 2.0), Kind.ENERGY: (-1e12, 1e12), Kind.TEMPERATURE: (-60.0, 200.0),
+}
+
+
+def sane(reading: "Reading") -> "Reading":
+    """The reading, or the same reading with value None when its size is beyond what is possible for its kind."""
+    limits = SANE.get(reading.kind)
+    v = reading.value
+    if v is None or limits is None or limits[0] <= v <= limits[1]:
+        return reading
+    return Reading(reading.object_id, reading.channel, reading.group, reading.field, reading.kind, reading.decimals,
+                   None, reading.cumulative, reading.calculated)
 
 
 PF_MIN = 0.1   # below this power factor, watts / PF is meaningless (tiny divisor): no figure
@@ -248,7 +270,8 @@ def readings_from_status(status: object) -> list[Reading]:
             out.extend(_BUILDERS[prefix](status, n))
         except Exception:  # noqa: BLE001 - a strange component must never stop the others
             continue
-    return with_reactive(out[:MAX_READINGS])[:MAX_READINGS]   # calculated readings come last, so a flood cuts those first
+    out = [sane(r) for r in out[:MAX_READINGS]]
+    return with_reactive(out)[:MAX_READINGS]   # calculated readings come last, so a flood cuts those first
 
 
 # --------------------------------------------------------------------- names for people

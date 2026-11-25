@@ -28,12 +28,25 @@ the [notices](README.md#notices).
   change a setting on a Shelly.
 - **It is off until you switch it on.** Nothing listens for Shelly devices by default. Polling stays the
   normal way to read a meter.
-- **Only devices you add are read.** A device that sends and is not on your list is put on a short
-  "found devices" list (its model and the kind of readings it has, never the readings themselves),
-  told goodbye, and forgotten when Stagewatch restarts.
-- **It is limited.** At most 32 connections at once, 4 from one address, 10 new connections a minute
-  from one address, and a cap on how big and how fast the messages may be. A web page in a browser is
-  refused.
+- **Only devices you add are read, and only from the address they were added at.** A device that sends
+  and is not on your list is put on a short "found devices" list (its model and the kind of readings it
+  has, never the readings themselves), told goodbye, and forgotten when Stagewatch restarts. The list
+  keeps the address a device was **first** seen at, and warns you if the same device is later heard from
+  another address (something may be copying it). Adding a device uses the first address. Once a device
+  is added, a message from any other address is not read: the admin page shows "now sending from
+  <address>" with **Accept** and **Not now**, and nothing changes until you accept. Only accept an
+  address you recognise. If a device really does get a new address from your router, you will see this
+  once and accept it.
+- **It is limited.** At most 32 connections at once (8 of them kept for the addresses of devices you
+  have added), 4 from one address, 10 new connections a minute from one address, and a cap on how big
+  and how fast the messages may be. A connection that has not sent something from an added device
+  within 10 seconds is closed, and so is one whose first message is not a proper Shelly message. A
+  device that is not on your list never pushes out a recently seen entry on a full found list (an
+  entry is only replaced once it has not been heard for 5 minutes). A web page in a browser is refused.
+- **Impossible values are gaps.** A temperature outside -40 to 85 °C, a Wi-Fi signal outside -120 to 0
+  dBm, a battery voltage outside 0 to 10 V, or a meter reading beyond what is physically possible
+  (for example over 1,000 V or 10,000 A) is treated as missing, never recorded. Whole numbers of more
+  than 20 digits make the message be refused.
 
 ## Add an H&T sensor
 
@@ -68,10 +81,13 @@ signal, that is shown; if it does not, nothing is shown.
 - **Not in the site average (yet).** An H&T sits wherever you put it, so Stagewatch leaves it out of the
   site temperature and humidity average until you tick it under **Calibration**. It is still an
   Environment reading.
-- **A new address is followed.** Stagewatch recognises a sensor by its hardware address, so if your router
-  gives it a new IP address the readings carry on and the admin page notes "now at ...".
+- **A new address waits for you.** Stagewatch recognises a sensor by its hardware address and the address
+  it was added at. If your router gives it a new IP address, the admin page shows "now sending from ...",
+  readings pause, and they carry on once you press **Accept**. Give the sensor a fixed address in your
+  router (a DHCP reservation) to avoid this.
 - **Ignore** puts a found device on a list that is closed on sight; **Remove** stops reading a sensor you
-  added. History is kept.
+  added. History is kept. A device you have added cannot be ignored, and adding a device you had
+  ignored takes it off the ignore list.
 
 ## A power meter that sends (Pro 3EM)
 

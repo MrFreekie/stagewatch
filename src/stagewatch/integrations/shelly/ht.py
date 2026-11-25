@@ -22,6 +22,10 @@ ENTITIES = {
     "signal": (Kind.SIGNAL, 0, "wifi"),
 }
 NAMES = {"temperature": "Temperature", "humidity": "Humidity", "battery": "Battery", "signal": "Wi-Fi signal"}
+SANE_TEMP_C = (-40.0, 85.0)      # the sensor chip's own limits: anything outside is a fault, not a reading
+SANE_RSSI = (-120.0, 0.0)
+SANE_BATTERY_V = (0.0, 10.0)
+MAX_WAKE_PERIOD_S = 7 * 86400.0
 RANGE_C = (0.0, 40.0)            # the H&T Gen3 is rated 0 to 40 degrees C (indoor only)
 LOW_BATTERY_ON, LOW_BATTERY_OFF = 20.0, 25.0
 BATTERY_STALE_S = 9000.0         # 2.5 hours: a report is due every 2 hours on batteries
@@ -37,6 +41,10 @@ def _get(d: object, *path: str) -> object:
     return d
 
 
+def _within(value: float | None, limits: tuple) -> float | None:
+    return value if value is not None and limits[0] <= value <= limits[1] else None
+
+
 def values(status: dict, names: set | None = None) -> dict:
     """object_id -> value (or None) for the readings whose component is in ``names`` (all of them when None). A
     component that is not in the status gives no entry at all, so a partial status never blanks another reading."""
@@ -46,7 +54,7 @@ def values(status: dict, names: set | None = None) -> dict:
         return (names is None or comp in names) and isinstance(status.get(comp), dict)
 
     if want("temperature:0"):
-        out["temperature"] = num(_get(status, "temperature:0", "tC"))
+        out["temperature"] = _within(num(_get(status, "temperature:0", "tC")), SANE_TEMP_C)
     if want("humidity:0"):
         rh = num(_get(status, "humidity:0", "rh"))
         out["humidity"] = rh if rh is None or 0.0 <= rh <= 100.0 else None
@@ -54,19 +62,19 @@ def values(status: dict, names: set | None = None) -> dict:
         pct = num(_get(status, "devicepower:0", "battery", "percent"))
         out["battery"] = pct if pct is None or 0.0 <= pct <= 100.0 else None
     if want("wifi") and "rssi" in status["wifi"]:
-        out["signal"] = num(_get(status, "wifi", "rssi"))
+        out["signal"] = _within(num(_get(status, "wifi", "rssi")), SANE_RSSI)
     return out
 
 
 def info(status: dict) -> dict:
     """What the admin page shows about the device (not recorded): wake period (s), external power, battery volts."""
-    period = num(_get(status, "sys", "wakeup_period"))
+    period = _within(num(_get(status, "sys", "wakeup_period")), (0.0, MAX_WAKE_PERIOD_S))
     cause = _get(status, "sys", "wakeup_reason", "cause")
     ext = _get(status, "devicepower:0", "external", "present")
     return {"wake_period_s": period if period and period > 0 else None,
             "wake_cause": cause[:24] if isinstance(cause, str) else "",
             "external_power": ext if isinstance(ext, bool) else None,
-            "battery_v": num(_get(status, "devicepower:0", "battery", "V"))}
+            "battery_v": _within(num(_get(status, "devicepower:0", "battery", "V")), SANE_BATTERY_V)}
 
 
 def stale_limit_s(wake_period_s: float | None, external_power: bool | None) -> float:

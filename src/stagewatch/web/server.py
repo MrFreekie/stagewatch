@@ -572,6 +572,15 @@ class ShellyFoundBody(BaseModel):
         return v
 
 
+class ShellyAddressBody(BaseModel):
+    """POST /api/admin/shelly/address: accept (or dismiss) the different address a device was heard at."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    id: str = Field(min_length=1, max_length=60)
+    ip: str = Field(min_length=3, max_length=45)
+    accept: StrictBool = True
+
+
 class ShellyIgnoreBody(BaseModel):
     """POST /api/admin/shelly/found/ignore."""
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
@@ -2630,7 +2639,18 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         try:
             shelly_integ().push.ignore(body.mac, body.ignore)
         except PushError as exc:
-            raise HTTPException(422, str(exc)) from None
+            raise HTTPException(422, f"{exc} Nothing has been changed.") from None
+        return {"ok": True}
+
+    @app.post("/api/admin/shelly/address", dependencies=admin_deps)
+    async def shelly_address(body: ShellyAddressBody):
+        """The admin's answer to "now at <address>, accept?" for a device heard from an address other than the one it was added at."""
+        try:
+            shelly_integ().push.accept_address(body.id, body.ip, body.accept)
+        except LookupError:
+            raise HTTPException(404, "No such device") from None
+        except PushError as exc:
+            raise HTTPException(409, f"{exc} Nothing has been changed.") from None
         return {"ok": True}
 
     @app.post("/api/admin/shelly/found/clear", dependencies=admin_deps)

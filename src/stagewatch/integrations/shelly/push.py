@@ -31,6 +31,7 @@ from .transport import DeviceInfo
 log = logging.getLogger(__name__)
 
 CHECK_S = 30.0
+PENDING_KEEP_S = 3600.0          # a different address waits this long for the admin, then is forgotten
 METER_STALE_OPEN_S = 600.0       # a meter with its socket open and no frame for this long is not reporting
 METER_STALE_CLOSED_S = 120.0     # ... and with its socket closed
 WAITING_SENSOR = "Waiting for the first reading. Press the button on the device once."
@@ -66,6 +67,7 @@ class PushSide:
         self.rx = Receiver(clock=integ._clock, enabled=lambda: self.hub.config.shelly_receiver.enabled,
                            ignored=lambda: set(self.hub.config.shelly_receiver.ignored), sink=self)
         self.sensors: dict[str, SensorState] = {}
+        self.pending_ips: dict[str, dict] = {}     # mac -> a different address that sent as an adopted device, waiting for the admin
         self._task: asyncio.Task | None = None
         self.check_every = CHECK_S
 
@@ -97,15 +99,30 @@ class PushSide:
         st = self.sensors.get(mac)
         return st.cfg.last_ip if st else ""
 
+    def adopted_ips(self) -> set:
+        """The pinned addresses of the devices that were added (the receiver keeps some connection slots for them)."""
+        return {st.cfg.last_ip for st in self.sensors.values() if st.cfg.last_ip} | \
+            {m.cfg.host for m in self.integ._meters.values() if m.cfg.transport == "push" and m.cfg.host}
+
+    def pending(self, mac: str, ip: str, now: float) -> None:
+        """An adopted device's MAC sent from an address that is not the one it was added at. Nothing is changed: the
+        admin is offered "now at ..., accept?" (see accept_address)."""
+        ip = peer_ip(ip)
+        if not ip or not is_local_address(ipaddress.ip_address(ip)) or mac not in self.adopted_macs():
+            return
+        entry = self.pending_ips.get(mac)
+        if entry is None or entry["ip"] != ip:
+            self.pending_ips[mac] = {"ip": ip, "first": now, "last": now, "count": 1}
+        else:
+            entry["last"], entry["count"] = now, entry["count"] + 1
+
     def deliver(self, mac: str, frame: rpc.Frame, prev: dict | None, new: dict, ip: str, now: float) -> None:
+        """Use one frame. May raise: the receiver counts that as a bad frame and does not keep the status."""
         kind = self.rx.allowed.get(mac)
-        try:
-            if kind == "sensor" and mac in self.sensors:
-                self._sensor_frame(self.sensors[mac], frame, new, ip, now)
-            elif kind == "meter":
-                self._meter_frame(mac, frame, prev, new, ip, now)
-        except Exception:  # noqa: BLE001 - a strange frame must never stop the hub
-            log.exception("Shelly: could not use a pushed frame")
+        if kind == "sensor" and mac in self.sensors:
+            self._sensor_frame(self.sensors[mac], frame, new, ip, now)
+        elif kind == "meter":
+            self._meter_frame(mac, frame, prev, new, ip, now)
 
     # ---------------------------------------------------------------- power meters
     def _meter_frame(self, mac: str, frame: rpc.Frame, prev: dict | None, new: dict, ip: str, now: float) -> None:
@@ -113,7 +130,6 @@ class PushSide:
         if m is None:
             return
         m.last_frame = now
-        self._note_meter_ip(m.cfg, ip)
         skew = rpc.clock_skew(frame, now)
         m.skew = skew
         if frame.method == "NotifyEvent" or not new:
@@ -129,13 +145,6 @@ class PushSide:
             self.integ.identified(mac, DeviceInfo(mac, frame.src[:60], rpc.model_label(frame.prefix), "", "", False))
         self.integ.status(mac, new, now, only=only, push=True)
 
-    def _note_meter_ip(self, cfg: ShellyDeviceConfig, ip: str) -> None:
-        ip = peer_ip(ip)
-        if ip and ip != cfg.host and is_local_address(ipaddress.ip_address(ip)):
-            log.info("Shelly %s: now at a new address", cfg.id)
-            cfg.host = ip
-            self.hub.save_config()
-
     # ---------------------------------------------------------------- H&T sensors
     def attach_sensor(self, cfg: ShellySensorConfig) -> None:
         self.sensors[cfg.mac] = SensorState(cfg)
@@ -150,8 +159,7 @@ class PushSide:
         cfg = st.cfg
         st.last_frame, st.frames = now, st.frames + 1
         ip = peer_ip(ip)
-        if ip and ip != cfg.last_ip:
-            st.ip_note = f"now at {ip}" if cfg.last_ip else ""
+        if ip and not cfg.last_ip:      # added before its address was known: the first address it sends from is pinned
             cfg.last_ip = ip
             self.hub.save_config()
         st.skew = rpc.clock_skew(frame, now)
@@ -238,6 +246,8 @@ class PushSide:
         if not mac:
             raise PushError("That is not a device address.")
         ignored = self.hub.config.shelly_receiver.ignored
+        if on and mac in self.adopted_macs():
+            raise PushError("That device has been added, so it cannot be ignored. Remove it first if you no longer want it.")
         if on and mac not in ignored:
             if len(ignored) >= 64:
                 raise PushError("The ignore list is full.")
@@ -261,6 +271,9 @@ class PushSide:
         cfg = self.hub.config
         if mac in self.adopted_macs():
             raise PushError("That device has already been added.")
+        ignored = cfg.shelly_receiver.ignored
+        if mac in ignored:
+            ignored.remove(mac)          # adding a device the admin once ignored takes it off the ignore list
         kind = rpc.kind_of(entry.components)
         device_id = slugify(name)
         if not device_id or device_id in ("site",) or device_id in self.hub.devices \
@@ -289,6 +302,37 @@ class PushSide:
             return dc.id
         raise PushError(SUPPORT_TEXT)
 
+    def pending_for(self, mac: str) -> dict | None:
+        """The waiting different address for an adopted device, if it sent within the last hour."""
+        entry = self.pending_ips.get(mac)
+        if entry is None:
+            return None
+        if self.integ._clock() - entry["last"] > PENDING_KEEP_S or mac not in self.adopted_macs():
+            del self.pending_ips[mac]
+            return None
+        return entry
+
+    def accept_address(self, device_id: str, ip: str, accept: bool = True) -> None:
+        """The admin's answer to "now at <address>, accept?". Accepting pins the new address (one config save);
+        declining just forgets the offer. Raises LookupError (no such device), PushError (that address is not waiting)."""
+        st = next((s for s in self.sensors.values() if s.cfg.id == device_id), None)
+        cfg = st.cfg if st is not None else next((d for d in self.hub.config.shelly_devices if d.id == device_id and d.transport == "push"), None)
+        if cfg is None:
+            raise LookupError
+        entry = self.pending_for(cfg.mac)
+        if entry is None or entry["ip"] != peer_ip(ip):
+            raise PushError("That address is no longer waiting for approval.")
+        del self.pending_ips[cfg.mac]
+        self.rx.conflicts.pop(cfg.mac, None)
+        if not accept:
+            return
+        if st is not None:
+            cfg.last_ip = entry["ip"]
+            st.ip_note = f"now at {entry['ip']}"
+        else:
+            cfg.host = entry["ip"]
+        self.hub.save_config()
+
     def remove_sensor(self, device_id: str) -> None:
         cfg = self.hub.config
         sc = next((s for s in cfg.shelly_sensors if s.id == device_id), None)
@@ -296,6 +340,7 @@ class PushSide:
             raise LookupError
         cfg.shelly_sensors.remove(sc)
         self.sensors.pop(sc.mac, None)
+        self.pending_ips.pop(sc.mac, None)
         self.rx.forget(sc.mac)
         self._notice(f"{sc.id}:battery_low", False, "")
         self.hub.save_config()
@@ -317,6 +362,7 @@ class PushSide:
                 "clock_skew_s": st.skew, "clock_note": "device clock not set" if st.skew is not None and abs(st.skew) > 120 else "",
                 "ip_note": st.ip_note, "frames": st.frames,
                 "conflict": bool(self.rx.conflicts.get(st.cfg.mac)),
+                "pending_ip": (self.pending_for(st.cfg.mac) or {}).get("ip", ""),
             })
         return {
             "enabled": self.hub.config.shelly_receiver.enabled, "urls": urls, "connections": self.rx.live,
