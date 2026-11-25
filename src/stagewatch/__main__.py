@@ -23,7 +23,7 @@ from .integrations.globcon import GlobconIntegration, seed_emulate_globcon
 from .integrations.ontime import OntimeIntegration
 from .integrations.osc_out import OscOutIntegration
 from .integrations.rme import RmeIntegration, seed_emulate_rme
-from .integrations.shelly import ShellyIntegration, seed_emulate_shelly
+from .integrations.shelly import ShellyIntegration, seed_emulate_push, seed_emulate_shelly
 from .integrations.pihost import PiHostIntegration
 from .integrations.witmotion import WitmotionIntegration
 from .integrations.smaart import SmaartIntegration, seed_emulate_spl
@@ -99,6 +99,8 @@ async def run(args: argparse.Namespace) -> int:
     hub.add_integration(PiHostIntegration(hub, emulate=args.emulate))  # runs only on a Raspberry Pi (a simulated one in emulate)
     hub.add_integration(WitmotionIntegration(hub, emulate=args.emulate))  # runs only when switched on in config.yaml (a simulated sensor in emulate)
     if args.emulate and seed_emulate_shelly(hub.config):   # a fresh emulate folder gets one simulated PM Mini and the Power card
+        hub.save_config()
+    if args.emulate and seed_emulate_push(hub.config):    # ...and simulated Shelly H&T sensors and a meter that send to the receiver
         hub.save_config()
     if args.emulate and seed_emulate_demo(hub.config):  # a fresh emulate folder shows every clock style
         hub.save_config()

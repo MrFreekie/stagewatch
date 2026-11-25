@@ -14,8 +14,13 @@ them. Energy is the meter's running total (watt-hours), not a level. When a mete
 last readings stay on screen, frozen and marked with their age; nothing is filled in afterwards and
 nothing is shown as zero.
 
-Phase 1: HTTP polling only. Tested on one Shelly PM Mini Gen3; other models are read by the
-components they report (pm1, em, em1, and a switch that measures power) but are untested.
+Two ways in. HTTP polling is the default (Stagewatch asks each meter every few seconds). The WebSocket
+receiver is opt-in: the admin switches it on and sets "Outbound WebSocket" on the Shelly's own web page, and
+the device then sends its readings to Stagewatch. Stagewatch never changes a device either way. The receiver
+also takes Shelly H&T (temperature and humidity) sensors: see push.py, receiver.py, rpc.py and ht.py.
+
+Tested on one Shelly PM Mini Gen3 (polling); every other model, and the receiver, are untested on hardware.
+Other models are read by the components they report (pm1, em, em1, and a switch that measures power).
 """
 
 from __future__ import annotations
@@ -38,9 +43,11 @@ from . import neutral as nt
 from .derived import SITE_ID, DerivedPower
 from .replay import Rebuild
 from . import readings as rd
+from .emulate_push import EmulatedPush
 from .emulate import (DEMO1_HOST, DEMO1_NAME, DEMO3_HOST, DEMO3_NAME, DEMO4_HOST, DEMO4_NAME, DEMO5_HOST, DEMO5_NAME,
                       DEMO_HOST, DEMO_NAME, EmulatedFleet, emulated_mac)
 from .http import Fetch, ShellyError, get_json
+from .push import PushSide
 from .transport import DeviceInfo, DeviceNames, HttpPollTransport, Target, Transport, identify, read_names, read_status
 
 log = logging.getLogger(__name__)
@@ -59,6 +66,7 @@ HEARTBEAT_S = 10.0          # an unchanged value is re-recorded at most this oft
 NEUTRAL_ID = "shelly_neutral"      # the one calculated-neutral "meter" (see _update_neutral)
 NEUTRAL_ENTITY = f"{NEUTRAL_ID}.neutral_current"
 FAILURES_BEFORE_MISSING = 3  # missed polls in a row before the meter counts as not answering
+PUSH_STALE_S = 600.0        # a pushed reading counts as current for this long (a steady load sends nothing new)
 
 MANIFEST = Manifest(
     domain="shelly",
@@ -68,16 +76,20 @@ MANIFEST = Manifest(
                 "total) from Shelly power meters on the local network, by asking each meter every "
                 "few seconds (Shelly.GetDeviceInfo and Shelly.GetStatus, or /shelly and /status for a first-generation meter, only). Read-only: it never "
                 "switches a relay, changes a setting, restarts, updates or resets a meter. Apparent "
-                "power and power factor are shown only when a meter sends them. All readings are "
-                "Equipment: never part of a site average. Phase 1 uses HTTP polling only and has "
-                "been tried on one Shelly PM Mini Gen3; other models are untested. A meter with a "
-                "password is not supported yet.",
+                "power and power factor are shown only when a meter sends them. All power readings are "
+                "Equipment: never part of a site average. Optional and off by default: a WebSocket "
+                "receiver that listens to meters and to Shelly H&T temperature and humidity sensors "
+                "that the admin has set to send to Stagewatch (it only listens, and reads only "
+                "devices the admin added; the readings are not signed). An H&T is an Environment "
+                "sensor, left out of the site average until ticked. Polling has been tried on one "
+                "Shelly PM Mini Gen3; the receiver, the H&T and every other model are untested on "
+                "hardware. A meter with a password is not supported yet.",
     tier="experimental",
     direction="in",
     iot_class="local_poll",
-    protocols=("HTTP (Shelly RPC)",),
+    protocols=("HTTP (Shelly RPC)", "Outbound WebSocket (JSON-RPC, receive only)"),
     entity_kinds=("power", "apparent_power", "current", "voltage", "energy", "power_factor",
-                  "frequency", "temperature"),
+                  "frequency", "temperature", "humidity", "battery", "signal_strength"),
     vendors=("Shelly",),
 )
 
@@ -178,6 +190,26 @@ class _Meter:
     day_key: str = ""                                 # the show day the figures below belong to
     figures: dict = field(default_factory=dict)       # object_id -> DayFigures for that show day
     rebuilds: dict = field(default_factory=dict)      # object_id -> Rebuild, while that day so far is read back
+    last_frame: float | None = None                   # push meters: when the last frame arrived (receive time)
+    started: float = 0.0                              # when Stagewatch began watching this meter
+    skew: float | None = None                         # push meters: the device clock minus ours, admin only
+
+
+def seed_emulate_push(config) -> bool:
+    """Emulate mode only: a fresh emulate folder gets the receiver switched on, two simulated H&T sensors and one
+    simulated three-phase meter that sends to it (see emulate_push.py). Does nothing once any is saved. Returns
+    True if it changed the config."""
+    if config.shelly_sensors or "shelly_receiver" in config.model_fields_set \
+            or any(d.transport == "push" for d in config.shelly_devices):
+        return False
+    from ...core.config import ShellyReceiverConfig, ShellySensorConfig
+    from . import emulate_push as ep
+    config.shelly_receiver = ShellyReceiverConfig(enabled=True)
+    config.shelly_sensors = [ShellySensorConfig(id="foh_tent_ht_sim", mac=ep.HT1_MAC, name=ep.HT1_NAME, area="FOH", last_ip=ep.HT1_IP),
+                             ShellySensorConfig(id="amp_room_ht_sim", mac=ep.HT2_MAC, name=ep.HT2_NAME, area="Amp room", last_ip=ep.HT2_IP)]
+    config.shelly_devices.append(ShellyDeviceConfig(id="dock_3em_push_sim", host=ep.EM_IP, mac=ep.EM_MAC, name=ep.EM_NAME,
+                                                    area="Dock", transport="push"))
+    return True
 
 
 def seed_emulate_shelly(config) -> bool:
@@ -241,8 +273,10 @@ class ShellyIntegration(Integration):
         self._meters: dict[str, _Meter] = {}          # by MAC
         self._lock = asyncio.Lock()
         self._started = False
+        self._sim = None
         self._neutral_last: tuple[float | None, float] | None = None
         self._derived = DerivedPower(self)    # calculated figures: demand, unbalance, site total, generator
+        self.push = PushSide(self)            # the opt-in WebSocket receiver: meters and H&T sensors that send to us
 
     # ------------------------------------------------------------- lifecycle
     async def start(self) -> None:
@@ -251,16 +285,30 @@ class ShellyIntegration(Integration):
         for cfg in list(self.hub.config.shelly_devices):
             self._attach(cfg)
         self._update_neutral(self._clock())
+        await self.push.start()
+        if self.emulate and self._fleet is not None:
+            self._sim = EmulatedPush(self)
+            self._sim.start()
 
     async def stop(self) -> None:
         self._started = False
+        if self._sim is not None:
+            await self._sim.stop()
+        await self.push.stop()
         await self._transport.stop()
 
     def _attach(self, cfg: ShellyDeviceConfig) -> None:
-        self._meters[cfg.mac] = _Meter(cfg)
-        self.hub.register_device(self._device(cfg, None, Status.INITIALIZING))
-        self.hub.set_device_status(cfg.id, Status.INITIALIZING, "Waiting for the first reading")
-        self._transport.add(Target(cfg.mac, cfg.host, cfg.poll_interval_s))
+        self._meters[cfg.mac] = _Meter(cfg, started=self._clock())
+        dev = self._device(cfg, None, Status.INITIALIZING)
+        if cfg.transport == "push":
+            dev.stale_limit_s = PUSH_STALE_S      # a meter that sends on change may be quiet for a while
+        self.hub.register_device(dev)
+        if cfg.transport == "push":
+            self.hub.set_device_status(cfg.id, Status.INITIALIZING, "Waiting for the first reading from the meter")
+            self.push.rx.allow(cfg.mac, "meter")
+        else:
+            self.hub.set_device_status(cfg.id, Status.INITIALIZING, "Waiting for the first reading")
+            self._transport.add(Target(cfg.mac, cfg.host, cfg.poll_interval_s))
 
     def _device(self, cfg: ShellyDeviceConfig, info: DeviceInfo | None, status: Status) -> Device:
         model = (info.app or info.model) if info else ""
@@ -287,13 +335,13 @@ class ShellyIntegration(Integration):
         if m is not None:
             m.names = names
 
-    def status(self, mac: str, status: dict, ts: float) -> None:
+    def status(self, mac: str, status: dict, ts: float, only: set | None = None, push: bool = False) -> None:
         m = self._meter_of(mac)
         if m is None:
             return
         try:
             with loopguard.timed(f"Shelly poll {m.cfg.id}"):
-                self._apply_status(m, status, ts)
+                self._apply_status(m, status, ts, only, push)
         except Exception:  # noqa: BLE001 - a strange reply must never stop the hub
             log.exception("Shelly %s: could not use a status reply", m.cfg.id)
 
@@ -316,7 +364,9 @@ class ShellyIntegration(Integration):
         self._update_neutral(self._clock())
 
     # ------------------------------------------------------------------ readings
-    def _apply_status(self, m: _Meter, status: dict, ts: float) -> None:
+    def _apply_status(self, m: _Meter, status: dict, ts: float, only: set | None = None, push: bool = False) -> None:
+        """Turn a status into readings. ``only`` (pushed frames) limits what is recorded to the readings that
+        changed in this frame, so a value is never stamped fresh by a frame that did not carry it."""
         cfg = m.cfg
         found = rd.readings_from_status(status)
         if not found:
@@ -327,6 +377,8 @@ class ShellyIntegration(Integration):
         channels = rd.channel_counts(found)
         self._note_circuits(cfg, found)
         for r in found:
+            if only is not None and r.object_id not in only:
+                continue
             eid = f"{cfg.id}.{r.object_id}"
             if r.object_id not in m.entities:
                 if r.value is None:
@@ -338,7 +390,7 @@ class ShellyIntegration(Integration):
         m.problem = ""
         was_gap, m.gap = m.gap, False
         dev = self.hub.devices.get(cfg.id)
-        detail = f"Reading every {cfg.poll_interval_s:g} s"
+        detail = "Readings sent by the meter" if push else f"Reading every {cfg.poll_interval_s:g} s"
         self.hub.set_device_status(cfg.id, Status.OK, detail)
         if was_gap and dev is not None:
             # Only a gap seen live gets a marker, made now: nothing is filled in for the time between.
@@ -627,7 +679,8 @@ class ShellyIntegration(Integration):
             if dev is not None:
                 self.hub.register_device(self._device(cfg, m.info if m else None, dev.status))
             self.hub.set_device_public(cfg.id, public_extra(cfg))
-            self._transport.add(Target(cfg.mac, cfg.host, cfg.poll_interval_s))
+            if cfg.transport != "push":
+                self._transport.add(Target(cfg.mac, cfg.host, cfg.poll_interval_s))
             self._update_neutral(self._clock())
 
     def _merged_channels(self, cfg: ShellyDeviceConfig, channels: list[dict]) -> list[ShellyChannelConfig]:
@@ -706,6 +759,7 @@ class ShellyIntegration(Integration):
             self._set_notice(cfg.id + ".volts", False, 0, "")
             self._set_notice(cfg.id + ".freq", False, 0, "")
             self._transport.remove(cfg.mac)
+            self.push.rx.forget(cfg.mac)
             self._meters.pop(cfg.mac, None)
             self.hub.config.shelly_devices.remove(cfg)
             # whatever was fed from this meter or its circuits has no upstream any more
@@ -753,7 +807,9 @@ class ShellyIntegration(Integration):
             held = power_tree.holder_of_meter(cfg)       # the meter, or its only circuit when it has just one
             key = power_tree.single_key(cfg)
             meters.append({
-                "id": cfg.id, "name": cfg.name, "area": cfg.area, "host": cfg.host, "mac": cfg.mac,
+                "id": cfg.id, "name": cfg.name, "area": cfg.area, "host": cfg.host, "mac": cfg.mac, "transport": cfg.transport,
+                "last_frame": m.last_frame if m else None,
+                "clock_note": "device clock not set" if m and m.skew is not None and abs(m.skew) > 120 else "",
                 "interval_s": cfg.poll_interval_s, "rating_a": held.rating_a, "breaker_a": held.breaker_a, "combined_bar": cfg.combined_bar,
                 "role": held.role, "unit_no": held.unit_no, "upstream": held.upstream, "way": held.way,
                 "single": bool(key), "circuit_key": key,
@@ -772,7 +828,10 @@ class ShellyIntegration(Integration):
                 "energy_went_back": sitetime.local_hhmm(m.energy_reset_at, site) if m and m.energy_reset_at else "",
             })
         return {"transport": self._transport.name, "meters": meters,
-                "max_meters": SHELLY_MAX_METERS, "emulate": self.emulate}
+                "max_meters": SHELLY_MAX_METERS, "emulate": self.emulate, "receiver": self.push.admin(self.receiver_urls)}
+
+    receiver_urls: list = []     # set by the web server: where devices should send (ws://<this PC>:<port>/shelly/ws)
 
     def info(self) -> dict:
-        return {**super().info(), "meters": len(self.hub.config.shelly_devices)}
+        return {**super().info(), "meters": len(self.hub.config.shelly_devices),
+                "sensors": len(self.hub.config.shelly_sensors)}

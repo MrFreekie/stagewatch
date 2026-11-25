@@ -16,6 +16,10 @@ the [notices](README.md#notices).
 > are **not yet tested**. That includes the Shelly EM Mini Gen4 and the Shelly 3EM. Check their
 > figures against the Shelly's own page.
 
+> **Devices that send.** The Shelly H&T Gen3 sensor, and a meter you would rather not poll, can send to
+> Stagewatch instead. That is opt-in, **not tested on hardware**, and not encrypted or signed. See
+> [Add a Shelly that sends to Stagewatch](shelly-push.md).
+
 > **Advisory only.** The figures do not replace an electrician's inspection and testing. Stagewatch
 > does not control power. See the [notices](README.md#notices).
 

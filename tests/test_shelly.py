@@ -785,7 +785,7 @@ def test_config_round_trip_and_mac_is_normalised(tmp_path):
     again = ConfigStore(tmp_path / "config.yaml").load()
     assert again.shelly_devices == [ShellyDeviceConfig(id="mic_rack", host="192.0.2.50", mac=MAC, name="Mic rack", area="FOH", poll_interval_s=2.5)]
     raw = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
-    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "breaker_a", "combined_bar", "channels", "role", "unit_no", "upstream", "way", "circuit_keys", "three_phase_keys"}   # no password field exists
+    assert set(raw["shelly_devices"][0]) == {"id", "host", "mac", "name", "area", "poll_interval_s", "rating_a", "breaker_a", "combined_bar", "channels", "role", "unit_no", "upstream", "way", "circuit_keys", "three_phase_keys", "transport"}   # no password field exists
 
 
 def test_interval_outside_two_to_five_seconds_is_brought_into_range():

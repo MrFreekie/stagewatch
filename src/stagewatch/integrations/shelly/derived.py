@@ -122,7 +122,7 @@ class DerivedPower:
     def meter_polled(self, m, found: list, ts: float) -> None:
         """Called after a good reading of a meter: its total load and demand, its three-phase unbalance."""
         cfg = m.cfg
-        gap_s = calc.gap_seconds(cfg.poll_interval_s)
+        gap_s = 600.0 if cfg.transport == "push" else calc.gap_seconds(cfg.poll_interval_s)   # a pushed meter may be quiet for a while
         name = cfg.name or "Power meter"
         self._series(f"{cfg.id}.meter_power", cfg.id, name, Kind.POWER, "W", 1, self._load(found, "power"), ts, gap_s)
         self._series(f"{cfg.id}.meter_apparent", cfg.id, name, Kind.APPARENT_POWER, "VA", 1, self._load(found, "apparent"), ts, gap_s)

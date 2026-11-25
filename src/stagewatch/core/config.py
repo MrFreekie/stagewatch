@@ -355,6 +355,15 @@ class ShellyDeviceConfig(_TreeFields):
     # tree and its settings are stored once, on that circuit (core/power_tree.py). Additive: no schema bump.
     circuit_keys: list[str] = Field(default_factory=list, max_length=16)
     three_phase_keys: list[str] = Field(default_factory=list, max_length=16)
+    # How readings arrive: "poll" (Stagewatch asks the meter, the default) or "push" (the meter sends them to
+    # Stagewatch's WebSocket receiver, which the admin switched on and set up on the meter). Additive: an older
+    # build ignores it and would ask the meter at ``host``, which is read-only too.
+    transport: str = "poll"
+
+    @field_validator("transport", mode="before")
+    @classmethod
+    def _transport(cls, v):
+        return v if v in ("poll", "push") else "poll"
 
     @field_validator("id")
     @classmethod
@@ -384,6 +393,61 @@ class ShellyDeviceConfig(_TreeFields):
         if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v:
             return min(SHELLY_POLL_MAX_S, max(SHELLY_POLL_MIN_S, float(v)))
         return v
+
+
+SHELLY_MAX_SENSORS = 16
+SHELLY_MAX_IGNORED = 64
+
+
+class ShellyReceiverConfig(_Model):
+    """The Shelly WebSocket receiver (devices send their readings to Stagewatch). Off until the admin switches
+    it on. ``ignored`` lists MACs (12 lower-case hex) the admin does not want to see in the found list.
+    Additive with defaults: no schema bump; an older build ignores it and drops it on its next save."""
+    enabled: bool = False
+    ignored: list[str] = Field(default_factory=list, max_length=SHELLY_MAX_IGNORED)
+
+    @field_validator("ignored", mode="before")
+    @classmethod
+    def _macs(cls, v):
+        out: list[str] = []
+        for item in v if isinstance(v, list) else []:
+            mac = normalise_mac(item)
+            if mac and mac not in out:
+                out.append(mac)
+        return out[:SHELLY_MAX_IGNORED]
+
+
+class ShellySensorConfig(_Model):
+    """A Shelly H&T (temperature and humidity) the admin adopted from the receiver's found list. It only ever
+    sends to Stagewatch; Stagewatch never contacts it. ``last_ip`` is written by the hub, admin-only. Additive."""
+    id: str
+    mac: str
+    name: str = Field("", max_length=60)
+    area: str = Field("", max_length=40)
+    last_ip: str = Field("", max_length=45)
+
+    @field_validator("id")
+    @classmethod
+    def _slug(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError("id needed")
+        return slugify(v)[:40]
+
+    @field_validator("mac")
+    @classmethod
+    def _mac(cls, v: str) -> str:
+        mac = normalise_mac(v)
+        if mac is None:
+            raise ValueError("MAC must be 12 hex characters")
+        return mac
+
+    @field_validator("last_ip", mode="before")
+    @classmethod
+    def _ip(cls, v):
+        try:
+            return str(ipaddress.ip_address(v.strip())) if isinstance(v, str) and v.strip() else ""
+        except ValueError:
+            return ""
 
 
 RME_MAX_UNITS = 8
@@ -1470,6 +1534,9 @@ class Config(_Model):
     witmotion: WitmotionConfig = Field(default_factory=WitmotionConfig)
     # Shelly power meters (read-only). Salvage keeps each valid entry and drops only the bad ones.
     shelly_devices: list[ShellyDeviceConfig] = Field(default_factory=list)
+    # The WebSocket receiver (off by default) and the H&T sensors adopted through it. Additive, no schema bump.
+    shelly_receiver: ShellyReceiverConfig = Field(default_factory=ShellyReceiverConfig)
+    shelly_sensors: list[ShellySensorConfig] = Field(default_factory=list)
     # RME units (read-only status listening). Additive, no schema bump; salvage keeps each valid entry.
     rme_devices: list[RmeDeviceConfig] = Field(default_factory=list)
     power_site: PowerSiteConfig = Field(default_factory=PowerSiteConfig)
@@ -1529,6 +1596,42 @@ class Config(_Model):
             kept.append(d)
         if len(kept) < len(v):
             log.warning("Shelly meters: %d duplicate or surplus entr%s left out", len(v) - len(kept), "y" if len(v) - len(kept) == 1 else "ies")
+        return kept
+
+    @field_validator("shelly_receiver", mode="before")
+    @classmethod
+    def _lenient_shelly_receiver(cls, v):
+        """On load: a damaged receiver block resets only itself (off, nothing ignored)."""
+        if isinstance(v, ShellyReceiverConfig):
+            return v
+        try:
+            return ShellyReceiverConfig.model_validate(v if isinstance(v, dict) else {})
+        except Exception:  # noqa: BLE001
+            log.warning("Shelly receiver settings were not usable and were reset")
+            return ShellyReceiverConfig()
+
+    @field_validator("shelly_sensors", mode="before")
+    @classmethod
+    def _lenient_shelly_sensors(cls, v):
+        """On load: an H&T entry that cannot be read is left out (the rest stay); duplicates (same id or MAC)
+        and surplus entries are dropped. Logs a count only."""
+        if not isinstance(v, list):
+            return []
+        kept, dropped, ids, macs = [], 0, set(), set()
+        for item in v:
+            try:
+                s = item if isinstance(item, ShellySensorConfig) else ShellySensorConfig.model_validate(item)
+            except Exception:  # noqa: BLE001
+                dropped += 1
+                continue
+            if s.id in ids or s.mac in macs or len(kept) >= SHELLY_MAX_SENSORS:
+                dropped += 1
+                continue
+            ids.add(s.id)
+            macs.add(s.mac)
+            kept.append(s)
+        if dropped:
+            log.warning("Shelly sensors: %d unusable or surplus entr%s left out", dropped, "y" if dropped == 1 else "ies")
         return kept
 
     @field_validator("rme_devices", mode="before")

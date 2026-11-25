@@ -137,6 +137,10 @@ class Device:
     sleep_minutes: int = 0
     last_reading: float | None = None
     sleep_shown: bool = False   # the sleeping state clients were last told about (hub use)
+    # A source that reports only now and then (a battery sensor, a meter that sends on change): how long
+    # its readings count as current, in seconds. 0 = the site limit. Runtime only: set by the integration,
+    # never saved, never public. Unlike sleep_minutes it does not show "sleeping" anywhere.
+    stale_limit_s: float = 0.0
 
     @property
     def sleep_limit_s(self) -> float:
@@ -200,6 +204,10 @@ class Entity:
     # Power-meter readings: always Equipment (no per-sensor override can change that) and recorded
     # exactly as received (no calibration offset). Runtime only; never in to_dict().
     locked_equipment: bool = False
+    # False = left out of the site average until the admin ticks "Include in site average" (a battery
+    # sensor that reports in steps and is usually not in the PA's air path). Runtime only; a saved
+    # calibration record always wins. Never in to_dict().
+    average_default: bool = True
     # Power meters only: this show day's figures worked out from the readings Stagewatch received
     # (highest, lowest, energy since the first reading). Public, plain numbers; absent when unset.
     day: dict | None = None

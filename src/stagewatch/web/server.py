@@ -59,6 +59,7 @@ from ..integrations.lanwm import importer as logimport
 from ..integrations.ontime.client import check_connection
 from ..integrations.shelly import TEXT as SHELLY_TEXT, InUse
 from ..integrations.shelly import UnknownChannel
+from ..integrations.shelly.push import PushError
 from ..integrations.shelly.http import ShellyError
 from ..integrations.rme import InUse as RmeInUse, probe_message as rme_probe_message
 from ..integrations.rme.client import TEXT as RME_TEXT, RmeError
@@ -545,6 +546,38 @@ class ShellyAddBody(ShellyTestBody):
         if _has_hidden_chars(v):
             raise ValueError("Use plain text")
         return v
+
+
+class ShellyReceiverBody(BaseModel):
+    """PUT /api/admin/shelly/receiver: switch the WebSocket receiver on or off."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    enabled: StrictBool
+
+
+class ShellyFoundBody(BaseModel):
+    """POST /api/admin/shelly/found/adopt: adopt a device from the found list (by its address, which must be on that list)."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    mac: str = Field(min_length=12, max_length=17)
+    name: str = Field(min_length=1, max_length=60)
+    area: str = Field("", max_length=40)
+
+    @field_validator("name", "area")
+    @classmethod
+    def _plain(cls, v: str) -> str:
+        v = v.strip()
+        if _has_hidden_chars(v):
+            raise ValueError("Use plain text")
+        return v
+
+
+class ShellyIgnoreBody(BaseModel):
+    """POST /api/admin/shelly/found/ignore."""
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    mac: str = Field(min_length=12, max_length=17)
+    ignore: StrictBool = True
 
 
 class RmeTestBody(BaseModel):
@@ -1705,7 +1738,11 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
 
     def shelly_admin() -> dict:
         integ = hub.integrations.get("shelly")
-        return integ.admin_status() if integ is not None else {"meters": [], "transport": "", "max_meters": 0, "emulate": hub.emulate}
+        if integ is None:
+            return {"meters": [], "transport": "", "max_meters": 0, "emulate": hub.emulate}
+        port = getattr(app.state, "port", 8080)
+        integ.receiver_urls = [f"ws://{ip}:{port}/shelly/ws" for ip in lan_addresses()][:4]
+        return integ.admin_status()
 
     def rme_integ():
         integ = hub.integrations.get("rme")
@@ -2571,6 +2608,43 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
         data = await asyncio.to_thread(hub.recorder.trend_threaded, list(ids.values()), since, until, TREND_POINTS)
         return {"minutes": minutes, "since": since, "until": until, "bucket_s": (until - since) / TREND_POINTS,
                 "series": {ref: data[eid] for ref, eid in ids.items() if data.get(eid)}}
+
+    # The Shelly WebSocket receiver (opt-in). Stagewatch only listens: nothing is ever sent to a device.
+    @app.put("/api/admin/shelly/receiver", dependencies=admin_deps)
+    async def shelly_receiver_set(body: ShellyReceiverBody):
+        shelly_integ().push.set_enabled(body.enabled)
+        return {"ok": True, "enabled": body.enabled}
+
+    @app.post("/api/admin/shelly/found/adopt", dependencies=admin_deps)
+    async def shelly_found_adopt(body: ShellyFoundBody):
+        """Adopt a device that has sent something to the receiver. Only an address on the found list is accepted."""
+        try:
+            return {"id": shelly_integ().push.adopt(body.mac, body.name, body.area)}
+        except LookupError:
+            raise HTTPException(404, "That device is not on the found list. Wait for it to send something, then try again.") from None
+        except PushError as exc:
+            raise HTTPException(409, f"{exc} Nothing has been changed.") from None
+
+    @app.post("/api/admin/shelly/found/ignore", dependencies=admin_deps)
+    async def shelly_found_ignore(body: ShellyIgnoreBody):
+        try:
+            shelly_integ().push.ignore(body.mac, body.ignore)
+        except PushError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {"ok": True}
+
+    @app.post("/api/admin/shelly/found/clear", dependencies=admin_deps)
+    async def shelly_found_clear():
+        shelly_integ().push.rx.clear_unknown()
+        return {"ok": True}
+
+    @app.delete("/api/admin/shelly/sensor/{device_id}", dependencies=admin_deps)
+    async def shelly_sensor_delete(device_id: str):
+        try:
+            shelly_integ().push.remove_sensor(device_id)
+        except LookupError:
+            raise HTTPException(404, "No such sensor") from None
+        return {"ok": True}
 
     @app.delete("/api/admin/shelly/{device_id}", dependencies=admin_deps)
     async def shelly_delete(device_id: str):
@@ -3609,6 +3683,17 @@ def create_app(hub: Hub, manage_hub: bool = True, updater: Updater | None = None
             "Cache-Control": "no-store"})
 
     # -------------------------------------------------------- websocket
+    @app.websocket("/shelly/ws")
+    async def shelly_ws(websocket: WebSocket):
+        """Where Shelly devices with Outbound WebSocket send their readings. No login is possible for a device, so
+        everything is limited and checked in integrations/shelly/receiver.py (off by default, adopted devices
+        only, caps and rates). The server never sends a data frame. An admin cookie grants nothing here."""
+        integ = hub.integrations.get("shelly")
+        if integ is None:
+            await websocket.close(code=1008)
+            return
+        await integ.push.rx.serve(websocket)
+
     @app.websocket("/ws")
     async def ws(websocket: WebSocket, dashboard: str = ""):
         origin = websocket.headers.get("origin")

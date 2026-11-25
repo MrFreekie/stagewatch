@@ -831,8 +831,9 @@
           m.problem ? h("div", { class: "warn-text", style: "font-size:12px" }, m.problem) : null,
           m.energy_went_back ? h("div", { class: "warn-text", style: "font-size:12px" }, `Energy counter went back at ${m.energy_went_back}`) : null),
         h("td", {}, host, h("div", { class: "muted", style: "font-size:12px" }, facts)),
-        h("td", {}, h("div", { class: "row" }, every, h("span", { class: "muted" }, "s"))),
-        h("td", {}, h("div", { class: "muted", style: "font-size:12px" }, `${m.ok_polls} ok, ${m.failed_polls} missed`)),
+        h("td", {}, m.transport === "push" ? h("div", { class: "muted", style: "font-size:12px" }, "Sent by the meter")
+          : h("div", { class: "row" }, every, h("span", { class: "muted" }, "s"))),
+        h("td", {}, h("div", { class: "muted", style: "font-size:12px" }, m.transport === "push" ? "Not polled" : `${m.ok_polls} ok, ${m.failed_polls} missed`)),
         h("td", {}, h("div", { class: "row" },
           h("button", { class: "small", onclick: () => run(() => api("PATCH", `/api/admin/shelly/${encodeURIComponent(m.id)}`, {
             name: val(name), area: val(area), host: val(host), interval_s: Number(every.value) }), "Saved").then(refresh, () => {}) }, "Save"),
@@ -853,6 +854,62 @@
       meters.length ? h("div", { class: "table-scroll" }, table) : h("p", { class: "muted" }, "No power meters yet."),
       h("p", { class: "muted" }, "To add a meter, use the Add integration tile on the Integrations tab."),
       h("p", { class: "muted hint" }, "Tip: give the meter a fixed address in your router (a DHCP reservation) so it stays where Stagewatch expects it. Stagewatch recognises a meter by its own hardware address, so if its address changes, type the new one in its row and press Save. Figures are advisory and do not replace the electrician's inspection and testing."));
+  }
+
+  // ------------------------------------------------------------ Shelly: devices that send to Stagewatch
+  // The opt-in WebSocket receiver. Off until switched on here. Stagewatch only listens: it sends a device nothing
+  // and changes nothing on it. Addresses (IP, hardware address) are shown here and nowhere public. Untested on hardware.
+  function shellyReceiverCard() {
+    const rc = ((admin.shelly || {}).receiver) || { enabled: false, urls: [], unknown: [], sensors: [] };
+    const copy = (text) => {
+      try { navigator.clipboard.writeText(text).then(() => toast("Copied"), () => toast("Could not copy. Select the address and copy it by hand.", true)); }
+      catch (_) { toast("Could not copy. Select the address and copy it by hand.", true); }
+    };
+    const switchBtn = h("button", { class: "touch" + (rc.enabled ? "" : " primary"), type: "button",
+      onclick: () => run(() => api("PUT", "/api/admin/shelly/receiver", { enabled: !rc.enabled }), rc.enabled ? "Receiver switched off" : "Receiver switched on").then(refresh, () => {}) },
+      rc.enabled ? "Switch off" : "Switch on");
+    const parts = [
+      h("p", { class: "muted" }, "Some Shelly devices, such as the H&T temperature and humidity sensor, send their readings to Stagewatch instead of waiting to be asked. Off until you switch it on. Stagewatch only listens: it sends the device nothing and changes nothing on it. Only devices you add here are read."),
+      h("p", { class: "notice" }, rc.notice || "Readings from Shelly devices are not encrypted or signed. Another device on the show network could pretend to be your sensor. Stagewatch only accepts devices you have added."),
+      h("p", { class: "notice" }, "Not tested on real Shelly hardware yet."),
+      h("div", { class: "row" }, h("span", {}, rc.enabled ? `Receiver is on (${rc.connections || 0} connected)` : "Receiver is off"), h("span", { class: "grow" }), switchBtn)];
+    if (rc.enabled) {
+      const urls = rc.urls || [];
+      parts.push(h("p", {}, "On each Shelly's own web page, find the Outbound WebSocket setting (the menu wording can differ between firmware versions), switch it on and paste one of these addresses (use the one on the same network as the Shelly)."));
+      parts.push(h("ul", { class: "shelly-readings" }, urls.map((u) => h("li", {}, h("code", {}, u), " ", h("button", { class: "small", type: "button", onclick: () => copy(u) }, "Copy")))));
+      if (!urls.length) parts.push(h("p", { class: "muted" }, "No network address found for this computer."));
+      const found = rc.unknown || [];
+      parts.push(h("h3", {}, "Found devices"));
+      if (!found.length) parts.push(h("p", { class: "muted" }, "Nothing yet. A battery sensor only reports when it wakes (press its button to make it send now)."));
+      found.forEach((u) => {
+        const name = h("input", { maxlength: "60", placeholder: "Name, e.g. FOH tent", "aria-label": `Name for ${u.model}` });
+        const area = h("input", { maxlength: "40", placeholder: "Area (optional)", "aria-label": `Area for ${u.model}` });
+        parts.push(h("div", { class: "row" },
+          h("span", {}, `${u.model}: ${u.label}`), h("span", { class: "muted", style: "font-size:12px" }, `${u.ip} · ${u.mac}`),
+          u.supported ? [name, area, h("button", { class: "small", type: "button", onclick: () => {
+            if (!val(name)) { toast("Give it a name first", true); return; }
+            run(() => api("POST", "/api/admin/shelly/found/adopt", { mac: u.mac, name: val(name), area: val(area) }), "Added").then(refresh, () => {});
+          } }, "Add")] : h("span", { class: "muted" }, "Not supported yet"),
+          h("button", { class: "small", type: "button", onclick: () => run(() => api("POST", "/api/admin/shelly/found/ignore", { mac: u.mac }), "Ignored").then(refresh, () => {}) }, "Ignore")));
+      });
+      if (found.length) parts.push(h("div", { class: "row" }, h("button", { class: "small", type: "button", onclick: () => run(() => api("POST", "/api/admin/shelly/found/clear"), "List cleared").then(refresh, () => {}) }, "Clear the list")));
+    }
+    const sensors = rc.sensors || [];
+    if (sensors.length) {
+      parts.push(h("h3", {}, "Sensors"));
+      sensors.forEach((s) => {
+        const ss = SW.deviceStatus({ status: s.status, status_detail: s.detail }, snap.now);
+        const facts = [s.battery_percent != null ? `battery ${Math.round(s.battery_percent)} %` : "", s.external_power ? "on USB power" : "",
+          s.wake_period_s ? `wakes every ${Math.round(s.wake_period_s / 60)} min` : "", s.ip_note, s.clock_note, s.conflict ? "a second device is sending as this one" : ""].filter(Boolean).join(" · ");
+        parts.push(h("div", { class: "row" },
+          h("strong", {}, s.name), h("span", { class: `status ${ss.cls}`, title: ss.title }, ss.text),
+          h("span", { class: "muted", style: "font-size:12px" }, [s.detail, facts, `${s.last_ip || ""} · ${s.mac}`].filter(Boolean).join(" · ")),
+          h("span", { class: "grow" }),
+          h("button", { class: "small danger", type: "button", onclick: () => confirm(`Remove the sensor ${s.name}? Stagewatch stops reading it. Its history is kept.`) && run(() => api("DELETE", `/api/admin/shelly/sensor/${encodeURIComponent(s.id)}`), "Removed").then(refresh, () => {}) }, "Remove")));
+      });
+      parts.push(h("p", { class: "muted hint" }, "A Shelly sensor is left out of the site temperature and humidity average until you tick it under Calibration."));
+    }
+    return SW.brandCard("Shelly devices that send to Stagewatch", "shelly-badge.svg", "Shelly", ...parts);
   }
 
   // ------------------------------------------------------------ RME interfaces
@@ -3269,6 +3326,7 @@
         added.globcon ? chip(foldCard(globconCard(), "globcon", false), "globcon") : null,
         chip(foldCard(witmotionCard(), "witmotion", false), "witmotion"),
         ((admin.shelly || {}).meters || []).length ? chip(foldCard(shellyCard(), "shelly", false), "shelly") : null,
+        foldCard(shellyReceiverCard(), "shellyreceiver", false),
         rmeUnits().length ? chip(foldCard(rmeCard(), "rme", false), "rme") : null,
         ((admin.shelly || {}).meters || []).length ? foldCard(powerSiteCard(), "powersite", false) : null,
         (((admin.shelly || {}).meters || []).length || ((admin.config || {}).power_points || []).length) ? foldCard(powerTreeCard(), "powertree", false) : null,

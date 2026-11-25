@@ -307,6 +307,7 @@ class Hub:
                 existing.area = device.area
             existing.role = device.role
             existing.sleep_minutes = device.sleep_minutes
+            existing.stale_limit_s = device.stale_limit_s
             existing.hw_id = device.hw_id  # as reported now; "" when the board gave no MAC
             device = existing
         else:
@@ -403,6 +404,7 @@ class Hub:
             existing.labels = dict(entity.labels)
             existing.location = entity.location
             existing.locked_equipment = entity.locked_equipment
+            existing.average_default = entity.average_default
             entity = existing
         else:
             self.entities[entity.id] = entity
@@ -439,6 +441,7 @@ class Hub:
         sleep between readings its longer sleep limit (2.5 wake intervals)."""
         device = self.devices.get(entity.device_id)
         limit = device.sleep_limit_s if device is not None and not entity.derived else 0.0
+        limit = max(limit, device.stale_limit_s) if device is not None and not entity.derived else limit
         return max(self.config.site.stale_after_s, limit) if limit > 0 else self.config.site.stale_after_s
 
     def lookup(self, entity_id: str) -> tuple[float | None, bool]:
@@ -498,8 +501,13 @@ class Hub:
 
     def calibration_for(self, entity: Entity) -> Calibration | EntitySettings:
         """The hardware record (by ``entity.hw_key``), else the legacy entry by entity id, else
-        the defaults. Read-only."""
-        return _calibration_for(self.config, entity.id, entity.hw_key)
+        the defaults. Read-only. A sensor that starts out of the site average (``average_default`` False)
+        stays out until a record of its own says otherwise."""
+        cal = _calibration_for(self.config, entity.id, entity.hw_key)
+        has_record = bool(entity.hw_key and entity.hw_key in self.config.calibrations) or entity.id in self.config.entities
+        if not entity.average_default and cal.include_in_average and not has_record:
+            return Calibration(include_in_average=False)
+        return cal
 
     def accuracy_of(self, entity: Entity) -> tuple[float | None, str]:
         """(accuracy in canonical units or None, basis) of a sensor. A figure that is missing, not

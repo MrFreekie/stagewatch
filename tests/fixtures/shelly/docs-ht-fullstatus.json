@@ -1,0 +1,13 @@
+{
+  "_note": "SYNTHETIC from the Shelly documentation: the component examples for Temperature (tC 24.4), Humidity (rh 73.7), DevicePower (battery 4.87 V, 50 %, external false) and Sys (wakeup_period, wakeup_reason), put into one NotifyFullStatus frame. Not captured from a real H&T Gen3. The MAC is a made-up locally administered one.",
+  "src": "shellyhtg3-025e00000501",
+  "dst": "user_1",
+  "method": "NotifyFullStatus",
+  "params": {
+    "ts": 1631186545.04,
+    "sys": {"mac": "025E00000501", "uptime": 41, "wakeup_period": 7200, "wakeup_reason": {"boot": "deepsleep_wake", "cause": "periodic"}},
+    "temperature:0": {"id": 0, "tC": 24.4, "tF": 75.9},
+    "humidity:0": {"id": 0, "rh": 73.7},
+    "devicepower:0": {"id": 0, "battery": {"V": 4.87, "percent": 50}, "external": {"present": false}}
+  }
+}
